@@ -5,3 +5,4 @@
 *.cgsc
 *.gscbin
 .env*
+settings.local.json
