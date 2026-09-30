@@ -46,5 +46,7 @@ $output = Join-Path $runtime 'voice-package'
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.exe" -Destination "$output/iw7-paris-voice.exe"
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@(Get-ChildItem "$repo/src/native/*" | ForEach-Object { @{File=$_.Name;SHA256=(Get-FileHash $_.FullName).Hash} }) }
+$manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
+$manifest.SessionAliases = 'Temporary duplicate names, server only'
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$output/build-manifest.json" -Encoding UTF8
 Write-Output "Prepared private client/server build: $output"
