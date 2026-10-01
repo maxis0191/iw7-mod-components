@@ -38,8 +38,37 @@ git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
 Copy-Item -LiteralPath "$repo/src/native/paris_voice.cpp","$repo/src/native/paris_voice_protocol.hpp" -Destination "$root/src/client/component"
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
-if ($RhinoExperiment) { Copy-Item -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_rhino.cpp" -Destination $rhinoOverlay }
+if ($RhinoExperiment) {
+    Copy-Item -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_rhino.cpp" -Destination $rhinoOverlay
+    $scriptManifest = Join-Path $repo 'runtime/rhino-pack-scripts/rhino-script-manifest.json'
+    if (!(Test-Path -LiteralPath $scriptManifest)) { throw 'Prepare Rhino script assets before the experimental native build.' }
+    $scriptEntries = @(Get-Content -LiteralPath $scriptManifest -Raw | ConvertFrom-Json)
+    if (!$scriptEntries.Count -or @($scriptEntries | Where-Object { $_.Asset -notmatch '^[a-zA-Z0-9_/-]+$' }).Count) {
+        throw 'Invalid Rhino script manifest; refusing to generate the native preload list.'
+    }
+    $include = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
+    $includeLines = @($scriptEntries | ForEach-Object { '            "' + $_.Asset + '",' })
+    [IO.File]::WriteAllText($include, ($includeLines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+}
 elseif (Test-Path -LiteralPath $rhinoOverlay) { Remove-Item -LiteralPath $rhinoOverlay }
+$scriptLoading = Join-Path $root 'src/client/component/gsc/script_loading.cpp'
+$baseScriptLoading = (((git -C $root show ($commit + ':src/client/component/gsc/script_loading.cpp')) -join "`n").TrimEnd()) + "`n"
+$scriptLoadingDeclaration = "namespace paris_rhino { void preload_gsc_dependencies(); }`n`nnamespace gsc"
+if (($baseScriptLoading.Split([string[]]@('namespace gsc'), [StringSplitOptions]::None)).Count -ne 2) {
+    throw 'Pinned GSC loader namespace marker changed; refusing to add the Rhino preload declaration.'
+}
+$experimentScriptLoading = $baseScriptLoading.Replace('namespace gsc', $scriptLoadingDeclaration)
+$loadScriptMarker = "`t`t`tload_scripts();"
+if (($experimentScriptLoading.Split([string[]]@($loadScriptMarker), [StringSplitOptions]::None)).Count -ne 2) {
+    throw 'Pinned GSC loader marker changed; refusing to apply the Rhino preload hook.'
+}
+$experimentScriptLoading = $experimentScriptLoading.Replace($loadScriptMarker,
+    "`t`t`tparis_rhino::preload_gsc_dependencies();`n" + $loadScriptMarker)
+$currentScriptLoading = [IO.File]::ReadAllText($scriptLoading).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentScriptLoading -ne $baseScriptLoading -and $currentScriptLoading -ne $experimentScriptLoading) {
+    throw 'Unowned GSC loader edits in build checkout; use an isolated checkout.'
+}
+[IO.File]::WriteAllText($scriptLoading, $(if ($RhinoExperiment) { $experimentScriptLoading } else { $baseScriptLoading }), [Text.UTF8Encoding]::new($false))
 $fastfiles = Join-Path $root 'src/client/component/fastfiles.cpp'
 $baseFastfiles = (((git -C $root show ($commit + ':src/client/component/fastfiles.cpp')) -join "`n").TrimEnd()) + "`n"
 $declaration = "// Paris Rhino optional asset/script extension.`nnamespace paris_rhino { void extend_image_pool(); int donor_flags(const char*); void remember_script(game::XAssetType, game::XAssetHeader, const std::string&); game::XAssetHeader prefer_script(game::XAssetType, const char*, game::XAssetHeader); void augment_netconststrings(game::XAssetType, game::XAssetHeader*, const std::string&); void verify_netconststrings(game::XAssetType, game::XAssetHeader, const std::string&); }`n`nnamespace fastfiles"
@@ -73,5 +102,10 @@ Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.exe" -Destination "$
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@(Get-ChildItem "$repo/src/native/*" | ForEach-Object { @{File=$_.Name;SHA256=(Get-FileHash $_.FullName).Hash} }) }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
 $manifest.SessionAliases = 'Temporary duplicate names, server only'
+if ($RhinoExperiment) {
+    $manifest.RhinoScriptManifestSHA256 = (Get-FileHash -LiteralPath $scriptManifest).Hash
+    $manifest.RhinoScriptAssetCount = $scriptEntries.Count
+    $manifest.RhinoScriptLoaderSHA256 = (Get-FileHash -LiteralPath $scriptLoading).Hash
+}
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$output/build-manifest.json" -Encoding UTF8
 Write-Output "Prepared private client/server build: $output"
