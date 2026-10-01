@@ -40,10 +40,11 @@ if ($RhinoExperiment) { Copy-Item -LiteralPath "$repo/src/custom_scripts/cp/expe
 elseif (Test-Path -LiteralPath $rhinoOverlay) { Remove-Item -LiteralPath $rhinoOverlay }
 $fastfiles = Join-Path $root 'src/client/component/fastfiles.cpp'
 $baseFastfiles = (((git -C $root show ($commit + ':src/client/component/fastfiles.cpp')) -join "`n").TrimEnd()) + "`n"
-$declaration = "// Paris Rhino optional asset filter.`nnamespace paris_rhino { bool filter_asset(game::XAssetType, game::XAssetHeader*, game::XAssetHeader*); void observe_asset(game::XAssetType, game::XAssetHeader); void begin_filtered_asset(game::XAssetType, game::XAssetHeader); }`n`nnamespace fastfiles"
+$declaration = "// Paris Rhino optional asset filter.`nnamespace paris_rhino { bool filter_asset(game::XAssetType, game::XAssetHeader*, game::XAssetHeader*); void observe_asset(game::XAssetType, game::XAssetHeader); void begin_filtered_asset(); void prepare_fallbacks(); bool filter_lookup(game::XAssetType, const char*, game::XAssetHeader*); }`n`nnamespace fastfiles"
 $needle = 'auto result = db_add_xasset_hook.invoke<game::XAssetHeader>(type, header_ptr);'
-$filter = "game::XAssetHeader filtered{};`n`t`t`tif (paris_rhino::filter_asset(type, header_ptr, &filtered)) { paris_rhino::begin_filtered_asset(type, *header_ptr); return filtered; }`n`t`t`t" + $needle
+$filter = "game::XAssetHeader filtered{};`n`t`t`tif (paris_rhino::filter_asset(type, header_ptr, &filtered)) { paris_rhino::begin_filtered_asset(); return filtered; }`n`t`t`t" + $needle
 $experimentFastfiles = $baseFastfiles.Replace('namespace fastfiles', $declaration).Replace($needle, $filter + "`n`t`t`tparis_rhino::observe_asset(type, result);")
+$experimentFastfiles = $experimentFastfiles.Replace('game::XZoneInfo info{};', 'if (std::string(name) == "cp_final") paris_rhino::prepare_fallbacks();' + "`n`t`t`t`tgame::XZoneInfo info{};").Replace('auto result = db_find_xasset_header_hook.invoke<game::XAssetHeader>(type, name, allow_create_default);', 'game::XAssetHeader reused{};' + "`n`t`t`tif (paris_rhino::filter_lookup(type, name, &reused)) return reused;`n`t`t`t" + 'auto result = db_find_xasset_header_hook.invoke<game::XAssetHeader>(type, name, allow_create_default);')
 $currentFastfiles = [IO.File]::ReadAllText($fastfiles).Replace("`r`n", "`n").TrimEnd() + "`n"
 if ($currentFastfiles -ne $baseFastfiles -and $currentFastfiles -ne $experimentFastfiles) { throw 'Unowned fastfiles.cpp changes in build checkout; use an isolated checkout.' }
 [IO.File]::WriteAllText($fastfiles, $(if ($RhinoExperiment) { $experimentFastfiles } else { $baseFastfiles }), [Text.UTF8Encoding]::new($false))
