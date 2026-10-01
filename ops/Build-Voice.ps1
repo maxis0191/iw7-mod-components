@@ -66,10 +66,26 @@ if (($experimentScriptLoading.Split([string[]]@($loadScriptMarker), [StringSplit
 }
 $previousExperimentScriptLoading = $previousExperimentScriptLoading.Replace($loadScriptMarker,
     "`t`t`tparis_rhino::preload_gsc_dependencies();`n" + $loadScriptMarker)
-$experimentScriptLoading = $experimentScriptLoading.Replace($loadScriptMarker,
+$existingExperimentScriptLoading = $experimentScriptLoading.Replace($loadScriptMarker,
     "`t`t`tparis_rhino::preload_gsc_dependencies();`n" + $loadScriptMarker + "`n`t`t`tparis_rhino::resolve_gsc_function_handles();")
+$initCompilerMarker = "`t`t`tinit_compiler();"
+if (($experimentScriptLoading.Split([string[]]@($initCompilerMarker), [StringSplitOptions]::None)).Count -ne 2) {
+    throw 'Pinned GSC compiler initialization marker changed; refusing to move the Rhino preload hook.'
+}
+$experimentScriptLoading = $experimentScriptLoading.Replace($initCompilerMarker,
+    $initCompilerMarker + "`n`t`t`tparis_rhino::preload_gsc_dependencies();").Replace($loadScriptMarker,
+    $loadScriptMarker + "`n`t`t`tparis_rhino::resolve_gsc_function_handles();")
+$initCompilerPosition = $experimentScriptLoading.IndexOf($initCompilerMarker, [StringComparison]::Ordinal)
+$preloadPosition = $experimentScriptLoading.LastIndexOf('paris_rhino::preload_gsc_dependencies();', [StringComparison]::Ordinal)
+$retailBeginPosition = $experimentScriptLoading.IndexOf('scr_begin_load_scripts_hook.invoke<void>(a1);', [StringComparison]::Ordinal)
+$loadScriptsPosition = $experimentScriptLoading.IndexOf($loadScriptMarker, [StringComparison]::Ordinal)
+if (!($initCompilerPosition -lt $preloadPosition -and $preloadPosition -lt $retailBeginPosition -and
+      $retailBeginPosition -lt $loadScriptsPosition)) {
+    throw 'Rhino GSC preloading must run after compiler setup and before retail script linking.'
+}
 $currentScriptLoading = [IO.File]::ReadAllText($scriptLoading).Replace("`r`n", "`n").TrimEnd() + "`n"
-if ($currentScriptLoading -ne $baseScriptLoading -and $currentScriptLoading -ne $previousExperimentScriptLoading -and $currentScriptLoading -ne $experimentScriptLoading) {
+if ($currentScriptLoading -ne $baseScriptLoading -and $currentScriptLoading -ne $previousExperimentScriptLoading -and
+    $currentScriptLoading -ne $existingExperimentScriptLoading -and $currentScriptLoading -ne $experimentScriptLoading) {
     throw 'Unowned GSC loader edits in build checkout; use an isolated checkout.'
 }
 [IO.File]::WriteAllText($scriptLoading, $(if ($RhinoExperiment) { $experimentScriptLoading } else { $baseScriptLoading }), [Text.UTF8Encoding]::new($false))
