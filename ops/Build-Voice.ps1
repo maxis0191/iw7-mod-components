@@ -53,19 +53,23 @@ if ($RhinoExperiment) {
 elseif (Test-Path -LiteralPath $rhinoOverlay) { Remove-Item -LiteralPath $rhinoOverlay }
 $scriptLoading = Join-Path $root 'src/client/component/gsc/script_loading.cpp'
 $baseScriptLoading = (((git -C $root show ($commit + ':src/client/component/gsc/script_loading.cpp')) -join "`n").TrimEnd()) + "`n"
-$scriptLoadingDeclaration = "namespace paris_rhino { void preload_gsc_dependencies(); }`n`nnamespace gsc"
+$scriptLoadingDeclaration = "namespace paris_rhino { void preload_gsc_dependencies(); void resolve_gsc_function_handles(); }`n`nnamespace gsc"
 if (($baseScriptLoading.Split([string[]]@('namespace gsc'), [StringSplitOptions]::None)).Count -ne 2) {
     throw 'Pinned GSC loader namespace marker changed; refusing to add the Rhino preload declaration.'
 }
 $experimentScriptLoading = $baseScriptLoading.Replace('namespace gsc', $scriptLoadingDeclaration)
+$previousDeclaration = "namespace paris_rhino { void preload_gsc_dependencies(); }`n`nnamespace gsc"
+$previousExperimentScriptLoading = $baseScriptLoading.Replace('namespace gsc', $previousDeclaration)
 $loadScriptMarker = "`t`t`tload_scripts();"
 if (($experimentScriptLoading.Split([string[]]@($loadScriptMarker), [StringSplitOptions]::None)).Count -ne 2) {
     throw 'Pinned GSC loader marker changed; refusing to apply the Rhino preload hook.'
 }
-$experimentScriptLoading = $experimentScriptLoading.Replace($loadScriptMarker,
+$previousExperimentScriptLoading = $previousExperimentScriptLoading.Replace($loadScriptMarker,
     "`t`t`tparis_rhino::preload_gsc_dependencies();`n" + $loadScriptMarker)
+$experimentScriptLoading = $experimentScriptLoading.Replace($loadScriptMarker,
+    "`t`t`tparis_rhino::preload_gsc_dependencies();`n" + $loadScriptMarker + "`n`t`t`tparis_rhino::resolve_gsc_function_handles();")
 $currentScriptLoading = [IO.File]::ReadAllText($scriptLoading).Replace("`r`n", "`n").TrimEnd() + "`n"
-if ($currentScriptLoading -ne $baseScriptLoading -and $currentScriptLoading -ne $experimentScriptLoading) {
+if ($currentScriptLoading -ne $baseScriptLoading -and $currentScriptLoading -ne $previousExperimentScriptLoading -and $currentScriptLoading -ne $experimentScriptLoading) {
     throw 'Unowned GSC loader edits in build checkout; use an isolated checkout.'
 }
 [IO.File]::WriteAllText($scriptLoading, $(if ($RhinoExperiment) { $experimentScriptLoading } else { $baseScriptLoading }), [Text.UTF8Encoding]::new($false))
