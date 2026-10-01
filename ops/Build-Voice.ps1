@@ -1,4 +1,4 @@
-param([switch]$TestsOnly)
+param([switch]$TestsOnly, [switch]$RhinoExperiment)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $root = Join-Path $repo 'tools/iw7-mod-native'
@@ -35,6 +35,9 @@ if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be p
 git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
 Copy-Item -LiteralPath "$repo/src/native/paris_voice.cpp","$repo/src/native/paris_voice_protocol.hpp" -Destination "$root/src/client/component"
+$rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
+if ($RhinoExperiment) { Copy-Item -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_rhino.cpp" -Destination $rhinoOverlay }
+elseif (Test-Path -LiteralPath $rhinoOverlay) { Remove-Item -LiteralPath $rhinoOverlay }
 Push-Location $root
 try {
     & ./tools/premake5.exe vs2022
