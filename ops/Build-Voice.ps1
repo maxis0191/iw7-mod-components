@@ -40,17 +40,20 @@ if ($RhinoExperiment) { Copy-Item -LiteralPath "$repo/src/custom_scripts/cp/expe
 elseif (Test-Path -LiteralPath $rhinoOverlay) { Remove-Item -LiteralPath $rhinoOverlay }
 $fastfiles = Join-Path $root 'src/client/component/fastfiles.cpp'
 $baseFastfiles = (((git -C $root show ($commit + ':src/client/component/fastfiles.cpp')) -join "`n").TrimEnd()) + "`n"
-$declaration = "// Paris Rhino optional asset/script extension.`nnamespace paris_rhino { void extend_image_pool(); int donor_flags(const char*); void remember_script(game::XAssetType, game::XAssetHeader, const std::string&); game::XAssetHeader prefer_script(game::XAssetType, const char*, game::XAssetHeader); }`n`nnamespace fastfiles"
+$declaration = "// Paris Rhino optional asset/script extension.`nnamespace paris_rhino { void extend_image_pool(); int donor_flags(const char*); void remember_script(game::XAssetType, game::XAssetHeader, const std::string&); game::XAssetHeader prefer_script(game::XAssetType, const char*, game::XAssetHeader); void augment_netconststrings(game::XAssetType, game::XAssetHeader*, const std::string&); void verify_netconststrings(game::XAssetType, game::XAssetHeader, const std::string&); }`n`nnamespace fastfiles"
 $needle = 'reallocate_asset_pool(game::ASSET_TYPE_FX, 2048); // originally 16, iw6 uses 2048'
 if (($baseFastfiles.Split([string[]]@($needle), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned pool initialization marker changed.' }
 $experimentFastfiles = $baseFastfiles.Replace('namespace fastfiles', $declaration).Replace($needle, $needle + "`n`t`t`tparis_rhino::extend_image_pool();")
 $findMarker = 'auto result = db_find_xasset_header_hook.invoke<game::XAssetHeader>(type, name, allow_create_default);'
 $addMarker = 'auto header = *header_ptr;'
+$addResultMarker = 'auto result = db_add_xasset_hook.invoke<game::XAssetHeader>(type, header_ptr);'
 $flagMarker = 'info.allocFlags = game::DB_ZONE_PERMANENT;'
-foreach ($marker in @($findMarker,$addMarker,$flagMarker)) {
+foreach ($marker in @($findMarker,$addMarker,$addResultMarker,$flagMarker)) {
     if (($baseFastfiles.Split([string[]]@($marker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned asset hook marker changed.' }
 }
-$experimentFastfiles = $experimentFastfiles.Replace($findMarker, $findMarker + "`n`t`t`tresult = paris_rhino::prefer_script(type, name, result);").Replace($addMarker, $addMarker + "`n`t`t`tparis_rhino::remember_script(type, header, get_current_fastfile());")
+$experimentFastfiles = $experimentFastfiles.Replace($findMarker, $findMarker + "`n`t`t`tresult = paris_rhino::prefer_script(type, name, result);")
+$experimentFastfiles = $experimentFastfiles.Replace($addMarker, "const auto paris_rhino_zone = get_current_fastfile();`n`t`t`tparis_rhino::augment_netconststrings(type, header_ptr, paris_rhino_zone);`n`t`t`t" + $addMarker + "`n`t`t`tparis_rhino::remember_script(type, header, paris_rhino_zone);")
+$experimentFastfiles = $experimentFastfiles.Replace($addResultMarker, $addResultMarker + "`n`t`t`tparis_rhino::verify_netconststrings(type, result, paris_rhino_zone);")
 $experimentFastfiles = $experimentFastfiles.Replace($flagMarker, 'info.allocFlags = paris_rhino::donor_flags(name);')
 $currentFastfiles = [IO.File]::ReadAllText($fastfiles).Replace("`r`n", "`n").TrimEnd() + "`n"
 if ($currentFastfiles -ne $baseFastfiles -and $currentFastfiles -ne $experimentFastfiles) { throw 'Unowned fastfiles.cpp changes in build checkout; use an isolated checkout.' }
