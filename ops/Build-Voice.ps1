@@ -38,6 +38,15 @@ Copy-Item -LiteralPath "$repo/src/native/paris_voice.cpp","$repo/src/native/pari
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
 if ($RhinoExperiment) { Copy-Item -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_rhino.cpp" -Destination $rhinoOverlay }
 elseif (Test-Path -LiteralPath $rhinoOverlay) { Remove-Item -LiteralPath $rhinoOverlay }
+$fastfiles = Join-Path $root 'src/client/component/fastfiles.cpp'
+$baseFastfiles = (((git -C $root show ($commit + ':src/client/component/fastfiles.cpp')) -join "`n").TrimEnd()) + "`n"
+$declaration = "// Paris Rhino optional asset filter.`nnamespace paris_rhino { bool filter_asset(game::XAssetType, game::XAssetHeader*, game::XAssetHeader*); }`n`nnamespace fastfiles"
+$needle = 'auto result = db_add_xasset_hook.invoke<game::XAssetHeader>(type, header_ptr);'
+$filter = "game::XAssetHeader filtered{};`n`t`t`tif (paris_rhino::filter_asset(type, header_ptr, &filtered)) return filtered;`n`t`t`t" + $needle
+$experimentFastfiles = $baseFastfiles.Replace('namespace fastfiles', $declaration).Replace($needle, $filter)
+$currentFastfiles = [IO.File]::ReadAllText($fastfiles).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentFastfiles -ne $baseFastfiles -and $currentFastfiles -ne $experimentFastfiles) { throw 'Unowned fastfiles.cpp changes in build checkout; use an isolated checkout.' }
+[IO.File]::WriteAllText($fastfiles, $(if ($RhinoExperiment) { $experimentFastfiles } else { $baseFastfiles }), [Text.UTF8Encoding]::new($false))
 Push-Location $root
 try {
     & ./tools/premake5.exe vs2022
