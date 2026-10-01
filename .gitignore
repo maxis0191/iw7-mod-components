@@ -1,8 +1,11 @@
 /tools/
 /runtime/
 /backups/
+/compiled/
 *.log
 *.cgsc
 *.gscbin
 .env*
 settings.local.json
+__pycache__/
+*.pyc
