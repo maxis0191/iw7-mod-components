@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $root = Join-Path $repo 'tools/iw7-mod-native'
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
-if ($RhinoExperiment) { $commit = '46077878c770918d0d201daf76b12030850397f6' }
+if ($RhinoExperiment) { $commit = 'e5649eda6482916fcf3e80a53968337246a91d76' }
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (!(Test-Path -LiteralPath $vswhere)) { throw 'Install Microsoft VS 2022 Build Tools with VCTools and ATL; see docs/TOOLS.md.' }
 $installation = & $vswhere -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
@@ -29,9 +29,9 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.c
 if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
 if ($TestsOnly) { return }
 if (!(Test-Path -LiteralPath "$root/.git")) {
-    if ($RhinoExperiment) { git clone --recursive --branch codex/rhino-cp-teams https://github.com/bigmangeekf/iw7-mod.git $root }
+    if ($RhinoExperiment) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }
     else { git clone --recursive https://github.com/auroramod/iw7-mod.git $root }
-    if ($LASTEXITCODE) { throw 'Official upstream clone failed.' }
+    if ($LASTEXITCODE) { throw 'Required IW7-Mod clone failed.' }
 }
 if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
 git -C $root submodule update --init --recursive
