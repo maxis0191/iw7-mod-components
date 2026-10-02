@@ -14,12 +14,17 @@ try:
     control = rd.CreateTargetControl("localhost", fixture["RenderDocIdent"], "Rhino frame diagnosis", False)
     if control is None or not control.Connected() or control.GetPID() != fixture["PID"]:
         raise RuntimeError("RenderDoc target differs from the protected fixture")
+    started = time.time()
     control.TriggerCapture(1)
     deadline = time.monotonic() + 45
     result = None
     while time.monotonic() < deadline and control.Connected():
         message = control.ReceiveMessage(None)
         if message.type == rd.TargetControlMessageType.NewCapture:
+            # A new control connection also receives existing capture notifications.
+            # They do not prove the frame requested by this invocation was captured.
+            if Path(message.newCapture.path).stat().st_mtime < started:
+                continue
             result = {"Success": True, "PID": fixture["PID"], "Capture": message.newCapture.path,
                       "Frame": message.newCapture.frameNumber, "Bytes": message.newCapture.byteSize}
             break
