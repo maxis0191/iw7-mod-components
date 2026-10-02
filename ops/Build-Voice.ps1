@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $root = Join-Path $repo 'tools/iw7-mod-native'
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
-if ($RhinoExperiment) { $commit = 'e5649eda6482916fcf3e80a53968337246a91d76' }
+if ($RhinoExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (!(Test-Path -LiteralPath $vswhere)) { throw 'Install Microsoft VS 2022 Build Tools with VCTools and ATL; see docs/TOOLS.md.' }
 $installation = & $vswhere -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
