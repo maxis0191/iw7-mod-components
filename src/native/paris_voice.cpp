@@ -10,6 +10,7 @@
 #include <utils/hook.hpp>
 #include <utils/cryptography.hpp>
 #include <utils/flags.hpp>
+#include <utils/info_string.hpp>
 #include <cmath>
 #include <charconv>
 #include "paris_voice_protocol.hpp"
@@ -520,6 +521,25 @@ namespace paris_voice
                     static_cast<double>(*reinterpret_cast<const float*>(0x1477A027C)));
             }
         }
+        void registration_roster_witness()
+        {
+            if (!native_trace || !native_audio_test() || game::environment::is_dedi() ||
+                !utils::flags::has_flag("paris-voice-registration-witness")) return;
+            game::netadr_s host{};
+            if (!client_connection(host) || host.ip[0] != 127 || host.ip[1] || host.ip[2] || host.ip[3] != 1) return;
+            const int controller = utils::hook::invoke<int>(0x140347690, 0);
+            const auto identity = game::Live_GetXuid(controller);
+            if (!identity) return;
+            std::array<char, 16> text{};
+            const auto converted = std::to_chars(text.data(), text.data() + text.size(), identity, 16);
+            if (converted.ec != std::errc{}) return;
+            utils::info_string info;
+            info.set("xuid", std::string(text.data(), converted.ptr));
+            info.set("gamertag", "Voice test participant");
+            info.set("clanAbbrev", "");
+            network::send(host, "clientinfo", info.build(), '\n');
+            console::info("[paris-voice-native] Loopback metadata announcement sent; existing UI channel only, not production roster authentication.\n");
+        }
         void registration_witness(game::SessionData* session, int controller, int local_slot,
             const game::netadr_s& host)
         {
@@ -611,6 +631,7 @@ namespace paris_voice
             command::add("paris_voice_network_test", network_selftest);
             command::add("paris_voice_gate_selftest", gate_selftest);
             command::add("paris_voice_native_probe", native_probe);
+            command::add("paris_voice_registration_roster", registration_roster_witness);
             if (native_trace)
             {
                 native_receive_hook.create(0x14037CFF0, native_receive);

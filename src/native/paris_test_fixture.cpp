@@ -109,7 +109,9 @@ namespace paris_test_fixture
             std::istringstream input(request);
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe") return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "witnessroster") return;
+            if (action == "witnessroster" && (!utils::flags::has_flag("paris-voice-registration-witness") ||
+                !utils::flags::has_flag("paris-voice-base-test"))) return;
             if (action == "voiceprobe" && (!utils::flags::has_flag("paris-voice-native-trace") ||
                 !((utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab")) ||
                   utils::flags::has_flag("paris-voice-base-test")))) return;
@@ -126,6 +128,7 @@ namespace paris_test_fixture
             else if (action == "mods") command::execute("cmd say ..mods", true);
             else if (action == "close") command::execute("cmd say ..close", true);
             else if (action == "voiceprobe") command::execute("paris_voice_native_probe", true);
+            else if (action == "witnessroster") command::execute("paris_voice_registration_roster", true);
             else if (action == "stop") { command::execute("disconnect", true); scheduler::once([] { command::execute("quit", true); }, scheduler::main, 1s); }
         }
     }

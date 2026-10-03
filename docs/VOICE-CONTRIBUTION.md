@@ -39,7 +39,12 @@ because its synthetic codec test passes. Its protocol-v1 speaker reconnect epoch
 defect remains open.
 
 The next causal experiment uses `StartClient -RegistrationWitness` in the base
-helper. Before `VoiceProbe`, require both owned clients to pass Verify. The probe
+helper. Before `VoiceProbe`, require both owned clients to pass Verify. Call
+`WitnessRoster` on A and B to announce each local engine identity through the
+existing clientinfo/memberInfoUpdate UI channel, then wait for both metadata
+snapshots. The first experiment received no UI entries and attempted zero
+registrations; source and installed Lua contain no existing clientinfo emitter.
+That outcome cannot test whether registration restores native delivery. The probe
 tries the existing Session_RegisterRemotePlayer API for the remote UI identity,
 using only the loopback connected-server fallback. Observe registration and native
 send/receive deltas. This metadata is not authenticated production roster state:
