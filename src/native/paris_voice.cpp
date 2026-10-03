@@ -548,16 +548,20 @@ namespace paris_voice
             // a shipping voice feature requires. Preserve the original route.
             if (!utils::flags::has_flag("paris-voice-registration-witness") || !session ||
                 !session->dyn.sessionHandle || local_slot < 0 || local_slot >= static_cast<int>(wire::slots)) return;
-            unsigned attempted{}, added{};
+            // Match the existing party adapter: retail writes the absent index
+            // through EAX (0xFFFFFFFF), not a full-width UINT64_MAX result.
+            constexpr std::uint64_t absent_user = 0xFFFFFFFFULL;
+            unsigned metadata{}, already_registered{}, invalid{}, attempted{}, added{};
             for (unsigned slot = 0; slot < wire::slots; ++slot)
             {
                 if (static_cast<int>(slot) == local_slot || !party::g_clientMemberInfoValid[slot]) continue;
+                ++metadata;
                 const auto& value = party::g_clientMemberInfo[slot].xuid;
                 std::uint64_t identity{};
-                if (value.empty() || value.size() > 16) continue;
+                if (value.empty() || value.size() > 16) { ++invalid; continue; }
                 const auto parsed = std::from_chars(value.data(), value.data() + value.size(), identity, 16);
-                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || !identity ||
-                    game::Session_FindRegisteredUser(session, identity) != UINT64_MAX) continue;
+                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || !identity) { ++invalid; continue; }
+                if (game::Session_FindRegisteredUser(session, identity) != absent_user) { ++already_registered; continue; }
                 // The stock fallback sends through the connected server. This
                 // witness supplies no direct remote endpoint or platform address.
                 std::array<char, 128> platform_address{};
@@ -566,7 +570,8 @@ namespace paris_voice
                     static_cast<int>(slot), 1, platform_address.data(), &host);
                 added += session->dyn.users[slot].registered && session->dyn.users[slot].voiceRegistered;
             }
-            console::info("[paris-voice-native] Registration witness attempted=%u added=%u; loopback experiment, not production authentication.\n", attempted, added);
+            console::info("[paris-voice-native] Registration witness metadata=%u known=%u invalid=%u attempted=%u added=%u; loopback experiment, not production authentication.\n",
+                metadata, already_registered, invalid, attempted, added);
         }
         void native_probe()
         {

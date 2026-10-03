@@ -42,9 +42,12 @@ The next causal experiment uses `StartClient -RegistrationWitness` in the base
 helper. Before `VoiceProbe`, require both owned clients to pass Verify. Call
 `WitnessRoster` on A and B to announce each local engine identity through the
 existing clientinfo/memberInfoUpdate UI channel, then wait for both metadata
-snapshots. The first experiment received no UI entries and attempted zero
-registrations; source and installed Lua contain no existing clientinfo emitter.
-That outcome cannot test whether registration restores native delivery. The probe
+snapshots. The first experiment attempted zero registrations; source and installed
+Lua contain no existing clientinfo emitter. The next attempt also exposed a witness
+bug: Session_FindRegisteredUser's absent value is 0xFFFFFFFF, as used by the pinned
+party adapter, rather than UINT64_MAX. Zero attempts alone did not isolate either
+guard. The corrected witness reports metadata/known/invalid/attempted/added counts.
+Neither failed witness can test whether registration restores native delivery. The probe
 tries the existing Session_RegisterRemotePlayer API for the remote UI identity,
 using only the loopback connected-server fallback. Observe registration and native
 send/receive deltas. This metadata is not authenticated production roster state:
