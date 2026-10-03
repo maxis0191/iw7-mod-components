@@ -1,6 +1,7 @@
-param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab,
+param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave')
 $ErrorActionPreference = 'Stop'
+if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
 if ($ServerModules -and ($RhinoExperiment -or $EnemyExperiment)) {
     throw 'ServerModules is incompatible with enemy/Rhino overlays.'
 }
@@ -54,10 +55,14 @@ $mutexMarker = 'const auto mutex = CreateMutexA(nullptr, FALSE, utils::string::v
 if (($baseAuth.Split([string[]]@($mutexMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned player mutex marker changed.' }
 $labAuth = $baseAuth.Replace('#include <utils/properties.hpp>', "#include <utils/properties.hpp>`n#include <utils/flags.hpp>").Replace($mutexMarker,
     'const auto mutex_name = utils::flags::has_flag("paris-isolated-lab") ? utils::string::va("iw7-paris-lab-player-%llx-%d", static_cast<unsigned long long>(std::hash<std::string>{}(utils::properties::get_appdata_path().generic_string())), i) : utils::string::va("iw7-mod-player-%d", i);' + "`n`t`t`t`t`t" + 'const auto mutex = CreateMutexA(nullptr, FALSE, mutex_name);')
+$oldLabAuth = $labAuth
+$entropyMarker = 'raw_entropy.append(get_player_suffix());'
+if (($baseAuth.Split([string[]]@($entropyMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned key entropy marker changed.' }
+$labAuth = $labAuth.Replace($entropyMarker, $entropyMarker + "`n`t`t`t" + 'if (utils::flags::has_flag("paris-isolated-lab")) raw_entropy.append(utils::properties::get_appdata_path().generic_string());')
 $currentAuth = [IO.File]::ReadAllText($authPath).Replace("`r`n", "`n").TrimEnd() + "`n"
-if ($currentAuth -ne $baseAuth -and $currentAuth -ne $labAuth) { throw 'Unowned auth.cpp changes; use an isolated native checkout.' }
+if ($currentAuth -ne $baseAuth -and $currentAuth -ne $labAuth -and $currentAuth -ne $oldLabAuth) { throw 'Unowned auth.cpp changes; use an isolated native checkout.' }
 [IO.File]::WriteAllText($authPath, $(if ($IsolatedLab) { $labAuth } else { $baseAuth }), [Text.UTF8Encoding]::new($false))
-# The normal profile has exactly these five native sources. Lab properties
+# The normal profile lists its native components and both protocol/test headers. Lab properties
 # replace common/utils/properties.cpp above, never a component source.
 # Retire the known misplaced overlay from reused/package-source checkouts.
 # Its intended location is common/utils; unknown edits remain untouched.
@@ -67,8 +72,18 @@ if (Test-Path -LiteralPath $labComponent) {
     if ($currentLabComponent -ne $labProperties) { throw 'Unowned lab component overlay; preserve it and use an isolated native checkout.' }
     Remove-Item -LiteralPath $labComponent
 }
-$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp')
+$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp')
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
+# Extend the existing upstream kick hook, rather than install a competing detour.
+$botsPath = Join-Path $root 'src/client/component/bots.cpp'
+$baseBots = (((git -C $root show ($commit + ':src/client/component/bots.cpp')) -join "`n").TrimEnd()) + "`n"
+$kickMarker = "void sv_kick_client_num_stub(const int client_num, const char* reason, bool kicked_for_inactivity)`n`t`t{"
+if (($baseBots.Split([string[]]@($kickMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned existing kick hook marker changed.' }
+$testBots = $baseBots.Replace('namespace bots', '#include "paris_test_safety.hpp"' + "`n`nnamespace bots").Replace($kickMarker,
+    $kickMarker + "`n`t`t`tif (paris_test_fixture::suppress_inactivity_kick(client_num, reason)) return;")
+$currentBots = [IO.File]::ReadAllText($botsPath).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentBots -ne $baseBots -and $currentBots -ne $testBots) { throw 'Unowned bots.cpp changes; preserve them.' }
+[IO.File]::WriteAllText($botsPath,$testBots,[Text.UTF8Encoding]::new($false))
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
 $rhinoScriptInclude = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
 $enemyScriptInclude = Join-Path $root 'src/client/component/paris_enemy_scripts.inc'
@@ -197,7 +212,9 @@ $manifestSources = @($nativeSources)
 if ($IsolatedLab) { $manifestSources += 'paris_lab_properties.cpp' }
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
 $manifest.ServerModules = [bool]$ServerModules
-$manifest.BuildProfile = if ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
+$manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
+$manifest.VoiceTrace = [bool]$VoiceTrace
+$manifest.TestKickHookSHA256 = (Get-FileHash -LiteralPath $botsPath).Hash
 $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'

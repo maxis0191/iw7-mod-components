@@ -1,0 +1,196 @@
+# Native voice investigation
+
+Voice is not accepted. Issue #4 remains open. Trace the original engine path before
+choosing a repair; the protocol-v1 overlay remains an unaccepted fallback.
+
+## Independent audio witness
+
+Use a dedicated worktree and physically independent asset snapshot as described in
+[ISOLATED-LAB.md](ISOLATED-LAB.md). Reserve unused loopback ports (this investigation
+uses 27316/27317). Never target the normal 27016 or another laboratory's roots.
+
+```powershell
+./ops/Isolated-Lab.ps1 -Action Prepare -SourceGameRoot 'YOUR GAME ROOT' -ServerPort 27316 -ClientPort 27317
+./ops/Build-Voice.ps1 -ServerModules -IsolatedLab -VoiceTrace
+./ops/Test-Sources.ps1
+# Commit the tested candidate before installing it.
+./ops/Isolated-Lab.ps1 -Action Install -Profile VoiceNative
+./ops/Isolated-Lab.ps1 -Action StartServer
+./ops/Isolated-Lab.ps1 -Action Status
+./ops/Isolated-Lab.ps1 -Action StartClient
+# Wait for Common Initialization Complete in the owned client log.
+./ops/Isolated-Lab.ps1 -Action Connect
+./ops/Isolated-Lab.ps1 -Action Verify
+```
+
+Require a fresh actual engine godmode marker for the current map with inactivity=0
+and cheats=0. VoiceNative installs only a protection witness alongside maintained
+modules; it does not run the cross-map module test or activate Rhino/Rush/kit probes.
+It enables native audio explicitly, unlike the silent enemy/module lab profiles.
+It preserves the private desktop, per-root AppData/keys, ownership and backups.
+The isolated-voice-trace build is refused by ordinary server deployment.
+
+## What is measured
+
+The explicit `-paris-voice-native-trace -paris-voice-audio-lab -paris-isolated-lab`
+combination installs forwarding hooks after checking all expected retail entry
+signatures. No Paris voice handshake, capability, relay or audio initialization is
+performed. Original function arguments, results and routing are preserved.
+
+Ten-second status and `paris_voice_status` report counts, without audio recordings,
+names, endpoints or user identifiers:
+
+| Counter | Original engine step |
+| --- | --- |
+| capture | post-device capture callback |
+| encoded | encoded frame entering the legacy queue |
+| batch | legacy batch/session-routing invocation |
+| send_attempts/send_ok | session-send invocation and its native result |
+| received | native `v` packet handler invocation |
+| decoded/queued_bytes | native codec and DirectSound queue results |
+| session/local_slot/registered/voice_registered | selected native session and user-registration state |
+
+Counters are cumulative, not proof of fresh audio. Correlate before/after deltas,
+map/process identity, voice/PTT state and simultaneous active participants.
+
+After Verify, `./ops/Isolated-Lab.ps1 -Action VoiceProbe` requests twenty synthetic
+post-device blocks through the unchanged capture/queue/session path. It requires
+native audio already initialized, loopback gameplay and voice enabled; it does not
+force audio initialization. It pairs the retail +talk/-talk binding during the
+synchronous capture call and restores the temporary PTT setting. Native microphone
+activity mode reads a separate hardware meter, not the injected PCM block.
+Acknowledgment only proves mailbox delivery; inspect the outcome and counter deltas
+in the owned client log. A synthetic witness is not human speech or remote delivery.
+
+```powershell
+./ops/Isolated-Lab.ps1 -Action StopClient
+./ops/Isolated-Lab.ps1 -Action StopServer
+```
+
+StopServer still requires thirty seconds of live zero-client replies. Preserve
+failed logs and exact build/source hashes locally; commit only sanitized evidence.
+
+For a second technical participant on this machine, close both owned processes,
+run PreparePeer with a distinct free PeerPort, then Install VoiceNative again.
+Start/connect/Verify client A first. Use `-ClientSlot B` on StartClient, Connect,
+Verify, VoiceProbe and StopClient for B. Its mutable root, AppData/identity and port
+are independent; its stock links target only this lab's own asset snapshot. Close B
+and A before StopServer. This is a same-machine technical witness, not remote speech.
+
+## Owner-authorized base installation test
+
+The owner subsequently requests closing all IW7 instances and moving this work
+to the existing base game installation. Close recorded clients through their
+owned helpers, stop dedicateds after valid empty replies for thirty seconds, and
+verify no IW7 process remains. This supersedes the independent-root restriction
+for voice testing only; never deploy the isolated binary to the base installation.
+
+```powershell
+./ops/Build-Voice.ps1 -ServerModules
+./ops/Test-Sources.ps1
+# Commit the tested candidate before preparation.
+./ops/Voice-BaseTest.ps1 -Action Prepare -GameRoot 'YOUR EXISTING GAME ROOT'
+./ops/Voice-BaseTest.ps1 -Action StartServer
+./ops/Voice-BaseTest.ps1 -Action StartClient
+# Wait for Common Initialization Complete in the current client log.
+./ops/Voice-BaseTest.ps1 -Action Connect
+./ops/Voice-BaseTest.ps1 -Action Verify
+./ops/Voice-BaseTest.ps1 -Action VoiceProbe
+./ops/Voice-BaseTest.ps1 -Action Capture
+```
+
+Prepare requires a verified normal server-only build and all IW7 processes closed.
+It backs up every temporary file plus bank data and records recovery metadata
+before any managed write. It adds a side-by-side trace executable, two temporary
+configs and the protection witness in the existing game root. Original iw7-mod.exe,
+normal launchers/configs, current bank, Aurora AppData and owner keys are preserved.
+The trace requires `-paris-voice-base-test` plus the appropriate protected server/
+client fixture flag. Port 27016, empty fs_game, private access and cheats=0 remain.
+Native protection is loopback-only and reapplied on each spawn.
+
+Protection is also maintained every 100 ms after registration. Verify requires a
+current native heartbeat for every client and an arena with zero actors, pending
+spawns and reservations. The voice witness pauses the retail supplier and removes
+unexpected enemies through their normal death lifecycle. Godmode and g_inactivity=0
+alone do not prevent retail GSC's separate ninety-second movement kick: the scoped
+fixture extends the existing bots kick hook to suppress only
+EXE_PLAYERKICKED_INACTIVE for the same protected local identity. Other kicks and
+ordinary/remote players keep their normal behavior. Online party/session semantics
+are retained; xblive_privatematch is not changed to conceal the watchdog.
+
+For an explicit same-installation technical peer, use `-ClientSlot B` on client
+actions after A is verified. Standard Aurora suffixes separate their keys. Require
+both Verify calls, two distinct engine identities and at least 120 seconds idle
+with current protected=2, inactivity=0 and zero-enemy heartbeats. Close B first.
+
+Use StopClient, StopServer, then Restore with the same helper after the test.
+Restore verifies backup hashes, restores/removes only recorded temporary files and
+retains the current bank. Ordinary Server.ps1 deployment still refuses lab binaries.
+This base witness also cannot prove two-machine speech or automatic Aurora delivery.
+
+## Retained first attempt
+
+Candidate aae11b0 built and runtime-linked on private cp_zmb; its client joined with
+fresh engine godmode/inactivity=0/cheats=0. Native audio/capture and local session
+registration were present (local slot 0, one registered/voice-registered user).
+Its activity-mode synthetic blocks encoded zero: the separate hardware mic meter
+stayed below the native threshold. That failed witness cannot establish a capture
+or routing defect. The correction uses paired native PTT. Retail interaction setup
+warnings (cryobomb/forgefreeze) are retained locally and not counted as voice proof.
+
+Candidate 9e80d06 also encoded zero: the MP gameplay dispatcher does not implement
+talk; the common binding dispatcher handles it first. The corrected witness calls
+that common path and reports held/released state and encoded-frame delta explicitly.
+Do not infer a production PTT bug from this harness error.
+
+Its first two-client attempt was invalidated by duplicate generated public keys.
+Separate root-specific mutexes made both clients use suffix 1; upstream key entropy
+was still machine/suffix-based and deterministic. Client B replaced A, leaving only
+one active participant. The build overlay now adds the isolated AppData path to
+entropy only under -paris-isolated-lab. Existing duplicate B keys were backed up
+locally and reset only inside its stopped root; no owner key was touched. Verify
+requires distinct current public identities and two active clients before evidence.
+
+Candidate 2dba1ba confirms native held/released PTT and twenty encoded frames in
+the protected solo witness. Batch runs but no session-send occurs in that solo
+case; no recipient exists. The corrected pair has two distinct keys/server IDs,
+but each new connection returns the previous client to the frontend. Only one
+client remains active, so this attempt is invalid for routing/receive conclusions.
+Native screenshots establish the frontend/gameplay split. The cause is unresolved;
+the owner requests continuing in the base installation rather than extending this
+same-machine isolation investigation. The same failure reproduces there with
+standard Aurora identities. The owner identifies inactivity kicks; pinned retail
+reference confirms the independent GSC watchdog described above. The first voice
+fixture's one-shot protection was insufficient. These failed pair attempts are
+invalid for native voice routing conclusions and remain retained as incident evidence.
+
+## Static evidence and open choices
+
+Corrected candidate 67c7c36 passes both base Verify calls and retains two idle
+protected clients for 140.422 measured seconds. At that point 1606 retail GSC kick
+calls have been suppressed and the arena remains zero alive/pending/reserved.
+Each client encodes twenty native frames with pressed/released PTT, but its selected
+voice session registers only self (A slot 0, B slot 1), while dedicated registers
+two users. Batch runs, with zero native send/receive/decode/playback. The missing
+client remote-session registration is the next narrow investigation, not a proven
+complete root cause. The pinned client memberInfoUpdate handler stores UI metadata
+without Session_RegisterRemotePlayer; server player-info does call that API.
+The second client is closed and the protected base solo remains available.
+[Exact candidate/build and counter evidence](deployments/2026-10-04-voice-native-trace.json).
+The protected-test correction and forwarding trace are tracked in
+[PR #39](https://github.com/bigmangeekf/iw7-paris-server/pull/39); voice acceptance
+remains open in [issue #4](https://github.com/bigmangeekf/iw7-paris-server/issues/4).
+
+Local post-unpack reference inspection finds capture -> queue (0x14037D960) ->
+batch (0x14037D5C0) -> selected session/local-user lookup -> `v` serialization ->
+session send (0x14037BFF0). Native receive (0x14037CFF0) validates session users
+before mute checks and decode/playback. The dedicated Voice_Init suppression and
+Steam interface stubs alone do not prove where a connected Zombies session fails.
+The official source was already reviewed at 02a9aee; no upstream refresh is needed.
+
+A server-only repair is not established. Compare real CP and MP witnesses and two
+machines before selecting the final layer. If clients need code changes, ordinary
+automatic availability requires Aurora adoption and an official updater release.
+Prepare generic source/tests for our private fork; no upstream PR or external
+message is authorized. Protocol-v1 reconnect generation, jitter/loss, slot-to-session
+mute mapping, device changes and version compatibility remain open independently.

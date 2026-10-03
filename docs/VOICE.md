@@ -6,7 +6,12 @@ Aurora administrator m jkzy confirmed missing support on [6 January 2026](https:
 
 ## Implementation
 
-IW7 contains DirectSound capture/playback and Speex. Legacy sending depends on online party/session connections. Empty Steam voice methods in the mod are not sufficient to identify the cause: this engine uses its own audio chain. The fix intercepts encoded local frames and relays them through the existing game UDP socket.
+Voice remains unaccepted. The current forwarding investigation and corrected
+protected base-game harness are in [VOICE-NATIVE-TRACE.md](VOICE-NATIVE-TRACE.md).
+Protocol 1 below is an experimental fallback with an unresolved speaker reconnect/
+slot-generation defect; it is not established as the final architecture.
+
+IW7 contains DirectSound capture/playback and Speex. Legacy sending depends on online party/session connections. Empty Steam voice methods in the mod are not sufficient to identify the cause: this engine uses its own audio chain. The experimental overlay intercepts encoded local frames and relays them through the existing game UDP socket.
 
 - Protocol 1 negotiates a random challenge and server-issued endpoint capability. Only active Zombies clients may negotiate/send/receive. The server derives each speaker from the exact connected endpoint and validates its claimed slot.
 - Frames send promptly. Limits: 1200 bytes/datagram, ten frames, 254 bytes/frame, bounded inbox, replay protection and frame/byte rate limits. Engine calls run on server/main pipelines.
