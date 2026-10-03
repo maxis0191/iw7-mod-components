@@ -1,4 +1,5 @@
 #include <std_include.hpp>
+#include <cstdlib>
 #include "loader/component_loader.hpp"
 #include "game/game.hpp"
 #include "network.hpp"
@@ -16,6 +17,41 @@ namespace paris_voice
 {
     namespace
     {
+        // Config "set" may create a string dvar. Read only the union member
+        // matching its type, so string "0" cannot be mistaken for its pointer.
+        bool read_module_enabled(const game::dvar_t* setting)
+        {
+            if (!setting) return true;
+            switch (setting->type)
+            {
+            case game::DVAR_TYPE_BOOL: return setting->current.enabled;
+            case game::DVAR_TYPE_INT: return setting->current.integer != 0;
+            case game::DVAR_TYPE_STRING:
+            {
+                const auto* text = setting->current.string;
+                if (!text) return false;
+                char* end = nullptr;
+                const auto value = std::strtol(text, &end, 10);
+                return end != text && *end == '\0' && value != 0;
+            }
+            default: return false;
+            }
+        }
+
+        bool module_enabled()
+        {
+            const auto* setting = game::Dvar_FindVar("paris_mod_voice");
+            const bool enabled = read_module_enabled(setting);
+            static int previous = -1;
+            if (previous != static_cast<int>(enabled))
+            {
+                previous = static_cast<int>(enabled);
+                console::info("[paris-voice] Module enabled=%d; dvar_type=%u.\n",
+                    previous, setting ? static_cast<unsigned>(setting->type) : 255u);
+            }
+            return enabled;
+        }
+
         namespace wire = protocol;
 
         constexpr const char* transport = "parisvoice";
@@ -123,8 +159,8 @@ namespace paris_voice
         {
             auto messages = drain();
             std::lock_guard lock(state_mutex);
-            const auto* setting = game::Dvar_FindVar("paris_mod_voice");
-            if (!zombies() || !game::SV_Loaded() || (setting && setting->current.integer == 0)) { peers = {}; return; }
+            const bool enabled = module_enabled();
+            if (!zombies() || !game::SV_Loaded() || !enabled) { peers = {}; return; }
             const auto* clients = *game::svs_clients;
             const auto count = std::min(*game::svs_numclients, wire::slots);
             const auto time = now();
