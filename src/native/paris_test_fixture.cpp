@@ -8,13 +8,41 @@
 #include <utils/flags.hpp>
 #include <utils/io.hpp>
 #include "command.hpp"
+#include "party.hpp"
 
 namespace paris_test_fixture
 {
     namespace
     {
+        bool connect_pending = false;
+        int lab_port()
+        {
+            const auto* port = game::Dvar_FindVar("paris_lab_server_port");
+            if (!port) return 0;
+            int value = 0;
+            if (port->type == game::DVAR_TYPE_STRING && port->current.string)
+                value = std::atoi(port->current.string);
+            else if (port->type == game::DVAR_TYPE_INT) value = port->current.integer;
+            return value >= 27100 && value <= 27999 ? value : 0;
+        }
         void client_request()
         {
+            if (connect_pending && utils::flags::has_flag("paris-isolated-lab") &&
+                game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP)
+            {
+                game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP);
+                return;
+            }
+            if (connect_pending && utils::flags::has_flag("paris-isolated-lab") &&
+                game::Live_SyncOnlineDataFlags(0) == 0 && lab_port())
+            {
+                game::netadr_s target{};
+                target.type = game::NA_IP; target.ip[0] = 127; target.ip[3] = 1;
+                target.port = htons(static_cast<unsigned short>(lab_port()));
+                connect_pending = false;
+                party::connect(target);
+                console::info("[Paris module client] Ready loopback join to UDP %d.\n", lab_port());
+            }
             static std::string previous;
             const auto request = utils::io::read_file("iw7-mod/paris-server-client.request");
             if (request.empty() || request.size() > 128 || request == previous) return;
@@ -23,13 +51,20 @@ namespace paris_test_fixture
             std::istringstream input(request);
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close") return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect") return;
+            if (action == "connect")
+            {
+                if (!utils::flags::has_flag("paris-isolated-lab")) return;
+                if (!lab_port()) return;
+                connect_pending = true;
+            }
             utils::io::write_file("iw7-mod/paris-server-client.response", request);
+            console::info("[Paris module client] Request %s acknowledged.\n", action.c_str());
             if (action == "capture") command::execute("capture_frame server-modules-fixture", true);
             else if (action == "help") command::execute("cmd say ..help", true);
             else if (action == "mods") command::execute("cmd say ..mods", true);
             else if (action == "close") command::execute("cmd say ..close", true);
-            else { command::execute("disconnect", true); scheduler::once([] { command::execute("quit", true); }, scheduler::main, 1s); }
+            else if (action == "stop") { command::execute("disconnect", true); scheduler::once([] { command::execute("quit", true); }, scheduler::main, 1s); }
         }
     }
     class component final : public component_interface
