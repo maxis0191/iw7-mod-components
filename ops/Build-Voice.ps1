@@ -1,9 +1,9 @@
-param([switch]$TestsOnly, [switch]$RhinoExperiment)
+param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $root = Join-Path $repo 'tools/iw7-mod-native'
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
-if ($RhinoExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
+if ($RhinoExperiment -or $EnemyExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (!(Test-Path -LiteralPath $vswhere)) { throw 'Install Microsoft VS 2022 Build Tools with VCTools and ATL; see docs/TOOLS.md.' }
 $installation = & $vswhere -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
@@ -29,7 +29,7 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.c
 if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
 if ($TestsOnly) { return }
 if (!(Test-Path -LiteralPath "$root/.git")) {
-    if ($RhinoExperiment) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }
+    if ($RhinoExperiment -or $EnemyExperiment) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }
     else { git clone --recursive https://github.com/auroramod/iw7-mod.git $root }
     if ($LASTEXITCODE) { throw 'Required IW7-Mod clone failed.' }
 }
@@ -38,19 +38,55 @@ git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
 Copy-Item -LiteralPath "$repo/src/native/paris_voice.cpp","$repo/src/native/paris_voice_protocol.hpp" -Destination "$root/src/client/component"
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
-if ($RhinoExperiment) {
+$rhinoScriptInclude = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
+$enemyScriptInclude = Join-Path $root 'src/client/component/paris_enemy_scripts.inc'
+$enemyAnimclassInclude = Join-Path $root 'src/client/component/paris_enemy_animclasses.inc'
+$scriptManifest = $null
+$scriptEntries = @()
+if ($RhinoExperiment -or $EnemyExperiment) {
     Copy-Item -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_rhino.cpp" -Destination $rhinoOverlay
-    $scriptManifest = Join-Path $repo 'runtime/rhino-pack-scripts/rhino-script-manifest.json'
-    if (!(Test-Path -LiteralPath $scriptManifest)) { throw 'Prepare Rhino script assets before the experimental native build.' }
-    $scriptEntries = @(Get-Content -LiteralPath $scriptManifest -Raw | ConvertFrom-Json)
-    if (!$scriptEntries.Count -or @($scriptEntries | Where-Object { $_.Asset -notmatch '^[a-zA-Z0-9_/-]+$' }).Count) {
-        throw 'Invalid Rhino script manifest; refusing to generate the native preload list.'
+    if ($RhinoExperiment) {
+        $scriptManifest = Join-Path $repo 'runtime/rhino-pack-scripts/rhino-script-manifest.json'
+        if (!(Test-Path -LiteralPath $scriptManifest)) { throw 'Prepare Rhino script assets before the experimental native build.' }
+        $scriptEntries = @(Get-Content -LiteralPath $scriptManifest -Raw | ConvertFrom-Json)
+        if (!$scriptEntries.Count -or @($scriptEntries | Where-Object { $_.Asset -notmatch '^[a-zA-Z0-9_/-]+$' }).Count) {
+            throw 'Invalid Rhino script manifest; refusing to generate the native preload list.'
+        }
+        $includeLines = @($scriptEntries | ForEach-Object { '            "' + $_.Asset + '",' })
+        [IO.File]::WriteAllText($rhinoScriptInclude, ($includeLines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+    } else {
+        [IO.File]::WriteAllText($rhinoScriptInclude, "            nullptr,`n", [Text.UTF8Encoding]::new($false))
     }
-    $include = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
-    $includeLines = @($scriptEntries | ForEach-Object { '            "' + $_.Asset + '",' })
-    [IO.File]::WriteAllText($include, ($includeLines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+
+    $enemyScriptList = Join-Path $repo 'ops/enemy-ports/rave-wave-agent-scriptfiles.txt'
+    $enemyAnimclassList = Join-Path $repo 'ops/enemy-ports/rave-wave-agent-animclasses.txt'
+    $enemyModules = @()
+    $enemyAnimclasses = @()
+    if ($EnemyExperiment) {
+        if (!(Test-Path -LiteralPath $enemyScriptList) -or !(Test-Path -LiteralPath $enemyAnimclassList)) {
+            throw 'Enemy experiment source manifests are missing.'
+        }
+        $enemyModules = @(Get-Content -LiteralPath $enemyScriptList | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $enemyAnimclasses = @(Get-Content -LiteralPath $enemyAnimclassList | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        if (!$enemyModules.Count -or @($enemyModules | Where-Object { $_ -notmatch '^[a-z0-9_/-]+$' -or $_.StartsWith('/') -or $_.Contains('..') }).Count -or
+            !$enemyAnimclasses.Count -or @($enemyAnimclasses | Where-Object { $_ -notmatch '^[a-z0-9_]+$' }).Count -or
+            @($enemyModules | Select-Object -Unique).Count -ne $enemyModules.Count -or
+            @($enemyAnimclasses | Select-Object -Unique).Count -ne $enemyAnimclasses.Count) {
+            throw 'Invalid/duplicate enemy preload manifest entries.'
+        }
+    }
+    $enemyLines = @($enemyModules | ForEach-Object { '            "' + $_ + '",' })
+    if (!$enemyLines.Count) { $enemyLines = @('            nullptr,') }
+    [IO.File]::WriteAllText($enemyScriptInclude, ($enemyLines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+    $animclassLines = @($enemyAnimclasses | ForEach-Object { '            "' + $_ + '",' })
+    if (!$animclassLines.Count) { $animclassLines = @('            nullptr,') }
+    [IO.File]::WriteAllText($enemyAnimclassInclude, ($animclassLines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+} elseif (Test-Path -LiteralPath $rhinoOverlay) {
+    Remove-Item -LiteralPath $rhinoOverlay
+    foreach ($includePath in @($rhinoScriptInclude,$enemyScriptInclude,$enemyAnimclassInclude)) {
+        if (Test-Path -LiteralPath $includePath) { Remove-Item -LiteralPath $includePath }
+    }
 }
-elseif (Test-Path -LiteralPath $rhinoOverlay) { Remove-Item -LiteralPath $rhinoOverlay }
 $scriptLoading = Join-Path $root 'src/client/component/gsc/script_loading.cpp'
 $baseScriptLoading = (((git -C $root show ($commit + ':src/client/component/gsc/script_loading.cpp')) -join "`n").TrimEnd()) + "`n"
 $scriptLoadingDeclaration = "namespace paris_rhino { void preload_gsc_dependencies(); void resolve_gsc_function_handles(); }`n`nnamespace gsc"
@@ -90,7 +126,7 @@ if ($currentScriptLoading -ne $baseScriptLoading -and $currentScriptLoading -ne 
     $currentScriptLoading -ne $existingExperimentScriptLoading -and $currentScriptLoading -ne $failedPrelinkExperimentScriptLoading) {
     throw 'Unowned GSC loader edits in build checkout; use an isolated checkout.'
 }
-[IO.File]::WriteAllText($scriptLoading, $(if ($RhinoExperiment) { $experimentScriptLoading } else { $baseScriptLoading }), [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($scriptLoading, $(if ($RhinoExperiment -or $EnemyExperiment) { $experimentScriptLoading } else { $baseScriptLoading }), [Text.UTF8Encoding]::new($false))
 $fastfiles = Join-Path $root 'src/client/component/fastfiles.cpp'
 $baseFastfiles = (((git -C $root show ($commit + ':src/client/component/fastfiles.cpp')) -join "`n").TrimEnd()) + "`n"
 $declaration = "// Paris Rhino optional asset/script extension.`nnamespace paris_rhino { void extend_image_pool(); int donor_flags(const char*); void remember_script(game::XAssetType, game::XAssetHeader, const std::string&); game::XAssetHeader prefer_script(game::XAssetType, const char*, game::XAssetHeader); void augment_netconststrings(game::XAssetType, game::XAssetHeader*, const std::string&); void verify_netconststrings(game::XAssetType, game::XAssetHeader, const std::string&); }`n`nnamespace fastfiles"
@@ -110,7 +146,7 @@ $experimentFastfiles = $experimentFastfiles.Replace($addResultMarker, $addResult
 $experimentFastfiles = $experimentFastfiles.Replace($flagMarker, 'info.allocFlags = paris_rhino::donor_flags(name);')
 $currentFastfiles = [IO.File]::ReadAllText($fastfiles).Replace("`r`n", "`n").TrimEnd() + "`n"
 if ($currentFastfiles -ne $baseFastfiles -and $currentFastfiles -ne $experimentFastfiles) { throw 'Unowned fastfiles.cpp changes in build checkout; use an isolated checkout.' }
-[IO.File]::WriteAllText($fastfiles, $(if ($RhinoExperiment) { $experimentFastfiles } else { $baseFastfiles }), [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($fastfiles, $(if ($RhinoExperiment -or $EnemyExperiment) { $experimentFastfiles } else { $baseFastfiles }), [Text.UTF8Encoding]::new($false))
 Push-Location $root
 try {
     & ./tools/premake5.exe vs2022
@@ -128,6 +164,15 @@ if ($RhinoExperiment) {
     $manifest.RhinoScriptManifestSHA256 = (Get-FileHash -LiteralPath $scriptManifest).Hash
     $manifest.RhinoScriptAssetCount = $scriptEntries.Count
     $manifest.RhinoScriptLoaderSHA256 = (Get-FileHash -LiteralPath $scriptLoading).Hash
+}
+if ($EnemyExperiment) {
+    $manifest.EnemyScriptListSHA256 = (Get-FileHash -LiteralPath $enemyScriptList).Hash
+    $manifest.EnemyAnimclassListSHA256 = (Get-FileHash -LiteralPath $enemyAnimclassList).Hash
+    $manifest.EnemyScriptAssetCount = $enemyModules.Count
+    $manifest.EnemyAnimclassCount = $enemyAnimclasses.Count
+    $manifest.EnemyScriptLoaderSHA256 = (Get-FileHash -LiteralPath $scriptLoading).Hash
+    $manifest.EnemyAddonScriptSHA256 = (Get-FileHash -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_enemy_ports.gsc").Hash
+    $manifest.EnemyAddonNativeSHA256 = (Get-FileHash -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_rhino.cpp").Hash
 }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$output/build-manifest.json" -Encoding UTF8
 Write-Output "Prepared private client/server build: $output"
