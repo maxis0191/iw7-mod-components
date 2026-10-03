@@ -91,6 +91,8 @@ for voice testing only; never deploy the isolated binary to the base installatio
 # Commit the tested candidate before preparation.
 ./ops/Voice-BaseTest.ps1 -Action Prepare -GameRoot 'YOUR EXISTING GAME ROOT'
 ./ops/Voice-BaseTest.ps1 -Action StartServer
+# Wait for a challenge-verified Get-ServerInfo response with sv_running=1,
+# mapname=cp_zmb and clients=0 before starting the client.
 ./ops/Voice-BaseTest.ps1 -Action StartClient
 # Wait for Common Initialization Complete in the current client log.
 ./ops/Voice-BaseTest.ps1 -Action Connect
@@ -127,6 +129,51 @@ Use StopClient, StopServer, then Restore with the same helper after the test.
 Restore verifies backup hashes, restores/removes only recorded temporary files and
 retains the current bank. Ordinary Server.ps1 deployment still refuses lab binaries.
 This base witness also cannot prove two-machine speech or automatic Aurora delivery.
+
+## Explicit native registration and recipient witness
+
+This causal experiment uses the same backed-up base helper. Start both clients
+with the explicit flag, after Prepare/StartServer and verified server readiness:
+
+```powershell
+./ops/Voice-BaseTest.ps1 -Action StartClient -RegistrationWitness
+# Wait up to 90 seconds for Common Initialization Complete.
+./ops/Voice-BaseTest.ps1 -Action Connect
+./ops/Voice-BaseTest.ps1 -Action Verify
+./ops/Voice-BaseTest.ps1 -Action StartClient -ClientSlot B -RegistrationWitness
+# Wait for B's Common Initialization Complete, then its protected active join.
+./ops/Voice-BaseTest.ps1 -Action Connect -ClientSlot B
+./ops/Voice-BaseTest.ps1 -Action Verify -ClientSlot B
+./ops/Voice-BaseTest.ps1 -Action Verify -ClientSlot A
+```
+
+Require nine paired Verify samples, fifteen seconds apart, spanning at least
+120 seconds. Every sample needs protected=2, native_inactivity=0 and the zero
+alive/pending/reserved arena. Refusal, disconnect or stale protection invalidates
+the run; preserve logs and inspect the original refusal before recovery.
+
+```powershell
+./ops/Voice-BaseTest.ps1 -Action WitnessRoster -ClientSlot A
+./ops/Voice-BaseTest.ps1 -Action WitnessRoster -ClientSlot B
+Start-Sleep -Seconds 1
+./ops/Voice-BaseTest.ps1 -Action WitnessRoster -ClientSlot A
+Start-Sleep -Seconds 2
+./ops/Voice-BaseTest.ps1 -Action VoiceProbe -ClientSlot A
+./ops/Voice-BaseTest.ps1 -Action VoiceProbe -ClientSlot B
+```
+
+Inspect fresh Registration/Recipient/Client-info witness lines and the next native
+status after at least ten seconds. Acknowledgments prove mailbox receipt only.
+Current registration success is metadata=1/attempted=1/added=1 per client. The
+tested route still fails with eligible=0 and send/receive/decode=0, despite valid
+client-info and matching teams. If metadata=0, retry the announcements and inspect
+guard counts; silent Release debug logging is not evidence of packet absence.
+Do not bypass native mute/privacy decisions to manufacture a passing test.
+
+The UI metadata source is explicitly unsuitable for production authentication.
+Close B/A and the verified-empty dedicated, Restore, and restart without the
+witness flag before ordinary play; this clears experimental native registrations.
+See [the English contribution matrix](VOICE-CONTRIBUTION.md) for acceptance gates.
 
 ## Retained first attempt
 
