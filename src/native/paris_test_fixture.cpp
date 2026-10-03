@@ -28,6 +28,12 @@ namespace paris_test_fixture
         void client_request()
         {
             if (connect_pending && utils::flags::has_flag("paris-isolated-lab") &&
+                game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP)
+            {
+                game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP);
+                return;
+            }
+            if (connect_pending && utils::flags::has_flag("paris-isolated-lab") &&
                 game::Live_SyncOnlineDataFlags(0) == 0 && lab_port())
             {
                 game::netadr_s target{};
