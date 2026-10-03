@@ -54,6 +54,13 @@ send/receive deltas. This metadata is not authenticated production roster state:
 never include this opt-in witness as the shipping feature or call its success
 speech acceptance. It exists only to isolate a native registration prerequisite.
 
+The corrected witness now registers both remote users successfully. Both clients
+report two registered voice users, encode twenty frames and batch three times;
+native send/receive/decode remain zero. The 129.282-second protected pair passes.
+This isolates a further routing/recipient prerequisite, rather than proving a
+registration repair sufficient. Inspect native channel, mute and eligibility
+return values before choosing a production architecture.
+
 ## Code and review requirements
 
 - Keep the change focused on voice. Match IW7-Mod's source layout and style;

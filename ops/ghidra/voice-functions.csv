@@ -1,5 +1,7 @@
 voice_batch,14037D5C0
 voice_recipients,14037B050
+voice_share_channel,1409C3EF0
+voice_recipient_eligible,14099E210
 voice_recipient_route,14037B490
 voice_send,14037BFF0
 voice_direct_send,14037C1A0

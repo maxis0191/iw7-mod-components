@@ -572,6 +572,18 @@ namespace paris_voice
             }
             console::info("[paris-voice-native] Registration witness metadata=%u known=%u invalid=%u attempted=%u added=%u; loopback experiment, not production authentication.\n",
                 metadata, already_registered, invalid, attempted, added);
+            for (unsigned slot = 0; slot < wire::slots; ++slot)
+            {
+                if (static_cast<int>(slot) == local_slot || !session->dyn.users[slot].registered) continue;
+                // Read the same retail filters used by recipient selection. Never
+                // override their results, mute state or privacy eligibility.
+                const bool local = utils::hook::invoke<bool>(0x140C732A0, session, slot);
+                const bool muted = utils::hook::invoke<bool>(0x14037BBA0, session, slot);
+                const bool shared_channel = utils::hook::invoke<bool>(0x1409C3EF0, local_slot, slot);
+                const bool eligible = utils::hook::invoke<bool>(0x14099E210, session, 0, slot);
+                console::info("[paris-voice-native] Recipient witness slot=%u local=%d muted=%d shared_channel=%d eligible=%d; native decisions retained.\n",
+                    slot, local, muted, shared_channel, eligible);
+            }
         }
         void native_probe()
         {
