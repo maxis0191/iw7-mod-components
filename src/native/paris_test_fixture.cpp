@@ -8,13 +8,35 @@
 #include <utils/flags.hpp>
 #include <utils/io.hpp>
 #include "command.hpp"
+#include "party.hpp"
 
 namespace paris_test_fixture
 {
     namespace
     {
+        bool connect_pending = false;
+        int lab_port()
+        {
+            const auto* port = game::Dvar_FindVar("paris_lab_server_port");
+            if (!port) return 0;
+            int value = 0;
+            if (port->type == game::DVAR_TYPE_STRING && port->current.string)
+                value = std::atoi(port->current.string);
+            else if (port->type == game::DVAR_TYPE_INT) value = port->current.integer;
+            return value >= 27100 && value <= 27999 ? value : 0;
+        }
         void client_request()
         {
+            if (connect_pending && utils::flags::has_flag("paris-isolated-lab") &&
+                game::Live_SyncOnlineDataFlags(0) == 0 && lab_port())
+            {
+                game::netadr_s target{};
+                target.type = game::NA_IP; target.ip[0] = 127; target.ip[3] = 1;
+                target.port = htons(static_cast<unsigned short>(lab_port()));
+                connect_pending = false;
+                party::connect(target);
+                console::info("[Paris module client] Ready loopback join to UDP %d.\n", lab_port());
+            }
             static std::string previous;
             const auto request = utils::io::read_file("iw7-mod/paris-server-client.request");
             if (request.empty() || request.size() > 128 || request == previous) return;
@@ -27,10 +49,8 @@ namespace paris_test_fixture
             if (action == "connect")
             {
                 if (!utils::flags::has_flag("paris-isolated-lab")) return;
-                const auto* port = game::Dvar_FindVar("paris_lab_server_port");
-                const auto value = port && port->current.string ? std::atoi(port->current.string) : 0;
-                if (value < 27100 || value > 27999) return;
-                command::execute(std::format("connect 127.0.0.1:{}", value), true);
+                if (!lab_port()) return;
+                connect_pending = true;
             }
             utils::io::write_file("iw7-mod/paris-server-client.response", request);
             console::info("[Paris module client] Request %s acknowledged.\n", action.c_str());
