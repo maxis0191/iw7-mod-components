@@ -1,9 +1,9 @@
-param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment)
+param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $root = Join-Path $repo 'tools/iw7-mod-native'
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
-if ($RhinoExperiment -or $EnemyExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
+if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (!(Test-Path -LiteralPath $vswhere)) { throw 'Install Microsoft VS 2022 Build Tools with VCTools and ATL; see docs/TOOLS.md.' }
 $installation = & $vswhere -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
@@ -36,7 +36,7 @@ if (!(Test-Path -LiteralPath "$root/.git")) {
 if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
 git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
-Copy-Item -LiteralPath "$repo/src/native/paris_voice.cpp","$repo/src/native/paris_voice_protocol.hpp" -Destination "$root/src/client/component"
+Copy-Item -LiteralPath "$repo/src/native/paris_voice.cpp","$repo/src/native/paris_voice_protocol.hpp","$repo/src/native/paris_country.cpp","$repo/src/native/paris_identity.cpp","$repo/src/native/paris_test_fixture.cpp" -Destination "$root/src/client/component"
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
 $rhinoScriptInclude = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
 $enemyScriptInclude = Join-Path $root 'src/client/component/paris_enemy_scripts.inc'
@@ -158,6 +158,8 @@ $output = Join-Path $runtime 'voice-package'
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.exe" -Destination "$output/iw7-paris-voice.exe"
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@(Get-ChildItem "$repo/src/native/*" | ForEach-Object { @{File=$_.Name;SHA256=(Get-FileHash $_.FullName).Hash} }) }
+$manifest.ServerModules = [bool]$ServerModules
+$manifest.ModuleProfile = "server-only; Rhino assets and spawns excluded"
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
 $manifest.SessionAliases = 'Temporary duplicate names, server only'
 if ($RhinoExperiment) {

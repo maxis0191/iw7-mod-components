@@ -6,8 +6,6 @@
 #include "scheduler.hpp"
 #include "command.hpp"
 #include "console/console.hpp"
-#include <utils/http.hpp>
-#include <rapidjson/document.h>
 #include <utils/hook.hpp>
 #include <utils/cryptography.hpp>
 #include <utils/flags.hpp>
@@ -18,191 +16,8 @@ namespace paris_voice
 {
     namespace
     {
-        // Server-only join country lookup. HTTP never runs on the game thread;
-        // cache results by endpoint IP, not by spoofable userinfo country fields.
-        std::mutex country_mutex;
-        std::unordered_map<std::string, std::string> country_cache;
-
-        // Session names only: userinfo and the client's saved name stay untouched.
-        struct session_alias
-        {
-            std::string identity, base, display;
-            game::netadr_s address{};
-            std::uint64_t joined{};
-        };
-        std::array<session_alias, 4> aliases{};
-        std::uint64_t alias_sequence{};
-
-        std::string name_key(const std::string& name)
-        {
-            std::string result;
-            for (std::size_t i = 0; i < name.size(); ++i)
-            {
-                if (name[i] == '^' && i + 1 < name.size() && name[i + 1] >= '0' && name[i + 1] <= '9') { ++i; continue; }
-                const auto c = static_cast<unsigned char>(name[i]);
-                result += static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
-            }
-            return result;
-        }
-
-        std::string alias_candidate(const std::string& base, unsigned number)
-        {
-            const auto prefix = number == 1 ? std::string{} : std::to_string(number) + " ";
-            auto length = std::min(base.size(), 31 - prefix.size());
-            // Do not split a UTF-8 continuation sequence or a color escape.
-            while (length < base.size() && length && (static_cast<unsigned char>(base[length]) & 0xc0) == 0x80) --length;
-            if (length && base[length - 1] == '^') --length;
-            return prefix + base.substr(0, length);
-        }
-
-        void assign_aliases(std::array<session_alias, 4>& roster)
-        {
-            std::array<unsigned, 4> order{0, 1, 2, 3};
-            std::sort(order.begin(), order.end(), [&roster](unsigned a, unsigned b) { return roster[a].joined < roster[b].joined; });
-            for (const auto slot : order)
-            {
-                auto& entry = roster[slot];
-                if (entry.base.empty() || !entry.display.empty()) continue;
-                for (unsigned number = 1; ; ++number)
-                {
-                    const auto candidate = alias_candidate(entry.base, number);
-                    const auto key = name_key(candidate);
-                    bool occupied{};
-                    for (unsigned other = 0; other < roster.size(); ++other)
-                    {
-                        if (other == slot || roster[other].base.empty()) continue;
-                        if ((!roster[other].display.empty() && name_key(roster[other].display) == key) ||
-                            (number > 1 && name_key(roster[other].base) == key)) { occupied = true; break; }
-                    }
-                    if (!occupied) { entry.display = candidate; break; }
-                }
-            }
-        }
-
-        void alias_selftest()
-        {
-            std::array<session_alias, 4> roster{};
-            for (unsigned i = 0; i < 4; ++i) { roster[i].base = "Unknown Soldier"; roster[i].joined = i + 1; }
-            assign_aliases(roster);
-            for (unsigned i = 0; i < 4; ++i)
-                if (roster[i].display != alias_candidate("Unknown Soldier", i + 1)) throw std::runtime_error("Paris duplicate alias self-test failed");
-            roster[0] = {}; assign_aliases(roster);
-            if (roster[1].display != "2 Unknown Soldier") throw std::runtime_error("Paris stable alias self-test failed");
-            roster = {};
-            roster[0].base = "^2Unknown Soldier"; roster[0].joined = 1;
-            roster[1].base = "unknown soldier"; roster[1].joined = 2;
-            roster[2].base = "2 unknown soldier"; roster[2].joined = 3;
-            assign_aliases(roster);
-            if (roster[1].display != "3 unknown soldier") throw std::runtime_error("Paris alias collision self-test failed");
-            console::info("[paris-names] Duplicate/case/color/collision/stability self-tests passed.\n");
-        }
-
-        void alias_tick()
-        {
-            if (game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP || !game::SV_Loaded()) return;
-            auto* clients = *game::svs_clients;
-            const auto count = std::min(*game::svs_numclients, 4u);
-            for (unsigned slot = 0; slot < aliases.size(); ++slot)
-            {
-                auto& entry = aliases[slot];
-                if (!clients || slot >= count || clients[slot].header.state < game::CS_CONNECTED || !clients[slot].gentity || !clients[slot].gentity->client)
-                { entry = {}; continue; }
-                auto& client = clients[slot];
-                const std::string identity(client.playerGuid, strnlen(client.playerGuid, sizeof(client.playerGuid)));
-                if (entry.identity != identity || !network::are_addresses_equal(entry.address, client.remoteAddress)) entry = {};
-                char userinfo[1024]{}, cleaned[32]{};
-                game::SV_GetUserinfo(slot, userinfo, sizeof(userinfo));
-                game::Com_CleanName(game::Info_ValueForKey(userinfo, "name"), cleaned, sizeof(cleaned));
-                const std::string base = cleaned[0] ? cleaned : "Unknown Soldier";
-                if (!entry.joined) { entry.joined = ++alias_sequence; entry.identity = identity; entry.address = client.remoteAddress; }
-                if (base != entry.base) { entry.base = base; entry.display.clear(); }
-            }
-            assign_aliases(aliases);
-            for (unsigned slot = 0; clients && slot < count; ++slot)
-            {
-                const auto& entry = aliases[slot];
-                if (entry.display.empty() || !clients[slot].gentity || !clients[slot].gentity->client) continue;
-                auto& session = clients[slot].gentity->client->sess;
-                strcpy_s(session.name, entry.display.c_str());
-                strcpy_s(session.cs.name, entry.display.c_str());
-                strcpy_s(clients[slot].name, entry.display.c_str());
-            }
-        }
-
-        bool public_ipv4(const unsigned char* ip)
-        {
-            return ip[0] != 0 && ip[0] != 10 && ip[0] != 127 && ip[0] < 224 &&
-                !(ip[0] == 169 && ip[1] == 254) && !(ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31) &&
-                !(ip[0] == 192 && ip[1] == 168) && !(ip[0] == 100 && ip[1] >= 64 && ip[1] <= 127) &&
-                !(ip[0] == 192 && ip[1] == 0 && (ip[2] == 0 || ip[2] == 2)) &&
-                !(ip[0] == 198 && (ip[1] == 18 || ip[1] == 19 || (ip[1] == 51 && ip[2] == 100))) &&
-                !(ip[0] == 203 && ip[1] == 0 && ip[2] == 113);
-        }
-
-        std::string parse_country(const std::string& body)
-        {
-            rapidjson::Document json;
-            if (body.size() > 4096 || json.Parse<rapidjson::kParseValidateEncodingFlag>(body.data(), body.size()).HasParseError() || !json.IsObject() ||
-                !json.HasMember("success") || !json["success"].IsBool() || !json["success"].GetBool() ||
-                !json.HasMember("country") || !json["country"].IsString()) return "Unknown country";
-            const auto& country = json["country"];
-            if (!country.GetStringLength() || country.GetStringLength() > 80) return "Unknown country";
-            std::string value(country.GetString(), country.GetStringLength());
-            // Country names are display text, never console/chat syntax.
-            for (const auto c : value)
-                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || static_cast<unsigned char>(c) >= 128 ||
-                    c == ' ' || c == '-' || c == '(' || c == ')' || c == '.' || c == ',' || c == '\'' || c == '&'))
-                    return "Unknown country";
-            return value;
-        }
-
-        std::string player_country(const game::scr_entref_t ent)
-        {
-            if (!game::environment::is_dedi() || ent.classnum || ent.entnum >= 4) return "Unknown country";
-            const auto* clients = *game::svs_clients;
-            if (!clients || clients[ent.entnum].header.state < game::CS_CONNECTED) return "Unknown country";
-            const auto address = clients[ent.entnum].remoteAddress;
-            if (address.type != game::NA_IP || !public_ipv4(address.ip)) return "Unknown country";
-            const auto key = std::to_string(address.ip[0]) + "." + std::to_string(address.ip[1]) + "." +
-                std::to_string(address.ip[2]) + "." + std::to_string(address.ip[3]);
-            {
-                std::lock_guard lock(country_mutex);
-                const auto found = country_cache.find(key);
-                if (found != country_cache.end()) return found->second;
-                // Bound memory and pending work; no automatic requests per frame.
-                if (country_cache.size() >= 256) return "Unknown country";
-                country_cache.emplace(key, "");
-            }
-            scheduler::once([key]
-            {
-                std::string country = "Unknown country";
-                try
-                {
-                    const auto response = utils::http::get_data("https://ipwho.is/" + key + "?fields=success,country", {}, {},
-                        [](size_t total, size_t current) { return total > 4096 || current > 4096 ? -1 : 0; }, 3);
-                    if (response && response->code == CURLE_OK && response->response_code == 200)
-                        country = parse_country(response->buffer);
-                }
-                catch (...) { /* Failure keeps truthful fallback; no player/IP logging. */ }
-                std::lock_guard lock(country_mutex);
-                country_cache[key] = country;
-            }, scheduler::async);
-            return ""; // Pending; GSC retries for a bounded period, without blocking.
-        }
-
-        void country_selftest()
-        {
-            const unsigned char public_ip[]{8, 8, 8, 8}, private_ip[]{192, 168, 1, 1}, loopback[]{127, 0, 0, 1};
-            if (!public_ipv4(public_ip) || public_ipv4(private_ip) || public_ipv4(loopback) ||
-                parse_country(R"({"success":true,"country":"France"})") != "France" ||
-                parse_country(R"({"success":false,"country":"France"})") != "Unknown country" ||
-                parse_country(R"({"success":true,"country":"France\nquit"})") != "Unknown country" ||
-                parse_country("[]") != "Unknown country" || parse_country("{") != "Unknown country")
-                throw std::runtime_error("Paris country parser self-test failed");
-            console::info("[paris-country] Parser/address self-tests passed.\n");
-        }
-
         namespace wire = protocol;
+
         constexpr const char* transport = "parisvoice";
         constexpr std::uint64_t timeout_ms = 15000;
         constexpr std::size_t inbox_limit = 128;
@@ -308,7 +123,8 @@ namespace paris_voice
         {
             auto messages = drain();
             std::lock_guard lock(state_mutex);
-            if (!zombies() || !game::SV_Loaded()) { peers = {}; return; }
+            const auto* setting = game::Dvar_FindVar("paris_mod_voice");
+            if (!zombies() || !game::SV_Loaded() || (setting && setting->current.integer == 0)) { peers = {}; return; }
             const auto* clients = *game::svs_clients;
             const auto count = std::min(*game::svs_numclients, wire::slots);
             const auto time = now();
@@ -603,35 +419,7 @@ namespace paris_voice
     public:
         void post_unpack() override
         {
-            if (game::environment::is_dedi())
-            {
-                country_selftest();
-                alias_selftest();
-                scheduler::loop(alias_tick, scheduler::server, 50ms);
-                console::info("[paris-names] Server-only session aliases ready.\n");
-                game::Dvar_RegisterBool("paris_country_available", true, 0, "Server-only Paris country lookup installed");
-                // String dvars use script memory; follow Aurora's deferred
-                // registration pattern after engine memory initialization.
-                scheduler::once([]
-                {
-                for (unsigned short slot = 0; slot < 4; ++slot)
-                    game::Dvar_RegisterString(("paris_country_" + std::to_string(slot)).c_str(), "", 0, "Server-only slot country");
-                scheduler::loop([]
-                {
-                    // GSC uses ordinary getdvar, so stock rollback can still compile
-                    // the bank script. No new client command or voice protocol.
-                    for (unsigned short slot = 0; slot < 4; ++slot)
-                    {
-                        const auto country = player_country(game::scr_entref_t{slot, 0});
-                        const auto name = "paris_country_" + std::to_string(slot);
-                        const auto* current = game::Dvar_FindVar(name.c_str());
-                        if (current && country != current->current.string)
-                            game::Dvar_SetFromStringByName(name.c_str(), country.c_str(), game::DVAR_SOURCE_INTERNAL);
-                    }
-                }, scheduler::server, 100ms);
-                console::info("[paris-country] Server-only GeoIP ready.\n");
-                }, scheduler::main);
-            }
+            scheduler::once([] { game::Dvar_RegisterBool("paris_voice_available", true, 0, "Voice transport installed; matching clients required"); }, scheduler::main);
             network::on(transport, receive);
             command::add("paris_voice_status", status);
             command::add("paris_voice_selftest", codec_selftest);
