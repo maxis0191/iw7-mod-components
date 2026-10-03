@@ -55,8 +55,12 @@ $mutexMarker = 'const auto mutex = CreateMutexA(nullptr, FALSE, utils::string::v
 if (($baseAuth.Split([string[]]@($mutexMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned player mutex marker changed.' }
 $labAuth = $baseAuth.Replace('#include <utils/properties.hpp>', "#include <utils/properties.hpp>`n#include <utils/flags.hpp>").Replace($mutexMarker,
     'const auto mutex_name = utils::flags::has_flag("paris-isolated-lab") ? utils::string::va("iw7-paris-lab-player-%llx-%d", static_cast<unsigned long long>(std::hash<std::string>{}(utils::properties::get_appdata_path().generic_string())), i) : utils::string::va("iw7-mod-player-%d", i);' + "`n`t`t`t`t`t" + 'const auto mutex = CreateMutexA(nullptr, FALSE, mutex_name);')
+$oldLabAuth = $labAuth
+$entropyMarker = 'raw_entropy.append(get_player_suffix());'
+if (($baseAuth.Split([string[]]@($entropyMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned key entropy marker changed.' }
+$labAuth = $labAuth.Replace($entropyMarker, $entropyMarker + "`n`t`t`t" + 'if (utils::flags::has_flag("paris-isolated-lab")) raw_entropy.append(utils::properties::get_appdata_path().generic_string());')
 $currentAuth = [IO.File]::ReadAllText($authPath).Replace("`r`n", "`n").TrimEnd() + "`n"
-if ($currentAuth -ne $baseAuth -and $currentAuth -ne $labAuth) { throw 'Unowned auth.cpp changes; use an isolated native checkout.' }
+if ($currentAuth -ne $baseAuth -and $currentAuth -ne $labAuth -and $currentAuth -ne $oldLabAuth) { throw 'Unowned auth.cpp changes; use an isolated native checkout.' }
 [IO.File]::WriteAllText($authPath, $(if ($IsolatedLab) { $labAuth } else { $baseAuth }), [Text.UTF8Encoding]::new($false))
 # The normal profile has exactly these five native sources. Lab properties
 # replace common/utils/properties.cpp above, never a component source.

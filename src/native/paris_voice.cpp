@@ -538,15 +538,19 @@ namespace paris_voice
             // Use a paired retail PTT binding for this synchronous witness; the
             // earlier activity-mode attempt encoded zero and is inconclusive.
             ptt->current.enabled = true;
-            utils::hook::invoke<void>(0x14035DFB0, 0, talk_binding, 86, 1);
+            // Common dispatcher handles talk before the MP/SP gameplay dispatcher.
+            utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding, 86, 1);
+            const bool pressed = utils::hook::invoke<bool>(0x14036FE40, 0);
+            const auto encoded_before = native_encoded.load();
             for (int i = 0; i < 20; ++i)
             {
                 capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
                 capture_voice(&block);
             }
-            utils::hook::invoke<void>(0x14035DFB0, 0, talk_binding + 1, 86, 1);
+            utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
             ptt->current.enabled = saved_ptt;
-            console::info("[paris-voice-native] Explicit synthetic post-device probe complete; PTT restored.\n");
+            console::info("[paris-voice-native] Synthetic post-device witness: pressed=%d released=%d encoded_delta=%llu; PTT setting restored.\n",
+                pressed, !utils::hook::invoke<bool>(0x14036FE40, 0), native_encoded.load() - encoded_before);
             status();
         }
     }

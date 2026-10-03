@@ -87,6 +87,19 @@ stayed below the native threshold. That failed witness cannot establish a captur
 or routing defect. The correction uses paired native PTT. Retail interaction setup
 warnings (cryobomb/forgefreeze) are retained locally and not counted as voice proof.
 
+Candidate 9e80d06 also encoded zero: the MP gameplay dispatcher does not implement
+talk; the common binding dispatcher handles it first. The corrected witness calls
+that common path and reports held/released state and encoded-frame delta explicitly.
+Do not infer a production PTT bug from this harness error.
+
+Its first two-client attempt was invalidated by duplicate generated public keys.
+Separate root-specific mutexes made both clients use suffix 1; upstream key entropy
+was still machine/suffix-based and deterministic. Client B replaced A, leaving only
+one active participant. The build overlay now adds the isolated AppData path to
+entropy only under -paris-isolated-lab. Existing duplicate B keys were backed up
+locally and reset only inside its stopped root; no owner key was touched. Verify
+requires distinct current public identities and two active clients before evidence.
+
 ## Static evidence and open choices
 
 Local post-unpack reference inspection finds capture -> queue (0x14037D960) ->
