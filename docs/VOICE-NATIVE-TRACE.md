@@ -177,6 +177,9 @@ complete root cause. The pinned client memberInfoUpdate handler stores UI metada
 without Session_RegisterRemotePlayer; server player-info does call that API.
 The second client is closed and the protected base solo remains available.
 [Exact candidate/build and counter evidence](deployments/2026-10-04-voice-native-trace.json).
+The protected-test correction and forwarding trace are tracked in
+[PR #39](https://github.com/bigmangeekf/iw7-paris-server/pull/39); voice acceptance
+remains open in [issue #4](https://github.com/bigmangeekf/iw7-paris-server/issues/4).
 
 Local post-unpack reference inspection finds capture -> queue (0x14037D960) ->
 batch (0x14037D5C0) -> selected session/local-user lookup -> `v` serialization ->
