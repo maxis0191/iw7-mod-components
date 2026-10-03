@@ -56,7 +56,9 @@ map/process identity, voice/PTT state and simultaneous active participants.
 After Verify, `./ops/Isolated-Lab.ps1 -Action VoiceProbe` requests twenty synthetic
 post-device blocks through the unchanged capture/queue/session path. It requires
 native audio already initialized, loopback gameplay and voice enabled; it does not
-force initialization or bypass a failed gate. Its temporary PTT setting is restored.
+force audio initialization. It pairs the retail +talk/-talk binding during the
+synchronous capture call and restores the temporary PTT setting. Native microphone
+activity mode reads a separate hardware meter, not the injected PCM block.
 Acknowledgment only proves mailbox delivery; inspect the outcome and counter deltas
 in the owned client log. A synthetic witness is not human speech or remote delivery.
 
@@ -67,6 +69,23 @@ in the owned client log. A synthetic witness is not human speech or remote deliv
 
 StopServer still requires thirty seconds of live zero-client replies. Preserve
 failed logs and exact build/source hashes locally; commit only sanitized evidence.
+
+For a second technical participant on this machine, close both owned processes,
+run PreparePeer with a distinct free PeerPort, then Install VoiceNative again.
+Start/connect/Verify client A first. Use `-ClientSlot B` on StartClient, Connect,
+Verify, VoiceProbe and StopClient for B. Its mutable root, AppData/identity and port
+are independent; its stock links target only this lab's own asset snapshot. Close B
+and A before StopServer. This is a same-machine technical witness, not remote speech.
+
+## Retained first attempt
+
+Candidate aae11b0 built and runtime-linked on private cp_zmb; its client joined with
+fresh engine godmode/inactivity=0/cheats=0. Native audio/capture and local session
+registration were present (local slot 0, one registered/voice-registered user).
+Its activity-mode synthetic blocks encoded zero: the separate hardware mic meter
+stayed below the native threshold. That failed witness cannot establish a capture
+or routing defect. The correction uses paired native PTT. Retail interaction setup
+warnings (cryobomb/forgefreeze) are retained locally and not counted as voice proof.
 
 ## Static evidence and open choices
 

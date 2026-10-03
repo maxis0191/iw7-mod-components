@@ -508,6 +508,9 @@ namespace paris_voice
                     native_batches.load(), native_packets.load(), native_send_ok.load(), native_received.load(),
                     stats.decoded.load(), stats.queued_bytes.load(), session != nullptr, local_slot,
                     registered, voice_registered, *reinterpret_cast<const int*>(0x142255DF8));
+                if (!game::environment::is_dedi()) console::info("[paris-voice-native] capture_gate=%d ptt_down=%d mic_activity=%.6f\n",
+                    utils::hook::invoke<bool>(0x14037DA00), utils::hook::invoke<bool>(0x14036FE40, 0),
+                    static_cast<double>(*reinterpret_cast<const float*>(0x1477A027C)));
             }
         }
         void native_probe()
@@ -519,18 +522,29 @@ namespace paris_voice
             const int samples = utils::hook::invoke<int>(0x140B79440);
             if (samples <= 0 || samples > 4096) return;
             auto* ptt = *reinterpret_cast<game::dvar_t**>(0x1421EF7A0);
-            if (!ptt || !enabled()) return;
+            if (!ptt || !enabled() || utils::hook::invoke<bool>(0x14036FE40, 0)) return;
+            int talk_binding = 0;
+            for (int i = 1; i < 117; ++i)
+                if (game::command_whitelist[i] && game::command_whitelist[i + 1] &&
+                    !std::strcmp(game::command_whitelist[i], "+talk") && !std::strcmp(game::command_whitelist[i + 1], "-talk"))
+                { talk_binding = i; break; }
+            if (!talk_binding) return;
             const bool saved_ptt = ptt->current.enabled;
             // Explicit post-device witness. No microphone recording and no
             // transport override. This is never evidence of human speech.
             std::vector<short> pcm(samples, 10000);
             struct capture_buffer { short* pcm; int bytes, samples, sample_bytes; int reserved[3]; int consumed; };
-            ptt->current.enabled = false;
+            // A synthetic block does not update the hardware mic-activity meter.
+            // Use a paired retail PTT binding for this synchronous witness; the
+            // earlier activity-mode attempt encoded zero and is inconclusive.
+            ptt->current.enabled = true;
+            utils::hook::invoke<void>(0x14035DFB0, 0, talk_binding, 86, 1);
             for (int i = 0; i < 20; ++i)
             {
                 capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
                 capture_voice(&block);
             }
+            utils::hook::invoke<void>(0x14035DFB0, 0, talk_binding + 1, 86, 1);
             ptt->current.enabled = saved_ptt;
             console::info("[paris-voice-native] Explicit synthetic post-device probe complete; PTT restored.\n");
             status();
@@ -548,7 +562,7 @@ namespace paris_voice
                 console::error("[paris-voice-native] Trace refused: isolated audio profile/signatures required.\n");
                 return;
             }
-            scheduler::once([] { game::Dvar_RegisterBool("paris_voice_available", true, 0, "Voice transport installed; matching clients required"); }, scheduler::main);
+            scheduler::once([] { game::Dvar_RegisterBool("paris_voice_available", !native_trace, 0, "Voice transport installed; matching clients required"); }, scheduler::main);
             if (!native_trace) network::on(transport, receive);
             command::add("paris_voice_status", status);
             command::add("paris_voice_selftest", codec_selftest);
