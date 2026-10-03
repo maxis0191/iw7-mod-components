@@ -1,5 +1,8 @@
 param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules)
 $ErrorActionPreference = 'Stop'
+if ($ServerModules -and ($RhinoExperiment -or $EnemyExperiment)) {
+    throw 'ServerModules is incompatible with RhinoExperiment/EnemyExperiment; the normal profile excludes experimental overlays.'
+}
 $repo = Split-Path $PSScriptRoot -Parent
 $root = Join-Path $repo 'tools/iw7-mod-native'
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
@@ -159,7 +162,9 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.exe" -Destination "$output/iw7-paris-voice.exe"
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@(Get-ChildItem "$repo/src/native/*" | ForEach-Object { @{File=$_.Name;SHA256=(Get-FileHash $_.FullName).Hash} }) }
 $manifest.ServerModules = [bool]$ServerModules
-$manifest.ModuleProfile = "server-only; Rhino assets and spawns excluded"
+$manifest.BuildProfile = if ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } else { 'native-helper' }
+$manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
+$manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
 $manifest.SessionAliases = 'Temporary duplicate names, server only'
 if ($RhinoExperiment) {
