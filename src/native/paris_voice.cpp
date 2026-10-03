@@ -465,11 +465,16 @@ namespace paris_voice
             if (game::environment::is_dedi()) scheduler::loop(server_tick, scheduler::server, 10ms);
             else
             {
-                queue_voice_hook.create(0x14037D960, queue_voice);
-                decode_voice_hook.create(0x140B79310, decode_voice);
-                enqueue_voice_hook.create(0x140B79B60, enqueue_voice);
-                capture_voice_hook.create(0x140B79D30, capture_voice);
-                scheduler::loop(client_tick, scheduler::main, 10ms);
+                // The lab uses the connect fixture without opening custom
+                // microphone/output sessions or emitting calibration tones.
+                if (!utils::flags::has_flag("paris-isolated-lab"))
+                {
+                    queue_voice_hook.create(0x14037D960, queue_voice);
+                    decode_voice_hook.create(0x140B79310, decode_voice);
+                    enqueue_voice_hook.create(0x140B79B60, enqueue_voice);
+                    capture_voice_hook.create(0x140B79D30, capture_voice);
+                    scheduler::loop(client_tick, scheduler::main, 10ms);
+                }
                 if (utils::flags::has_flag("paris-voice-selftest")) scheduler::once(codec_selftest, scheduler::main, 20s);
                 if (utils::flags::has_flag("paris-voice-local-test"))
                 {
@@ -479,8 +484,9 @@ namespace paris_voice
                         if (!zombies()) { game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP); return; }
                         if (game::Live_SyncOnlineDataFlags(0) != 0) return;
                         game::netadr_s target{};
-                        target.type = game::NA_IP; target.ip[0] = 127; target.ip[3] = 1; target.port = htons(27016);
-                        console::info("[paris-voice] Local development fixture connecting to UDP 27016 (mode %d).\n", game::Com_GameMode_GetActiveGameMode());
+                        const auto fixture_port = utils::flags::has_flag("paris-isolated-lab") ? 27116 : 27016;
+                        target.type = game::NA_IP; target.ip[0] = 127; target.ip[3] = 1; target.port = htons(static_cast<unsigned short>(fixture_port));
+                        console::info("[paris-voice] Local development fixture connecting to UDP %d (mode %d).\n", fixture_port, game::Com_GameMode_GetActiveGameMode());
                         local_test_connected = true;
                         party::connect(target);
                     }, scheduler::main, 1s);
