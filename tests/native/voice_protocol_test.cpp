@@ -1,4 +1,5 @@
 #include "../../src/native/paris_voice_protocol.hpp"
+#include "../../src/native/paris_test_safety.hpp"
 #include <cstdlib>
 #include <iostream>
 #include <random>
@@ -8,6 +9,19 @@ namespace w = paris_voice::protocol;
 void check(bool ok, const char* what) { if (!ok) throw std::runtime_error(what); }
 int main()
 {
+    using namespace paris_test_fixture;
+    const kick_context safe{true,true,true,true,true,true,true,true,true,true};
+    check(allow_inactivity_exception(safe,"EXE_PLAYERKICKED_INACTIVE"), "protected fixture inactivity still kicks");
+    for (int i=0; i<10; ++i)
+    {
+        auto unsafe=safe;
+        bool* gates[]={&unsafe.dedicated,&unsafe.fixture,&unsafe.zombies,&unsafe.private_access,&unsafe.loopback,
+            &unsafe.bound_identity,&unsafe.connected,&unsafe.godmode,&unsafe.cheats_disabled,&unsafe.native_inactivity_disabled};
+        *gates[i]=false;
+        check(!allow_inactivity_exception(unsafe,"EXE_PLAYERKICKED_INACTIVE"),"unprotected/remote/reused-slot inactivity exception");
+    }
+    check(!allow_inactivity_exception(safe,"EXE_PLAYERKICKED") && !allow_inactivity_exception(safe,"GAME_DROPPEDFORINACTIVITY") &&
+        !allow_inactivity_exception(safe,"EXE_PLAYERKICKED_INACTIVE "),"unrelated kick was bypassed");
     w::packet p, decoded;
     p.type = w::kind::hello; p.token = 0xFEDCBA9876543210ull;
     check(w::decode(w::encode(p), decoded) && decoded.token == p.token, "hello roundtrip");

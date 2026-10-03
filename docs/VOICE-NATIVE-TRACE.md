@@ -108,6 +108,21 @@ The trace requires `-paris-voice-base-test` plus the appropriate protected serve
 client fixture flag. Port 27016, empty fs_game, private access and cheats=0 remain.
 Native protection is loopback-only and reapplied on each spawn.
 
+Protection is also maintained every 100 ms after registration. Verify requires a
+current native heartbeat for every client and an arena with zero actors, pending
+spawns and reservations. The voice witness pauses the retail supplier and removes
+unexpected enemies through their normal death lifecycle. Godmode and g_inactivity=0
+alone do not prevent retail GSC's separate ninety-second movement kick: the scoped
+fixture extends the existing bots kick hook to suppress only
+EXE_PLAYERKICKED_INACTIVE for the same protected local identity. Other kicks and
+ordinary/remote players keep their normal behavior. Online party/session semantics
+are retained; xblive_privatematch is not changed to conceal the watchdog.
+
+For an explicit same-installation technical peer, use `-ClientSlot B` on client
+actions after A is verified. Standard Aurora suffixes separate their keys. Require
+both Verify calls, two distinct engine identities and at least 120 seconds idle
+with current protected=2, inactivity=0 and zero-enemy heartbeats. Close B first.
+
 Use StopClient, StopServer, then Restore with the same helper after the test.
 Restore verifies backup hashes, restores/removes only recorded temporary files and
 retains the current bank. Ordinary Server.ps1 deployment still refuses lab binaries.
@@ -143,7 +158,11 @@ but each new connection returns the previous client to the frontend. Only one
 client remains active, so this attempt is invalid for routing/receive conclusions.
 Native screenshots establish the frontend/gameplay split. The cause is unresolved;
 the owner requests continuing in the base installation rather than extending this
-same-machine isolation investigation.
+same-machine isolation investigation. The same failure reproduces there with
+standard Aurora identities. The owner identifies inactivity kicks; pinned retail
+reference confirms the independent GSC watchdog described above. The first voice
+fixture's one-shot protection was insufficient. These failed pair attempts are
+invalid for native voice routing conclusions and remain retained as incident evidence.
 
 ## Static evidence and open choices
 

@@ -62,7 +62,7 @@ $labAuth = $labAuth.Replace($entropyMarker, $entropyMarker + "`n`t`t`t" + 'if (u
 $currentAuth = [IO.File]::ReadAllText($authPath).Replace("`r`n", "`n").TrimEnd() + "`n"
 if ($currentAuth -ne $baseAuth -and $currentAuth -ne $labAuth -and $currentAuth -ne $oldLabAuth) { throw 'Unowned auth.cpp changes; use an isolated native checkout.' }
 [IO.File]::WriteAllText($authPath, $(if ($IsolatedLab) { $labAuth } else { $baseAuth }), [Text.UTF8Encoding]::new($false))
-# The normal profile has exactly these five native sources. Lab properties
+# The normal profile lists its native components and both protocol/test headers. Lab properties
 # replace common/utils/properties.cpp above, never a component source.
 # Retire the known misplaced overlay from reused/package-source checkouts.
 # Its intended location is common/utils; unknown edits remain untouched.
@@ -72,8 +72,18 @@ if (Test-Path -LiteralPath $labComponent) {
     if ($currentLabComponent -ne $labProperties) { throw 'Unowned lab component overlay; preserve it and use an isolated native checkout.' }
     Remove-Item -LiteralPath $labComponent
 }
-$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp')
+$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp')
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
+# Extend the existing upstream kick hook, rather than install a competing detour.
+$botsPath = Join-Path $root 'src/client/component/bots.cpp'
+$baseBots = (((git -C $root show ($commit + ':src/client/component/bots.cpp')) -join "`n").TrimEnd()) + "`n"
+$kickMarker = "void sv_kick_client_num_stub(const int client_num, const char* reason, bool kicked_for_inactivity)`n`t`t{"
+if (($baseBots.Split([string[]]@($kickMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned existing kick hook marker changed.' }
+$testBots = $baseBots.Replace('namespace bots', '#include "paris_test_safety.hpp"' + "`n`nnamespace bots").Replace($kickMarker,
+    $kickMarker + "`n`t`t`tif (paris_test_fixture::suppress_inactivity_kick(client_num, reason)) return;")
+$currentBots = [IO.File]::ReadAllText($botsPath).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentBots -ne $baseBots -and $currentBots -ne $testBots) { throw 'Unowned bots.cpp changes; preserve them.' }
+[IO.File]::WriteAllText($botsPath,$testBots,[Text.UTF8Encoding]::new($false))
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
 $rhinoScriptInclude = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
 $enemyScriptInclude = Join-Path $root 'src/client/component/paris_enemy_scripts.inc'
@@ -204,6 +214,7 @@ $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$out
 $manifest.ServerModules = [bool]$ServerModules
 $manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
 $manifest.VoiceTrace = [bool]$VoiceTrace
+$manifest.TestKickHookSHA256 = (Get-FileHash -LiteralPath $botsPath).Hash
 $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
