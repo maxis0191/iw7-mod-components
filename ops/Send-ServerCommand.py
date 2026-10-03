@@ -3,8 +3,13 @@ import ctypes
 import re
 import sys
 
-pid, command = int(sys.argv[1]), sys.argv[2]
-if not re.fullmatch(r"set paris_mod_[a-z_]+ [01]", command):
+client_fixture = sys.argv[1] == "--module-client"
+args = sys.argv[2:] if client_fixture else sys.argv[1:]
+pid, command = int(args[0]), args[1]
+if client_fixture:
+    if command not in ("connect 127.0.0.1:27016", "disconnect", "quit"):
+        raise ValueError("Only fixed loopback connect/disconnect/quit is accepted")
+elif not re.fullmatch(r"set paris_mod_[a-z_]+ [01]", command):
     raise ValueError("Only a module switch is accepted")
 k = ctypes.WinDLL("kernel32", use_last_error=True)
 k.FreeConsole()
