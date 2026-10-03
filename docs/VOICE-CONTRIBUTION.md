@@ -61,6 +61,10 @@ This isolates a further routing/recipient prerequisite, rather than proving a
 registration repair sufficient. Inspect native channel, mute and eligibility
 return values before choosing a production architecture.
 
+The next pair remains protected for 129.563 seconds and measures local=0,
+muted=0, shared_channel=1, eligible=0 in each original recipient filter. Inspect
+the native client-info inputs next. [Sanitized evidence](deployments/2026-10-04-voice-registration.json).
+
 ## Code and review requirements
 
 - Keep the change focused on voice. Match IW7-Mod's source layout and style;

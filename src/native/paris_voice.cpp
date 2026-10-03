@@ -583,6 +583,23 @@ namespace paris_voice
                 const bool eligible = utils::hook::invoke<bool>(0x14099E210, session, 0, slot);
                 console::info("[paris-voice-native] Recipient witness slot=%u local=%d muted=%d shared_channel=%d eligible=%d; native decisions retained.\n",
                     slot, local, muted, shared_channel, eligible);
+                const auto globals = utils::hook::invoke<std::uintptr_t>(0x140242BF0, 0);
+                const auto cg_static = *reinterpret_cast<const std::uintptr_t*>(0x141FAEE58);
+                if (!globals || !cg_static) continue;
+                const auto table = *reinterpret_cast<const std::uintptr_t*>(cg_static);
+                const auto get_info = *reinterpret_cast<const std::uintptr_t*>(table + 0x30);
+                const int view_slot = *reinterpret_cast<const int*>(globals + 0x4AD0);
+                if (!get_info || view_slot < 0 || view_slot >= 18) continue;
+                const auto remote_info = utils::hook::invoke<std::uintptr_t>(get_info, cg_static, slot);
+                const auto local_info = utils::hook::invoke<std::uintptr_t>(get_info, cg_static, view_slot);
+                if (!remote_info || !local_info) continue;
+                // Inspect the exact client-info fields read by the retail filter;
+                // these offsets are research-only, never a production layout API.
+                console::info("[paris-voice-native] Client-info witness view_slot=%d remote_valid=%d local_valid=%d remote_team=%d local_team=%d; read-only retail filter inputs.\n",
+                    view_slot, *reinterpret_cast<const int*>(remote_info + 4),
+                    *reinterpret_cast<const int*>(local_info + 4),
+                    *reinterpret_cast<const int*>(remote_info + 12),
+                    *reinterpret_cast<const int*>(local_info + 12));
             }
         }
         void native_probe()
