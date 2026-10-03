@@ -23,17 +23,18 @@ namespace paris_test_fixture
             if (port->type == game::DVAR_TYPE_STRING && port->current.string)
                 value = std::atoi(port->current.string);
             else if (port->type == game::DVAR_TYPE_INT) value = port->current.integer;
+            if (value == 27016 && utils::flags::has_flag("paris-voice-base-test")) return value;
             return value >= 27100 && value <= 27999 ? value : 0;
         }
         void client_request()
         {
-            if (connect_pending && utils::flags::has_flag("paris-isolated-lab") &&
+            if (connect_pending && (utils::flags::has_flag("paris-isolated-lab") || utils::flags::has_flag("paris-voice-base-test")) &&
                 game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP)
             {
                 game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP);
                 return;
             }
-            if (connect_pending && utils::flags::has_flag("paris-isolated-lab") &&
+            if (connect_pending && (utils::flags::has_flag("paris-isolated-lab") || utils::flags::has_flag("paris-voice-base-test")) &&
                 game::Live_SyncOnlineDataFlags(0) == 0 && lab_port())
             {
                 game::netadr_s target{};
@@ -52,11 +53,12 @@ namespace paris_test_fixture
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
             if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe") return;
-            if (action == "voiceprobe" && (!utils::flags::has_flag("paris-isolated-lab") ||
-                !utils::flags::has_flag("paris-voice-audio-lab") || !utils::flags::has_flag("paris-voice-native-trace"))) return;
+            if (action == "voiceprobe" && (!utils::flags::has_flag("paris-voice-native-trace") ||
+                !((utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab")) ||
+                  utils::flags::has_flag("paris-voice-base-test")))) return;
             if (action == "connect")
             {
-                if (!utils::flags::has_flag("paris-isolated-lab")) return;
+                if (!utils::flags::has_flag("paris-isolated-lab") && !utils::flags::has_flag("paris-voice-base-test")) return;
                 if (!lab_port()) return;
                 connect_pending = true;
             }

@@ -77,6 +77,42 @@ Verify, VoiceProbe and StopClient for B. Its mutable root, AppData/identity and 
 are independent; its stock links target only this lab's own asset snapshot. Close B
 and A before StopServer. This is a same-machine technical witness, not remote speech.
 
+## Owner-authorized base installation test
+
+The owner subsequently requests closing all IW7 instances and moving this work
+to the existing base game installation. Close recorded clients through their
+owned helpers, stop dedicateds after valid empty replies for thirty seconds, and
+verify no IW7 process remains. This supersedes the independent-root restriction
+for voice testing only; never deploy the isolated binary to the base installation.
+
+```powershell
+./ops/Build-Voice.ps1 -ServerModules
+./ops/Test-Sources.ps1
+# Commit the tested candidate before preparation.
+./ops/Voice-BaseTest.ps1 -Action Prepare -GameRoot 'YOUR EXISTING GAME ROOT'
+./ops/Voice-BaseTest.ps1 -Action StartServer
+./ops/Voice-BaseTest.ps1 -Action StartClient
+# Wait for Common Initialization Complete in the current client log.
+./ops/Voice-BaseTest.ps1 -Action Connect
+./ops/Voice-BaseTest.ps1 -Action Verify
+./ops/Voice-BaseTest.ps1 -Action VoiceProbe
+./ops/Voice-BaseTest.ps1 -Action Capture
+```
+
+Prepare requires a verified normal server-only build and all IW7 processes closed.
+It backs up every temporary file plus bank data and records recovery metadata
+before any managed write. It adds a side-by-side trace executable, two temporary
+configs and the protection witness in the existing game root. Original iw7-mod.exe,
+normal launchers/configs, current bank, Aurora AppData and owner keys are preserved.
+The trace requires `-paris-voice-base-test` plus the appropriate protected server/
+client fixture flag. Port 27016, empty fs_game, private access and cheats=0 remain.
+Native protection is loopback-only and reapplied on each spawn.
+
+Use StopClient, StopServer, then Restore with the same helper after the test.
+Restore verifies backup hashes, restores/removes only recorded temporary files and
+retains the current bank. Ordinary Server.ps1 deployment still refuses lab binaries.
+This base witness also cannot prove two-machine speech or automatic Aurora delivery.
+
 ## Retained first attempt
 
 Candidate aae11b0 built and runtime-linked on private cp_zmb; its client joined with
@@ -99,6 +135,15 @@ one active participant. The build overlay now adds the isolated AppData path to
 entropy only under -paris-isolated-lab. Existing duplicate B keys were backed up
 locally and reset only inside its stopped root; no owner key was touched. Verify
 requires distinct current public identities and two active clients before evidence.
+
+Candidate 2dba1ba confirms native held/released PTT and twenty encoded frames in
+the protected solo witness. Batch runs but no session-send occurs in that solo
+case; no recipient exists. The corrected pair has two distinct keys/server IDs,
+but each new connection returns the previous client to the frontend. Only one
+client remains active, so this attempt is invalid for routing/receive conclusions.
+Native screenshots establish the frontend/gameplay split. The cause is unresolved;
+the owner requests continuing in the base installation rather than extending this
+same-machine isolation investigation.
 
 ## Static evidence and open choices
 

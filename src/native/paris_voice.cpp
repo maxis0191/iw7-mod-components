@@ -63,6 +63,12 @@ namespace paris_voice
         utils::hook::detour capture_voice_hook;
         utils::hook::detour native_batch_hook, native_receive_hook, native_send_hook;
         bool native_trace{};
+        bool native_audio_test()
+        {
+            return (utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab")) ||
+                (utils::flags::has_flag("paris-voice-base-test") &&
+                    utils::flags::has_flag(game::environment::is_dedi() ? "paris-server-test" : "paris-server-client-test"));
+        }
         std::atomic<std::uint64_t> native_encoded{}, native_batches{}, native_packets{}, native_send_ok{}, native_received{};
 
         void native_batch(int local_client)
@@ -515,7 +521,7 @@ namespace paris_voice
         }
         void native_probe()
         {
-            if (!native_trace || game::environment::is_dedi() || !utils::flags::has_flag("paris-voice-audio-lab")) return;
+            if (!native_trace || game::environment::is_dedi() || !native_audio_test()) return;
             game::netadr_s host{};
             if (!client_connection(host) || host.ip[0] != 127 || !audio_initialized())
             { console::warn("[paris-voice-native] Probe refused: active loopback and native audio initialization required.\n"); return; }
@@ -560,10 +566,9 @@ namespace paris_voice
         void post_unpack() override
         {
             native_trace = utils::flags::has_flag("paris-voice-native-trace");
-            if (native_trace && (!utils::flags::has_flag("paris-isolated-lab") ||
-                !utils::flags::has_flag("paris-voice-audio-lab") || !trace_signatures_match()))
+            if (native_trace && (!native_audio_test() || !trace_signatures_match()))
             {
-                console::error("[paris-voice-native] Trace refused: isolated audio profile/signatures required.\n");
+                console::error("[paris-voice-native] Trace refused: explicit protected audio test/signatures required.\n");
                 return;
             }
             scheduler::once([] { game::Dvar_RegisterBool("paris_voice_available", !native_trace, 0, "Voice transport installed; matching clients required"); }, scheduler::main);
