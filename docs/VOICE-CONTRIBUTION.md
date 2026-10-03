@@ -65,6 +65,13 @@ The next pair remains protected for 129.563 seconds and measures local=0,
 muted=0, shared_channel=1, eligible=0 in each original recipient filter. Inspect
 the native client-info inputs next. [Sanitized evidence](deployments/2026-10-04-voice-registration.json).
 
+The client-info validity/team inputs pass on both clients. The native filter's
+remote-address reference is null in the tested UDP-adapter path. The pinned
+adapter replaces Demonware packet I/O, skips secure connections and declines
+remote XNADDR NAT traversal. Native registration alone cannot restore that
+reference. First prove native playback through a bounded server-mediated witness;
+compare MP and avoid describing this as a CP-only defect without that control.
+
 ## Code and review requirements
 
 - Keep the change focused on voice. Match IW7-Mod's source layout and style;
