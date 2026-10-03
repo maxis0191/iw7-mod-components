@@ -1,4 +1,5 @@
-param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment)
+param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$IsolatedLab,
+    [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $root = Join-Path $repo 'tools/iw7-mod-native'
@@ -36,6 +37,23 @@ if (!(Test-Path -LiteralPath "$root/.git")) {
 if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
 git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
+$properties = Join-Path $root 'src/common/utils/properties.cpp'
+$baseProperties = (((git -C $root show ($commit + ':src/common/utils/properties.cpp')) -join "`n").TrimEnd()) + "`n"
+$labProperties = [IO.File]::ReadAllText("$repo/src/native/paris_lab_properties.cpp").Replace("`r`n", "`n").TrimEnd() + "`n"
+$currentProperties = [IO.File]::ReadAllText($properties).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentProperties -ne $baseProperties -and $currentProperties -ne $labProperties) {
+    throw 'Unowned properties.cpp changes; use an isolated native checkout.'
+}
+[IO.File]::WriteAllText($properties, $(if ($IsolatedLab) { $labProperties } else { $baseProperties }), [Text.UTF8Encoding]::new($false))
+$authPath = Join-Path $root 'src/client/component/auth.cpp'
+$baseAuth = (((git -C $root show ($commit + ':src/client/component/auth.cpp')) -join "`n").TrimEnd()) + "`n"
+$mutexMarker = 'const auto mutex = CreateMutexA(nullptr, FALSE, utils::string::va("iw7-mod-player-%d", i));'
+if (($baseAuth.Split([string[]]@($mutexMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned player mutex marker changed.' }
+$labAuth = $baseAuth.Replace('#include <utils/properties.hpp>', "#include <utils/properties.hpp>`n#include <utils/flags.hpp>").Replace($mutexMarker,
+    'const auto mutex_name = utils::flags::has_flag("paris-isolated-lab") ? utils::string::va("iw7-paris-lab-player-%llx-%d", static_cast<unsigned long long>(std::hash<std::string>{}(utils::properties::get_appdata_path().generic_string())), i) : utils::string::va("iw7-mod-player-%d", i);' + "`n`t`t`t`t`t" + 'const auto mutex = CreateMutexA(nullptr, FALSE, mutex_name);')
+$currentAuth = [IO.File]::ReadAllText($authPath).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentAuth -ne $baseAuth -and $currentAuth -ne $labAuth) { throw 'Unowned auth.cpp changes; use an isolated native checkout.' }
+[IO.File]::WriteAllText($authPath, $(if ($IsolatedLab) { $labAuth } else { $baseAuth }), [Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath "$repo/src/native/paris_voice.cpp","$repo/src/native/paris_voice_protocol.hpp" -Destination "$root/src/client/component"
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
 $rhinoScriptInclude = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
@@ -60,13 +78,17 @@ if ($RhinoExperiment -or $EnemyExperiment) {
 
     $enemyScriptList = Join-Path $repo 'ops/enemy-ports/rave-wave-agent-scriptfiles.txt'
     $enemyAnimclassList = Join-Path $repo 'ops/enemy-ports/rave-wave-agent-animclasses.txt'
+    if ($EnemyProfile -eq 'Slasher') {
+        $enemyScriptList = Join-Path $repo 'ops/enemy-ports/rave-slasher-scriptfile-delta-candidate.txt'
+        $enemyAnimclassList = Join-Path $repo 'ops/enemy-ports/lab-slasher-animclasses.txt'
+    }
     $enemyModules = @()
     $enemyAnimclasses = @()
     if ($EnemyExperiment) {
         if (!(Test-Path -LiteralPath $enemyScriptList) -or !(Test-Path -LiteralPath $enemyAnimclassList)) {
             throw 'Enemy experiment source manifests are missing.'
         }
-        $enemyModules = @(Get-Content -LiteralPath $enemyScriptList | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $enemyModules = @(Get-Content -LiteralPath $enemyScriptList | ForEach-Object { $_.Trim() } | Where-Object { $_ -and !($_.StartsWith('#')) })
         $enemyAnimclasses = @(Get-Content -LiteralPath $enemyAnimclassList | ForEach-Object { $_.Trim() } | Where-Object { $_ })
         if (!$enemyModules.Count -or @($enemyModules | Where-Object { $_ -notmatch '^[a-z0-9_/-]+$' -or $_.StartsWith('/') -or $_.Contains('..') }).Count -or
             !$enemyAnimclasses.Count -or @($enemyAnimclasses | Where-Object { $_ -notmatch '^[a-z0-9_]+$' }).Count -or
@@ -160,12 +182,18 @@ Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.exe" -Destination "$
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@(Get-ChildItem "$repo/src/native/*" | ForEach-Object { @{File=$_.Name;SHA256=(Get-FileHash $_.FullName).Hash} }) }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
 $manifest.SessionAliases = 'Temporary duplicate names, server only'
+$manifest.IsolatedLab = [bool]$IsolatedLab
+if ($IsolatedLab) {
+    $manifest.LabPropertiesSHA256 = (Get-FileHash -LiteralPath $properties).Hash
+    $manifest.LabAuthSHA256 = (Get-FileHash -LiteralPath $authPath).Hash
+}
 if ($RhinoExperiment) {
     $manifest.RhinoScriptManifestSHA256 = (Get-FileHash -LiteralPath $scriptManifest).Hash
     $manifest.RhinoScriptAssetCount = $scriptEntries.Count
     $manifest.RhinoScriptLoaderSHA256 = (Get-FileHash -LiteralPath $scriptLoading).Hash
 }
 if ($EnemyExperiment) {
+    $manifest.EnemyProfile = $EnemyProfile
     $manifest.EnemyScriptListSHA256 = (Get-FileHash -LiteralPath $enemyScriptList).Hash
     $manifest.EnemyAnimclassListSHA256 = (Get-FileHash -LiteralPath $enemyAnimclassList).Hash
     $manifest.EnemyScriptAssetCount = $enemyModules.Count
