@@ -23,13 +23,22 @@ namespace paris_test_fixture
             std::istringstream input(request);
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close") return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect") return;
+            if (action == "connect")
+            {
+                if (!utils::flags::has_flag("paris-isolated-lab")) return;
+                const auto* port = game::Dvar_FindVar("paris_lab_server_port");
+                const auto value = port && port->current.string ? std::atoi(port->current.string) : 0;
+                if (value < 27100 || value > 27999) return;
+                command::execute(std::format("connect 127.0.0.1:{}", value), true);
+            }
             utils::io::write_file("iw7-mod/paris-server-client.response", request);
+            console::info("[Paris module client] Request %s acknowledged.\n", action.c_str());
             if (action == "capture") command::execute("capture_frame server-modules-fixture", true);
             else if (action == "help") command::execute("cmd say ..help", true);
             else if (action == "mods") command::execute("cmd say ..mods", true);
             else if (action == "close") command::execute("cmd say ..close", true);
-            else { command::execute("disconnect", true); scheduler::once([] { command::execute("quit", true); }, scheduler::main, 1s); }
+            else if (action == "stop") { command::execute("disconnect", true); scheduler::once([] { command::execute("quit", true); }, scheduler::main, 1s); }
         }
     }
     class component final : public component_interface
