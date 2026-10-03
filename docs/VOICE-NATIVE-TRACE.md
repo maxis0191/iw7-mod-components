@@ -166,6 +166,18 @@ invalid for native voice routing conclusions and remain retained as incident evi
 
 ## Static evidence and open choices
 
+Corrected candidate 67c7c36 passes both base Verify calls and retains two idle
+protected clients for 140.422 measured seconds. At that point 1606 retail GSC kick
+calls have been suppressed and the arena remains zero alive/pending/reserved.
+Each client encodes twenty native frames with pressed/released PTT, but its selected
+voice session registers only self (A slot 0, B slot 1), while dedicated registers
+two users. Batch runs, with zero native send/receive/decode/playback. The missing
+client remote-session registration is the next narrow investigation, not a proven
+complete root cause. The pinned client memberInfoUpdate handler stores UI metadata
+without Session_RegisterRemotePlayer; server player-info does call that API.
+The second client is closed and the protected base solo remains available.
+[Exact candidate/build and counter evidence](deployments/2026-10-04-voice-native-trace.json).
+
 Local post-unpack reference inspection finds capture -> queue (0x14037D960) ->
 batch (0x14037D5C0) -> selected session/local-user lookup -> `v` serialization ->
 session send (0x14037BFF0). Native receive (0x14037CFF0) validates session users
