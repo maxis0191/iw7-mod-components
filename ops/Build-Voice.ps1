@@ -1,6 +1,7 @@
-param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab,
+param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave')
 $ErrorActionPreference = 'Stop'
+if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
 if ($ServerModules -and ($RhinoExperiment -or $EnemyExperiment)) {
     throw 'ServerModules is incompatible with enemy/Rhino overlays.'
 }
@@ -197,7 +198,8 @@ $manifestSources = @($nativeSources)
 if ($IsolatedLab) { $manifestSources += 'paris_lab_properties.cpp' }
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
 $manifest.ServerModules = [bool]$ServerModules
-$manifest.BuildProfile = if ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
+$manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
+$manifest.VoiceTrace = [bool]$VoiceTrace
 $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'

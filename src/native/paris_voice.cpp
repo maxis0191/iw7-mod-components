@@ -61,6 +61,47 @@ namespace paris_voice
         utils::hook::detour decode_voice_hook;
         utils::hook::detour enqueue_voice_hook;
         utils::hook::detour capture_voice_hook;
+        utils::hook::detour native_batch_hook, native_receive_hook, native_send_hook;
+        bool native_trace{};
+        std::atomic<std::uint64_t> native_encoded{}, native_batches{}, native_packets{}, native_send_ok{}, native_received{};
+
+        void native_batch(int local_client)
+        {
+            ++native_batches;
+            native_batch_hook.invoke<void>(local_client);
+        }
+        void native_receive(int local_client, game::msg_t* message)
+        {
+            ++native_received;
+            native_receive_hook.invoke<void>(local_client, message);
+        }
+        bool native_send(game::SessionData* session, int local_client, int channel, int recipient,
+            game::msg_t* message, bool reliable)
+        {
+            ++native_packets;
+            const auto result = native_send_hook.invoke<bool>(session, local_client, channel, recipient, message, reliable);
+            if (result) ++native_send_ok;
+            return result;
+        }
+        bool trace_signatures_match()
+        {
+            struct signature { std::uintptr_t address; const char* bytes; std::size_t size; };
+            // Exact retail entry bytes from the local post-unpack reference. Check
+            // every entry before installing any trace hook; no executable dump in Git.
+            const signature entries[] = {
+                {0x14037D960, "\x40\x53\x48\x83\xec\x20\x48\x63\xd9\x85\xc9", 11},
+                {0x140B79310, "\x48\x89\x5c\x24\x20\x57\xb8\x30\x40\x00\x00", 11},
+                {0x140B79B60, "\x48\x89\x5c\x24\x10\x56\x48\x83\xec\x60", 10},
+                {0x140B79D30, "\x40\x57\x41\x57\xb8\x48\x20\x00\x00", 9},
+                {0x14037D5C0, "\x41\x54\x48\x81\xec\x00\x09\x00\x00", 9},
+                {0x14037CFF0, "\x40\x53\x41\x54\x41\x55\x48\x81\xec\xc0\x09\x00\x00", 13},
+                {0x14037BFF0, "\x40\x53\x56\x57\x48\x81\xec\xa0\x08\x00\x00", 11},
+            };
+            for (const auto& entry : entries)
+                if (std::memcmp(reinterpret_cast<const void*>(entry.address), entry.bytes, entry.size) != 0)
+                    return false;
+            return true;
+        }
         std::mutex inbox_mutex, state_mutex;
         struct incoming { game::netadr_s from; wire::packet data; std::uint64_t time; unsigned bytes; };
         std::vector<incoming> inbox;
@@ -402,6 +443,11 @@ namespace paris_voice
         }
         int queue_voice(int length, const char* data)
         {
+            if (native_trace)
+            {
+                ++native_encoded;
+                return queue_voice_hook.invoke<int>(length, data);
+            }
             // Native capture already applies PTT, mic mute, threshold and cl_voice.
             // Send each encoded frame promptly instead of the legacy 200 ms party batch.
             game::netadr_s host{};
@@ -448,6 +494,46 @@ namespace paris_voice
                     for (const auto& user : lobby->session->dyn.users) if (user.registered) ++registered;
                 console::info("[paris-voice] native session registered_players=%u\n", registered);
             }
+            if (native_trace)
+            {
+                // Same selected session and local-user lookup used by retail send.
+                auto* session = utils::hook::invoke<game::SessionData*>(0x140D32740);
+                const int controller = utils::hook::invoke<int>(0x140347690, 0);
+                const int local_slot = session ? utils::hook::invoke<int>(0x140D32920, controller, session) : -1;
+                unsigned registered{}, voice_registered{};
+                if (session) for (const auto& user : session->dyn.users)
+                { registered += user.registered; voice_registered += user.voiceRegistered; }
+                console::info("[paris-voice-native] mode=%d capture=%llu encoded=%llu batch=%llu send_attempts=%llu send_ok=%llu received=%llu decoded=%llu queued_bytes=%llu session=%d local_slot=%d registered=%u voice_registered=%u legacy_queue=%d\n",
+                    game::Com_GameMode_GetActiveGameMode(), stats.capture_blocks.load(), native_encoded.load(),
+                    native_batches.load(), native_packets.load(), native_send_ok.load(), native_received.load(),
+                    stats.decoded.load(), stats.queued_bytes.load(), session != nullptr, local_slot,
+                    registered, voice_registered, *reinterpret_cast<const int*>(0x142255DF8));
+            }
+        }
+        void native_probe()
+        {
+            if (!native_trace || game::environment::is_dedi() || !utils::flags::has_flag("paris-voice-audio-lab")) return;
+            game::netadr_s host{};
+            if (!client_connection(host) || host.ip[0] != 127 || !audio_initialized())
+            { console::warn("[paris-voice-native] Probe refused: active loopback and native audio initialization required.\n"); return; }
+            const int samples = utils::hook::invoke<int>(0x140B79440);
+            if (samples <= 0 || samples > 4096) return;
+            auto* ptt = *reinterpret_cast<game::dvar_t**>(0x1421EF7A0);
+            if (!ptt || !enabled()) return;
+            const bool saved_ptt = ptt->current.enabled;
+            // Explicit post-device witness. No microphone recording and no
+            // transport override. This is never evidence of human speech.
+            std::vector<short> pcm(samples, 10000);
+            struct capture_buffer { short* pcm; int bytes, samples, sample_bytes; int reserved[3]; int consumed; };
+            ptt->current.enabled = false;
+            for (int i = 0; i < 20; ++i)
+            {
+                capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
+                capture_voice(&block);
+            }
+            ptt->current.enabled = saved_ptt;
+            console::info("[paris-voice-native] Explicit synthetic post-device probe complete; PTT restored.\n");
+            status();
         }
     }
     class component final : public component_interface
@@ -455,25 +541,40 @@ namespace paris_voice
     public:
         void post_unpack() override
         {
+            native_trace = utils::flags::has_flag("paris-voice-native-trace");
+            if (native_trace && (!utils::flags::has_flag("paris-isolated-lab") ||
+                !utils::flags::has_flag("paris-voice-audio-lab") || !trace_signatures_match()))
+            {
+                console::error("[paris-voice-native] Trace refused: isolated audio profile/signatures required.\n");
+                return;
+            }
             scheduler::once([] { game::Dvar_RegisterBool("paris_voice_available", true, 0, "Voice transport installed; matching clients required"); }, scheduler::main);
-            network::on(transport, receive);
+            if (!native_trace) network::on(transport, receive);
             command::add("paris_voice_status", status);
             command::add("paris_voice_selftest", codec_selftest);
             command::add("paris_voice_network_test", network_selftest);
             command::add("paris_voice_gate_selftest", gate_selftest);
+            command::add("paris_voice_native_probe", native_probe);
+            if (native_trace)
+            {
+                native_receive_hook.create(0x14037CFF0, native_receive);
+                native_send_hook.create(0x14037BFF0, native_send);
+                scheduler::loop(status, scheduler::main, 10s);
+            }
             if (utils::flags::has_flag("paris-voice-diagnostics")) scheduler::loop(status, scheduler::main, 10s);
-            if (game::environment::is_dedi()) scheduler::loop(server_tick, scheduler::server, 10ms);
+            if (game::environment::is_dedi()) { if (!native_trace) scheduler::loop(server_tick, scheduler::server, 10ms); }
             else
             {
                 // The lab uses the connect fixture without opening custom
                 // microphone/output sessions or emitting calibration tones.
-                if (!utils::flags::has_flag("paris-isolated-lab"))
+                if (!utils::flags::has_flag("paris-isolated-lab") || utils::flags::has_flag("paris-voice-audio-lab"))
                 {
                     queue_voice_hook.create(0x14037D960, queue_voice);
                     decode_voice_hook.create(0x140B79310, decode_voice);
                     enqueue_voice_hook.create(0x140B79B60, enqueue_voice);
                     capture_voice_hook.create(0x140B79D30, capture_voice);
-                    scheduler::loop(client_tick, scheduler::main, 10ms);
+                    if (native_trace) native_batch_hook.create(0x14037D5C0, native_batch);
+                    else scheduler::loop(client_tick, scheduler::main, 10ms);
                 }
                 if (utils::flags::has_flag("paris-voice-selftest")) scheduler::once(codec_selftest, scheduler::main, 20s);
                 if (utils::flags::has_flag("paris-voice-local-test"))
@@ -501,7 +602,8 @@ namespace paris_voice
                     scheduler::once([] { game::Com_Quit_f(); }, scheduler::main, 300s);
                 }
             }
-            console::info("[paris-voice] Native Zombies relay v1 installed; every participant needs this client build.\n");
+            if (native_trace) console::info("[paris-voice-native] Forwarding trace installed; original capture/session/transport/playback retained.\n");
+            else console::info("[paris-voice] Native Zombies relay v1 installed; every participant needs this client build.\n");
         }
     };
 }
