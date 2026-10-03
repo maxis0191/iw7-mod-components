@@ -11,6 +11,7 @@
 #include <utils/cryptography.hpp>
 #include <utils/flags.hpp>
 #include <cmath>
+#include <charconv>
 #include "paris_voice_protocol.hpp"
 
 namespace paris_voice
@@ -519,12 +520,44 @@ namespace paris_voice
                     static_cast<double>(*reinterpret_cast<const float*>(0x1477A027C)));
             }
         }
+        void registration_witness(game::SessionData* session, int controller, int local_slot,
+            const game::netadr_s& host)
+        {
+            // A causal loopback experiment only, never a production roster source.
+            // UI member metadata lacks the authentication/lifecycle contract that
+            // a shipping voice feature requires. Preserve the original route.
+            if (!utils::flags::has_flag("paris-voice-registration-witness") || !session ||
+                !session->dyn.sessionHandle || local_slot < 0 || local_slot >= static_cast<int>(wire::slots)) return;
+            unsigned attempted{}, added{};
+            for (unsigned slot = 0; slot < wire::slots; ++slot)
+            {
+                if (static_cast<int>(slot) == local_slot || !party::g_clientMemberInfoValid[slot]) continue;
+                const auto& value = party::g_clientMemberInfo[slot].xuid;
+                std::uint64_t identity{};
+                if (value.empty() || value.size() > 16) continue;
+                const auto parsed = std::from_chars(value.data(), value.data() + value.size(), identity, 16);
+                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || !identity ||
+                    game::Session_FindRegisteredUser(session, identity) != UINT64_MAX) continue;
+                // The stock fallback sends through the connected server. This
+                // witness supplies no direct remote endpoint or platform address.
+                std::array<char, 128> platform_address{};
+                ++attempted;
+                game::Session_RegisterRemotePlayer(controller, session, identity, false,
+                    static_cast<int>(slot), 1, platform_address.data(), &host);
+                added += session->dyn.users[slot].registered && session->dyn.users[slot].voiceRegistered;
+            }
+            console::info("[paris-voice-native] Registration witness attempted=%u added=%u; loopback experiment, not production authentication.\n", attempted, added);
+        }
         void native_probe()
         {
             if (!native_trace || game::environment::is_dedi() || !native_audio_test()) return;
             game::netadr_s host{};
             if (!client_connection(host) || host.ip[0] != 127 || !audio_initialized())
             { console::warn("[paris-voice-native] Probe refused: active loopback and native audio initialization required.\n"); return; }
+            auto* session = utils::hook::invoke<game::SessionData*>(0x140D32740);
+            const int controller = utils::hook::invoke<int>(0x140347690, 0);
+            const int local_slot = session ? utils::hook::invoke<int>(0x140D32920, controller, session) : -1;
+            registration_witness(session, controller, local_slot, host);
             const int samples = utils::hook::invoke<int>(0x140B79440);
             if (samples <= 0 || samples > 4096) return;
             auto* ptt = *reinterpret_cast<game::dvar_t**>(0x1421EF7A0);
