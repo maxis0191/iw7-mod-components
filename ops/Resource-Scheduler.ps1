@@ -34,7 +34,13 @@ try {
         $budget=Test-IW7ResourceBudget $snapshot 0 0
         $cpu=Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'"
         $disk=Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk -Filter "Name='_Total'"
-        $processes=@(Get-IW7ResourceProcesses | Where-Object { $_.Heavy -or $_.Name -match '^(?:codex|ChatGPT).*\.exe$' } |
+        $allProcesses=@(Get-IW7ResourceProcesses)
+        $auxiliaries=@($allProcesses | Where-Object { $_.Name -in @('node.exe','node_repl.exe') } | Group-Object Name | ForEach-Object {
+            [pscustomobject]@{Name=$_.Name;Count=$_.Count;
+                WorkingSet=($_.Group | Measure-Object WorkingSet -Sum).Sum;
+                PrivateBytes=($_.Group | Measure-Object PrivateBytes -Sum).Sum}
+        })
+        $processes=@($allProcesses | Where-Object { $_.Heavy -or $_.Name -match '^(?:codex|ChatGPT).*\.exe$' } |
             Select-Object PID,CreatedUtc,Name,Lab,WorkingSet,PrivateBytes)
         $gpu=$null
         $smi=Get-Command nvidia-smi -ErrorAction SilentlyContinue
@@ -44,7 +50,8 @@ try {
         }
         $row=[pscustomobject]@{Type='sample';Snapshot=$snapshot;Budget=$budget;
             CpuPercent=$cpu.PercentProcessorTime;DiskQueue=$disk.CurrentDiskQueueLength;
-            GPU=$gpu;GpuUnits='MiB, MiB, percent, Celsius, watts';Processes=$processes}
+            GPU=$gpu;GpuUnits='MiB, MiB, percent, Celsius, watts';Processes=$processes;
+            AuxiliaryProcesses=$auxiliaries;AuxiliaryScope='All user projects; working sets can include shared pages. Not a reclaimable-memory estimate.'}
         $writer.WriteLine(($row | ConvertTo-Json -Depth 7 -Compress)); $writer.Flush()
         $maxPhysical=[math]::Max($maxPhysical,$budget.PhysicalUsedPercent)
         $maxCommit=[math]::Max($maxCommit,$budget.CommitUsedPercent)

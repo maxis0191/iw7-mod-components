@@ -78,6 +78,21 @@ capture and identity-checked orderly stop. Admission cannot prevent a user from
 launching another unrelated application afterwards. The pressure thresholds are
 80% physical/85% commit; tests that exceed them are not valid performance runs.
 
+Use `ops/Isolated-Lab.ps1` for new agent game sessions. Historical base-instance
+entry points now refuse new launches before reading machine settings or changing
+files: Voice-BaseTest Prepare/StartServer/StartClient/TrimMemory,
+Module-ClientProbe Start, Rhino-ClientProbe agent Start/Spawn and every
+Rhino-Rounds Deploy action. Their diagnostic/owned Stop/Restore paths remain;
+Rhino-Test Deploy was already parked. The explicit stock OwnerPreview and normal
+Server.ps1 operations retain their existing owner/session guards. Neither is an
+agent shortcut around resource admission. No existing process is stopped by this
+retirement. Eleven real command-entry refusal cases run in CI.
+
+The old Voice-BaseTest GenericRelay switch is historical v2 evidence, not a current
+launch recipe. Port that explicit relay selection into the isolated VoiceNative
+profile before its next v2 runtime regression. Native tracing alone does not prove
+the generic relay; offline protocol tests remain useful meanwhile.
+
 ## Build, extraction and analysis
 
 Build-Voice and Build-RhinoZoneTool acquire a heavy-job lease around compilation,
@@ -85,6 +100,9 @@ default to one MSBuild node, disable compiler multiprocess expansion, disable
 node reuse and run at BelowNormal priority. The caller's priority is restored in
 `finally`. `TestsOnly` remains lightweight and does not reserve a whole game slot.
 Do not nest a lease wrapper around an already guarded builder.
+Build-RhinoAutoDownload now also reserves its synchronous ZoneTool invocation,
+with the same 6 GiB physical/8 GiB commit estimates as the other Rhino pack builder.
+This keeps offline historical pack work possible without reopening parked gameplay.
 
 For an unintegrated asset/decompiler tool, run its entire synchronous invocation
 under the common wrapper, with measured or conservative estimates:
@@ -197,6 +215,10 @@ Standby pages are reusable; purging them is not a demonstrated throughput gain.
 
 This bounded observer writes ignored JSONL with RAM/commit, paging, CPU, disk
 queue, selected process footprints and optional NVIDIA VRAM/utilization readings.
+It also records aggregate Node and legacy REPL process counts, working sets and
+private bytes so a later normal session can measure the MCP change. Those totals
+include other projects and shared resident pages; they are not immediately
+reclaimable-memory estimates. No auxiliary process is terminated by the observer.
 No passwords/command lines are recorded. Windows CIM and installed `nvidia-smi`
 are sufficient; no new driver or resident optimizer is needed. `wpr.exe` is
 available if a reproducible residual stall needs ETW analysis. Missing optional
@@ -222,20 +244,29 @@ validation. Follow GIT-WORKFLOW.md: coherent commits, private PR, final diff rev
 successful CI for the exact head, merge commit and clean synchronized main in its
 existing checkout. Do not reset the dirty original checkout owned by another chat.
 
-The historical primary checkout received only an additive AGENTS routing notice
+The historical primary checkout received an additive AGENTS routing notice
 to fetch/read the current main workflow and use its isolated worktree's reviewed
 helpers. Its complete previous instruction text was backed up under ignored
 runtime and verified as the unchanged suffix. Its pre-existing source changes
 remain uncommitted there; they were not staged into this resource PR or reset.
+The exact merged project `.codex/config.toml` was also copied into its previously
+absent project-config path (SHA-256
+`71B7DD7730EA72194FBB20D7EA92B93B6F2362AE8AD630186F4FE98396E8C216`).
+The installed CLI from that primary directory reports both legacy MCP IDs disabled.
+The global user configuration and existing chats were not restarted or edited.
 This prevents new chats opening the old directory from treating stale launchers
 as the current admission policy while preserving unrelated work.
 
 The active enemy, voice and public-profile chats were contacted under the owner's
 explicit coordination instruction. Update existing worktrees to the merged helper
 before launching again; older launchers can bypass any cooperative policy.
-Runtime launcher integration is coordinated with the enemy-lab lifecycle fix;
-track its actual merged state in STATE rather than claiming rollout from an API
-alone. Keep capacity/quality/long soak acceptance separate from scheduler tests.
+Runtime launcher integration merged in [PR #53](https://github.com/bigmangeekf/iw7-paris-server/pull/53)
+as `395f22b`, after both CI jobs passed on exact head `c73e11f` (run 37215619910).
+The review reproduced a repeated-state-write failure caused by PowerShell binding
+the File.Replace backup argument to an empty path. The merged correction uses a
+real temporary backup; repeated state/heartbeat writes and locked-file preservation
+pass. Retained child handles and injected failure cleanup also pass without games.
+Keep capacity/quality/long soak acceptance separate from these source/lifecycle tests.
 
 The first implementation merged in [PR #50](https://github.com/bigmangeekf/iw7-paris-server/pull/50)
 after both CI jobs passed for its exact head. A real second build request was
