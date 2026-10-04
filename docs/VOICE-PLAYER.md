@@ -14,8 +14,8 @@ must use this same protocol-2 package. Second-PC compatibility is still being te
 
    Replace the path with your game folder containing `iw7_ship.exe`.
 3. In that game folder, run **Start-IW7-Zombies-Voice.bat**.
-4. Join **Private Testing Server** using the server address/password supplied by
-   the owner. Enable voice and check your microphone and voice-key binding.
+4. Join the compatible server agreed with the other player. Enable voice and
+   check your microphone and voice-key binding.
    Use headphones; allow the game through Windows Firewall if prompted.
 
 The installer preserves the official launcher, profiles and game data.

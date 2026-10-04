@@ -33,8 +33,16 @@ namespace voice::transport
             if (started_ && time < last_)
                 return false;
             if (started_)
-                available_ = std::min(
-                    capacity_, available_ + std::min<std::uint64_t>(time - last_, 1000) * refill_);
+            {
+                const auto elapsed = time - last_;
+                const auto missing = capacity_ - available_;
+                // Saturate before multiplying: long silence must refill the
+                // whole bucket without overflowing the monotonic time product.
+                if (refill_ && elapsed >= (missing + refill_ - 1) / refill_)
+                    available_ = capacity_;
+                else
+                    available_ += elapsed * refill_;
+            }
             started_ = true;
             last_ = time;
             if (cost * 1000ull > available_)

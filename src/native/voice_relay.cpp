@@ -13,6 +13,7 @@
 #include <charconv>
 #include "voice_relay.hpp"
 #include "voice_transport.hpp"
+#include "voice_inbox.hpp"
 
 namespace voice_relay
 {
@@ -21,8 +22,6 @@ namespace voice_relay
         namespace wire = voice::wire;
         namespace transport = voice::transport;
         constexpr const char* command_name = "iw7voice";
-        constexpr unsigned inbox_capacity = 128;
-        constexpr std::uint64_t max_queued_ms = 500;
         // Supported retail binary; keep ABI/layout checks alongside the calls.
         namespace engine
         {
@@ -119,16 +118,8 @@ namespace voice_relay
         }
         std::atomic<bool> installed{};
         utils::hook::detour queue_hook;
-        std::mutex inbox_mutex;
         std::recursive_mutex state_mutex;
-        struct received_packet
-        {
-            game::netadr_s source;
-            wire::message data;
-            unsigned bytes;
-            std::uint64_t time;
-        };
-        std::vector<received_packet> inbox;
+        voice::inbox incoming;
         std::unique_ptr<transport::server> server;
         bool server_running{};
         std::unique_ptr<transport::client> client;
@@ -162,28 +153,23 @@ namespace voice_relay
                     relayed += item.data.frames.size();
             }
         }
-        std::vector<received_packet> drain()
+        voice::inbox::endpoint endpoint(const game::netadr_s& address)
         {
-            std::lock_guard lock(inbox_mutex);
-            std::vector<received_packet> result;
-            result.swap(inbox);
+            if (address.type != game::NA_IP)
+                return 0;
+            return (static_cast<std::uint64_t>(address.addr) << 16) | address.port;
+        }
+        std::vector<voice::inbox::packet> drain()
+        {
+            unsigned expired{};
+            auto result = incoming.drain(now, expired);
+            rejected += expired;
             return result;
         }
         void receive(const game::netadr_s& source, const std::string_view& bytes)
         {
-            wire::message data;
-            if (!installed || source.type != game::NA_IP || !wire::decode(bytes, data))
-            {
+            if (!installed || !incoming.push(endpoint(source), bytes, now()))
                 ++rejected;
-                return;
-            }
-            std::lock_guard lock(inbox_mutex);
-            if (inbox.size() >= inbox_capacity)
-            {
-                ++rejected;
-                return;
-            }
-            inbox.push_back({source, std::move(data), static_cast<unsigned>(bytes.size()), now()});
         }
         int client_index(const game::client_t* value)
         {
@@ -208,7 +194,6 @@ namespace voice_relay
         }
         void server_tick()
         {
-            auto packets = drain();
             std::lock_guard lock(state_mutex);
             if (!installed || !server)
                 return;
@@ -218,6 +203,7 @@ namespace voice_relay
                     server->reset();
                 server_running = false;
                 addresses = {};
+                incoming.admit({}, voice::inbox::server_capacity);
                 if (!zombies())
                     incarnations = {};
                 return;
@@ -225,6 +211,7 @@ namespace voice_relay
             server_running = true;
             const auto time = now();
             transport::connections current{};
+            voice::inbox::sources admitted{};
             const auto* players = *game::svs_clients;
             const auto count = std::min(*game::svs_numclients, voice::state::max_speakers);
             const auto* lobby = game::SV_MainMP_GetServerLobby();
@@ -253,21 +240,25 @@ namespace voice_relay
                     continue;
                 current[slot] = {user, incarnations[slot], true};
                 addresses[slot] = players[slot].remoteAddress;
+                admitted[slot] = endpoint(addresses[slot]);
             }
+            incoming.admit(admitted, voice::inbox::server_capacity);
             send(server->synchronize(current, time));
-            for (const auto& packet : packets)
+            for (const auto& packet : drain())
             {
                 unsigned source = static_cast<unsigned>(current.size());
                 for (unsigned slot = 0; slot < current.size(); ++slot)
                     if (current[slot].active &&
-                        network::are_addresses_equal(addresses[slot], packet.source))
+                        endpoint(addresses[slot]) == packet.source)
                     {
                         source = slot;
                         break;
                     }
                 std::vector<transport::delivery> output;
-                if (time < packet.time || time - packet.time > max_queued_ms ||
-                    !server->receive(source, packet.data, packet.bytes, time, output))
+                wire::message data;
+                if (!wire::decode(packet.bytes, data) ||
+                    !server->receive(source, data, static_cast<unsigned>(packet.bytes.size()),
+                                     time, output))
                 {
                     ++rejected;
                     continue;
@@ -296,6 +287,7 @@ namespace voice_relay
             game_challenge.clear();
             host = {};
             last_registration_check = 0;
+            incoming.admit({}, voice::inbox::client_capacity);
         }
         void mirror_roster(std::uint32_t changed)
         {
@@ -357,7 +349,6 @@ namespace voice_relay
         }
         void client_tick()
         {
-            auto packets = drain();
             std::lock_guard lock(state_mutex);
             game::netadr_s target{};
             if (!installed || !current_connection(target))
@@ -391,21 +382,25 @@ namespace voice_relay
                 game_challenge = connection->challenge;
                 client = std::make_unique<transport::client>(user, random_id);
             }
+            voice::inbox::sources admitted{};
+            admitted[0] = endpoint(host);
+            incoming.admit(admitted, voice::inbox::client_capacity);
             const auto time = now();
             const bool was_ready = client->ready();
             for (const auto& message : client->tick(time))
                 send(host, message);
             if (was_ready && !client->ready())
                 release_users();
-            for (const auto& packet : packets)
+            for (const auto& packet : drain())
             {
-                if (time < packet.time || time - packet.time > max_queued_ms ||
-                    !network::are_addresses_equal(host, packet.source))
+                wire::message data;
+                if (endpoint(host) != packet.source || !wire::decode(packet.bytes, data))
                 {
                     ++rejected;
                     continue;
                 }
-                const auto result = client->receive(packet.data, packet.bytes, time);
+                const auto result =
+                    client->receive(data, static_cast<unsigned>(packet.bytes.size()), time);
                 if (!result.accepted)
                 {
                     ++rejected;
@@ -421,21 +416,21 @@ namespace voice_relay
                     mirror_roster(result.changed_slots);
                 if (!result.audio)
                     continue;
-                const auto& member = client->roster().speakers[packet.data.slot];
-                const auto& native = session->dyn.users[packet.data.slot];
+                const auto& member = client->roster().speakers[data.slot];
+                const auto& native = session->dyn.users[data.slot];
                 if (!native.registered || !native.voiceRegistered || native.xuid != member.user)
                 {
                     ++rejected;
                     continue;
                 }
-                if (!voice_enabled() || engine::muted(session, packet.data.slot))
+                if (!voice_enabled() || engine::muted(session, data.slot))
                 {
-                    muted += packet.data.frames.size();
+                    muted += data.frames.size();
                     continue;
                 }
-                for (const auto& frame : packet.data.frames)
+                for (const auto& frame : data.frames)
                 {
-                    engine::playback(session, packet.data.slot, frame);
+                    engine::playback(session, data.slot, frame);
                     ++played;
                 }
             }
@@ -544,8 +539,6 @@ namespace voice_relay
                 // native disconnect or the next accepted join replaces it.
                 if (server)
                     server->reset();
-                std::lock_guard incoming_lock(inbox_mutex);
-                inbox.clear();
             });
             scheduler::once(
                 [] {

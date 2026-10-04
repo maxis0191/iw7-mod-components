@@ -1,5 +1,17 @@
 # Native voice investigation
 
+## Current launch boundary - 2026-10-04
+
+The base-instance procedures below preserve historical evidence. Their new
+Prepare/Start actions are retired by the shared resource workflow; existing
+Status/Capture/Stop/Restore remain available for owned diagnostics and cleanup.
+Before another protocol-2 voice regression, port the explicit GenericRelay
+two-client profile into the coordinated [isolated lab](ISOLATED-LAB.md), retaining
+fresh godmode, inactivity=0, cheats=0 and zero alive/pending/reserved enemies.
+The existing VoiceNative trace profile alone does not prove v2. The present pair
+budget is refused. Do not bypass admission or reactivate the historical launcher.
+See [resource policy](RESOURCE-WORKFLOW.md) and [current audit](deployments/2026-10-04-voice-production-audit.json).
+
 ## Latest bounded native correction - 2026-10-04
 
 Executable `7E8BA830AC279EEF80DEDF35D786A458D99C9AAB30F230350823DF0AECF07834`

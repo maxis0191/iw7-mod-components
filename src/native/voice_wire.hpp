@@ -10,6 +10,9 @@ namespace voice::wire
     constexpr unsigned max_frames = 10;
     constexpr unsigned max_frame_bytes = 254;
     constexpr unsigned max_packet_bytes = 1200;
+    // A relayed frame adds the speaker slot and 128-bit speaker generation.
+    // Reserve those bytes in uplinks so every accepted batch can be relayed.
+    constexpr unsigned relay_header_bytes = 1 + 16;
     enum class kind : unsigned char
     {
         hello = 1,
@@ -153,7 +156,10 @@ namespace voice::wire
             put(out, frame.size(), 1);
             out += frame;
         }
-        return out.size() <= max_packet_bytes ? out : std::string{};
+        const auto limit = value.type == kind::audio_up
+                               ? max_packet_bytes - relay_header_bytes
+                               : max_packet_bytes;
+        return out.size() <= limit ? out : std::string{};
     }
 
     inline bool decode(std::string_view data, message& output)
