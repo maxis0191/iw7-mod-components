@@ -15,6 +15,24 @@ The helper requires a fresh completion marker and verified codec restoration;
 the mailbox acknowledgement alone is insufficient. Native simultaneous-speaker
 and map results are pending for this candidate.
 
+The first nonblocking pair (ee936ec) failed calibration: hardware capture remained
+active alongside injection, yielding 120 encoded frames instead of 60, and the
+configured-mode preservation check failed. Output presence does not validate that
+run. The correction replaces hardware blocks only while the private post-device
+stimulus is active, consumes their input without queuing a microphone backlog, and
+restores the saved configured mode along with the exact VAD/DTX values. Ordinary
+capture remains forwarded unchanged outside that explicit synthetic interval.
+
+`VoiceConcurrentProbe` emits 500 paced fixed-mode frames (ten seconds) and
+`VoiceSoakProbe` emits 15000 (five minutes), both through native capture/codec and
+the normal generic relay. `-DispatchOnly` explicitly acknowledges scheduling so
+the other owned clients can start concurrently. It does not assert completion:
+the driver must verify all clients throughout, require fresh non-aborted finish
+and codec-restore markers, and correlate each sender/receiver counter delta.
+Verify requires complete current admission/native roster masks for every owned
+generic client. Extended stimuli are private loopback fixtures, never production
+device or human-speech acceptance.
+
 ## Dvar metadata cache audit - 2026-10-04
 
 The older reconnect dump was audited against its exact executable

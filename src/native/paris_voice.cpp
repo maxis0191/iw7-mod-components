@@ -199,9 +199,31 @@ namespace paris_voice
             else if (result < 0) ++stats.queue_errors;
             return result;
         }
+        std::atomic<bool> probe_running{};
+        std::atomic<std::uint64_t> probe_device_blocks{};
+        struct capture_buffer
+        {
+            short* pcm;
+            int bytes, samples, sample_bytes;
+            int reserved[3];
+            int consumed;
+        };
+        static_assert(sizeof(capture_buffer) == 40 && offsetof(capture_buffer, consumed) == 32);
         int capture_voice(void* buffer)
         {
             ++stats.capture_blocks;
+            if (probe_running)
+            {
+                // The opt-in post-device stimulus replaces hardware input only
+                // while active. Mark its samples consumed rather than retaining
+                // microphone backlog or doubling the native 50-Hz frame stream.
+                auto* input = static_cast<capture_buffer*>(buffer);
+                if (input && input->samples >= 0 && input->samples <= 65536 &&
+                    input->sample_bytes == 2 && input->bytes == input->samples * 2)
+                    input->consumed = input->samples;
+                ++probe_device_blocks;
+                return 0;
+            }
             return capture_voice_hook.invoke<int>(buffer);
         }
         int encode_voice(const short* pcm, char* data, int capacity)
@@ -664,9 +686,8 @@ namespace paris_voice
                     *reinterpret_cast<const int*>(local_info + 12));
             }
         }
-        bool probe_running{}; // Private probe and its callbacks run on scheduler::main.
         std::function<void()> cancel_native_probe;
-        void run_native_probe(bool hold_talk, bool codec_control = false)
+        void run_native_probe(bool hold_talk, bool codec_control = false, int frame_count = 0)
         {
             if (!native_trace || game::environment::is_dedi() || !native_audio_test()) return;
             if (probe_running)
@@ -715,7 +736,6 @@ namespace paris_voice
             // Explicit post-device witness. No microphone recording and no
             // transport override. This is never evidence of human speech.
             std::vector<short> pcm(samples, 10000);
-            struct capture_buffer { short* pcm; int bytes, samples, sample_bytes; int reserved[3]; int consumed; };
             // A synthetic block does not update the hardware mic-activity meter.
             // Use a paired retail PTT binding for this post-device witness; the
             // earlier activity-mode attempt encoded zero and is inconclusive.
@@ -728,7 +748,8 @@ namespace paris_voice
             console::info("[paris-voice-native] Synthetic witness begins: hold_talk=%d tick_ms=%llu.\n", hold_talk, probe_begin);
             const auto encoded_before = generic_relay ? voice_relay::encoded_frames() : native_encoded.load();
             const auto bytes_before = stats.encoded_bytes.load(), tiny_before = stats.tiny_encoded_frames.load();
-            const int frames = (relay_witness || generic_relay) ? 60 : 20;
+            const auto device_before = probe_device_blocks.load();
+            const int frames = frame_count ? frame_count : ((relay_witness || generic_relay) ? 60 : 20);
             auto active = std::make_shared<bool>(true);
             auto finish = [=](bool aborted) mutable
             {
@@ -739,6 +760,7 @@ namespace paris_voice
                 if (ptt == *reinterpret_cast<game::dvar_t**>(0x1421EF7A0)) ptt->current.enabled = saved_ptt;
                 if (codec_control && encoder == *reinterpret_cast<void**>(0x145D5C6E8))
                 {
+                    encoder_ctl(encoder, 6, &configured_mode);
                     encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx);
                     int after_vad{}, after_dtx{};
                     const bool restored = !encoder_ctl(encoder, 31, &after_vad) && !encoder_ctl(encoder, 35, &after_dtx) && after_vad == vad && after_dtx == dtx;
@@ -750,8 +772,9 @@ namespace paris_voice
                     pressed, !utils::hook::invoke<bool>(0x14036FE40, 0),
                     (generic_relay ? voice_relay::encoded_frames() : native_encoded.load()) - encoded_before);
                 console::info("[paris-voice-native] Synthetic witness returned: duration_ms=%llu tick_ms=%llu aborted=%d.\n", GetTickCount64() - probe_begin, GetTickCount64(), aborted);
-                console::info("[paris-voice-native] Codec control=%d encoded_bytes_delta=%llu tiny_frames_delta=%llu.\n", codec_control,
-                    stats.encoded_bytes.load() - bytes_before, stats.tiny_encoded_frames.load() - tiny_before);
+                console::info("[paris-voice-native] Codec control=%d encoded_bytes_delta=%llu tiny_frames_delta=%llu device_blocks_replaced=%llu.\n", codec_control,
+                    stats.encoded_bytes.load() - bytes_before, stats.tiny_encoded_frames.load() - tiny_before,
+                    probe_device_blocks.load() - device_before);
                 status();
             };
             probe_running = true;
@@ -775,7 +798,8 @@ namespace paris_voice
                         pcm[sample] = static_cast<short>(10000 * std::sin(6.283185307179586 *
                             (index < 20 ? 440 : 997) * (index * samples + sample) / 8000.0));
                     capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
-                    capture_voice(&block);
+                    ++stats.capture_blocks;
+                    capture_voice_hook.invoke<int>(&block);
                 }
                 if (index < frames) return scheduler::cond_continue;
                 finish(false);
@@ -785,6 +809,8 @@ namespace paris_voice
         void native_probe() { run_native_probe(true); }
         void native_released_probe() { run_native_probe(false); }
         void native_codec_probe() { run_native_probe(true, true); }
+        void native_concurrent_probe() { run_native_probe(true, true, 500); }
+        void native_soak_probe() { run_native_probe(true, true, 15000); }
 
         struct control_baseline
         {
@@ -880,6 +906,8 @@ namespace paris_voice
             command::add("paris_voice_native_probe", native_probe);
             command::add("paris_voice_native_released_probe", native_released_probe);
             command::add("paris_voice_native_codec_probe", native_codec_probe);
+            command::add("paris_voice_native_concurrent_probe", native_concurrent_probe);
+            command::add("paris_voice_native_soak_probe", native_soak_probe);
             command::add("paris_voice_test_mute", [] { test_control("mute"); });
             command::add("paris_voice_test_unmute", [] { test_control("unmute"); });
             command::add("paris_voice_test_disable", [] { test_control("disable"); });
