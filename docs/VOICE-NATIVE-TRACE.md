@@ -8,12 +8,18 @@ pressure. A one-time owned working-set trim reduced use from 63.5% to 55.2% with
 one remaining client, but was insufficient to budget another full-quality load.
 This OS paging hint does not free allocations or reduce committed memory.
 
-The harness now estimates at least 12 GiB per new full client and defaults voice
+The harness now estimates at least 12 GiB per new full-quality client and defaults voice
 tests to reduced texture resolution (`r_picmip`, bump and spec = 2). Preparation
 backs up `iw7-mod/players2/config_mp.cfg`; final restoration returns its exact
 bytes, alongside the existing fixture files. `-FullQualityGraphics` selects the
 original quality when the resource budget permits it. The low-memory profile is
 not visual-quality acceptance and must be measured before resuming paired work.
+
+The first reduced-texture client settles near 4.8 GiB working set and 42.6%
+physical system use. Its launch estimate uses an 8-GiB floor plus the maximum
+observed owned peak, retaining 25% projected headroom. Full quality retains the
+12-GiB floor. The initial conservative 12-GiB low-profile estimate correctly
+refused a second client; the measured profile now has a separate bounded budget.
 
 `TrimMemory` is optional, restricted to verified protected owned processes. Its
 opened handles must match executable and creation time. Rewarm and reverify before
