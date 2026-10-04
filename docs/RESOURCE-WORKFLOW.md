@@ -159,6 +159,15 @@ priority and bounded compiler concurrency address known avoidable interference.
 GPU use is monitored, not reserved by a validated VRAM allocator; one scenario
 and capped functional rendering limit contention without proving frametime safety.
 
+The pinned local IW7-Mod dedicated implementation already bypasses its render
+thread, DirectX/UI setup, texture imagefile loading and transient graphics loads.
+Adding a second unverified "headless" patch is not supported by this finding.
+The meaningful next reduction is avoiding unnecessary rendering clients and
+whole donor asset loads. A later read-only Windows sample found about 1.01 GiB
+nonpaged pool, 1.16 GiB paged pool, 10.43 GiB normal-priority standby cache and
+0.19 GiB modified pages. These single values do not diagnose a kernel leak.
+Standby pages are reusable; purging them is not a demonstrated throughput gain.
+
 ```powershell
 ./ops/Resource-Scheduler.ps1 -Action Measure -Seconds 30
 ```
@@ -196,3 +205,11 @@ before launching again; older launchers can bypass any cooperative policy.
 Runtime launcher integration is coordinated with the enemy-lab lifecycle fix;
 track its actual merged state in STATE rather than claiming rollout from an API
 alone. Keep capacity/quality/long soak acceptance separate from scheduler tests.
+
+The first implementation merged in [PR #50](https://github.com/bigmangeekf/iw7-paris-server/pull/50)
+after both CI jobs passed for its exact head. A real second build request was
+refused while the voice chat held its lease; a 30-second build observation peaked
+at 50.43% physical and 52.89% committed use. The registry was observed empty after
+the build released it. See the [sanitized measurements](deployments/2026-10-04-resource-admission.json)
+and retain [capacity issue #49](https://github.com/bigmangeekf/iw7-paris-server/issues/49)
+for the remaining runtime and sustained-load gates.
