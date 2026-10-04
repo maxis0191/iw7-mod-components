@@ -2,7 +2,7 @@
 #include <array>
 #include <cstdint>
 
-// Pure receive state for the future generic voice component. The adapter must
+// Pure receive state for the generic voice component. The adapter must
 // authorize a control snapshot against the current game connection before
 // passing it here. An audio packet can never create or change a speaker.
 namespace voice::state

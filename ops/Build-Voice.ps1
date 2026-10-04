@@ -40,6 +40,14 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_simulati
 if errorlevel 1 exit /b 1
 "$runtime\voice-simulation-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_inbox_test.cpp" /Fe:"$runtime\voice-inbox-test.exe" /Fo:"$runtime\voice-inbox-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-inbox-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_wan_test.cpp" /Fe:"$runtime\voice-wan-test.exe" /Fo:"$runtime\voice-wan-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-wan-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\dvar_metadata_test.cpp" /Fe:"$runtime\dvar-metadata-test.exe" /Fo:"$runtime\dvar-metadata-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\dvar-metadata-test.exe"
@@ -53,7 +61,7 @@ if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
 if ($Sanitizers) {
     $sanitizerCmd = Join-Path $runtime 'compile-voice-sanitizers.cmd'
     $lines = @('@echo off', "call `"$vcvars`" >nul", 'if errorlevel 1 exit /b 1')
-    foreach ($name in @('voice_protocol_test','voice_state_test','voice_transport_test','voice_simulation_test','dvar_metadata_test')) {
+    foreach ($name in @('voice_protocol_test','voice_state_test','voice_transport_test','voice_simulation_test','voice_inbox_test','voice_wan_test','dvar_metadata_test')) {
         $lines += "cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /Zi /fsanitize=address `"$repo\tests\native\$name.cpp`" /Fe:`"$runtime\$name-asan.exe`" /Fo:`"$runtime\$name-asan.obj`" /Fd:`"$runtime\$name-asan.pdb`" /link /INCREMENTAL:NO"
         $lines += 'if errorlevel 1 exit /b 1'
         $lines += "`"$runtime\$name-asan.exe`""
@@ -104,7 +112,7 @@ if (Test-Path -LiteralPath $labComponent) {
     Remove-Item -LiteralPath $labComponent
 }
 $nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp',
-    'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','dvar_metadata.hpp')
+    'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','voice_inbox.hpp','dvar_metadata.hpp')
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
 # Preserve the engine's metadata API while serializing its cache and keeping it
 # alive during CRT shutdown. Accept only the pinned file or this exact overlay.
@@ -277,7 +285,7 @@ Push-Location $root
 try {
     & ./tools/premake5.exe vs2022
     if ($LASTEXITCODE) { throw 'Premake failed.' }
-    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln /m:4 /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
+    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln /m:1 /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
     if ($LASTEXITCODE) { throw 'Voice build failed.' }
 } finally { Pop-Location }
 $output = Join-Path $runtime 'voice-package'
