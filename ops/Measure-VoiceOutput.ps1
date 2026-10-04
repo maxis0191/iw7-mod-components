@@ -13,12 +13,12 @@ function Snapshot {
     foreach($kind in @('Client','ClientB','ClientC','ClientD','Server')) {
         if (!$state.$kind) { continue }
         $text=Read-Shared $state.$kind.Stdout
-        $line=[regex]::Matches($text,'(?m)^\[voice-relay\].*version=2.*$') | Select-Object -Last 1
+        $line=[regex]::Matches($text,'(?m)^\[voice-relay\] version=2[^\r\n]*native_mask=\d+\r*\n') | Select-Object -Last 1
         $counts=[ordered]@{}
         if($line) { foreach($m in [regex]::Matches($line.Value,'(\w+)=(\d+)')) {$counts[$m.Groups[1].Value]=[long]$m.Groups[2].Value} }
-        $native=[regex]::Matches($text,'(?m)^\[paris-voice-native\] mode=.*$') | Select-Object -Last 1
+        $native=[regex]::Matches($text,'(?m)^\[paris-voice-native\] mode=[^\r\n]*\r*\n') | Select-Object -Last 1
         if($native) { foreach($m in [regex]::Matches($native.Value,'(decoded|queued_bytes|encoded)=(\d+)')) {$counts['native_'+$m.Groups[1].Value]=[long]$m.Groups[2].Value} }
-        $witness=[regex]::Matches($text,'(?m)^\[paris-voice-witness\].*$') | Select-Object -Last 1
+        $witness=[regex]::Matches($text,'(?m)^\[paris-voice-witness\][^\r\n]*\r*\n') | Select-Object -Last 1
         if($witness -and $witness.Value -match 'decoded_target_frames=(\d+)') {$counts['native_target_frames']=[long]$Matches[1]}
         $codec=[regex]::Matches($text,'(?m)^\[paris-voice-native\] Codec control=\d.*$') | Select-Object -Last 1
         if($codec) { foreach($m in [regex]::Matches($codec.Value,'(encoded_bytes_delta|tiny_frames_delta)=(\d+)')) {$counts[$m.Groups[1].Value]=[long]$m.Groups[2].Value} }
