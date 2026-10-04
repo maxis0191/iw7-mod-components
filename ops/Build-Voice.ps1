@@ -36,6 +36,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_transpor
 if errorlevel 1 exit /b 1
 "$runtime\voice-transport-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_simulation_test.cpp" /Fe:"$runtime\voice-simulation-test.exe" /Fo:"$runtime\voice-simulation-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-simulation-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib
 "@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
@@ -43,7 +47,7 @@ if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
 if ($Sanitizers) {
     $sanitizerCmd = Join-Path $runtime 'compile-voice-sanitizers.cmd'
     $lines = @('@echo off', "call `"$vcvars`" >nul", 'if errorlevel 1 exit /b 1')
-    foreach ($name in @('voice_protocol_test','voice_state_test','voice_transport_test')) {
+    foreach ($name in @('voice_protocol_test','voice_state_test','voice_transport_test','voice_simulation_test')) {
         $lines += "cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /Zi /fsanitize=address `"$repo\tests\native\$name.cpp`" /Fe:`"$runtime\$name-asan.exe`" /Fo:`"$runtime\$name-asan.obj`" /Fd:`"$runtime\$name-asan.pdb`" /link /INCREMENTAL:NO"
         $lines += 'if errorlevel 1 exit /b 1'
         $lines += "`"$runtime\$name-asan.exe`""

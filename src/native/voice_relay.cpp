@@ -33,6 +33,7 @@ namespace voice_relay
             constexpr std::uintptr_t incoming = 0x140D59620;
             constexpr std::uintptr_t is_muted = 0x14037BBA0;
             constexpr std::uintptr_t unregister = 0x140C73970;
+            constexpr std::uintptr_t register_voice = 0x140D59D10;
             constexpr std::uintptr_t mute = 0x140D59AC0;
             constexpr std::uintptr_t accepted_join_call = 0x140C4F87E;
             constexpr std::uintptr_t send_game_state = 0x140C6B8A0;
@@ -56,6 +57,7 @@ namespace voice_relay
                     {incoming, "\x40\x55\x57\x41\x54\x41\x56\x41\x57\xb8\x40\x20\x00\x00", 14},
                     {is_muted, "\x48\x89\x74\x24\x10\x57\x48\x83\xec\x20", 10},
                     {unregister, "\x48\x89\x5c\x24\x18\x55\x48\x83\xec\x20\x80\x79\x10\x00", 14},
+                    {register_voice, "\x48\x89\x6c\x24\x10\x48\x89\x74\x24\x18\x57\x48\x83\xec\x20", 15},
                     {mute, "\x48\x63\xc2\x48\x6b\xd0\x38\xc6\x84\x0a\x90\x00\x00\x00\x01\xc3", 16},
                     {accepted_join_call, "\xe8\x1d\xc0\x01\x00", 5},
                     {send_game_state, "\x48\x89\x5c\x24\x08\x48\x89\x6c\x24\x10", 10},
@@ -94,7 +96,9 @@ namespace voice_relay
         game::SessionData* session{};
         std::array<std::uint64_t, voice::state::max_speakers> owned_users{};
         int local_slot{-1};
+        std::uint64_t last_registration_check{};
         std::atomic<std::uint64_t> encoded{}, sent{}, relayed{}, played{}, rejected{}, muted{}, joins{}, registrations{};
+        std::atomic<std::uint64_t> registration_attempts{}, registration_failures{};
 
         void send(const game::netadr_s& target, const wire::message& data)
         {
@@ -181,7 +185,7 @@ namespace voice_relay
             owned_users = {};
         }
         void reset_client()
-        { release_users(); client.reset(); session = nullptr; local_slot = -1; game_challenge.clear(); host = {}; }
+        { release_users(); client.reset(); session = nullptr; local_slot = -1; game_challenge.clear(); host = {}; last_registration_check = 0; }
         void mirror_roster(std::uint32_t changed)
         {
             if (!session || !session->dyn.sessionHandle || !client || !client->ready()) return;
@@ -194,17 +198,24 @@ namespace voice_relay
                 if (owned_users[slot] && native.registered && native.xuid == owned_users[slot]) engine::unregister_user(session, slot);
                 owned_users[slot] = 0;
                 if (!member.present) continue;
-                if (native.registered && native.xuid == member.user && native.voiceRegistered) continue;
+                if (native.registered && native.xuid == member.user)
+                {
+                    if (!native.voiceRegistered)
+                        utils::hook::invoke<int>(engine::register_voice, controller, session, static_cast<int>(slot));
+                    continue;
+                }
                 // A foreign/local native user in this slot is not ours to replace.
                 if (native.registered) { ++rejected; continue; }
                 std::array<char, 128> platform_address{};
+                ++registration_attempts;
                 game::Session_RegisterRemotePlayer(controller, session, member.user, false,
                     static_cast<int>(slot), 1, platform_address.data(), &host);
-                if (native.registered && native.voiceRegistered && native.xuid == member.user)
+                if (native.registered && native.xuid == member.user)
                 {
                     owned_users[slot] = member.user; ++registrations;
                     if (preserve_mute) utils::hook::invoke<void>(engine::mute, session, static_cast<int>(slot));
                 }
+                else ++registration_failures;
             }
         }
         bool current_connection(game::netadr_s& target)
@@ -246,6 +257,20 @@ namespace voice_relay
                 if (!voice_enabled() || engine::muted(session, packet.data.slot)) { muted += packet.data.frames.size(); continue; }
                 for (const auto& frame : packet.data.frames) { engine::playback(session, packet.data.slot, frame); ++played; }
             }
+            // Engine initialization may not yet accept the first registration,
+            // or may clear it while applying game state. Reconcile only missing
+            // current users; a repeated control never resets a healthy stream.
+            if (client && client->ready() && time - last_registration_check >= 250)
+            {
+                last_registration_check = time; std::uint32_t missing{};
+                for (unsigned slot = 0; slot < owned_users.size(); ++slot)
+                {
+                    const auto& member = client->roster().speakers[slot]; const auto& native = session->dyn.users[slot];
+                    if (member.present && static_cast<int>(slot) != local_slot &&
+                        (!native.registered || native.xuid != member.user || !native.voiceRegistered)) missing |= 1u << slot;
+                }
+                if (missing) mirror_roster(missing);
+            }
         }
         int queue_encoded(int length, const char* bytes)
         {
@@ -268,9 +293,14 @@ namespace voice_relay
         void status()
         {
             std::lock_guard lock(state_mutex);
-            console::info("[voice-relay] version=2 installed=%d dedicated=%d ready=%d slot=%d encoded=%llu sent=%llu relayed=%llu playback_frames=%llu rejected=%llu muted=%llu accepted_joins=%llu registrations=%llu\n",
+            unsigned roster_mask{}, native_mask{};
+            if (client && session) for (unsigned slot = 0; slot < owned_users.size(); ++slot)
+            { if (client->roster().speakers[slot].present) roster_mask |= 1u << slot;
+              if (session->dyn.users[slot].registered && session->dyn.users[slot].voiceRegistered) native_mask |= 1u << slot; }
+            console::info("[voice-relay] version=2 installed=%d dedicated=%d ready=%d slot=%d encoded=%llu sent=%llu relayed=%llu playback_frames=%llu rejected=%llu muted=%llu accepted_joins=%llu registrations=%llu registration_attempts=%llu registration_failures=%llu roster_mask=%u native_mask=%u\n",
                 installed.load(), game::environment::is_dedi(), client && client->ready(), local_slot,
-                encoded.load(), sent.load(), relayed.load(), played.load(), rejected.load(), muted.load(), joins.load(), registrations.load());
+                encoded.load(), sent.load(), relayed.load(), played.load(), rejected.load(), muted.load(), joins.load(), registrations.load(),
+                registration_attempts.load(), registration_failures.load(), roster_mask, native_mask);
         }
     }
     std::uint64_t encoded_frames() { return encoded.load(); }

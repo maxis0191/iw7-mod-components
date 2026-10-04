@@ -38,6 +38,13 @@ native session and local native slot. Native admission/drop analysis output stay
 local; the drop entry in the reference is already detoured and is not a complete
 original-function decompilation.
 
+The first native pair fails on B despite both ready handshakes: the one-shot
+mirror leaves one native user and all sixty relayed frames are rejected before
+decode. The revised adapter reconciles missing current registrations every 250
+ms, preserving healthy users and native mute/privacy. Aggregate roster/native
+masks and attempt/failure counters make readiness distinguishable from playback
+eligibility. The exact initial native refusal/clearing point remains unproven.
+
 Network callbacks parse into an inbox bounded to 128 packets; engine work occurs
 on the server/main scheduler. Packets older than 500 ms are discarded. The client
 registers remote users from accepted server snapshots, preserves native mute and
@@ -110,6 +117,12 @@ listener during speaker reconnect, accepted-game incarnation changes, slot reuse
 server reset, stale roster rollback, duplicate confirm, retired hello/guessed
 confirm, handshake loss and expiry, lease expiry, wire bounds and 200000 seeded
 mutations. Failures are nonzero exits. Test users/IDs are synthetic constants.
+
+A separate deterministic simulation exercises five minutes of four simultaneous
+50-frame/s speakers with 10% datagram loss, 0-40-ms jitter, delayed duplicates,
+same-UID reconnect, different-UID slot reuse and server restart. Every direction
+sustains transport and all clients recover. Its counters are synthetic transport
+evidence; it is not native soak or real speech/latency acceptance.
 
 Current pure checks and Release engine build pass. Native lifecycle/registration, real microphones,
 four-player soak, mute/privacy/devices, map transitions, MP/SP compatibility and
