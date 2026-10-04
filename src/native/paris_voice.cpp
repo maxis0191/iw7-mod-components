@@ -710,15 +710,16 @@ namespace paris_voice
                 { talk_binding = i; break; }
             if (!talk_binding) return;
             auto* encoder = *reinterpret_cast<void**>(0x145D5C6E8);
-            int vad{}, dtx{}, configured_mode{};
+            int vad{}, dtx{}, vbr{}, abr{}, configured_mode{};
             const auto encoder_ctl = [](void* context, int request, int* value)
             { return utils::hook::invoke<int>(0x1405E9520, context, request, value); };
             if (codec_control)
             {
                 // Private synthetic-signal control only. Production preserves
-                // native VAD/DTX, which may intentionally suppress steady tones.
+                // native VAD/DTX/VBR, which may alter a steady test tone.
                 if (!utils::flags::has_flag("iw7-voice-relay") || host.ip[0] != 127 || host.ip[1] || host.ip[2] || host.ip[3] != 1 || !encoder ||
-                    encoder_ctl(encoder, 31, &vad) || encoder_ctl(encoder, 35, &dtx)) return;
+                    encoder_ctl(encoder, 31, &vad) || encoder_ctl(encoder, 35, &dtx) ||
+                    encoder_ctl(encoder, 13, &vbr) || encoder_ctl(encoder, 33, &abr)) return;
                 // Native VAD may leave the current submode at null (DTX).
                 // Disabling VAD alone retains that null mode. Reapply the saved
                 // configured narrowband submode, without resetting codec state.
@@ -727,9 +728,13 @@ namespace paris_voice
                 configured_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
                 if (configured_mode < 1 || configured_mode > 8) return;
                 int off{};
-                if (encoder_ctl(encoder, 30, &off) || encoder_ctl(encoder, 34, &off) || encoder_ctl(encoder, 6, &configured_mode))
+                console::info("[paris-voice-native] Codec baseline vad=%d dtx=%d vbr=%d abr=%d configured_mode=%d.\n", vad, dtx, vbr, abr, configured_mode);
+                if (encoder_ctl(encoder, 30, &off) || encoder_ctl(encoder, 34, &off) ||
+                    encoder_ctl(encoder, 12, &off) || encoder_ctl(encoder, 6, &configured_mode))
                 {
-                    encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx); return;
+                    encoder_ctl(encoder, 6, &configured_mode);
+                    encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx);
+                    encoder_ctl(encoder, 12, &vbr); return;
                 }
             }
             const bool saved_ptt = ptt->current.enabled;
@@ -750,11 +755,10 @@ namespace paris_voice
             const auto bytes_before = stats.encoded_bytes.load(), tiny_before = stats.tiny_encoded_frames.load();
             const auto device_before = probe_device_blocks.load();
             const int frames = frame_count ? frame_count : ((relay_witness || generic_relay) ? 60 : 20);
-            auto active = std::make_shared<bool>(true);
+            auto active = std::make_shared<std::atomic<bool>>(true);
             auto finish = [=](bool aborted) mutable
             {
-                if (!*active) return;
-                *active = false;
+                if (!active->exchange(false)) return;
                 probe_running = false;
                 if (hold_talk) utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
                 if (ptt == *reinterpret_cast<game::dvar_t**>(0x1421EF7A0)) ptt->current.enabled = saved_ptt;
@@ -762,11 +766,15 @@ namespace paris_voice
                 {
                     encoder_ctl(encoder, 6, &configured_mode);
                     encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx);
-                    int after_vad{}, after_dtx{};
-                    const bool restored = !encoder_ctl(encoder, 31, &after_vad) && !encoder_ctl(encoder, 35, &after_dtx) && after_vad == vad && after_dtx == dtx;
+                    encoder_ctl(encoder, 12, &vbr);
+                    int after_vad{}, after_dtx{}, after_vbr{}, after_abr{};
+                    const bool restored = !encoder_ctl(encoder, 31, &after_vad) && !encoder_ctl(encoder, 35, &after_dtx) &&
+                        !encoder_ctl(encoder, 13, &after_vbr) && !encoder_ctl(encoder, 33, &after_abr) &&
+                        after_vad == vad && after_dtx == dtx && after_vbr == vbr && after_abr == abr;
                     const int after_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
                     console::info("[paris-voice-native] Codec control restored=%d vad=%d dtx=%d configured_mode=%d mode_preserved=%d.\n", restored,
                         after_vad, after_dtx, after_mode, after_mode == configured_mode);
+                    console::info("[paris-voice-native] Codec adaptive settings vbr=%d abr=%d restored=%d.\n", after_vbr, after_abr, restored);
                 }
                 console::info("[paris-voice-native] Synthetic post-device witness: pressed=%d released=%d encoded_delta=%llu; PTT setting restored.\n",
                     pressed, !utils::hook::invoke<bool>(0x14036FE40, 0),
@@ -784,7 +792,7 @@ namespace paris_voice
             // never turn scheduler starvation into an unbounded packet burst.
             scheduler::schedule([=, pcm = std::move(pcm), index = 0, due = probe_begin]() mutable
             {
-                if (!*active) return scheduler::cond_end;
+                if (!active->load()) return scheduler::cond_end;
                 game::netadr_s current{};
                 const auto time = GetTickCount64();
                 if (!client_connection(current) || !network::are_addresses_equal(current, host) ||

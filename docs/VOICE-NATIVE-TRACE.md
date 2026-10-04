@@ -1,5 +1,31 @@
 # Native voice investigation
 
+The [two-client five-minute soak](deployments/2026-10-04-voice-resource-soak.json)
+passes delivery/stability counters and clean exits; its output-tone expectation
+fails. The next private calibration also saves/disables/restores VBR and reads
+ABR without setting it. This is pending native comparison, not a proven cause.
+
+## Resource and map safeguards - 2026-10-04
+
+Four localhost clients and the dedicated joined with distinct native identities,
+complete rosters and 157.594 seconds of protected idle. A single sender delivered
+60 frames to each of three receivers (180 server deliveries), but the target-tone
+output expectation failed. The four-way paced experiment then aborted and the
+owner reported approximately 90% physical-memory use. These are not four-player
+voice acceptance. The two extra clients exited with actual code 0; observed system
+use fell to 43%. Native capacity needs an adequate resource budget or remote PCs.
+
+Prepare now defaults to two owned clients. Larger groups require explicit
+`-MaxClients` at preparation, and every new launch estimates its physical-memory
+peak while retaining 25% headroom. Owned test processes remain preserved when the
+budget fails. Long-running native drivers also stop accepting evidence above 80%
+physical use. Do not launch additional clients simply to complete a matrix row.
+
+`ChangeMap -Map` uses only the five allowlisted maps and an exact owned dedicated
+mailbox. Native dispatch requires a protected private loopback party; the helper
+requires fresh godmode, inactivity=0, cheats=0, zero enemies and complete current
+rosters after loading. Map-transition results remain pending for this candidate.
+
 ## Native validation continuation - 2026-10-04
 
 The base harness now permits four distinct owned clients and all five allowlisted

@@ -72,6 +72,34 @@ namespace paris_test_fixture
                 script_inactivity_suppressed, GetTickCount64());
         }
         bool connect_pending = false;
+        void server_request()
+        {
+            if (!private_fixture() || !utils::flags::has_flag("paris-voice-base-test") || !game::SV_Loaded()) return;
+            static std::string previous;
+            const auto request = utils::io::read_file("iw7-mod/paris-server-client.request");
+            if (request.empty() || request.size() > 128 || request == previous) return;
+            previous = request;
+            unsigned long pid{};
+            std::string nonce, action, extra;
+            std::istringstream input(request);
+            if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
+                nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
+            const std::array<std::string, 5> maps{"cp_zmb", "cp_rave", "cp_disco", "cp_town", "cp_final"};
+            if (action.rfind("map_", 0) != 0) return;
+            const auto map = action.substr(4);
+            if (std::find(maps.begin(), maps.end(), map) == maps.end()) return;
+            // Only the owned, protected loopback party can change the test map.
+            // This fixture is absent from ordinary server operation.
+            const auto* clients = *game::svs_clients;
+            if (!clients || *game::svs_numclients > 4) return;
+            std::lock_guard lock(safety_mutex);
+            for (unsigned slot = 0; slot < *game::svs_numclients; ++slot)
+                if (clients[slot].header.state >= game::CS_CONNECTED &&
+                    (clients[slot].header.state != game::CS_ACTIVE || !refresh_protection(slot))) return;
+            command::execute("map " + map, false);
+            utils::io::write_file("iw7-mod/paris-server-client.response", request);
+            console::info("[Paris voice base test] Owned protected map request queued: %s.\n", map.c_str());
+        }
         int lab_port()
         {
             const auto* port = game::Dvar_FindVar("paris_lab_server_port");
@@ -182,6 +210,7 @@ namespace paris_test_fixture
                 scheduler::loop(client_request, scheduler::main, 100ms);
             if (game::environment::is_dedi() && utils::flags::has_flag("paris-server-test"))
             {
+                scheduler::loop(server_request, scheduler::main, 100ms);
                 scheduler::loop(maintain_protection, scheduler::server, 100ms);
                 scheduler::loop(safety_status, scheduler::server, 10s);
             }
