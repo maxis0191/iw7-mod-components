@@ -260,9 +260,13 @@ as the current admission policy while preserving unrelated work.
 The active enemy, voice and public-profile chats were contacted under the owner's
 explicit coordination instruction. Update existing worktrees to the merged helper
 before launching again; older launchers can bypass any cooperative policy.
-Runtime launcher integration is coordinated with the enemy-lab lifecycle fix;
-track its actual merged state in STATE rather than claiming rollout from an API
-alone. Keep capacity/quality/long soak acceptance separate from scheduler tests.
+Runtime launcher integration merged in [PR #53](https://github.com/bigmangeekf/iw7-paris-server/pull/53)
+as `395f22b`, after both CI jobs passed on exact head `c73e11f` (run 37215619910).
+The review reproduced a repeated-state-write failure caused by PowerShell binding
+the File.Replace backup argument to an empty path. The merged correction uses a
+real temporary backup; repeated state/heartbeat writes and locked-file preservation
+pass. Retained child handles and injected failure cleanup also pass without games.
+Keep capacity/quality/long soak acceptance separate from these source/lifecycle tests.
 
 The first implementation merged in [PR #50](https://github.com/bigmangeekf/iw7-paris-server/pull/50)
 after both CI jobs passed for its exact head. A real second build request was
