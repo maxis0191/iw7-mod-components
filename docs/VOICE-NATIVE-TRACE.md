@@ -19,6 +19,15 @@ the inline model-query diagnostic. The start helper refuses all clients because
 the protection fixture is not armed. Remove that query and retain only existing
 type/health fields; parser success remains distinct from engine compilation.
 
+The engine-compatible drain candidate f782a8c reaches alive=0/pending=0, but one
+reserved slot remains and admission correctly fails. The reference
+`init_crab_boss_quest` separately reserves one slot after creating the pre-combat
+crab; ordinary zombie death does not release that lease. The next fixture records
+that exact boss's presence and invokes retail `decrease_reserved_spawn_slots(1)`
+once it is dead/absent, all axis actors are gone and pending is zero. It releases
+only this known private lease once, without resetting the pending ledger or
+fabricating quest completion. Require fresh native zero-reservation evidence.
+
 ## Cold-load memory correction - 2026-10-04
 
 Two full-quality cold-loaded clients also reached 90.8% physical use. The second
