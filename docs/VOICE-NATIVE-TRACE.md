@@ -1,5 +1,19 @@
 # Native voice investigation
 
+## Attack quiet-arena failure - 2026-10-04
+
+The protected two-client transition passes Rave and Shaolin. Attack loads with
+both players protected but retains one alive axis actor and one retail spawn
+reservation for the entire 180-second verification bound. No Attack audio result
+is accepted. Global AI pause may prevent an existing spawn/death lifecycle from
+finishing; the reference supplier loops explicitly wait on those pause flags.
+
+The next private fixture keeps new supplier capacity at zero while letting
+existing actors/reservations drain, then reapplies the pause when clear. It uses
+the same retail damage/death path and records actor diagnostics locally; it never
+zeros pending/reservation counters or deletes entities to manufacture a pass.
+This correction still requires native Attack and Beast validation.
+
 ## Cold-load memory correction - 2026-10-04
 
 Two full-quality cold-loaded clients also reached 90.8% physical use. The second
