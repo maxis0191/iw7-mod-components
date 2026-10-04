@@ -988,7 +988,7 @@ namespace paris_voice
                         { std::lock_guard lock(state_mutex); ready = client.token != 0; }
                         if (ready && !local_test_probed) { local_test_probed = true; network_selftest(); }
                     }, scheduler::main, 1s);
-                    scheduler::once([] { game::Com_Quit_f(); }, scheduler::main, 300s);
+                    scheduler::once([] { command::execute("quit", false); }, scheduler::main, 300s);
                 }
             }
             if (native_trace) console::info("[paris-voice-native] Forwarding trace installed; original capture/session/transport/playback retained.\n");
