@@ -40,6 +40,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_simulati
 if errorlevel 1 exit /b 1
 "$runtime\voice-simulation-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\dvar_metadata_test.cpp" /Fe:"$runtime\dvar-metadata-test.exe" /Fo:"$runtime\dvar-metadata-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\dvar-metadata-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib
 if errorlevel 1 exit /b 1
 "$runtime\audio-output-probe.exe" --self-test
@@ -49,7 +53,7 @@ if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
 if ($Sanitizers) {
     $sanitizerCmd = Join-Path $runtime 'compile-voice-sanitizers.cmd'
     $lines = @('@echo off', "call `"$vcvars`" >nul", 'if errorlevel 1 exit /b 1')
-    foreach ($name in @('voice_protocol_test','voice_state_test','voice_transport_test','voice_simulation_test')) {
+    foreach ($name in @('voice_protocol_test','voice_state_test','voice_transport_test','voice_simulation_test','dvar_metadata_test')) {
         $lines += "cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /Zi /fsanitize=address `"$repo\tests\native\$name.cpp`" /Fe:`"$runtime\$name-asan.exe`" /Fo:`"$runtime\$name-asan.obj`" /Fd:`"$runtime\$name-asan.pdb`" /link /INCREMENTAL:NO"
         $lines += 'if errorlevel 1 exit /b 1'
         $lines += "`"$runtime\$name-asan.exe`""
@@ -100,8 +104,38 @@ if (Test-Path -LiteralPath $labComponent) {
     Remove-Item -LiteralPath $labComponent
 }
 $nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp',
-    'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp')
+    'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','dvar_metadata.hpp')
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
+# Preserve the engine's metadata API while serializing its cache and keeping it
+# alive during CRT shutdown. Accept only the pinned file or this exact overlay.
+$dvarsPath = Join-Path $root 'src/client/game/dvars.cpp'
+$baseDvars = (((git -C $root show ($commit + ':src/client/game/dvars.cpp')) -join "`n").TrimEnd()) + "`n"
+$metadataMarker = "`tstd::unordered_map<const game::dvar_t*, std::string> dvar_names;"
+$metadataStart = $baseDvars.IndexOf($metadataMarker, [StringComparison]::Ordinal)
+if ($metadataStart -lt 0 -or $baseDvars.IndexOf($metadataMarker, $metadataStart + 1, [StringComparison]::Ordinal) -ge 0) { throw 'Pinned dvar metadata marker changed.' }
+$metadataApi = @'
+	std::string dvar_get_name(const game::dvar_t* dvar)
+	{
+		return iw7::metadata::process_cache<const game::dvar_t*>().name(dvar);
+	}
+	void dvar_set_name(const game::dvar_t* dvar, const std::string& name)
+	{
+		iw7::metadata::process_cache<const game::dvar_t*>().name(dvar, name);
+	}
+	std::string dvar_get_description(const game::dvar_t* dvar)
+	{
+		return iw7::metadata::process_cache<const game::dvar_t*>().description(dvar);
+	}
+	void dvar_set_description(const game::dvar_t* dvar, const std::string& description)
+	{
+		iw7::metadata::process_cache<const game::dvar_t*>().description(dvar, description);
+	}
+}
+'@
+$testDvars = ($baseDvars.Substring(0, $metadataStart) + $metadataApi.Replace("`r`n", "`n").TrimEnd() + "`n").Replace('#include "dvars.hpp"', '#include "dvars.hpp"' + "`n" + '#include "component/dvar_metadata.hpp"')
+$currentDvars = [IO.File]::ReadAllText($dvarsPath).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentDvars -ne $baseDvars -and $currentDvars -ne $testDvars) { throw 'Unowned dvar metadata edits; preserve them.' }
+[IO.File]::WriteAllText($dvarsPath,$testDvars,[Text.UTF8Encoding]::new($false))
 # Extend the existing upstream kick hook, rather than install a competing detour.
 $botsPath = Join-Path $root 'src/client/component/bots.cpp'
 $baseBots = (((git -C $root show ($commit + ':src/client/component/bots.cpp')) -join "`n").TrimEnd()) + "`n"
@@ -265,6 +299,7 @@ $manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($Se
 $manifest.VoiceTrace = [bool]$VoiceTrace
 $manifest.TestKickHookSHA256 = (Get-FileHash -LiteralPath $botsPath).Hash
 $manifest.TestHeapHookSHA256 = (Get-FileHash -LiteralPath $arxanPath).Hash
+$manifest.DvarMetadataOverlaySHA256 = (Get-FileHash -LiteralPath $dvarsPath).Hash
 $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'

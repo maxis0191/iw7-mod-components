@@ -339,3 +339,27 @@ automatic availability requires Aurora adoption and an official updater release.
 Prepare generic source/tests for our private fork; no upstream PR or external
 message is authorized. Protocol-v1 reconnect generation, jitter/loss, slot-to-session
 mute mapping, device changes and version compatibility remain open independently.
+# Dvar metadata cache audit - 2026-10-04
+
+The older reconnect dump was audited against its exact executable
+`63871CD3863A78DA280A195E7145CF3D2965D7D2AE230D584AE03980579DE6D9`.
+Its overwritten PDB was not force-loaded. The reconstructed destructor frame has
+RSI `0x1604FC348`; exact PE references identify the surrounding global at
+`0x1604FC340` as the name cache used by the dvar registration hook. This mapping
+is strongly supported by machine code and the pinned source. The PE contains one
+CRT initializer/destructor registration; separate construction cleanup thunks
+do not establish double destruction.
+
+The pinned `game/dvars.cpp` name and description maps have unsynchronized readers
+and writers. Their static destruction can also overlap native thread activity.
+The private build now replaces that cache through the same API, using copies
+made under a mutex and a process-lifetime registry. No engine call executes while
+that mutex is held. `dvar_metadata.hpp` is generic and independently tested with
+four writers, four readers, 200000 updates and a late static-destructor reader.
+The build accepts only the pinned source or its exact owned overlay and records
+the overlay hash in the manifest.
+
+These changes remove concrete concurrency and shutdown risks. The old dump does
+not identify the corrupting write; the original heap incident remains open until
+native comparisons provide further evidence. This is not a codec correction or
+proof that the relay caused the incident.
