@@ -1,5 +1,279 @@
 # Native voice investigation
 
+## Latest bounded native correction - 2026-10-04
+
+Executable `7E8BA830AC279EEF80DEDF35D786A458D99C9AAB30F230350823DF0AECF07834`
+restores the pending quality cache together with the private probe's saved
+encoder mode. Fixture revision `1f9068e` passes protected idle and bidirectional
+synthetic output on all five maps, including Attack-to-Beast transition. All
+fourteen native mute/voice-enable/PTT expectations pass. These results establish
+the tested synthetic path; they do not establish microphone or human speech quality.
+
+The five-minute run with driver revision `b919b52` passes delivery and output on
+both receivers independently: 15000 sent, decoded and playback calls per client,
+4800000 queued PCM bytes each and 30000 server relays. The common stimulus lasts
+297969 ms. Twenty-one protection checks pass; peak physical/committed system use
+is 58.3%/68.4%. Each receiver has more than 2790 detected target windows, maximum
+window gaps of 1297/1203 ms and zero target windows in the quiet tail. This is a
+bounded tone-presence criterion, not a measured speech latency or dropout guarantee.
+
+Keep the preceding whole-mix failure: delivery passes but its maximum detected
+signal gap is 14000 ms. Identical simultaneous tones may interfere in that mix;
+the independent measurements support this explanation without proving its exact
+cause. The earlier soak observed output for only fifteen seconds. Neither result
+may be relabeled as continuous five-minute output success.
+
+Two reduced-texture clients remain around 55-59% physical system use. The default
+launch limit is two. Launches reserve 25% projected physical and 20% committed
+headroom; soak and idle drivers abort above 80% physical or 85% committed use.
+Unknown commit-budget data fails closed. Do not retry four clients on this workstation
+to satisfy a capacity row. `TrimMemory` is optional; incorrect image/creation
+identities are rejected before the OS call. No global paging change is required.
+Final review separates projected private-commit peaks from resident peaks: the
+soak records about 8.25/8.20 GiB private allocation despite smaller working sets.
+The tightened launch guard is checked against those records after restoration;
+it is not a new native runtime run or a change to the measured voice binary.
+
+Attack's initial reservation failure is now identified: retail initializes its
+crab quest after five seconds, before the first connection populates the agent
+pool. Native diagnostics show crab undefined, agent pool zero, both boss flags
+initialized/inactive, no Elvira summon, no reserve dvar override, zero pending
+spawns and exactly one reservation. The private fixture releases that orphan
+through the retail reservation API once. It leaves boss/quest flags untouched.
+A present precombat crab uses native suicide and that same final owner cleanup.
+Both the absent startup actor and present precombat actor branches have native
+diagnostic evidence. No raw ledger reset or fabricated quest completion is allowed.
+
+Candidate 2be1dbe passes protected Attack idle (131.844 seconds), both output
+directions and simultaneous 500-frame delivery. The following Beast transition
+with its direct Attack death-script import fails: scripts load but the dedicated
+returns to frontend, with no accepted audio probe. Both clients exit with code 0;
+the exact empty frontend process is recovered after 30 seconds of valid zero-client
+UDP and a bank snapshot. Candidate 1f9068e removes the cross-map import; fresh
+Beast startup and protected joins succeed. The corrected Attack-to-Beast
+transition also passes fresh protection, an empty arena and both output
+directions. The earlier attempts below are historical snapshots.
+
+### Audio observation
+
+`audio-output-probe.exe` retains aggregate metrics only. The short single-source
+controls use default-output loopback. Concurrent/soak runs use two passive WASAPI
+process-loopback captures, one per owned receiver, without changing mute, volume,
+device settings or the stimulus. Each capture validates the executable name and
+creation time and announces readiness before either source starts. The parent
+also verifies the exact image/hash/creation identity. An unavailable API or
+identity mismatch fails the measurement; it does not fall back to the shared mix.
+
+Process loopback requires Windows build/SDK 20348 or later. It was exercised on
+Windows build 26200. The observer uses the
+[Microsoft process-loopback API](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
+and adds no audio dependency. A positive short receiver signal, wrong-image and
+wrong-creation negative checks precede the concurrent/soak measurements.
+
+Results record fixture preparation commit, driver commit/hash, native executable
+hash, observer hash, map and participants separately. A documentation-only commit
+does not mean the running native binary was rebuilt. Private logs, identities,
+bank data and raw reference scripts stay outside Git.
+
+### Lifecycle, input bounds and restoration
+
+The current pair passes a different UID taking the same native slot while the
+other client remains, followed by same-UID reconnects for B and A. Every case
+includes more than 130 seconds of fresh protected idle and both measured output
+directions. A bounded native auth-mutex witness selects another legitimate local
+key; it neither edits/deletes keys nor publishes the identities. Post-disconnect
+target output is absent. The three intermediate and two final client exits are
+actual code 0. Delayed native old frames and server-restart recovery remain open.
+
+`Test-VoiceMalformedInput.ps1` sends eleven bounded datagrams from a fresh
+loopback endpoint: truncation/size/version cases and a canonical hello without a
+game-accepted connection. The native server rejection counter increases by eleven;
+fresh protection and subsequent output in both directions pass. This is dispatch
+and rejection evidence, not a UDP-flood or cryptographic authentication claim.
+
+After valid zero-client UDP for thirty seconds, the owned dedicated is stopped.
+Seven managed targets, including the exact graphics profile, match the recovery
+manifest; newly added files are absent and current bank data is unchanged. No
+test process or observer remains. The dedicated stop is not a native exit-code-0
+claim. Original server/client relaunch is recorded separately from test restoration.
+
+The same native sources build in Debug. The private generic package's native and
+overlay hashes match its manifest; a fresh extraction of its complete corresponding
+source builds in Release with the same toolchain. The package check initially
+fails on an incorrect flattened `arxan.cpp` path; correcting it to the pinned
+`arxan/arxan.cpp` path preserves the exact hash check. This establishes local source
+bundle buildability, not byte-identical binaries or second-machine reproduction.
+No game dump, private configuration or audio recording is packaged.
+
+Reproducible private commands, after both owned clients have joined:
+
+```powershell
+./ops/Test-VoicePairIdle.ps1
+./ops/Test-VoiceControls.ps1
+./ops/Test-VoiceMalformedInput.ps1
+./ops/Test-VoiceNativeSoak.ps1 -Probe VoiceConcurrentProbe
+./ops/Test-VoiceNativeSoak.ps1 -Probe VoiceSoakProbe
+./ops/Voice-BaseTest.ps1 -Action ChangeMap -Map cp_rave
+```
+
+Every positive signal uses post-device PCM through native capture/encode, relay,
+decode and playback. It is technical synthetic evidence; actual microphones,
+privacy/UI, supported regression cases and two-PC human speech remain gates.
+
+## Attack quiet-arena failure - 2026-10-04
+
+The protected two-client transition passes Rave and Shaolin. Attack loads with
+both players protected but retains one alive axis actor and one retail spawn
+reservation for the entire 180-second verification bound. No Attack audio result
+is accepted. Global AI pause may prevent an existing spawn/death lifecycle from
+finishing; the reference supplier loops explicitly wait on those pause flags.
+
+The next private fixture keeps new supplier capacity at zero while letting
+existing actors/reservations drain, then reapplies the pause when clear. It uses
+the same retail damage/death path and records actor diagnostics locally; it never
+zeros pending/reservation counters or deletes entities to manufacture a pass.
+This correction still requires native Attack and Beast validation.
+
+The first drain candidate c3c22b2 parses offline but fails engine compilation at
+the inline model-query diagnostic. The start helper refuses all clients because
+the protection fixture is not armed. Remove that query and retain only existing
+type/health fields; parser success remains distinct from engine compilation.
+
+The engine-compatible drain candidate f782a8c reaches alive=0/pending=0, but one
+reserved slot remains and admission correctly fails. The reference
+`init_crab_boss_quest` separately reserves one slot after creating the pre-combat
+crab; ordinary zombie death does not release that lease. The next fixture records
+that exact boss's presence and invokes retail `decrease_reserved_spawn_slots(1)`
+once it is dead/absent, all axis actors are gone and pending is zero. It releases
+only this known private lease once, without resetting the pending ledger or
+fabricating quest completion. Require fresh native zero-reservation evidence.
+
+## Cold-load memory correction - 2026-10-04
+
+Two full-quality cold-loaded clients also reached 90.8% physical use. The second
+client exited cleanly immediately; no further signal was accepted under that
+pressure. A one-time owned working-set trim reduced use from 63.5% to 55.2% with
+one remaining client, but was insufficient to budget another full-quality load.
+This OS paging hint does not free allocations or reduce committed memory.
+
+The harness now estimates at least 12 GiB per new full-quality client and defaults voice
+tests to reduced texture resolution (`r_picmip`, bump and spec = 2). Preparation
+backs up `iw7-mod/players2/config_mp.cfg`; final restoration returns its exact
+bytes, alongside the existing fixture files. `-FullQualityGraphics` selects the
+original quality when the resource budget permits it. The low-memory profile is
+not visual-quality acceptance and must be measured before resuming paired work.
+
+The first reduced-texture client settles near 4.8 GiB working set and 42.6%
+physical system use. Its launch estimate uses an 8-GiB floor plus the maximum
+observed owned peak, retaining 25% projected headroom. Full quality retains the
+12-GiB floor. The initial conservative 12-GiB low-profile estimate correctly
+refused a second client; the measured profile now has a separate bounded budget.
+
+`TrimMemory` is optional, restricted to verified protected owned processes. Its
+opened handles must match executable and creation time. Rewarm and reverify before
+any measurement; trimming is not evidence of a leak fix or four-client capacity.
+[Windows API behavior](https://learn.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-emptyworkingset).
+
+## Repeated-stimulus calibration failure - 2026-10-04
+
+Candidate 7eb246a passes the first A/B fixed-mode signals, then fails A's repeated
+signal. Both VBR and ABR read zero, so disabling VBR does not explain or fix it.
+Read-only live encoder checks show native quality=3, cached quality=3 and selected
+submode=8 after restoration. The pinned original encode wrapper consumes a pending
+quality change before encoding. Returning the selected submode to its earlier
+value while leaving that cache consumed desynchronizes the private fixture.
+
+The next correction snapshots/restores the native quality cache together with
+the selected mode, only for the same encoder and unchanged quality setting. A
+concurrent quality change invalidates restoration evidence and is not overwritten.
+Hardware blocks remain suppressed until restoration completes. No codec reset or
+production quality policy changes. Require repeat, concurrent and long-stimulus
+comparisons before crediting this correction.
+
+The [two-client five-minute soak](deployments/2026-10-04-voice-resource-soak.json)
+passes delivery/stability counters and clean exits; its output-tone expectation
+fails. The next private calibration also saves/disables/restores VBR and reads
+ABR without setting it. This is pending native comparison, not a proven cause.
+
+## Resource and map safeguards - 2026-10-04
+
+Four localhost clients and the dedicated joined with distinct native identities,
+complete rosters and 157.594 seconds of protected idle. A single sender delivered
+60 frames to each of three receivers (180 server deliveries), but the target-tone
+output expectation failed. The four-way paced experiment then aborted and the
+owner reported approximately 90% physical-memory use. These are not four-player
+voice acceptance. The two extra clients exited with actual code 0; observed system
+use fell to 43%. Native capacity needs an adequate resource budget or remote PCs.
+
+Prepare now defaults to two owned clients. Larger groups require explicit
+`-MaxClients` at preparation, and every new launch estimates its physical-memory
+peak while retaining 25% headroom. Owned test processes remain preserved when the
+budget fails. Long-running native drivers also stop accepting evidence above 80%
+physical use. Do not launch additional clients simply to complete a matrix row.
+
+`ChangeMap -Map` uses only the five allowlisted maps and an exact owned dedicated
+mailbox. Native dispatch requires a protected private loopback party; the helper
+requires fresh godmode, inactivity=0, cheats=0, zero enemies and complete current
+rosters after loading. Map-transition results remain pending for this candidate.
+
+## Native validation continuation - 2026-10-04
+
+The base harness now permits four distinct owned clients and all five allowlisted
+Zombies maps. `Prepare -PrivateDesktop` keeps the owned game windows on a separate
+Windows desktop while using the backed-up base installation. It does not create
+an independent game installation or reserve CPU/GPU resources.
+
+The private synthetic probe now returns to the main loop between paced capture
+blocks. A synchronous 1.2-second stimulus prevented the same client from receiving
+while it emitted and therefore could not validate simultaneous speakers. Catch-up
+is bounded, connection/session changes abort, and shutdown restores controls.
+The helper requires a fresh completion marker and verified codec restoration;
+the mailbox acknowledgement alone is insufficient. Native simultaneous-speaker
+and map results are pending for this candidate.
+
+The first nonblocking pair (ee936ec) failed calibration: hardware capture remained
+active alongside injection, yielding 120 encoded frames instead of 60, and the
+configured-mode preservation check failed. Output presence does not validate that
+run. The correction replaces hardware blocks only while the private post-device
+stimulus is active, consumes their input without queuing a microphone backlog, and
+restores the saved configured mode along with the exact VAD/DTX values. Ordinary
+capture remains forwarded unchanged outside that explicit synthetic interval.
+
+`VoiceConcurrentProbe` emits 500 paced fixed-mode frames (ten seconds) and
+`VoiceSoakProbe` emits 15000 (five minutes), both through native capture/codec and
+the normal generic relay. `-DispatchOnly` explicitly acknowledges scheduling so
+the other owned clients can start concurrently. It does not assert completion:
+the driver must verify all clients throughout, require fresh non-aborted finish
+and codec-restore markers, and correlate each sender/receiver counter delta.
+Verify requires complete current admission/native roster masks for every owned
+generic client. Extended stimuli are private loopback fixtures, never production
+device or human-speech acceptance.
+
+## Dvar metadata cache audit - 2026-10-04
+
+The older reconnect dump was audited against its exact executable
+`63871CD3863A78DA280A195E7145CF3D2965D7D2AE230D584AE03980579DE6D9`.
+Its overwritten PDB was not force-loaded. The reconstructed destructor frame has
+RSI `0x1604FC348`; exact PE references identify the surrounding global at
+`0x1604FC340` as the name cache used by the dvar registration hook. This mapping
+is strongly supported by machine code and the pinned source. The PE contains one
+CRT initializer/destructor registration; separate construction cleanup thunks
+do not establish double destruction.
+
+The pinned `game/dvars.cpp` name and description maps have unsynchronized readers
+and writers. Their static destruction can also overlap native thread activity.
+The private build now replaces that cache through the same API, using copies
+made under a mutex and a process-lifetime registry. No engine call executes while
+that mutex is held. `dvar_metadata.hpp` is generic and independently tested with
+four writers, four readers, 200000 updates and a late static-destructor reader.
+The build accepts only the pinned source or its exact owned overlay and records
+the overlay hash in the manifest.
+
+These changes remove concrete concurrency and shutdown risks. The old dump does
+not identify the corrupting write; the original heap incident remains open until
+native comparisons provide further evidence. This is not a codec correction or
+proof that the relay caused the incident.
+
 Latest reproducible results: [fixed-mode controls and reconnect](deployments/2026-10-04-voice-fixed-mode-controls.json)
 pass. The native VAD/DTX path suppresses most of the synthetic target; disabling
 it while retaining a previous null submode is also silent. The private control

@@ -24,11 +24,14 @@ decompiled game code in the contribution.
 ## Current evidence and next investigation
 
 The generic opt-in v2 adapter and its pure state/wire/transport tests are now
-implemented. Latest native controls and exit limits are in
-[the sanitized checkpoint](deployments/2026-10-04-voice-fixed-mode-controls.json),
-[STATE](STATE.md) and [VALIDATION](VALIDATION.md). Resolve reconnect heap corruption,
-complete native maps/capacity/compatibility and real human speech, then finish
-the matrix below. The calibrated synthetic comparison and reconnect now pass.
+implemented. Latest bounded native results are in
+[the sanitized checkpoint](deployments/2026-10-04-voice-bounded-native.json),
+[STATE](STATE.md) and [VALIDATION](VALIDATION.md). Two local clients pass five-map
+idle/output, fourteen native control expectations and five-minute simultaneous
+delivery/output with passive observation of each receiver. Keep the failed
+shared-mix measurement and resource-limited four-client run separately. Investigate
+the historical heap corrupting write, complete compatibility/device/privacy and
+adequate-hardware capacity testing, and establish real human speech before submission.
 The implementation is experimental and is not ready for official submission.
 
 ### Retained native routing investigation
@@ -118,16 +121,16 @@ distinct outcomes. A disconnected receiver invalidates an audio comparison.
 | Pure unit tests | Parser boundaries, every message/state transition, duplicates/replay, wraparound, stale speaker generations and slot reuse | Generic state/wire/control lifecycle tests pass locally; final adapter review pending |
 | Seeded fuzz and sanitizers | Truncated/oversized/malformed input, arbitrary bytes, bounded allocations and queue saturation; no crash or memory error | Pure core seeded mutations and optimized AddressSanitizer pass; engine memory/queue coverage remains open |
 | Transport simulation | Deterministic loss, jitter, duplicate/reordered packets, delayed old handshake/audio and reconnect while a listener survives | Five simulated minutes with four simultaneous speakers, loss, jitter and lifecycle changes pass; native loss/latency pending |
-| Native local integration | Two simultaneous distinct active clients; capture, encoded, send, receive, decode and playback deltas correlated with the injected signal | Static relay witness passes 60 frames each direction; final feature pending |
-| Audio measurement | Known signal observed on receiver output with correct timing; muted/disabled/released-PTT controls show absence of that signal | Calibrated fixed-mode static and reconnect output pass; native VAD/DTX explains the weak constant-tone witness in this configuration |
+| Native local integration | Two simultaneous distinct active clients; capture, encoded, send, receive, decode and playback deltas correlated with the injected signal | Both short directions on five maps and 15000 simultaneous frames per receiver pass; actual input device is outside this post-device stimulus |
+| Audio measurement | Known signal observed on receiver output with correct timing; muted/disabled/released-PTT controls show absence of that signal | Fourteen expectations and independent full-soak receiver measurements pass; detected-tone gap bound is 3000 ms, not speech latency acceptance; shared-mix failure retained |
 | Real LAN conversation | Two physical PCs and two humans, actual microphones and speakers/headsets, intelligible speech both directions, no echo or wrong speaker | Pending |
 | Real WAN conversation | Same live conversation across different external connections through the existing dedicated-server arrangement | Pending |
-| Controls and devices | PTT release, voice toggle, activation threshold, each direction's mute/unmute, privacy eligibility, input/output device change and unavailable device | Fourteen fixed-mode static expectations pass, including both resume directions. UI/privacy/actual devices pending |
-| Lifecycle | A reconnects while B stays; B reconnects; slot reused by a different identity; delayed old frames; map change; server restart; disconnect stops audio | Both fixed-mode reconnect directions and three measured client exits pass. Older heap fault remains unexplained; other native lifecycle gates pending |
-| Capacity and soak | One, two and four participants; simultaneous speakers, prolonged idle/talking, queue bounds, reconnect cycles; record latency, loss and resource use | Protected idle harness passes; voice soak pending |
-| Map coverage | Spaceland, Rave, Shaolin, Attack and Beast, including ordinary joins and map transitions | Pending |
+| Controls and devices | PTT release, voice toggle, activation threshold, each direction's mute/unmute, privacy eligibility, input/output device change and unavailable device | Fourteen native expectations pass, including both resume directions. UI/privacy/activation/actual devices pending |
+| Lifecycle | A reconnects while B stays; B reconnects; slot reused by a different identity; delayed old frames; map change; server restart; disconnect stops audio | Both same-UID reconnects and different-UID reuse of the same native slot pass protected idle and both output directions; post-disconnect silence, five client exits and map changes pass. Older heap write, delayed native frames and server-restart recovery remain open |
+| Capacity and soak | One, two and four participants; simultaneous speakers, prolonged idle/talking, queue bounds, reconnect cycles; record latency, loss and resource use | Two clients pass five-minute delivery/output; peak physical/commit use 58.3%/68.4%. Four local clients fail audio under resource pressure; adequate-hardware native capacity, network latency/loss pending |
+| Map coverage | Spaceland, Rave, Shaolin, Attack and Beast, including ordinary joins and map transitions | Protected idle over 130 seconds and both short output directions pass on all five maps; corrected Attack-to-Beast transition passes. Ordinary unprotected gameplay remains owner acceptance |
 | Compatibility/regression | Standard client joins/gameplay, mixed feature versions, voice-disabled server, unsupported signatures, MP/SP behavior, normal AFK/kick behavior | Pending |
-| Reproducibility | A second clean build/test setup reproduces the same results from the documented revision and commands | Pending |
+| Reproducibility | A second clean build/test setup reproduces the same results from the documented revision and commands | Full Debug and fresh source-archive Release builds pass locally; archive source/overlay hashes checked. Independent second-machine runtime reproduction pending |
 
 For every agent integration run, require fresh actual engine godmode,
 `g_inactivity=0`, the scoped retail-GSC inactivity exception and `sv_cheats=0`

@@ -30,6 +30,32 @@ public static class IW7LabProcess
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr handle, out uint code);
     [DllImport("user32.dll")] static extern uint WaitForInputIdle(IntPtr process, uint milliseconds);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetProcessTimes(IntPtr process, out long created, out long exited, out long kernel, out long user);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern bool QueryFullProcessImageNameW(IntPtr process, uint flags, StringBuilder path, ref int size);
+    [DllImport("psapi.dll", SetLastError=true)] static extern bool EmptyWorkingSet(IntPtr process);
+    // A one-time OS paging hint after loading, not an allocation/free or a cap.
+    // Validate the same opened handle; never target an unowned game by PID alone.
+    public static void TrimWorkingSet(int pid, string expectedImage, long expectedCreation)
+    {
+        IntPtr process = OpenProcess(0x1100, false, pid); // LIMITED_QUERY | SET_QUOTA
+        if (process == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "Owned process access failed");
+        try {
+            long created, exited, kernel, user;
+            var image = new StringBuilder(32768);
+            int size = image.Capacity;
+            if (!GetProcessTimes(process, out created, out exited, out kernel, out user) ||
+                !QueryFullProcessImageNameW(process, 0, image, ref size))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Owned process identity read failed");
+            // WMI reports creation time to microsecond precision.
+            if (Math.Abs(created - expectedCreation) > 10 ||
+                !String.Equals(image.ToString(), expectedImage, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Owned process identity changed; memory operation refused");
+            if (!EmptyWorkingSet(process))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Owned working-set trim failed");
+        } finally { CloseHandle(process); }
+    }
     public static int Start(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName)
     {
         if (exe.Contains("\"") || !System.Text.RegularExpressions.Regex.IsMatch(desktopName, "^IW7ParisLab_[a-f0-9]{32}$"))

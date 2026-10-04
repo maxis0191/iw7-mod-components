@@ -2,12 +2,14 @@
 
 ## Latest native limits
 
-The [fixed-mode synthetic control](deployments/2026-10-04-voice-fixed-mode-controls.json)
-now passes both directions, mute/off/PTT silence, resumed output and receiver
-reconnect. Saved codec flags/configured mode are preserved; production remains
-native. Three measured client exits are code 0. The older heap failure remains
-unexplained. Real speech/maps/capacity/compatibility are still unaccepted.
-Earlier paragraphs below preserve the investigation before that calibration.
+The [current bounded checkpoint](deployments/2026-10-04-voice-bounded-native.json)
+records five-map protected idle/bidirectional output, fourteen native controls and
+a five-minute two-speaker run measured separately on each receiver. Private codec
+controls restore flags, selected mode and pending quality cache; production stays
+native. Same/different-user lifecycle and clean exits are separate result fields.
+The historical heap write, actual devices/privacy/UI, compatibility, native
+four-player audio and real LAN/WAN speech remain open. Earlier paragraphs below
+preserve failed experiments and superseded next steps.
 
 Local static playback and negative mute/voice-off/PTT controls pass. Resumed target
 tone output fails. Retail setup enables native VAD/DTX, so test suppression with
@@ -44,7 +46,8 @@ incarnation for every accepted connection, including the same UID/endpoint. It
 must authorize source endpoints before calling the core, reset on game teardown,
 expire queued work and invoke engine audio/registration on the correct thread.
 These adapter obligations are not established by pure tests. The opt-in
-voice_relay.cpp engine adapter is now built; its native validation is pending.
+voice_relay.cpp engine adapter is built and has bounded synthetic integration
+coverage; the remaining native and human gates are listed above.
 
 ## Opt-in engine adapter
 
@@ -154,6 +157,7 @@ same-UID reconnect, different-UID slot reuse and server restart. Every direction
 sustains transport and all clients recover. Its counters are synthetic transport
 evidence; it is not native soak or real speech/latency acceptance.
 
-Current pure checks and Release engine build pass. Native lifecycle/registration, real microphones,
-four-player soak, mute/privacy/devices, map transitions, MP/SP compatibility and
-LAN/WAN remain separate gates in [VOICE-CONTRIBUTION.md](VOICE-CONTRIBUTION.md).
+Current pure checks and the Release engine build pass. Local map/control/soak
+results do not close historical heap investigation, real microphones,
+four-player native voice, privacy/devices, MP/SP/local or mixed-version behavior
+and LAN/WAN human conversation. See [VOICE-CONTRIBUTION.md](VOICE-CONTRIBUTION.md).
