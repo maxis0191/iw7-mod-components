@@ -3,8 +3,11 @@
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <audioclientactivationparams.h>
 #include <ksmedia.h>
 #include <wrl/client.h>
+#include <wrl/implements.h>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -14,8 +17,73 @@
 #include <array>
 #include <complex>
 #include <vector>
+#include <memory>
 using Microsoft::WRL::ComPtr;
 void ok(HRESULT value) { if (FAILED(value)) throw std::runtime_error("WASAPI HRESULT " + std::to_string(static_cast<unsigned long>(value))); }
+struct com_apartment
+{
+    com_apartment() { ok(CoInitializeEx(nullptr, COINIT_MULTITHREADED)); }
+    ~com_apartment() { CoUninitialize(); }
+};
+
+class process_activation final : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    Microsoft::WRL::FtmBase, IActivateAudioInterfaceCompletionHandler>
+{
+public:
+    process_activation() : done(CreateEventW(nullptr, TRUE, FALSE, nullptr))
+    {
+        if (!done) throw std::runtime_error("Process loopback event creation failed");
+    }
+    ~process_activation() { CloseHandle(done); }
+    STDMETHOD(ActivateCompleted)(IActivateAudioInterfaceAsyncOperation* operation) override
+    {
+        HRESULT activation_result{};
+        ComPtr<IUnknown> activated;
+        HRESULT result = operation->GetActivateResult(&activation_result, &activated);
+        if (SUCCEEDED(result)) result = activation_result;
+        if (SUCCEEDED(result)) result = activated.As(&audio);
+        status.store(result, std::memory_order_release);
+        SetEvent(done);
+        return S_OK;
+    }
+    HANDLE done;
+    std::atomic<HRESULT> status{E_PENDING};
+    ComPtr<IAudioClient> audio;
+};
+
+ComPtr<IAudioClient> activate_process(DWORD pid, std::uint64_t expected_creation)
+{
+    const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) throw std::runtime_error("Owned observation process access failed");
+    FILETIME created{}, exited{}, kernel{}, user{};
+    wchar_t image[32768]{}; DWORD image_size = 32768;
+    const bool readable = GetProcessTimes(process, &created, &exited, &kernel, &user) &&
+        QueryFullProcessImageNameW(process, 0, image, &image_size);
+    CloseHandle(process);
+    const auto actual = (static_cast<std::uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+    const auto delta = actual > expected_creation ? actual - expected_creation : expected_creation - actual;
+    const auto* leaf = wcsrchr(image, L'\\');
+    if (!readable || delta > 10 || !leaf || _wcsicmp(leaf + 1, L"iw7-paris-native-trace.exe"))
+        throw std::runtime_error("Owned observation process identity mismatch");
+
+    AUDIOCLIENT_ACTIVATION_PARAMS parameters{};
+    parameters.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+    parameters.ProcessLoopbackParams.TargetProcessId = pid;
+    parameters.ProcessLoopbackParams.ProcessLoopbackMode = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+    PROPVARIANT activation{};
+    activation.vt = VT_BLOB;
+    activation.blob.cbSize = sizeof(parameters);
+    activation.blob.pBlobData = reinterpret_cast<BYTE*>(&parameters);
+    auto completion = Microsoft::WRL::Make<process_activation>();
+    ComPtr<IActivateAudioInterfaceAsyncOperation> operation;
+    ok(ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, __uuidof(IAudioClient),
+        &activation, completion.Get(), &operation));
+    if (WaitForSingleObject(completion->done, 10000) != WAIT_OBJECT_0)
+        throw std::runtime_error("Process loopback activation exceeded ten seconds");
+    ok(completion->status.load(std::memory_order_acquire));
+    return completion->audio;
+}
 // Broad spectral diagnostics explain a failed target detector without changing
 // its acceptance threshold. Samples stay in memory and are never recorded.
 double spectral_frequency(const std::vector<double>& samples, unsigned rate)
@@ -69,21 +137,39 @@ int main(int argc, char** argv)
         if (seconds > 600 || seconds == 0) return 2;
         const unsigned target_hz = argc > 2 ? static_cast<unsigned>(std::stoul(argv[2])) : 440;
         if (target_hz < 100 || target_hz > 10000) return 2;
-        ok(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
-        ComPtr<IMMDeviceEnumerator> enumerator;
-        ok(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)));
-        ComPtr<IMMDevice> device; ok(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device));
-        ComPtr<IAudioClient> audio; ok(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(audio.GetAddressOf())));
-        WAVEFORMATEX* format{}; ok(audio->GetMixFormat(&format));
+        com_apartment apartment;
+        const bool per_process = argc == 5;
+        if (argc != 1 && argc != 2 && argc != 3 && !per_process) return 2;
+        ComPtr<IAudioClient> audio;
+        WAVEFORMATEX* format{};
+        std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> owned_format(nullptr, CoTaskMemFree);
+        WAVEFORMATEX process_format{};
+        if (per_process)
+        {
+            audio = activate_process(static_cast<DWORD>(std::stoul(argv[3])), std::stoull(argv[4]));
+            // A virtual process endpoint has no device mix format. This passive
+            // filter changes no mute, volume, device or game setting.
+            process_format = {WAVE_FORMAT_PCM, 2, 48000, 192000, 4, 16, 0};
+            format = &process_format;
+        }
+        else
+        {
+            ComPtr<IMMDeviceEnumerator> enumerator;
+            ok(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)));
+            ComPtr<IMMDevice> device; ok(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device));
+            ok(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(audio.GetAddressOf())));
+            ok(audio->GetMixFormat(&format));
+            owned_format.reset(format);
+        }
         bool floating = format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT;
         if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE)
             floating = IsEqualGUID(reinterpret_cast<WAVEFORMATEXTENSIBLE*>(format)->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
-        if (!floating || format->wBitsPerSample != 32) { CoTaskMemFree(format); throw std::runtime_error("Probe supports native float32 mix format only"); }
+        if (!per_process && (!floating || format->wBitsPerSample != 32)) throw std::runtime_error("Probe supports native float32 mix format only");
         const unsigned channels = format->nChannels, rate = format->nSamplesPerSec;
         ok(audio->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, 10000000, 0, format, nullptr));
-        CoTaskMemFree(format);
         ComPtr<IAudioCaptureClient> capture; ok(audio->GetService(IID_PPV_ARGS(&capture)));
         ok(audio->Start());
+        std::cout << "WASAPI observation ready: scope=" << (per_process ? "process" : "device") << "." << std::endl;
         const auto end = GetTickCount64() + seconds * 1000ull;
         double peak_rms{}, peak_tone_ratio{}, peak_frequency{}; std::uint64_t frames{}, strong_windows{};
         std::array<double, 17> re{}, im{};
@@ -101,7 +187,9 @@ int main(int argc, char** argv)
                 {
                     double sample{};
                     if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT))
-                        for (unsigned c = 0; c < channels; ++c) sample += reinterpret_cast<const float*>(data)[i * channels + c] / channels;
+                        for (unsigned c = 0; c < channels; ++c)
+                            sample += (floating ? reinterpret_cast<const float*>(data)[i * channels + c] :
+                                reinterpret_cast<const short*>(data)[i * channels + c] / 32768.0) / channels;
                     // Native DirectSound adjusts playback frequency around the nominal
                     // rate to control its queue. Cover target +/-40 Hz in 5 Hz steps.
                     for (unsigned bin = 0; bin < re.size(); ++bin)
@@ -144,7 +232,6 @@ int main(int argc, char** argv)
         std::cout << "WASAPI loopback: frames=" << frames << " rate=" << rate << " channels=" << channels
                   << " peak_rms=" << peak_rms << " peak_tone_ratio=" << peak_tone_ratio << " peak_frequency=" << peak_frequency << " strong_tone_windows=" << strong_windows
                   << " (metrics only, no recordings saved).\n";
-        CoUninitialize();
         return strong_windows ? 0 : 1;
     }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 2; }
