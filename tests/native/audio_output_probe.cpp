@@ -66,7 +66,7 @@ int main(int argc, char** argv)
             return 0;
         }
         const unsigned seconds = argc > 1 ? static_cast<unsigned>(std::stoul(argv[1])) : 45;
-        if (seconds > 120 || seconds == 0) return 2;
+        if (seconds > 600 || seconds == 0) return 2;
         const unsigned target_hz = argc > 2 ? static_cast<unsigned>(std::stoul(argv[2])) : 440;
         if (target_hz < 100 || target_hz > 10000) return 2;
         ok(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
@@ -123,7 +123,12 @@ int main(int argc, char** argv)
                             if (value > peak_tone_ratio) { peak_tone_ratio = value; peak_frequency = target_hz - 40 + 5 * bin; }
                         }
                         peak_rms = std::max(peak_rms, rms);
-                        if (rms > 0.01 && ratio > 0.4) ++strong_windows;
+                        if (rms > 0.01 && ratio > 0.4)
+                        {
+                            ++strong_windows;
+                            std::cout << "Target window: tick_ms=" << GetTickCount64()
+                                << " rms=" << rms << " target_ratio=" << ratio << "\n";
+                        }
                         if (rms > 0.05) std::cout << "Active window: tick_ms=" << GetTickCount64()
                             << " rms=" << rms << " target_ratio=" << ratio
                             << " spectral_frequency=" << spectral_frequency(window, rate) << "\n";
