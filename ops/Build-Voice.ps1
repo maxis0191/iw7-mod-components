@@ -93,7 +93,8 @@ if (Test-Path -LiteralPath $labComponent) {
     if ($currentLabComponent -ne $labProperties) { throw 'Unowned lab component overlay; preserve it and use an isolated native checkout.' }
     Remove-Item -LiteralPath $labComponent
 }
-$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp')
+$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp',
+    'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp')
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
 # Extend the existing upstream kick hook, rather than install a competing detour.
 $botsPath = Join-Path $root 'src/client/component/bots.cpp'

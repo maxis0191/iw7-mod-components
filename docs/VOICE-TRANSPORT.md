@@ -1,7 +1,7 @@
 # Generic voice transport core
 
-This is an engine-independent candidate, not the currently deployed v1 runtime
-or an accepted IW7-Mod feature. Its headers contain no Paris configuration,
+This is a generic candidate, not an accepted IW7-Mod feature. The three pure
+headers contain no Paris configuration,
 test protection, UI metadata, game assets or engine addresses.
 
 ## Responsibilities
@@ -13,7 +13,39 @@ current game-accepted connections, their 64-bit user identities and a fresh opaq
 incarnation for every accepted connection, including the same UID/endpoint. It
 must authorize source endpoints before calling the core, reset on game teardown,
 expire queued work and invoke engine audio/registration on the correct thread.
-These adapter obligations are not established by pure tests.
+These adapter obligations are not established by pure tests. The opt-in
+voice_relay.cpp engine adapter is now built; its native validation is pending.
+
+## Opt-in engine adapter
+
+`-iw7-voice-relay` selects the generic candidate on both client and dedicated
+server; `-voice-relay-diagnostics` enables bounded aggregate status every ten
+seconds. No player identity, endpoint, nonce, capability or audio sample is logged.
+It is limited to external dedicated CP games, with original behavior forwarded
+for MP/SP and local games. Its native queue replacement is mutually exclusive
+with the private v1 queue hook. Ordinary builds without the flag retain their
+existing path. Matching feature builds are required; negotiation with stock and
+mixed-version clients remains unaccepted.
+
+Expected entry signatures are checked before installation. The adapter observes
+the specific post-admission native game-state call at 0x140C4F87E, not arbitrary
+UI announcements or merely a connection request. It issues a fresh incarnation
+after that call, only for a current connected client. The active server roster
+requires the actual native slot, endpoint, player GUID and registered server
+session UID to agree. Engine teardown rotates the server epoch and clears queued
+work. The client also binds its state to the current server challenge, selected
+native session and local native slot. Native admission/drop analysis output stays
+local; the drop entry in the reference is already detoured and is not a complete
+original-function decompilation.
+
+Network callbacks parse into an inbox bounded to 128 packets; engine work occurs
+on the server/main scheduler. Packets older than 500 ms are discarded. The client
+registers remote users from accepted server snapshots, preserves native mute and
+calls native privacy/mute checks before Voice_Incoming. It releases only native
+registrations it created whose current UID still matches. Existing foreign native
+registrations are not replaced; that compatibility path and queued-audio cleanup
+still require native tests. No new audio codec, godmode, anti-AFK or UI metadata is
+part of this component. The private fixture supplies those testing facilities.
 
 The server issues a fresh epoch on reset. A client sends a fresh 128-bit nonce,
 receives a server challenge and confirms it. The server then issues a private
@@ -79,6 +111,6 @@ server reset, stale roster rollback, duplicate confirm, retired hello/guessed
 confirm, handshake loss and expiry, lease expiry, wire bounds and 200000 seeded
 mutations. Failures are nonzero exits. Test users/IDs are synthetic constants.
 
-Current local checks pass. Native lifecycle/registration, real microphones,
+Current pure checks and Release engine build pass. Native lifecycle/registration, real microphones,
 four-player soak, mute/privacy/devices, map transitions, MP/SP compatibility and
 LAN/WAN remain separate gates in [VOICE-CONTRIBUTION.md](VOICE-CONTRIBUTION.md).

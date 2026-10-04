@@ -15,6 +15,7 @@
 #include <charconv>
 #include "paris_voice_protocol.hpp"
 #include "paris_test_safety.hpp"
+#include "voice_relay.hpp"
 
 namespace paris_voice
 {
@@ -164,7 +165,7 @@ namespace paris_voice
         {
             const int result = decode_voice_hook.invoke<int>(data, length, pcm, samples);
             if (result > 0) { ++stats.decoded; stats.pcm_bytes += result; }
-            if (relay_witness && pcm && result > 0 && result <= 16384 && result % 2 == 0)
+            if ((relay_witness || utils::flags::has_flag("iw7-voice-relay")) && pcm && result > 0 && result <= 16384 && result % 2 == 0)
             {
                 const int count = result / 2;
                 double power{}, re{}, im{};
@@ -564,7 +565,7 @@ namespace paris_voice
                     utils::hook::invoke<bool>(0x14037DA00), utils::hook::invoke<bool>(0x14036FE40, 0),
                     static_cast<double>(*reinterpret_cast<const float*>(0x1477A027C)));
             }
-            if (relay_witness && !game::environment::is_dedi())
+            if ((relay_witness || utils::flags::has_flag("iw7-voice-relay")) && !game::environment::is_dedi())
                 console::info("[paris-voice-witness] decoded_peak_rms=%.6f decoded_tone_ratio=%.6f; cumulative 997-Hz PCM metrics, no recordings.\n",
                     stats.decoded_peak_rms.load(), stats.decoded_peak_tone_ratio.load());
         }
@@ -681,11 +682,12 @@ namespace paris_voice
             // Common dispatcher handles talk before the MP/SP gameplay dispatcher.
             utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding, 86, 1);
             const bool pressed = utils::hook::invoke<bool>(0x14036FE40, 0);
-            const auto encoded_before = native_encoded.load();
-            const int frames = relay_witness ? 60 : 20;
+            const bool generic_relay = utils::flags::has_flag("iw7-voice-relay");
+            const auto encoded_before = generic_relay ? voice_relay::encoded_frames() : native_encoded.load();
+            const int frames = (relay_witness || generic_relay) ? 60 : 20;
             for (int i = 0; i < frames; ++i)
             {
-                if (relay_witness) for (int sample = 0; sample < samples; ++sample)
+                if (relay_witness || generic_relay) for (int sample = 0; sample < samples; ++sample)
                     pcm[sample] = static_cast<short>(10000 * std::sin(6.283185307179586 *
                         997 * (i * samples + sample) / 8000.0));
                 capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
@@ -693,12 +695,13 @@ namespace paris_voice
                 // The static playback witness must resemble real 20-ms capture.
                 // A synchronous sixty-datagram burst relayed only sixteen frames
                 // and never reached DirectSound's 6000-byte startup threshold.
-                if (relay_witness && i + 1 < frames) Sleep(20);
+                if ((relay_witness || generic_relay) && i + 1 < frames) Sleep(20);
             }
             utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
             ptt->current.enabled = saved_ptt;
             console::info("[paris-voice-native] Synthetic post-device witness: pressed=%d released=%d encoded_delta=%llu; PTT setting restored.\n",
-                pressed, !utils::hook::invoke<bool>(0x14036FE40, 0), native_encoded.load() - encoded_before);
+                pressed, !utils::hook::invoke<bool>(0x14036FE40, 0),
+                (generic_relay ? voice_relay::encoded_frames() : native_encoded.load()) - encoded_before);
             status();
         }
         void register_witness()
@@ -720,6 +723,10 @@ namespace paris_voice
         void post_unpack() override
         {
             native_trace = utils::flags::has_flag("paris-voice-native-trace");
+            // The generic component owns the queue in its opt-in profile. Keep
+            // only independent forwarding diagnostics for the private harness.
+            const bool generic_relay = utils::flags::has_flag("iw7-voice-relay");
+            if (generic_relay && !native_trace) return;
             relay_witness = native_trace && utils::flags::has_flag("paris-voice-relay-witness");
             if (relay_witness && !game::environment::is_dedi() &&
                 !utils::flags::has_flag("paris-voice-registration-witness"))
@@ -755,7 +762,7 @@ namespace paris_voice
                 // microphone/output sessions or emitting calibration tones.
                 if (!utils::flags::has_flag("paris-isolated-lab") || utils::flags::has_flag("paris-voice-audio-lab"))
                 {
-                    queue_voice_hook.create(0x14037D960, queue_voice);
+                    if (!generic_relay) queue_voice_hook.create(0x14037D960, queue_voice);
                     decode_voice_hook.create(0x140B79310, decode_voice);
                     enqueue_voice_hook.create(0x140B79B60, enqueue_voice);
                     capture_voice_hook.create(0x140B79D30, capture_voice);
