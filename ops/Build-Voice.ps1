@@ -112,6 +112,19 @@ $testBots = $baseBots.Replace('namespace bots', '#include "paris_test_safety.hpp
 $currentBots = [IO.File]::ReadAllText($botsPath).Replace("`r`n", "`n").TrimEnd() + "`n"
 if ($currentBots -ne $baseBots -and $currentBots -ne $testBots) { throw 'Unowned bots.cpp changes; preserve them.' }
 [IO.File]::WriteAllText($botsPath,$testBots,[Text.UTF8Encoding]::new($false))
+# The pinned anti-debug helper writes legacy heap-header offsets. PageHeap uses
+# a different layout; preserve its verifier state only in the explicit private
+# diagnostic profile. Ordinary launches keep the pinned upstream behavior.
+$arxanPath = Join-Path $root 'src/client/component/arxan/arxan.cpp'
+$baseArxan = (((git -C $root show ($commit + ':src/client/component/arxan/arxan.cpp')) -join "`n").TrimEnd()) + "`n"
+$heapMarker = "void hide_being_debugged()`n`t`t{`n`t`t`tauto* const peb = PPEB(__readgsqword(0x60));"
+if (($baseArxan.Split([string[]]@($heapMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned heap-debug helper marker changed.' }
+$testArxan = $baseArxan.Replace('#include <utils/string.hpp>', "#include <utils/string.hpp>`n#include <utils/flags.hpp>").Replace($heapMarker,
+    $heapMarker + "`n`t`t`t// Keep Windows PageHeap headers and flags intact during the private trace.`n`t`t`t" +
+    'if (utils::flags::has_flag("paris-voice-native-trace") && (*reinterpret_cast<PDWORD>(LPSTR(peb) + 0xBC) & 0x02000000)) return;')
+$currentArxan = [IO.File]::ReadAllText($arxanPath).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentArxan -ne $baseArxan -and $currentArxan -ne $testArxan) { throw 'Unowned anti-debug helper edits; preserve them.' }
+[IO.File]::WriteAllText($arxanPath,$testArxan,[Text.UTF8Encoding]::new($false))
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
 $rhinoScriptInclude = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
 $enemyScriptInclude = Join-Path $root 'src/client/component/paris_enemy_scripts.inc'
@@ -251,6 +264,7 @@ $manifest.ServerModules = [bool]$ServerModules
 $manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
 $manifest.VoiceTrace = [bool]$VoiceTrace
 $manifest.TestKickHookSHA256 = (Get-FileHash -LiteralPath $botsPath).Hash
+$manifest.TestHeapHookSHA256 = (Get-FileHash -LiteralPath $arxanPath).Hash
 $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'

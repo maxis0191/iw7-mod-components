@@ -273,6 +273,17 @@ invalid for native voice routing conclusions and remain retained as incident evi
 
 ## Client exit verification - 2026-10-04
 
+Full PageHeap first stops candidate 643e806 before game initialization with
+`0xC0000005`. Matching executable/PDB and the native exception dump identify
+the pinned anti-debug helper writing legacy heap-header offsets into the
+PageHeap layout. This is a diagnostic compatibility failure, distinct from the
+earlier reconnect exit corruption. The private build overlay now preserves
+heap headers/flags when both the native trace flag and Windows PageHeap flag
+are present. Ordinary launches retain upstream behavior. Retest before claiming
+that this permits heap-corruption diagnosis. Enable verification only for the
+owned trace image, then remove its persistent image setting immediately after
+launch; it remains active in that process until exit.
+
 StopClient retains a handle to the verified owned process before requesting quit.
 It records the exit code and fails on any nonzero result. PID disappearance alone
 does not establish a clean exit. Candidate b84619f reproduced `0xC0000409` even
