@@ -1,0 +1,198 @@
+# Concurrent agent work on a bounded workstation
+
+Current decision, 2026-10-04: agents may develop, review and run light tests in
+parallel. This 32 GiB workstation admits **one heavy workload group at a time**:
+one isolated gameplay scenario (server and its explicitly budgeted client(s)),
+one native build, one asset extraction, or one reverse-engineering analysis.
+Each chat keeps its own sources, files and test identity. A private desktop or a
+Git worktree does not supply additional RAM, VRAM or CPU capacity.
+
+The owner explicitly authorizes implementation, necessary tools and coordination
+between the current IW7 chats. This does not turn estimated capacity into a
+guarantee of unlimited simultaneous games. Additional applications and game
+allocation spikes can still exhaust a machine. No performance acceptance is
+inferred from successful source tests or a short resource observation.
+
+## Admission, ownership and lifecycle
+
+`ops/Resource-Scheduler.Core.ps1` is the common admission API. Every worktree uses
+the same account-wide registry under `%LOCALAPPDATA%/IW7Paris/ResourceScheduler`.
+A file handle opened with no sharing serializes snapshot/check/reserve/write.
+The atomic JSON replacement retains one previous version for diagnosis. Registry
+content is local operational state, not source and not a security boundary.
+
+Reserve the **complete planned scenario before starting its first process**.
+RAM and commit budgets are independent. Leave at least 25% of physical RAM and
+20% of the commit limit free after the projection (minimum 4 GiB each). Baseline
+usage includes Windows, Codex, browsers and the owner's running game/server.
+Do not subtract a working-set trim from commit, shrink a live reservation or
+assume a process has reached its peak just because startup uses little RAM.
+
+The initial estimates are conservative admission values, not measured maxima:
+
+| Workload | Physical estimate | Commit estimate | Qualification |
+| --- | ---: | ---: | --- |
+| Native build, one MSBuild node, compiler `/MP` disabled | 4 GiB | 6 GiB | BelowNormal priority inherited by synchronous children |
+| Native build, two nodes, explicitly selected | 8 GiB | 12 GiB | Same exclusive lease; no gameplay overlap |
+| One reduced client | 8 GiB | 8 GiB | Logic/audio evidence only |
+| One full-quality client | 12 GiB | 12 GiB | Required for unqualified texture/material evidence |
+| Isolated dedicated | 2-4 GiB | 2-4 GiB | Use the greater profile-specific estimate, add it to client budgets |
+
+Full-quality pair admission can legitimately fail while ordinary Windows and
+the owner's server are running. Keep useful light work moving, retain the test
+plan and wait for capacity; do not quietly lower estimates to make the gate green.
+Two reduced voice clients require both clients plus the dedicated in one group.
+Four local clients are not supported by the present capacity evidence.
+
+```powershell
+./ops/Resource-Scheduler.ps1 -Action Status
+. ./ops/Resource-Scheduler.Core.ps1
+$lease = Enter-IW7ResourceLease -Scope $absoluteLabRoot -Kind Runtime `
+    -PhysicalBytes 16GB -CommitBytes 16GB -Owner 'visual enemy test'
+# Use the lab's existing protected launcher, not arbitrary Start-Process.
+# After each child identity is captured:
+Add-IW7ResourceProcess -Token $lease.Token -ProcessId $ownedChildPid
+# After the lab has stopped its exact clients/server through its normal guards:
+Exit-IW7ResourceLease -Token $lease.Token
+```
+
+Runtime re-entry for the same lab is idempotent and may increase its total
+budget; its local state lock must serialize launches within that lab. Registered
+resident/private allocations are already in the live snapshot, so re-entry
+budgets only the remaining projected growth. This is an estimate, not a kernel
+memory cap. Unregistered labs, compilers, ZoneTool and Java analysis also block
+new heavy admission. Existing owner processes are never stopped by this API.
+
+Process records bind PID, creation time and image. Missing identity retains the
+reservation. PID reuse never authorizes killing or adopting a process. A runtime
+lease may be reclaimed only when its owner, attached children and any process
+under its lab root are gone. Orphan builds remain quarantined, since detached
+compiler children can live outside the scope. After diagnosing and closing the
+exact job, `-Action Release -Token <exact token>` refuses release if its owner or
+a possible heavy child remains. There is no TTL that silently frees a live game.
+Never delete the registry to bypass contention.
+
+The scheduler itself never kills or suspends any game. The lab watchdog retains
+responsibility for sustained pressure, fresh godmode/inactivity, diagnostic
+capture and identity-checked orderly stop. Admission cannot prevent a user from
+launching another unrelated application afterwards. The pressure thresholds are
+80% physical/85% commit; tests that exceed them are not valid performance runs.
+
+## Build, extraction and analysis
+
+Build-Voice and Build-RhinoZoneTool acquire a heavy-job lease around compilation,
+default to one MSBuild node, disable compiler multiprocess expansion, disable
+node reuse and run at BelowNormal priority. The caller's priority is restored in
+`finally`. `TestsOnly` remains lightweight and does not reserve a whole game slot.
+Do not nest a lease wrapper around an already guarded builder.
+
+For an unintegrated asset/decompiler tool, run its entire synchronous invocation
+under the common wrapper, with measured or conservative estimates:
+
+```powershell
+. ./ops/Resource-Scheduler.Core.ps1
+Invoke-IW7ResourceJob -Scope $absoluteWorktree -Kind Extract -Owner 'asset closure' `
+    -PhysicalBytes 6GB -CommitBytes 8GB -Body {
+        # Invoke the existing synchronous tool and check its real exit code here.
+    }
+```
+
+No sleeping game should be held while compiling. Finish the bounded encounter,
+collect its evidence, stop the owned pair, then build. On refusal, continue source
+review, test construction and documentation; retry after the active owner releases.
+The registry reports the current holder. It is an admission gate, not a persistent
+job queue or an OS limit on arbitrary direct executable launches.
+
+## Choose the least expensive valid witness
+
+| Question | Minimum useful witness | Invalid shortcut |
+| --- | --- | --- |
+| Protocol, parser, counters, data transformations | Unit tests and offline source/asset checks | Starting a full renderer for every edit |
+| GSC linkage, server initialization | Dedicated logs and exact hashes | Claiming player behavior from startup |
+| AI, combat, Rush, connection state | One protected low-cost client with telemetry | Removing actors required by the scenario |
+| Native voice transport/output | Reduced textures, actual audio, per-receiver loopback | Muting sound or confusing injected tones with human speech |
+| Textures, shaders, animations, FX | Full-quality client, native frames and observation | Fullbright, missing mip detail, disabled FX or hidden required assets |
+| Frametime/performance acceptance | Normal intended settings, defined scenario, frame timings and soak | 720p/30fps reduced test as a claim about normal gameplay |
+
+Keep 1280x720 and 30 fps for bounded functional fixtures unless the measured
+feature requires more. Retain the true audio path for audio tests. Reduced
+`r_picmip`, bump and spec values belong only to the isolated client profile.
+Restore/profile-reset before judging texture quality. Godmode, inactivity bypass,
+`sv_cheats=0`, separate AppData/keys/bank/ports and the owner's base isolation stay
+mandatory. Remove unrelated enemies for audio/UI tests through legitimate
+lifecycle cleanup; do not change counters or remove the combat subject.
+
+Extract minimal enemy dependency closures, including only required sound aliases.
+Reuse hashes/pinned packs when inputs are unchanged; build only the changed layer.
+Whole donor-map loads are a known invalid strategy. Do not enlarge asset pools as
+a substitute for finding unwanted dependencies. Preserve actual rendering/audio
+checks after any extraction or shader serializer change.
+
+## Windows, GPU, storage and diagnostic decisions
+
+The 2026-10-04 read-only inventory found 31.80 GiB visible RAM (2x16 GiB DDR4-3200),
+i5-13400F (10 cores/16 logical processors), RTX 3080 with 10,240 MiB VRAM, and a
+system-managed 18 GiB pagefile. Its observed peak usage was 14,617 MiB; that is a
+historical high-water observation, not attribution to an individual test.
+The active plan was Bitsum Highest Performance. No power plan, driver, memory
+compression, service, firewall, owner graphics setting or kernel setting was changed.
+
+Working set is resident memory; private bytes are commit, with different accounting
+and sharing. Microsoft's [memory counter mapping](https://learn.microsoft.com/en-us/windows/win32/memory/memory-performance-information)
+explains the distinction. [EmptyWorkingSet](https://learn.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-emptyworkingset)
+evicts resident pages; it is not a release of allocations. Do not run RAM cleaners,
+periodic trims, standby-list purges or suspension as a fake capacity increase.
+
+The [pagefile extends the commit limit](https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/introduction-to-the-page-file)
+but does not make SSD access as fast as RAM. Leave it system-managed here. Free
+disk was about 34.9 GiB during this inventory: do not make another 84 GiB stock
+copy on this volume. Reuse the chat's existing isolated snapshot. Existing lab
+server/client roots already hardlink only to their internal read-only stock copy.
+Global cache deduplication would need manifests, immutable content and ownership
+verification before changing hardlinks; deleting other active chats' assets is
+not an optimization. Preserve banks, matching PDBs and crash evidence.
+
+CPU affinity, EcoQoS, timer/HPET changes, disabled security, GPU driver replacement,
+forced low memory caps and VM/GPU virtualization have no measured benefit for this
+incident. They can change timing or crash behavior and were not applied. Low build
+priority and bounded compiler concurrency address known avoidable interference.
+GPU use is monitored, not reserved by a validated VRAM allocator; one scenario
+and capped functional rendering limit contention without proving frametime safety.
+
+```powershell
+./ops/Resource-Scheduler.ps1 -Action Measure -Seconds 30
+```
+
+This bounded observer writes ignored JSONL with RAM/commit, paging, CPU, disk
+queue, selected process footprints and optional NVIDIA VRAM/utilization readings.
+No passwords/command lines are recorded. Windows CIM and installed `nvidia-smi`
+are sufficient; no new driver or resident optimizer is needed. `wpr.exe` is
+available if a reproducible residual stall needs ETW analysis. Missing optional
+GPU telemetry is recorded; missing RAM/commit telemetry refuses admission.
+
+For substantial additional real simultaneous rendering, use another authorized
+Windows/GPU machine with its own legitimate assets and run the same bounded
+protocol there, or expand hardware after measuring the desired workload. Neither
+cloud provisioning, hardware purchase nor remote-agent setup happened here.
+
+## Durable project context and rollout
+
+The private [iw7-paris-server repository](https://github.com/bigmangeekf/iw7-paris-server)
+is the central source/workflow/decision/evidence index. Public owner forks
+[iw7-mod](https://github.com/bigmangeekf/iw7-mod) and
+[x64-zt](https://github.com/bigmangeekf/x64-zt) contain only suitable generic source
+contributions. No private project config, proprietary assets or credentials may
+be copied there. Existing visibility was verified; no repository visibility changed.
+
+Local Git worktrees contain candidates and ignored tools/runtime evidence. Main
+and GitHub retain reviewed source, versioned tests, current decisions and sanitized
+validation. Follow GIT-WORKFLOW.md: coherent commits, private PR, final diff review,
+successful CI for the exact head, merge commit and clean synchronized main in its
+existing checkout. Do not reset the dirty original checkout owned by another chat.
+
+The active enemy, voice and public-profile chats were contacted under the owner's
+explicit coordination instruction. Update existing worktrees to the merged helper
+before launching again; older launchers can bypass any cooperative policy.
+Runtime launcher integration is coordinated with the enemy-lab lifecycle fix;
+track its actual merged state in STATE rather than claiming rollout from an API
+alone. Keep capacity/quality/long soak acceptance separate from scheduler tests.
