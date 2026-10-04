@@ -1,5 +1,15 @@
 # Native voice investigation
 
+The generic helper uses `-GenericRelay` on both processes, without UI/legacy
+registration witnesses. It permits A reconnect with B staying. VoiceMute/Unmute
+and VoiceDisable/Enable use native APIs with exactly one remote. VoiceRestore
+restores saved values only for the same session/UID; StopClient restores before
+disconnect. These do not prove scoreboard UI or devices. VoiceReleasedProbe
+keeps the actual talk binding released. Inspect deltas/markers/output, never
+acknowledgment alone. Probe logs include begin/return ticks. The revised stimulus
+is twenty440-Hz prelude frames then forty997-Hz frames, without codec reset. Keep
+the unchanged sixty-frame target-tone failures separate from this diagnostic.
+
 Voice is not accepted. Issue #4 remains open. Trace the original engine path before
 choosing a repair; the protocol-v1 overlay remains an unaccepted fallback.
 

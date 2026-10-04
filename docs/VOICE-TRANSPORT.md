@@ -1,5 +1,21 @@
 # Generic voice transport core
 
+## Latest native limits
+
+The reconciled candidate passes A-to-B and A's sender reconnect with B staying.
+Reverse steady-tone output after A's receiver restart still fails despite sixty
+delivered/decoded frames. Persistent codec state is an unproven hypothesis. A
+varied test prelude does not itself resolve the unchanged-tone failure. No
+production codec reset/replacement is applied. Speex documents
+[codec state/reset controls](https://www.speex.org/docs/manual/speex-manual/node7.html);
+their role here remains an inference from local evidence.
+
+The next adapter revision retains accepted connections through map epoch reset,
+clears actual disconnects, renews accepted joins and resets a changing local UID.
+Native map tests remain pending. Playback-call counters measure entry invocation,
+independently from decoder deltas and output. Earlier preparation text below is
+retained; current results are in VALIDATION.md/STATE.md.
+
 This is a generic candidate, not an accepted IW7-Mod feature. The three pure
 headers contain no Paris configuration,
 test protection, UI metadata, game assets or engine addresses.

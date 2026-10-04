@@ -650,7 +650,7 @@ namespace paris_voice
                     *reinterpret_cast<const int*>(local_info + 12));
             }
         }
-        void native_probe()
+        void run_native_probe(bool hold_talk)
         {
             if (!native_trace || game::environment::is_dedi() || !native_audio_test()) return;
             game::netadr_s host{};
@@ -680,16 +680,18 @@ namespace paris_voice
             // earlier activity-mode attempt encoded zero and is inconclusive.
             ptt->current.enabled = true;
             // Common dispatcher handles talk before the MP/SP gameplay dispatcher.
-            utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding, 86, 1);
+            if (hold_talk) utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding, 86, 1);
             const bool pressed = utils::hook::invoke<bool>(0x14036FE40, 0);
             const bool generic_relay = utils::flags::has_flag("iw7-voice-relay");
+            const auto probe_begin = GetTickCount64();
+            console::info("[paris-voice-native] Synthetic witness begins: hold_talk=%d tick_ms=%llu.\n", hold_talk, probe_begin);
             const auto encoded_before = generic_relay ? voice_relay::encoded_frames() : native_encoded.load();
             const int frames = (relay_witness || generic_relay) ? 60 : 20;
             for (int i = 0; i < frames; ++i)
             {
                 if (relay_witness || generic_relay) for (int sample = 0; sample < samples; ++sample)
                     pcm[sample] = static_cast<short>(10000 * std::sin(6.283185307179586 *
-                        997 * (i * samples + sample) / 8000.0));
+                        (i < 20 ? 440 : 997) * (i * samples + sample) / 8000.0));
                 capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
                 capture_voice(&block);
                 // The static playback witness must resemble real 20-ms capture.
@@ -697,12 +699,65 @@ namespace paris_voice
                 // and never reached DirectSound's 6000-byte startup threshold.
                 if ((relay_witness || generic_relay) && i + 1 < frames) Sleep(20);
             }
-            utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
+            if (hold_talk) utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
             ptt->current.enabled = saved_ptt;
             console::info("[paris-voice-native] Synthetic post-device witness: pressed=%d released=%d encoded_delta=%llu; PTT setting restored.\n",
                 pressed, !utils::hook::invoke<bool>(0x14036FE40, 0),
                 (generic_relay ? voice_relay::encoded_frames() : native_encoded.load()) - encoded_before);
+            console::info("[paris-voice-native] Synthetic witness returned: duration_ms=%llu tick_ms=%llu.\n", GetTickCount64() - probe_begin, GetTickCount64());
             status();
+        }
+        void native_probe() { run_native_probe(true); }
+        void native_released_probe() { run_native_probe(false); }
+
+        struct control_baseline
+        {
+            game::dvar_t* voice{};
+            game::SessionData* session{};
+            std::uint64_t user{};
+            int slot{-1};
+            bool active{}, enabled{}, muted{};
+        } test_controls;
+        void restore_test_controls()
+        {
+            if (!test_controls.active) return;
+            if (test_controls.voice && test_controls.voice->type == game::DVAR_TYPE_BOOL)
+                game::Dvar_SetBool(test_controls.voice, test_controls.enabled);
+            auto* current = utils::hook::invoke<game::SessionData*>(0x140D32740);
+            if (current == test_controls.session && current && current->dyn.sessionHandle &&
+                test_controls.slot >= 0 && test_controls.slot < static_cast<int>(wire::slots) &&
+                current->dyn.users[test_controls.slot].registered && current->dyn.users[test_controls.slot].xuid == test_controls.user)
+                utils::hook::invoke<void>(test_controls.muted ? 0x140D59AC0 : 0x140D59FE0, current, test_controls.slot);
+            test_controls = {};
+            console::info("[paris-voice-native] Temporary native voice controls restored; prior speaker binding required.\n");
+        }
+        void test_control(const char* action)
+        {
+            if (!native_trace || !native_audio_test() || game::environment::is_dedi() ||
+                !utils::flags::has_flag("iw7-voice-relay")) return;
+            game::netadr_s host{};
+            if (!client_connection(host) || host.ip[0] != 127 || host.ip[1] || host.ip[2] || host.ip[3] != 1) return;
+            auto* current = utils::hook::invoke<game::SessionData*>(0x140D32740);
+            auto* voice = const_cast<game::dvar_t*>(game::Dvar_FindVar("cl_voice"));
+            if (!current || !current->dyn.sessionHandle || !voice || voice->type != game::DVAR_TYPE_BOOL) return;
+            const int controller = utils::hook::invoke<int>(0x140347690, 0);
+            const int own = utils::hook::invoke<int>(0x140D32920, controller, current);
+            if (own < 0 || own >= static_cast<int>(wire::slots)) return;
+            int remote = -1;
+            for (unsigned slot = 0; slot < wire::slots; ++slot)
+                if (static_cast<int>(slot) != own && current->dyn.users[slot].registered && current->dyn.users[slot].voiceRegistered)
+                { if (remote >= 0) return; remote = static_cast<int>(slot); }
+            if (remote < 0) return; // Exactly one remote test participant.
+            if (!test_controls.active)
+                test_controls = {voice, current, current->dyn.users[remote].xuid, remote, true, voice->current.enabled, current->dyn.users[remote].muted};
+            if (test_controls.session != current || test_controls.slot != remote || test_controls.user != current->dyn.users[remote].xuid) return;
+            if (!std::strcmp(action, "mute")) utils::hook::invoke<void>(0x140D59AC0, current, remote);
+            else if (!std::strcmp(action, "unmute"))
+                utils::hook::invoke<void>(test_controls.muted ? 0x140D59AC0 : 0x140D59FE0, current, remote);
+            else if (!std::strcmp(action, "disable")) game::Dvar_SetBool(voice, false);
+            else if (!std::strcmp(action, "enable")) game::Dvar_SetBool(voice, test_controls.enabled);
+            console::info("[paris-voice-native] Temporary control=%s cl_voice=%d native_muted=%d; baseline retained for restore.\n",
+                action, voice->current.enabled, utils::hook::invoke<bool>(0x14037BBA0, current, remote));
         }
         void register_witness()
         {
@@ -746,6 +801,12 @@ namespace paris_voice
             command::add("paris_voice_network_test", network_selftest);
             command::add("paris_voice_gate_selftest", gate_selftest);
             command::add("paris_voice_native_probe", native_probe);
+            command::add("paris_voice_native_released_probe", native_released_probe);
+            command::add("paris_voice_test_mute", [] { test_control("mute"); });
+            command::add("paris_voice_test_unmute", [] { test_control("unmute"); });
+            command::add("paris_voice_test_disable", [] { test_control("disable"); });
+            command::add("paris_voice_test_enable", [] { test_control("enable"); });
+            command::add("paris_voice_test_restore", restore_test_controls);
             command::add("paris_voice_registration_roster", registration_roster_witness);
             command::add("paris_voice_register_witness", register_witness);
             if (native_trace)

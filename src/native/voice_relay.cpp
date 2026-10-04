@@ -59,6 +59,7 @@ namespace voice_relay
                     {unregister, "\x48\x89\x5c\x24\x18\x55\x48\x83\xec\x20\x80\x79\x10\x00", 14},
                     {register_voice, "\x48\x89\x6c\x24\x10\x48\x89\x74\x24\x18\x57\x48\x83\xec\x20", 15},
                     {mute, "\x48\x63\xc2\x48\x6b\xd0\x38\xc6\x84\x0a\x90\x00\x00\x00\x01\xc3", 16},
+                    {0x140D59FE0, "\x48\x63\xc2\x48\x6b\xd0\x38\xc6\x84\x0a\x90\x00\x00\x00\x00\xc3", 16},
                     {accepted_join_call, "\xe8\x1d\xc0\x01\x00", 5},
                     {send_game_state, "\x48\x89\x5c\x24\x08\x48\x89\x6c\x24\x10", 10},
                     {0x140C733E0, "\x4c\x89\x44\x24\x18\x53\x56\x41\x54\x41\x55\x48\x83\xec\x58", 15},
@@ -88,6 +89,7 @@ namespace voice_relay
         struct received_packet { game::netadr_s source; wire::message data; unsigned bytes; std::uint64_t time; };
         std::vector<received_packet> inbox;
         std::unique_ptr<transport::server> server;
+        bool server_running{};
         std::unique_ptr<transport::client> client;
         std::array<transport::id, voice::state::max_speakers> incarnations{};
         std::array<game::netadr_s, voice::state::max_speakers> addresses{};
@@ -96,6 +98,7 @@ namespace voice_relay
         game::SessionData* session{};
         std::array<std::uint64_t, voice::state::max_speakers> owned_users{};
         int local_slot{-1};
+        std::uint64_t local_user{};
         std::uint64_t last_registration_check{};
         std::atomic<std::uint64_t> encoded{}, sent{}, relayed{}, played{}, rejected{}, muted{}, joins{}, registrations{};
         std::atomic<std::uint64_t> registration_attempts{}, registration_failures{};
@@ -145,7 +148,13 @@ namespace voice_relay
             auto packets = drain(); std::lock_guard lock(state_mutex);
             if (!installed || !server) return;
             if (!zombies() || !game::SV_Loaded())
-            { incarnations = {}; addresses = {}; server->reset(); return; }
+            {
+                if (server_running) server->reset();
+                server_running = false; addresses = {};
+                if (!zombies()) incarnations = {};
+                return;
+            }
+            server_running = true;
             const auto time = now(); transport::connections current{};
             const auto* players = *game::svs_clients;
             const auto count = std::min(*game::svs_numclients, voice::state::max_speakers);
@@ -185,7 +194,7 @@ namespace voice_relay
             owned_users = {};
         }
         void reset_client()
-        { release_users(); client.reset(); session = nullptr; local_slot = -1; game_challenge.clear(); host = {}; last_registration_check = 0; }
+        { release_users(); client.reset(); session = nullptr; local_slot = -1; local_user = 0; game_challenge.clear(); host = {}; last_registration_check = 0; }
         void mirror_roster(std::uint32_t changed)
         {
             if (!session || !session->dyn.sessionHandle || !client || !client->ready()) return;
@@ -236,9 +245,9 @@ namespace voice_relay
             const int controller = engine::controller_index(); const auto user = game::Live_GetXuid(controller);
             const int own = engine::own_slot(controller, selected);
             if (!user || own < 0 || own >= static_cast<int>(voice::state::max_speakers)) { reset_client(); return; }
-            if (!client || selected != session || !network::are_addresses_equal(host, target) || game_challenge != connection->challenge || own != local_slot)
+            if (!client || selected != session || !network::are_addresses_equal(host, target) || game_challenge != connection->challenge || own != local_slot || user != local_user)
             {
-                reset_client(); session = selected; host = target; local_slot = own; game_challenge = connection->challenge;
+                reset_client(); session = selected; host = target; local_slot = own; local_user = user; game_challenge = connection->challenge;
                 client = std::make_unique<transport::client>(user, random_id);
             }
             const auto time = now(); const bool was_ready = client->ready();
@@ -297,7 +306,7 @@ namespace voice_relay
             if (client && session) for (unsigned slot = 0; slot < owned_users.size(); ++slot)
             { if (client->roster().speakers[slot].present) roster_mask |= 1u << slot;
               if (session->dyn.users[slot].registered && session->dyn.users[slot].voiceRegistered) native_mask |= 1u << slot; }
-            console::info("[voice-relay] version=2 installed=%d dedicated=%d ready=%d slot=%d encoded=%llu sent=%llu relayed=%llu playback_frames=%llu rejected=%llu muted=%llu accepted_joins=%llu registrations=%llu registration_attempts=%llu registration_failures=%llu roster_mask=%u native_mask=%u\n",
+            console::info("[voice-relay] version=2 installed=%d dedicated=%d ready=%d slot=%d encoded=%llu sent=%llu relayed=%llu playback_calls=%llu rejected=%llu muted=%llu accepted_joins=%llu registrations=%llu registration_attempts=%llu registration_failures=%llu roster_mask=%u native_mask=%u\n",
                 installed.load(), game::environment::is_dedi(), client && client->ready(), local_slot,
                 encoded.load(), sent.load(), relayed.load(), played.load(), rejected.load(), muted.load(), joins.load(), registrations.load(),
                 registration_attempts.load(), registration_failures.load(), roster_mask, native_mask);
@@ -316,7 +325,10 @@ namespace voice_relay
             {
                 if (post) return;
                 std::lock_guard lock(state_mutex);
-                reset_client(); incarnations = {}; addresses = {};
+                reset_client(); addresses = {}; server_running = false;
+                // Existing accepted game connections can survive map load.
+                // Rotate the server epoch, retaining their incarnation until
+                // native disconnect or the next accepted join replaces it.
                 if (server) server->reset();
                 std::lock_guard incoming_lock(inbox_mutex); inbox.clear();
             });

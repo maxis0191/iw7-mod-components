@@ -14,3 +14,7 @@ session_register_remote,140C733E0
 session_voice_session,140D32740
 server_direct_connect,140C4EBD0
 server_drop_client,140C4FBA0
+voice_encoded_queue,14037D960
+voice_capture_pcm,140B79D30
+voice_decode_pcm,140B79310
+voice_encode_pcm,140B794F0
