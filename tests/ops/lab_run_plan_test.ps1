@@ -1,0 +1,22 @@
+$ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/../../ops/Lab-RunPlan.ps1"
+. "$PSScriptRoot/../../ops/Lab-Evidence.ps1"
+foreach ($expected in @(@('Full',1,16,0),@('Reduced',1,12,2),@('Full',2,28,0),@('Reduced',2,20,2))) {
+    $plan = Get-IW7LabRunPlan $expected[0] $expected[1]
+    if ($plan.PhysicalBytes -ne ($expected[2] * 1GB) -or $plan.CommitBytes -ne ($expected[2] * 1GB) -or
+        $plan.Picmip -ne $expected[3] -or $plan.PlannedClients -ne $expected[1]) { throw 'Whole-session reservation differs from the explicit plan.' }
+    foreach ($name in @('r_picmip','r_picmip_bump','r_picmip_spec')) {
+        if (!$plan.GraphicsArguments.Contains("+set $name $($expected[3])")) { throw 'Graphics plan does not explicitly set every changed texture dvar.' }
+    }
+    if ($plan.EnableAudio) { throw 'Functional runs must stay silent by default.' }
+    $audioPlan = Get-IW7LabRunPlan $expected[0] $expected[1] -EnableAudio
+    if (!$audioPlan.EnableAudio -or $audioPlan.PhysicalBytes -ne $plan.PhysicalBytes) { throw 'Game audio selection corrupted the run reservation.' }
+}
+$sample = '[Paris lab graphics] picmip=0; bump=0; spec=0; tick_ms=100000'
+Assert-IW7LabGraphics $sample 0 99999 100001
+foreach ($case in @(@($sample,2,99999),@($sample,0,100001),@($sample.Replace('bump=0','bump=2'),0,99999),@($sample.Replace('picmip=0','picmip=-1'),0,99999))) {
+    $refused = $false
+    try { Assert-IW7LabGraphics $case[0] $case[1] $case[2] 100001 } catch { $refused = $true }
+    if (!$refused) { throw 'Mismatched or stale graphics were accepted.' }
+}
+Write-Output 'PASS: explicit client count, full/reduced reservations, complete setting restoration and observed capture quality.'

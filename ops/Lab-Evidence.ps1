@@ -1,4 +1,14 @@
 # Pure evidence checks, shared by one-shot verification and the lab supervisor.
+function Assert-IW7LabGraphics([string]$Log, [int]$Picmip, [long]$SinceTickMs, [long]$NowTicks = [Environment]::TickCount64) {
+    $samples = [regex]::Matches($Log, '\[Paris lab graphics\] picmip=(-?\d+); bump=(-?\d+); spec=(-?\d+); tick_ms=(\d+)')
+    if (!$samples.Count) { throw 'Actual client graphics evidence is missing.' }
+    $last = $samples[$samples.Count - 1]
+    $tick = [long]$last.Groups[4].Value
+    if ($tick -lt $SinceTickMs -or $tick -gt $NowTicks -or $NowTicks - $tick -gt 15000 -or
+        [int]$last.Groups[1].Value -ne $Picmip -or [int]$last.Groups[2].Value -ne $Picmip -or [int]$last.Groups[3].Value -ne $Picmip) {
+        throw 'Capture graphics differ from the reserved profile or evidence is stale.'
+    }
+}
 function Assert-IW7LabSupervisor($Snapshot, $Record, [long]$NowTicks = [Environment]::TickCount64) {
     if (!$Snapshot -or !$Record -or !$Record.Token -or !$Record.PID -or $null -eq $Snapshot.TickMs) { throw 'Lab supervisor evidence is missing.' }
     $age = $NowTicks - [long]$Snapshot.TickMs

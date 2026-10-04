@@ -192,7 +192,17 @@ namespace paris_test_fixture
                 if (!lab_port()) return;
                 connect_pending = true;
             }
-            if (action == "capture") command::execute("capture_frame server-modules-fixture", true);
+            if (action == "capture")
+            {
+                const auto graphics_value = [](const char* name)
+                {
+                    const auto* dvar = game::Dvar_FindVar(name);
+                    return dvar && dvar->type == game::DVAR_TYPE_INT ? dvar->current.integer : -1;
+                };
+                console::info("[Paris lab graphics] picmip=%d; bump=%d; spec=%d; tick_ms=%llu\n",
+                    graphics_value("r_picmip"), graphics_value("r_picmip_bump"), graphics_value("r_picmip_spec"), GetTickCount64());
+                command::execute("capture_frame server-modules-fixture", true);
+            }
             else if (action == "help") command::execute("cmd say ..help", true);
             else if (action == "mods") command::execute("cmd say ..mods", true);
             else if (action == "close") command::execute("cmd say ..close", true);
