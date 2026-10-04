@@ -1,5 +1,25 @@
 # Native voice investigation
 
+## Cold-load memory correction - 2026-10-04
+
+Two full-quality cold-loaded clients also reached 90.8% physical use. The second
+client exited cleanly immediately; no further signal was accepted under that
+pressure. A one-time owned working-set trim reduced use from 63.5% to 55.2% with
+one remaining client, but was insufficient to budget another full-quality load.
+This OS paging hint does not free allocations or reduce committed memory.
+
+The harness now estimates at least 12 GiB per new full client and defaults voice
+tests to reduced texture resolution (`r_picmip`, bump and spec = 2). Preparation
+backs up `iw7-mod/players2/config_mp.cfg`; final restoration returns its exact
+bytes, alongside the existing fixture files. `-FullQualityGraphics` selects the
+original quality when the resource budget permits it. The low-memory profile is
+not visual-quality acceptance and must be measured before resuming paired work.
+
+`TrimMemory` is optional, restricted to verified protected owned processes. Its
+opened handles must match executable and creation time. Rewarm and reverify before
+any measurement; trimming is not evidence of a leak fix or four-client capacity.
+[Windows API behavior](https://learn.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-emptyworkingset).
+
 ## Repeated-stimulus calibration failure - 2026-10-04
 
 Candidate 7eb246a passes the first A/B fixed-mode signals, then fails A's repeated
