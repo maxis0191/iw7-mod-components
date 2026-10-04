@@ -12,3 +12,5 @@ voice_address_reference,140D92790
 voice_register_remote,140D59D10
 session_register_remote,140C733E0
 session_voice_session,140D32740
+server_direct_connect,140C4EBD0
+server_drop_client,140C4FBA0

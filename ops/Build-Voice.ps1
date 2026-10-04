@@ -1,4 +1,4 @@
-param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave')
 $ErrorActionPreference = 'Stop'
 if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
@@ -28,10 +28,31 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$testSource" /Fe:"$testExe" /Fo:"
 if errorlevel 1 exit /b 1
 "$testExe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_state_test.cpp" /Fe:"$runtime\voice-state-test.exe" /Fo:"$runtime\voice-state-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-state-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_transport_test.cpp" /Fe:"$runtime\voice-transport-test.exe" /Fo:"$runtime\voice-transport-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-transport-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib
 "@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
 if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
+if ($Sanitizers) {
+    $sanitizerCmd = Join-Path $runtime 'compile-voice-sanitizers.cmd'
+    $lines = @('@echo off', "call `"$vcvars`" >nul", 'if errorlevel 1 exit /b 1')
+    foreach ($name in @('voice_protocol_test','voice_state_test','voice_transport_test')) {
+        $lines += "cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /Zi /fsanitize=address `"$repo\tests\native\$name.cpp`" /Fe:`"$runtime\$name-asan.exe`" /Fo:`"$runtime\$name-asan.obj`" /Fd:`"$runtime\$name-asan.pdb`" /link /INCREMENTAL:NO"
+        $lines += 'if errorlevel 1 exit /b 1'
+        $lines += "`"$runtime\$name-asan.exe`""
+        $lines += 'if errorlevel 1 exit /b 1'
+    }
+    $lines | Set-Content -LiteralPath $sanitizerCmd -Encoding ASCII
+    & $sanitizerCmd
+    if ($LASTEXITCODE) { throw 'Native AddressSanitizer tests failed.' }
+}
 if ($TestsOnly) { return }
 if (!(Test-Path -LiteralPath "$root/.git")) {
     if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }

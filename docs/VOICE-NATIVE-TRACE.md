@@ -3,6 +3,12 @@
 Voice is not accepted. Issue #4 remains open. Trace the original engine path before
 choosing a repair; the protocol-v1 overlay remains an unaccepted fallback.
 
+The latest paced static base witness passes synthetic playback in both directions.
+[Exact scoped results](deployments/2026-10-04-voice-paced-playback.json) include the
+baseline, native deltas and output metrics. It is now closed/restored. A separate
+[generic transport core](VOICE-TRANSPORT.md) passes pure reconnect/control tests;
+it has not replaced the legacy runtime. Earlier sections retain historical runs.
+
 ## Independent audio witness
 
 Use a dedicated worktree and physically independent asset snapshot as described in
