@@ -14,6 +14,7 @@
 #include <cmath>
 #include <charconv>
 #include "paris_voice_protocol.hpp"
+#include "paris_test_safety.hpp"
 
 namespace paris_voice
 {
@@ -64,7 +65,7 @@ namespace paris_voice
         utils::hook::detour enqueue_voice_hook;
         utils::hook::detour capture_voice_hook;
         utils::hook::detour native_batch_hook, native_receive_hook, native_send_hook;
-        bool native_trace{};
+        bool native_trace{}, relay_witness{};
         bool native_audio_test()
         {
             return (utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab")) ||
@@ -199,7 +200,9 @@ namespace paris_voice
         {
             // Parse before touching engine memory; at most 1200 bytes/10 frames.
             wire::packet p;
-            if (from.type != game::NA_IP || !wire::decode(data, p)) { ++stats.rejected; return; }
+            if (from.type != game::NA_IP || (relay_witness &&
+                (from.ip[0] != 127 || from.ip[1] || from.ip[2] || from.ip[3] != 1)) ||
+                !wire::decode(data, p)) { ++stats.rejected; return; }
             std::lock_guard lock(inbox_mutex);
             if (inbox.size() >= inbox_limit) { ++stats.rejected; return; }
             inbox.push_back({from, std::move(p), now(), static_cast<unsigned>(data.size())});
@@ -216,7 +219,8 @@ namespace paris_voice
             for (unsigned i = 0; i < wire::slots; ++i)
             {
                 auto& p = peers[i];
-                if (!clients || i >= count || clients[i].header.state != game::CS_ACTIVE || clients[i].remoteAddress.type != game::NA_IP)
+                if (!clients || i >= count || clients[i].header.state != game::CS_ACTIVE || clients[i].remoteAddress.type != game::NA_IP ||
+                    (relay_witness && !paris_test_fixture::is_protected_player(static_cast<int>(i))))
                 { p = {}; continue; }
                 const auto& c = clients[i];
                 const std::string identity(c.playerGuid, strnlen(c.playerGuid, sizeof(c.playerGuid)));
@@ -229,7 +233,8 @@ namespace paris_voice
                 if (time - msg.time > 500) { ++stats.rejected; continue; }
                 unsigned slot = count;
                 for (unsigned i = 0; clients && i < count; ++i)
-                    if (clients[i].header.state == game::CS_ACTIVE && same(clients[i].remoteAddress, msg.from)) { slot = i; break; }
+                    if (clients[i].header.state == game::CS_ACTIVE && same(clients[i].remoteAddress, msg.from) &&
+                        (!relay_witness || paris_test_fixture::is_protected_player(static_cast<int>(i)))) { slot = i; break; }
                 if (slot >= count) { ++stats.rejected; continue; }
                 auto& p = peers[slot];
                 if (msg.data.type == wire::kind::hello)
@@ -267,7 +272,8 @@ namespace paris_voice
             const auto* connection = party::get_server_connection_state();
             if (!zombies() || !connection || !connection->hostDefined || connection->host.type != game::NA_IP ||
                 !game::CL_IsGameClientActive(0) || game::clientUIActives[0].connectionState != game::CA_ACTIVE) return false;
-            host = connection->host; return true;
+            host = connection->host;
+            return !relay_witness || (host.ip[0] == 127 && !host.ip[1] && !host.ip[2] && host.ip[3] == 1);
         }
         void client_tick()
         {
@@ -301,7 +307,8 @@ namespace paris_voice
                         console::info("[paris-voice] Zombies relay ready (protocol 1, slot %u)\n", p.speaker);
                     }
                     client.token = p.token; client.own_slot = p.speaker; client.last_ready = time;
-                    ensure_audio(); continue;
+                    if (!relay_witness) ensure_audio();
+                    continue;
                 }
                 if ((p.type != wire::kind::audio && p.type != wire::kind::probe) || !client.token || p.token != client.token ||
                     (p.type == wire::kind::audio && p.speaker == client.own_slot) || (p.type == wire::kind::probe && p.speaker != client.own_slot) ||
@@ -309,19 +316,24 @@ namespace paris_voice
                     !client.rate[p.speaker].accept(static_cast<unsigned>(p.frames.size()), msg.bytes, time))
                 { ++stats.rejected; continue; }
                 if (!enabled()) { ++stats.muted; continue; }
-                ensure_audio();
+                if (!relay_witness) ensure_audio();
                 const auto samples = *reinterpret_cast<const int*>(0x145D5C6DC);
                 if (!audio_initialized() || samples <= 0 || samples > 4096) { ++stats.rejected; continue; }
                 const auto* lobby = game::Lobby_GetPartyData();
-                const auto* session = lobby ? lobby->session : nullptr;
+                const auto* session = relay_witness ? utils::hook::invoke<game::SessionData*>(0x140D32740) :
+                    (lobby ? lobby->session : nullptr);
+                if (relay_witness && (!session || !session->dyn.users[p.speaker].registered ||
+                    !session->dyn.users[p.speaker].voiceRegistered)) { ++stats.rejected; continue; }
                 // Engine scoreboard mute and platform/privacy checks remain in force.
                 if (session && utils::hook::invoke<bool>(0x14037BBA0, session, static_cast<int>(p.speaker)))
                 { ++stats.muted; continue; }
                 for (const auto& frame : p.frames)
                 {
-                    const int result = utils::hook::invoke<int>(0x140D59620, session, static_cast<int>(p.speaker),
+                    // The native caller uses no Voice_Incoming return value.
+                    // Decoder/queue counters measure work; an arbitrary RAX is
+                    // not a delivery result.
+                    utils::hook::invoke<void>(0x140D59620, session, static_cast<int>(p.speaker),
                         frame.data(), static_cast<int>(frame.size()), 0);
-                    if (result <= 0) ++stats.rejected;
                 }
             }
         }
@@ -454,7 +466,20 @@ namespace paris_voice
             if (native_trace)
             {
                 ++native_encoded;
-                return queue_voice_hook.invoke<int>(length, data);
+                const int original = queue_voice_hook.invoke<int>(length, data);
+                if (relay_witness)
+                {
+                    game::netadr_s host{};
+                    if (!client_connection(host) || !data || length <= 0 ||
+                        length > static_cast<int>(wire::max_frame_bytes)) return original;
+                    std::lock_guard lock(state_mutex);
+                    if (!client.token || !same(client.host, host) || !enabled()) return original;
+                    wire::packet p; p.type = wire::kind::audio; p.token = client.token;
+                    p.sequence = ++client.sequence; p.speaker = client.own_slot;
+                    p.frames.emplace_back(data, length);
+                    send(host, p); ++stats.sent;
+                }
+                return original;
             }
             // Native capture already applies PTT, mic mute, threshold and cl_voice.
             // Send each encoded frame promptly instead of the legacy 200 ms party batch.
@@ -635,8 +660,12 @@ namespace paris_voice
             utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding, 86, 1);
             const bool pressed = utils::hook::invoke<bool>(0x14036FE40, 0);
             const auto encoded_before = native_encoded.load();
-            for (int i = 0; i < 20; ++i)
+            const int frames = relay_witness ? 60 : 20;
+            for (int i = 0; i < frames; ++i)
             {
+                if (relay_witness) for (int sample = 0; sample < samples; ++sample)
+                    pcm[sample] = static_cast<short>(10000 * std::sin(6.283185307179586 *
+                        997 * (i * samples + sample) / 8000.0));
                 capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
                 capture_voice(&block);
             }
@@ -646,6 +675,18 @@ namespace paris_voice
                 pressed, !utils::hook::invoke<bool>(0x14036FE40, 0), native_encoded.load() - encoded_before);
             status();
         }
+        void register_witness()
+        {
+            if (!native_trace || !native_audio_test() || game::environment::is_dedi() ||
+                !utils::flags::has_flag("paris-voice-registration-witness")) return;
+            game::netadr_s host{};
+            if (!client_connection(host) || host.ip[0] != 127 || host.ip[1] || host.ip[2] || host.ip[3] != 1) return;
+            auto* session = utils::hook::invoke<game::SessionData*>(0x140D32740);
+            const int controller = utils::hook::invoke<int>(0x140347690, 0);
+            const int slot = session ? utils::hook::invoke<int>(0x140D32920, controller, session) : -1;
+            registration_witness(session, controller, slot, host);
+            status();
+        }
     }
     class component final : public component_interface
     {
@@ -653,19 +694,27 @@ namespace paris_voice
         void post_unpack() override
         {
             native_trace = utils::flags::has_flag("paris-voice-native-trace");
+            relay_witness = native_trace && utils::flags::has_flag("paris-voice-relay-witness");
+            if (relay_witness && !game::environment::is_dedi() &&
+                !utils::flags::has_flag("paris-voice-registration-witness"))
+            {
+                console::error("[paris-voice-native] Relay witness refused: explicit registration witness required.\n");
+                return;
+            }
             if (native_trace && (!native_audio_test() || !trace_signatures_match()))
             {
                 console::error("[paris-voice-native] Trace refused: explicit protected audio test/signatures required.\n");
                 return;
             }
             scheduler::once([] { game::Dvar_RegisterBool("paris_voice_available", !native_trace, 0, "Voice transport installed; matching clients required"); }, scheduler::main);
-            if (!native_trace) network::on(transport, receive);
+            if (!native_trace || relay_witness) network::on(transport, receive);
             command::add("paris_voice_status", status);
             command::add("paris_voice_selftest", codec_selftest);
             command::add("paris_voice_network_test", network_selftest);
             command::add("paris_voice_gate_selftest", gate_selftest);
             command::add("paris_voice_native_probe", native_probe);
             command::add("paris_voice_registration_roster", registration_roster_witness);
+            command::add("paris_voice_register_witness", register_witness);
             if (native_trace)
             {
                 native_receive_hook.create(0x14037CFF0, native_receive);
@@ -673,7 +722,7 @@ namespace paris_voice
                 scheduler::loop(status, scheduler::main, 10s);
             }
             if (utils::flags::has_flag("paris-voice-diagnostics")) scheduler::loop(status, scheduler::main, 10s);
-            if (game::environment::is_dedi()) { if (!native_trace) scheduler::loop(server_tick, scheduler::server, 10ms); }
+            if (game::environment::is_dedi()) { if (!native_trace || relay_witness) scheduler::loop(server_tick, scheduler::server, 10ms); }
             else
             {
                 // The lab uses the connect fixture without opening custom
@@ -685,7 +734,7 @@ namespace paris_voice
                     enqueue_voice_hook.create(0x140B79B60, enqueue_voice);
                     capture_voice_hook.create(0x140B79D30, capture_voice);
                     if (native_trace) native_batch_hook.create(0x14037D5C0, native_batch);
-                    else scheduler::loop(client_tick, scheduler::main, 10ms);
+                    if (!native_trace || relay_witness) scheduler::loop(client_tick, scheduler::main, 10ms);
                 }
                 if (utils::flags::has_flag("paris-voice-selftest")) scheduler::once(codec_selftest, scheduler::main, 20s);
                 if (utils::flags::has_flag("paris-voice-local-test"))
@@ -715,6 +764,7 @@ namespace paris_voice
             }
             if (native_trace) console::info("[paris-voice-native] Forwarding trace installed; original capture/session/transport/playback retained.\n");
             else console::info("[paris-voice] Native Zombies relay v1 installed; every participant needs this client build.\n");
+            if (relay_witness) console::warn("[paris-voice-native] LOOPBACK relay playback witness only; legacy generation defect retained, not a production feature.\n");
         }
     };
 }

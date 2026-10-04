@@ -175,6 +175,37 @@ Close B/A and the verified-empty dedicated, Restore, and restart without the
 witness flag before ordinary play; this clears experimental native registrations.
 See [the English contribution matrix](VOICE-CONTRIBUTION.md) for acceptance gates.
 
+## Static localhost playback experiment
+
+Research only: the legacy v1 generation defect remains open. This experiment is
+not a production relay or reconnect test. Use a fresh backed-up preparation and
+start the dedicated with `StartServer -RelayWitness`; start both clients with
+`StartClient -RegistrationWitness -RelayWitness` (B also needs `-ClientSlot B`).
+Follow the initialization, Connect, Verify and nine-sample protected idle sequence
+above. Announce the two identities with WitnessRoster, then call RegisterWitness
+on A and B before any audio. Require registered=2/voice_registered=2 and
+client_ready=1 in both logs. The server only accepts exactly localhost clients
+that currently pass its full protected-player policy.
+
+```powershell
+./ops/Voice-BaseTest.ps1 -Action RegisterWitness -ClientSlot A
+./ops/Voice-BaseTest.ps1 -Action RegisterWitness -ClientSlot B
+# Baseline: no synthetic signal. Exit 1 means no strong tone; exit 2 is an error.
+./runtime/audio-output-probe.exe 5 997
+```
+
+While a second output measurement is running, issue VoiceProbe on A only, inspect
+its sixty-frame sender delta and B's native decoder/queue/playback delta, then
+repeat in the other direction after the rate-limit refill. The stimulus is a
+997-Hz, 8-kHz post-device signal; native DirectSound may shift its rendered
+frequency. The output tool reports bounded spectral/RMS metrics and saves no
+recording. It measures the default Windows mix: require baseline/absence controls
+and native per-client counters before attributing a signal to the receiver.
+Do not accept a signal if direct native send occurred, a participant disconnected,
+protection expired, or mute/registration refused the speaker. Stop and restore the
+whole static witness before ordinary play. Real microphones/two PCs are still
+required for the official feature's acceptance.
+
 ## Retained first attempt
 
 Candidate aae11b0 built and runtime-linked on private cp_zmb; its client joined with

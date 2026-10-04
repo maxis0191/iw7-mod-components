@@ -109,8 +109,8 @@ namespace paris_test_fixture
             std::istringstream input(request);
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "witnessroster") return;
-            if (action == "witnessroster" && (!utils::flags::has_flag("paris-voice-registration-witness") ||
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "witnessroster" && action != "registerwitness") return;
+            if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
                 !utils::flags::has_flag("paris-voice-base-test"))) return;
             if (action == "voiceprobe" && (!utils::flags::has_flag("paris-voice-native-trace") ||
                 !((utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab")) ||
@@ -129,12 +129,13 @@ namespace paris_test_fixture
             else if (action == "close") command::execute("cmd say ..close", true);
             else if (action == "voiceprobe") command::execute("paris_voice_native_probe", true);
             else if (action == "witnessroster") command::execute("paris_voice_registration_roster", true);
+            else if (action == "registerwitness") command::execute("paris_voice_register_witness", true);
             else if (action == "stop") { command::execute("disconnect", true); scheduler::once([] { command::execute("quit", true); }, scheduler::main, 1s); }
         }
     }
-    bool suppress_inactivity_kick(int client_num, const char* reason)
+    bool is_protected_player(int client_num)
     {
-        if (!reason || std::strcmp(reason, "EXE_PLAYERKICKED_INACTIVE") || !private_fixture() ||
+        if (!private_fixture() ||
             client_num < 0 || client_num >= static_cast<int>(protected_players.size())) return false;
         std::lock_guard lock(safety_mutex);
         const unsigned slot = static_cast<unsigned>(client_num);
@@ -145,7 +146,11 @@ namespace paris_test_fixture
             game::Com_GameMode_GetActiveGameMode() == game::GAME_MODE_CP, private_fixture(), bound, bound, bound,
             bound && (game::g_entities[slot].flags & 1) != 0, cheats && !cheats->current.enabled,
             inactivity && inactivity->type == game::DVAR_TYPE_INT && inactivity->current.integer == 0};
-        if (!allow_inactivity_exception(context, reason)) return false;
+        return allow_inactivity_exception(context, "EXE_PLAYERKICKED_INACTIVE");
+    }
+    bool suppress_inactivity_kick(int client_num, const char* reason)
+    {
+        if (!reason || std::strcmp(reason, "EXE_PLAYERKICKED_INACTIVE") || !is_protected_player(client_num)) return false;
         ++script_inactivity_suppressed;
         return true;
     }
