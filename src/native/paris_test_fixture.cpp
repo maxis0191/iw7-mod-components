@@ -7,6 +7,7 @@
 #include "gsc/script_extension.hpp"
 #include <utils/flags.hpp>
 #include <utils/io.hpp>
+#include <format>
 #include "command.hpp"
 #include "party.hpp"
 #include "paris_test_safety.hpp"
@@ -15,7 +16,7 @@ namespace paris_test_fixture
 {
     namespace
     {
-        struct protected_player { std::string identity; game::netadr_s address{}; };
+        struct protected_player { std::string identity; game::netadr_s address{}; bool safety_failed{}; };
         std::array<protected_player, 4> protected_players{};
         std::mutex safety_mutex;
         std::uint64_t script_inactivity_suppressed{};
@@ -46,10 +47,50 @@ namespace paris_test_fixture
         {
             const auto* cheats = game::Dvar_FindVar("sv_cheats");
             auto* inactivity = engine_inactivity();
-            if (!bound_player(slot) || !cheats || cheats->current.enabled || !inactivity || inactivity->type != game::DVAR_TYPE_INT) return false;
+            if (!bound_player(slot) || protected_players[slot].safety_failed) return false;
+            if (!cheats || cheats->type != game::DVAR_TYPE_BOOL || cheats->current.enabled ||
+                !inactivity || inactivity->type != game::DVAR_TYPE_INT)
+            {
+                protected_players[slot].safety_failed = true;
+                console::error("[Paris test protection failure] slot=%u; tick_ms=%llu; reason=invalid_safety_dvars\n", slot, GetTickCount64());
+                return false;
+            }
             game::g_entities[slot].flags |= 1;
             game::Dvar_SetInt(inactivity, 0);
-            return (game::g_entities[slot].flags & 1) != 0 && inactivity->current.integer == 0;
+            const bool safe = (game::g_entities[slot].flags & 1) != 0 && inactivity->current.integer == 0;
+            if (!safe) protected_players[slot].safety_failed = true;
+            return safe;
+        }
+        bool protect_player(game::scr_entref_t ent)
+        {
+            std::lock_guard lock(safety_mutex);
+            if (!private_fixture() || ent.classnum || ent.entnum >= protected_players.size()) return false;
+            const auto* clients = *game::svs_clients;
+            if (!clients || ent.entnum >= *game::svs_numclients || clients[ent.entnum].header.state < game::CS_CONNECTED) return false;
+            const auto& client = clients[ent.entnum];
+            if (!loopback(client.remoteAddress) || !game::g_entities[ent.entnum].client) return false;
+            const std::string identity(client.playerGuid, strnlen(client.playerGuid, sizeof(client.playerGuid)));
+            if (identity.empty()) return false;
+            // Repeated calls cannot clear a failure observed by the 100 ms
+            // watcher. Only a newly bound connection starts a new safety record.
+            if (!bound_player(ent.entnum)) protected_players[ent.entnum] = {identity, client.remoteAddress, false};
+            return refresh_protection(ent.entnum);
+        }
+        std::string protection_snapshot(game::scr_entref_t ent)
+        {
+            std::lock_guard lock(safety_mutex);
+            const bool valid_slot = !ent.classnum && ent.entnum < protected_players.size();
+            const bool bound = valid_slot && bound_player(ent.entnum);
+            const bool godmode = bound && (game::g_entities[ent.entnum].flags & 1) != 0;
+            const auto* inactivity_dvar = game::environment::is_dedi() ? engine_inactivity() : nullptr;
+            const auto inactivity = inactivity_dvar && inactivity_dvar->type == game::DVAR_TYPE_INT ? inactivity_dvar->current.integer : -1;
+            const auto* cheats_dvar = game::Dvar_FindVar("sv_cheats");
+            const auto cheats = cheats_dvar && cheats_dvar->type == game::DVAR_TYPE_BOOL ? static_cast<int>(cheats_dvar->current.enabled) : -1;
+            const bool failed = valid_slot && protected_players[ent.entnum].safety_failed;
+            const bool protected_now = bound && godmode && inactivity == 0 && cheats == 0 && !failed;
+            return std::format("slot={}; tick_ms={}; protected={}; bound={}; godmode={}; inactivity={}; cheats={}; failed={}",
+                ent.entnum, GetTickCount64(), static_cast<int>(protected_now), static_cast<int>(bound),
+                static_cast<int>(godmode), inactivity, cheats, static_cast<int>(failed));
         }
         void maintain_protection()
         {
@@ -65,7 +106,7 @@ namespace paris_test_fixture
             std::lock_guard lock(safety_mutex);
             unsigned count{};
             for (unsigned slot = 0; slot < protected_players.size(); ++slot)
-                if (bound_player(slot) && (game::g_entities[slot].flags & 1)) ++count;
+                if (bound_player(slot) && !protected_players[slot].safety_failed && (game::g_entities[slot].flags & 1)) ++count;
             const auto* inactivity = engine_inactivity();
             console::info("[Paris test safety] protected=%u native_inactivity=%d script_inactivity_suppressed=%llu tick_ms=%llu\n",
                 count, inactivity && inactivity->type == game::DVAR_TYPE_INT ? inactivity->current.integer : -1,
@@ -151,7 +192,17 @@ namespace paris_test_fixture
                 if (!lab_port()) return;
                 connect_pending = true;
             }
-            if (action == "capture") command::execute("capture_frame server-modules-fixture", true);
+            if (action == "capture")
+            {
+                const auto graphics_value = [](const char* name)
+                {
+                    const auto* dvar = game::Dvar_FindVar(name);
+                    return dvar && dvar->type == game::DVAR_TYPE_INT ? dvar->current.integer : -1;
+                };
+                console::info("[Paris lab graphics] picmip=%d; bump=%d; spec=%d; tick_ms=%llu\n",
+                    graphics_value("r_picmip"), graphics_value("r_picmip_bump"), graphics_value("r_picmip_spec"), GetTickCount64());
+                command::execute("capture_frame server-modules-fixture", true);
+            }
             else if (action == "help") command::execute("cmd say ..help", true);
             else if (action == "mods") command::execute("cmd say ..mods", true);
             else if (action == "close") command::execute("cmd say ..close", true);
@@ -186,12 +237,12 @@ namespace paris_test_fixture
             client_num < 0 || client_num >= static_cast<int>(protected_players.size())) return false;
         std::lock_guard lock(safety_mutex);
         const unsigned slot = static_cast<unsigned>(client_num);
-        const bool bound = bound_player(slot);
+        const bool bound = bound_player(slot) && !protected_players[slot].safety_failed;
         const auto* cheats = game::Dvar_FindVar("sv_cheats");
         const auto* inactivity = engine_inactivity();
         const kick_context context{game::environment::is_dedi(), utils::flags::has_flag("paris-server-test"),
             game::Com_GameMode_GetActiveGameMode() == game::GAME_MODE_CP, private_fixture(), bound, bound, bound,
-            bound && (game::g_entities[slot].flags & 1) != 0, cheats && !cheats->current.enabled,
+            bound && (game::g_entities[slot].flags & 1) != 0, cheats && cheats->type == game::DVAR_TYPE_BOOL && !cheats->current.enabled,
             inactivity && inactivity->type == game::DVAR_TYPE_INT && inactivity->current.integer == 0};
         return allow_inactivity_exception(context, "EXE_PLAYERKICKED_INACTIVE");
     }
@@ -214,25 +265,19 @@ namespace paris_test_fixture
                 scheduler::loop(maintain_protection, scheduler::server, 100ms);
                 scheduler::loop(safety_status, scheduler::server, 10s);
             }
-        gsc::method::add("paris_test_protect", [](game::scr_entref_t ent, const gsc::function_args&) -> scripting::script_value
-        {
-            std::lock_guard lock(safety_mutex);
-            const auto* password = game::Dvar_FindVar("g_password");
-            if (!game::environment::is_dedi() || !utils::flags::has_flag("paris-server-test") ||
-                !password || !password->current.string || !*password->current.string ||
-                ent.classnum || ent.entnum >= 4) return false;
-            const auto* clients = *game::svs_clients;
-            if (!clients || clients[ent.entnum].header.state < game::CS_CONNECTED) return false;
-            const auto& address = clients[ent.entnum].remoteAddress;
-            if (address.type != game::NA_LOOPBACK &&
-                !(address.type == game::NA_IP && address.ip[0] == 127 && address.ip[1] == 0 && address.ip[2] == 0 && address.ip[3] == 1)) return false;
-            auto& entity = game::g_entities[ent.entnum];
-            if (!entity.client) return false;
-            const std::string identity(clients[ent.entnum].playerGuid, strnlen(clients[ent.entnum].playerGuid, sizeof(clients[ent.entnum].playerGuid)));
-            if (identity.empty()) return false;
-            protected_players[ent.entnum] = {identity, address};
-            return refresh_protection(ent.entnum);
-        });
+            gsc::method::add("paris_test_protect", [](game::scr_entref_t ent, const gsc::function_args&) -> scripting::script_value
+            {
+                return protect_player(ent);
+            });
+            gsc::method::add("paris_rhino_test_protect", [](game::scr_entref_t ent, const gsc::function_args&) -> scripting::script_value
+            {
+                if (!utils::flags::has_flag("paris-rhino-probe") && !utils::flags::has_flag("paris-isolated-lab")) return false;
+                return protect_player(ent);
+            });
+            gsc::method::add("paris_test_safety_snapshot", [](game::scr_entref_t ent, const gsc::function_args&) -> scripting::script_value
+            {
+                return protection_snapshot(ent);
+            });
         }
     };
 }
