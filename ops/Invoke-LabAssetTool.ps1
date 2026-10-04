@@ -20,30 +20,15 @@ $tool = Join-Path $work 'zonetool.exe'
 if (((Get-Item -LiteralPath $tool).Attributes -band [IO.FileAttributes]::ReparsePoint) -or
     $ToolSHA256 -notmatch '^[A-Fa-f0-9]{64}$' -or (Get-FileHash -LiteralPath $tool).Hash -ne $ToolSHA256) { throw 'Asset tool checksum/link mismatch.' }
 . "$PSScriptRoot/Memory-Budget.ps1"
-Assert-IW7MemoryHeadroom 2GB 2GB | Out-Null
-$quotedArguments = foreach ($argument in $ToolArguments) {
-    # These offline commands need only simple tokens/paths. Refuse quoting or
-    # control characters rather than constructing an ambiguous command line.
-    if (!$argument -or $argument -match '["\x00-\x1f]' -or $argument.EndsWith('\')) { throw 'Unsupported asset-tool argument.' }
-    '"' + $argument + '"'
-}
-$process = Start-Process -FilePath $tool -WorkingDirectory $work -ArgumentList $quotedArguments -WindowStyle Hidden -PassThru `
-    -RedirectStandardOutput "$work/$Phase.stdout.log" -RedirectStandardError "$work/$Phase.stderr.log"
-$identity = Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
-if (!$identity -and !$process.HasExited) { throw 'Asset-tool identity unavailable; inspect its diagnostics.' }
-$deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+. "$PSScriptRoot/Resource-Scheduler.Core.ps1"
+. "$PSScriptRoot/Lab-AssetProcess.ps1"
+$assetLease = Enter-IW7ResourceLease -Scope $work -Kind Extract -PhysicalBytes 6GB -CommitBytes 8GB -Owner ('enemy asset ' + $Phase)
+$assetCleanup = [pscustomobject]@{Confirmed=$true}
 try {
-    while (!$process.WaitForExit(2000)) {
-        $budget = Test-IW7MemoryBudget (Get-IW7MemorySnapshot)
-        if ($budget.HighWater -or [DateTime]::UtcNow -ge $deadline) { throw 'Asset tool exceeded memory/time budget.' }
-    }
-    [pscustomobject]@{Phase=$Phase;ExitCode=$process.ExitCode;ToolSHA256=$ToolSHA256;Stdout="$work/$Phase.stdout.log";Stderr="$work/$Phase.stderr.log"}
+    $result = Invoke-IW7LabAssetProcess -Executable $tool -ToolArguments $ToolArguments -WorkingDirectory $work `
+        -LogDirectory $work -Phase $Phase -LeaseToken $assetLease.Token -CleanupState $assetCleanup -TimeoutSeconds $TimeoutSeconds
+    $result | Add-Member NoteProperty ToolSHA256 $ToolSHA256 -PassThru
 } finally {
-    if (!$process.HasExited) {
-        $live = Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
-        if ($identity -and $live -and $live.ExecutablePath -eq $tool -and $live.CreationDate -eq $identity.CreationDate -and
-            $live.CommandLine -eq $identity.CommandLine -and (Get-FileHash -LiteralPath $live.ExecutablePath).Hash -eq $ToolSHA256) {
-            $process.Kill(); $process.WaitForExit()
-        } else { Write-Warning 'Asset-tool identity changed; foreign process preserved.' }
-    }
+    if ($assetCleanup.Confirmed) { Exit-IW7ResourceLease -Token $assetLease.Token }
+    else { Write-Warning 'Asset cleanup is unconfirmed; resource lease retained.' }
 }

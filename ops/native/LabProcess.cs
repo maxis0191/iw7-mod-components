@@ -112,6 +112,12 @@ public static class IW7LabProcess
     }
     public static OwnedProcess StartOwned(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName)
     {
+        return StartOwned(exe, arguments, cwd, stdout, stderr, desktopName, true);
+    }
+    // Console asset tools may exit before registration. Return their original
+    // kernel handle without waiting for a GUI idle state or rejecting fast exit.
+    public static OwnedProcess StartOwned(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName, bool waitForInputIdle)
+    {
         if (exe.Contains("\"") || !System.Text.RegularExpressions.Regex.IsMatch(desktopName, "^IW7ParisLab_[a-f0-9]{32}$"))
             throw new ArgumentException("Invalid executable/desktop name.");
         var security = new SecurityAttributes {length=Marshal.SizeOf(typeof(SecurityAttributes)), inherit=true};
@@ -129,13 +135,15 @@ public static class IW7LabProcess
                     output=output.SafeFileHandle.DangerousGetHandle(), error=error.SafeFileHandle.DangerousGetHandle()};
                 ProcessInfo process;
                 if (!CreateProcessW(exe, new StringBuilder("\"" + exe + "\" " + arguments), IntPtr.Zero, IntPtr.Zero,
-                    true, 0x08000200, IntPtr.Zero, cwd, ref startup, out process))
+                    true, 0x08000200u | (waitForInputIdle ? 0u : 0x00004000u), IntPtr.Zero, cwd, ref startup, out process))
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "Private desktop process launch failed");
                 try {
-                    WaitForInputIdle(process.process, 10000);
-                    uint code;
-                    if (WaitForSingleObject(process.process, 0) == 0 && GetExitCodeProcess(process.process, out code))
-                        throw new InvalidOperationException("Child exited with code 0x" + code.ToString("X8"));
+                    if (waitForInputIdle) {
+                        WaitForInputIdle(process.process, 10000);
+                        uint code;
+                        if (WaitForSingleObject(process.process, 0) == 0 && GetExitCodeProcess(process.process, out code))
+                            throw new InvalidOperationException("Child exited with code 0x" + code.ToString("X8"));
+                    }
                     var owned=new OwnedProcess(process.process,(int)process.pid);
                     process.process=IntPtr.Zero;
                     return owned;
