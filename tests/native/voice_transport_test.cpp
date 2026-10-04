@@ -1,5 +1,6 @@
 #include "../../src/native/voice_transport.hpp"
 #include <iostream>
+#include <limits>
 #include <random>
 
 namespace w = voice::wire;
@@ -226,6 +227,21 @@ int main()
         require(w::encode(limits).empty(), "excess frame count accepted");
         limits.frames = std::vector<std::string>(5, std::string(w::max_frame_bytes, 'x'));
         require(w::encode(limits).empty(), "oversized combined frames accepted");
+        // Relaying adds a speaker slot and generation. Every accepted uplink
+        // must still fit the downstream datagram after those fields are added.
+        fixture mtu;
+        mtu.join(0, mtu.a);
+        mtu.join(1, mtu.b);
+        auto full_relay = mtu.a.audio("frame");
+        full_relay.frames = std::vector<std::string>(4, std::string(254, 'x'));
+        full_relay.frames.emplace_back(121, 'x');
+        auto maximum_relay = mtu.up(0, full_relay);
+        require(maximum_relay.size() == 1 &&
+                    w::encode(maximum_relay[0].data).size() == w::max_packet_bytes,
+                "maximum downstream payload must be deliverable");
+        full_relay.frames.back().push_back('x');
+        require(w::encode(full_relay).empty(),
+                "uplink did not reserve the downstream speaker header");
         limits.frames = {""};
         require(w::encode(limits).empty(), "empty frame accepted");
         auto invalid_roster = roster;
@@ -256,6 +272,16 @@ int main()
         require(rate.accept(1, 100) && rate.accept(1, 100) && !rate.accept(1, 100),
                 "rate capacity");
         require(!rate.accept(1, 99) && rate.accept(1, 1100), "rate time/refill");
+        t::budget idle_rate(8, 4);
+        require(idle_rate.accept(8, 100) && !idle_rate.accept(1, 100), "idle rate setup");
+        require(idle_rate.accept(8, 2100), "full refill after two seconds of silence");
+        require(!idle_rate.accept(1, 2100), "refill exceeded capacity");
+        require(idle_rate.accept(8, std::numeric_limits<std::uint64_t>::max()),
+                "long idle refill overflowed");
+        t::budget no_refill(1, 0);
+        require(no_refill.accept(1, 1) &&
+                    !no_refill.accept(1, std::numeric_limits<std::uint64_t>::max()),
+                "zero refill rate created tokens");
         std::cout << "PASS: v2 handshake loss/replay/expiry, bidirectional audio, speaker/listener "
                      "reconnect, slot/server reset, bounded wire and 200000 seeded mutations.\n";
         return 0;
