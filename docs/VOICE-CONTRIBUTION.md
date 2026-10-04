@@ -23,6 +23,18 @@ decompiled game code in the contribution.
 
 ## Current evidence and next investigation
 
+The generic opt-in v2 adapter and its pure state/wire/transport tests are now
+implemented. Latest native controls and exit limits are in
+[the sanitized checkpoint](deployments/2026-10-04-voice-native-controls.json),
+[STATE](STATE.md) and [VALIDATION](VALIDATION.md). Resolve reconnect heap corruption,
+compare native VAD/DTX against the synthetic test, then complete the matrix below.
+The implementation is experimental and is not ready for official submission.
+
+### Retained native routing investigation
+
+The following experiments preserve the research that led to the candidate.
+Their proposed next steps are historical, not the current execution plan.
+
 [Private harness PR #39](https://github.com/bigmangeekf/iw7-paris-server/pull/39)
 merged after its exact head passed source and native-protocol CI. A protected,
 same-machine pair remained idle for 140.422 seconds, with cheats=0 and zero alive

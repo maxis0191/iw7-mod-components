@@ -27,9 +27,13 @@ The latest paced static base witness passes synthetic playback in both direction
 [Exact scoped results](deployments/2026-10-04-voice-paced-playback.json) include the
 baseline, native deltas and output metrics. It is now closed/restored. A separate
 [generic transport core](VOICE-TRANSPORT.md) passes pure reconnect/control tests;
-it has not replaced the legacy runtime. Earlier sections retain historical runs.
+is wired into the separate opt-in v2 runtime. Earlier sections retain historical runs.
 
-## Independent audio witness
+## Earlier isolated audio witness
+
+Historical procedure: the owner subsequently requested the base installation.
+Use the protected base helper for the current test plan; these isolated commands
+remain available for reproducing the earlier investigation.
 
 Use a dedicated worktree and physically independent asset snapshot as described in
 [ISOLATED-LAB.md](ISOLATED-LAB.md). Reserve unused loopback ports (this investigation

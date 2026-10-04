@@ -109,12 +109,12 @@ namespace paris_test_fixture
             std::istringstream input(request);
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
-            const bool voice_control = action == "voicemute" || action == "voiceunmute" || action == "voicedisable" || action == "voiceenable" || action == "voicerestore";
+            const bool voice_control = action == "voicemute" || action == "voiceunmute" || action == "voicedisable" || action == "voiceenable" || action == "voicerestore" || action == "voicecodecprobe";
             if (voice_control && (!utils::flags::has_flag("iw7-voice-relay") || !utils::flags::has_flag("paris-voice-base-test"))) return;
             if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control) return;
             if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
                 !utils::flags::has_flag("paris-voice-base-test"))) return;
-            if ((action == "voiceprobe" || action == "voicereleasedprobe") && (!utils::flags::has_flag("paris-voice-native-trace") ||
+            if ((action == "voiceprobe" || action == "voicereleasedprobe" || action == "voicecodecprobe") && (!utils::flags::has_flag("paris-voice-native-trace") ||
                 !((utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab")) ||
                   utils::flags::has_flag("paris-voice-base-test")))) return;
             if (action == "connect")
