@@ -201,6 +201,9 @@ repeat in the other direction after the rate-limit refill. The stimulus is a
 frequency. The output tool reports bounded spectral/RMS metrics and saves no
 recording. It measures the default Windows mix: require baseline/absence controls
 and native per-client counters before attributing a signal to the receiver.
+The paced candidate's decoded_peak_rms/decoded_tone_ratio are cumulative
+997-Hz PCM maxima; pair them with fresh decoder deltas rather than treating a
+previous maximum as a newly observed signal.
 Do not accept a signal if direct native send occurred, a participant disconnected,
 protection expired, or mute/registration refused the speaker. Stop and restore the
 whole static witness before ordinary play. Real microphones/two PCs are still

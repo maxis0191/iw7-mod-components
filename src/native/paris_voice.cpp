@@ -119,6 +119,7 @@ namespace paris_voice
             std::atomic<std::uint64_t> captured{}, sent{}, relayed{}, decoded{}, pcm_bytes{}, rejected{}, muted{};
             std::atomic<std::uint64_t> queued_bytes{}, queue_errors{};
             std::atomic<std::uint64_t> capture_blocks{};
+            std::atomic<double> decoded_peak_rms{}, decoded_peak_tone_ratio{};
         } stats;
         struct server_peer
         {
@@ -163,6 +164,24 @@ namespace paris_voice
         {
             const int result = decode_voice_hook.invoke<int>(data, length, pcm, samples);
             if (result > 0) { ++stats.decoded; stats.pcm_bytes += result; }
+            if (relay_witness && pcm && result > 0 && result <= 16384 && result % 2 == 0)
+            {
+                const int count = result / 2;
+                double power{}, re{}, im{};
+                for (int i = 0; i < count; ++i)
+                {
+                    const double sample = pcm[i] / 32768.0;
+                    const double phase = 6.283185307179586 * 997 * i / 8000.0;
+                    power += sample * sample;
+                    re += sample * std::cos(phase); im += sample * std::sin(phase);
+                }
+                const double rms = std::sqrt(power / count);
+                const double ratio = power > 0 ? 2 * (re * re + im * im) / (count * power) : 0;
+                auto prior = stats.decoded_peak_rms.load();
+                while (rms > prior && !stats.decoded_peak_rms.compare_exchange_weak(prior, rms)) {}
+                prior = stats.decoded_peak_tone_ratio.load();
+                while (ratio > prior && !stats.decoded_peak_tone_ratio.compare_exchange_weak(prior, ratio)) {}
+            }
             return result;
         }
         int enqueue_voice(void* buffer, const short* pcm, int bytes)
@@ -545,6 +564,9 @@ namespace paris_voice
                     utils::hook::invoke<bool>(0x14037DA00), utils::hook::invoke<bool>(0x14036FE40, 0),
                     static_cast<double>(*reinterpret_cast<const float*>(0x1477A027C)));
             }
+            if (relay_witness && !game::environment::is_dedi())
+                console::info("[paris-voice-witness] decoded_peak_rms=%.6f decoded_tone_ratio=%.6f; cumulative 997-Hz PCM metrics, no recordings.\n",
+                    stats.decoded_peak_rms.load(), stats.decoded_peak_tone_ratio.load());
         }
         void registration_roster_witness()
         {
@@ -668,6 +690,10 @@ namespace paris_voice
                         997 * (i * samples + sample) / 8000.0));
                 capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
                 capture_voice(&block);
+                // The static playback witness must resemble real 20-ms capture.
+                // A synchronous sixty-datagram burst relayed only sixteen frames
+                // and never reached DirectSound's 6000-byte startup threshold.
+                if (relay_witness && i + 1 < frames) Sleep(20);
             }
             utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
             ptt->current.enabled = saved_ptt;
