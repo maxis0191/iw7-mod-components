@@ -1,5 +1,27 @@
 # Native Zombies voice
 
+## Current two-player beta preparation - 2026-10-04
+
+The current bounded local candidate is generic protocol 2. Create its private
+player package with `ops/Package-Voice.ps1 -GenericRelay`; the package declares the
+selected protocol and binds its launcher hash. Follow [VOICE-PLAYER.md](VOICE-PLAYER.md).
+The test uses server-mediated UDP on the existing game socket. Local synthetic
+evidence is separate from real microphone/LAN/WAN acceptance and the official
+contribution gate.
+
+`ops/Server.ps1 -Action DeployVoice -GenericRelay -KeepCurrentScripts` activates
+the checked native build after thirty seconds of valid zero-client UDP. It backs
+up custom/ordinary launchers, the earlier executable and bank data, preserves the
+currently deployed GSC/configuration and writes a separate generic server launcher.
+It never stops the owner's client. Subsequent `-Action Start -Binary Voice` uses
+the selected protocol in the local activation manifest. `-Action RollbackVoice`
+returns to the original server after the same occupancy gate. Keep raw process
+records, logs and private hashes outside Git.
+
+No agent protection or synthetic capture flag belongs in this player profile.
+The known historical heap incident and the full [release matrix](VOICE-CONTRIBUTION.md)
+remain open. Earlier protocol-1 descriptions below are historical research.
+
 The owner requested implementing unsupported voice, prioritizing Zombies. This authorizes native client/server work beyond the earlier GSC maintenance scope. Custom source is in `src/native/`; immutable originals and the four gameplay scripts are preserved.
 
 Aurora administrator m jkzy confirmed missing support on [6 January 2026](https://discord.com/channels/945420505157083208/1208634261213552750/1458029166417936476). The [June 2025 configuration discussion](https://discord.com/channels/945420505157083208/1208634295296462858/1388596410395660339) includes a user's `sv_voice` setting, which is not evidence that transport exists. Authenticated Discord searches and official source were inspected without posting messages.
