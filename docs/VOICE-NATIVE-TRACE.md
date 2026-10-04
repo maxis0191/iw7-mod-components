@@ -29,6 +29,10 @@ headroom; soak and idle drivers abort above 80% physical or 85% committed use.
 Unknown commit-budget data fails closed. Do not retry four clients on this workstation
 to satisfy a capacity row. `TrimMemory` is optional; incorrect image/creation
 identities are rejected before the OS call. No global paging change is required.
+Final review separates projected private-commit peaks from resident peaks: the
+soak records about 8.25/8.20 GiB private allocation despite smaller working sets.
+The tightened launch guard is checked against those records after restoration;
+it is not a new native runtime run or a change to the measured voice binary.
 
 Attack's initial reservation failure is now identified: retail initializes its
 crab quest after five seconds, before the first connection populates the agent
