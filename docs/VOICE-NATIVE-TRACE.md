@@ -1,5 +1,21 @@
 # Native voice investigation
 
+## Repeated-stimulus calibration failure - 2026-10-04
+
+Candidate 7eb246a passes the first A/B fixed-mode signals, then fails A's repeated
+signal. Both VBR and ABR read zero, so disabling VBR does not explain or fix it.
+Read-only live encoder checks show native quality=3, cached quality=3 and selected
+submode=8 after restoration. The pinned original encode wrapper consumes a pending
+quality change before encoding. Returning the selected submode to its earlier
+value while leaving that cache consumed desynchronizes the private fixture.
+
+The next correction snapshots/restores the native quality cache together with
+the selected mode, only for the same encoder and unchanged quality setting. A
+concurrent quality change invalidates restoration evidence and is not overwritten.
+Hardware blocks remain suppressed until restoration completes. No codec reset or
+production quality policy changes. Require repeat, concurrent and long-stimulus
+comparisons before crediting this correction.
+
 The [two-client five-minute soak](deployments/2026-10-04-voice-resource-soak.json)
 passes delivery/stability counters and clean exits; its output-tone expectation
 fails. The next private calibration also saves/disables/restores VBR and reads

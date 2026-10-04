@@ -710,7 +710,7 @@ namespace paris_voice
                 { talk_binding = i; break; }
             if (!talk_binding) return;
             auto* encoder = *reinterpret_cast<void**>(0x145D5C6E8);
-            int vad{}, dtx{}, vbr{}, abr{}, configured_mode{};
+            int vad{}, dtx{}, vbr{}, abr{}, configured_mode{}, quality{}, cached_quality{};
             const auto encoder_ctl = [](void* context, int request, int* value)
             { return utils::hook::invoke<int>(0x1405E9520, context, request, value); };
             if (codec_control)
@@ -727,8 +727,12 @@ namespace paris_voice
                 // selected is at +0x174 and remains the user's configuration.
                 configured_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
                 if (configured_mode < 1 || configured_mode > 8) return;
+                quality = *reinterpret_cast<const int*>(0x1415062D8);
+                cached_quality = *reinterpret_cast<const int*>(0x141BB2C7C);
+                if (quality < 0 || quality > 10 || cached_quality < 0 || cached_quality > 10) return;
                 int off{};
                 console::info("[paris-voice-native] Codec baseline vad=%d dtx=%d vbr=%d abr=%d configured_mode=%d.\n", vad, dtx, vbr, abr, configured_mode);
+                console::info("[paris-voice-native] Codec quality=%d cached_quality=%d.\n", quality, cached_quality);
                 if (encoder_ctl(encoder, 30, &off) || encoder_ctl(encoder, 34, &off) ||
                     encoder_ctl(encoder, 12, &off) || encoder_ctl(encoder, 6, &configured_mode))
                 {
@@ -744,6 +748,7 @@ namespace paris_voice
             // A synthetic block does not update the hardware mic-activity meter.
             // Use a paired retail PTT binding for this post-device witness; the
             // earlier activity-mode attempt encoded zero and is inconclusive.
+            probe_running = true;
             ptt->current.enabled = true;
             // Common dispatcher handles talk before the MP/SP gameplay dispatcher.
             if (hold_talk) utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding, 86, 1);
@@ -759,23 +764,35 @@ namespace paris_voice
             auto finish = [=](bool aborted) mutable
             {
                 if (!active->exchange(false)) return;
-                probe_running = false;
                 if (hold_talk) utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
                 if (ptt == *reinterpret_cast<game::dvar_t**>(0x1421EF7A0)) ptt->current.enabled = saved_ptt;
                 if (codec_control && encoder == *reinterpret_cast<void**>(0x145D5C6E8))
                 {
-                    encoder_ctl(encoder, 6, &configured_mode);
+                    // The original first encode may consume a pending quality
+                    // change. Restore that cache together with the selected
+                    // submode, or the native dvar and encoder become inconsistent
+                    // after this private calibration. Never undo a user change.
+                    const bool quality_unchanged = quality == *reinterpret_cast<const int*>(0x1415062D8);
+                    const int observed_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
+                    if (quality_unchanged)
+                    {
+                        *reinterpret_cast<int*>(0x141BB2C7C) = cached_quality;
+                        encoder_ctl(encoder, 6, &configured_mode);
+                    }
                     encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx);
                     encoder_ctl(encoder, 12, &vbr);
                     int after_vad{}, after_dtx{}, after_vbr{}, after_abr{};
                     const bool restored = !encoder_ctl(encoder, 31, &after_vad) && !encoder_ctl(encoder, 35, &after_dtx) &&
                         !encoder_ctl(encoder, 13, &after_vbr) && !encoder_ctl(encoder, 33, &after_abr) &&
-                        after_vad == vad && after_dtx == dtx && after_vbr == vbr && after_abr == abr;
+                        after_vad == vad && after_dtx == dtx && after_vbr == vbr && after_abr == abr && quality_unchanged;
                     const int after_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
                     console::info("[paris-voice-native] Codec control restored=%d vad=%d dtx=%d configured_mode=%d mode_preserved=%d.\n", restored,
                         after_vad, after_dtx, after_mode, after_mode == configured_mode);
                     console::info("[paris-voice-native] Codec adaptive settings vbr=%d abr=%d restored=%d.\n", after_vbr, after_abr, restored);
+                    console::info("[paris-voice-native] Codec observed_mode=%d cached_quality_restored=%d.\n", observed_mode,
+                        quality_unchanged && cached_quality == *reinterpret_cast<const int*>(0x141BB2C7C));
                 }
+                probe_running = false;
                 console::info("[paris-voice-native] Synthetic post-device witness: pressed=%d released=%d encoded_delta=%llu; PTT setting restored.\n",
                     pressed, !utils::hook::invoke<bool>(0x14036FE40, 0),
                     (generic_relay ? voice_relay::encoded_frames() : native_encoded.load()) - encoded_before);
@@ -785,7 +802,6 @@ namespace paris_voice
                     probe_device_blocks.load() - device_before);
                 status();
             };
-            probe_running = true;
             cancel_native_probe = [finish]() mutable { finish(true); };
             // Return to the engine between capture blocks so a speaking client
             // can receive other speakers. Bound catch-up after a delayed frame;
