@@ -85,6 +85,13 @@ Use the repository's existing Windows x64 native build. The five generic source
 files above and `voice_relay.hpp` are the focused feature; private diagnostics,
 test protection, server configuration and game assets are not feature dependencies.
 
+`ops/Package-Voice.ps1 -GenericRelay` creates a release folder containing the small
+`IW7-Zombies-Voice.zip`, complete `IW7-Zombies-Voice-Source.zip` and a checksum
+manifest. Offer both archives together with equal access. Players copy only the
+player ZIP's contents into the game folder; source, build scripts and manifests
+stay outside that flow. The existing PowerShell installer is a legacy maintenance
+tool and is not part of the player archive.
+
 The engine-independent tests can also be built directly with a C++17 compiler:
 
 ```powershell
