@@ -98,6 +98,15 @@ compare MP and avoid describing this as a CP-only defect without that control.
 
 ## Code and review requirements
 
+The generic engine adapter and wire/state/transport headers do not depend on
+Paris GSC scripts, game-folder paths or player accounts. The adapter still targets
+the supported retail ABI/signatures and Windows x64; this is portability within
+IW7-Mod's supported game, not across arbitrary engines or binaries. The private
+beta executable also contains server/diagnostic components. The future official
+patch must extract the focused generic feature and its tests/docs rather than
+submit this entire private bundle. Distribution through the official updater
+belongs to the maintainers after the full validation gate.
+
 - Keep the change focused on voice. Match IW7-Mod's source layout and style;
   separate engine adaptation, pure validation/state and test tooling.
 - Give functions and types concrete names, use named engine symbols and document

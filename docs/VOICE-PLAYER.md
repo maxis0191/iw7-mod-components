@@ -1,73 +1,32 @@
-# Private Zombies voice beta
+# Zombies voice: quick setup
 
-This package is for a supervised two-player test on the owner's private Zombies
-server. It is not an official IW7-Mod release or an accepted voice feature.
-Current testing uses generic voice protocol **2**, relayed through the dedicated
-server's existing game socket. Both players and the server need the same tested
-executable and protocol. This is a conversation between two players; it does not
-create a direct peer-to-peer connection between their PCs. Real microphone quality,
-device/privacy behavior and Internet delivery still require this test.
+For Windows 10/11 x64 with Infinite Warfare installed. Both players and the server
+must use this same protocol-2 package. Second-PC compatibility is still being tested.
 
 ## Install
 
-1. Extract the complete package into a separate folder. Keep
-   `build-manifest.json`, `Install-VoiceClient.ps1` and the supplied launcher beside
-   the executable. For the current test, the manifest must declare
-   `SelectedVoiceProtocol: 2`.
-2. Run `./Install-VoiceClient.ps1 -GameRoot 'YOUR EXISTING GAME FOLDER'` in
-   PowerShell. The installer checks the executable and launcher hashes, preserves
-   earlier custom files and installs alongside `iw7-mod.exe`. It does not stop a
-   running game, change graphics settings, install game assets or modify profiles,
-   keys or bank data. Close a running older custom executable yourself before
-   replacing it with a different build.
-3. Exit your current client when you are ready, then run the installed
-   `Start-IW7-Zombies-Voice.bat`. For protocol 2 this launcher includes
-   `-iw7-voice-relay`; opening the executable directly does not select that
-   transport. `-noupdate` preserves the private executable while leaving the
-   official updater/launcher available.
-4. Open Zombies and join **Private Testing Server** using the owner's usual
-   server address and private access. Every speaker and listener needs this exact
-   package/profile. Stock-client voice and mixed versions remain unaccepted.
+1. Extract the entire ZIP. Close your game.
+2. Open PowerShell in the extracted folder and run:
 
-Use the game's audio settings to enable voice, select the intended microphone and
-output, and check the actual push-to-talk binding. Windows microphone permission
-and device availability still apply. Use headphones for the first test. No extra
-audio application, account or recording service is required.
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-VoiceClient.ps1 -GameRoot "D:\Games\Infinite Warfare"
+   ```
 
-The existing game UDP port is used; no additional router port is required. A new
-executable can trigger the ordinary Windows Firewall prompt. The server must have
-its own scoped UDP allow rule. The player launcher has no server IO, godmode,
-inactivity bypass, PCM-injection or development-fixture flag.
+   Replace the path with your game folder containing `iw7_ship.exe`.
+3. In that game folder, run **Start-IW7-Zombies-Voice.bat**.
+4. Join **Private Testing Server** using the server address/password supplied by
+   the owner. Enable voice and check your microphone and voice-key binding.
+   Use headphones; allow the game through Windows Firewall if prompted.
 
-## Two-player test
+The installer preserves the official launcher, profiles and game data.
 
-Test on different PCs. First establish both directions on the LAN, then have one
-player connect from another external network through the existing server address.
+## Test together
 
-1. Speak a short sentence in each direction while holding the configured voice
-   key. Confirm intelligibility, correct speaker attribution and normal game
-   audio. Release the key and confirm speech stops.
-2. Disable/re-enable voice, then mute/unmute the other player through the
-   scoreboard. Check silence and resumed speech in both directions. Test activity
-   mode and its threshold separately if you use it.
-3. Change the selected input/output device, then test an unavailable microphone
-   and device reconnection. Check the applicable privacy settings. Report failures
-   without changing a privacy decision to manufacture a pass.
-4. Reconnect each player while the other remains. Verify no stale speech or wrong
-   speaker, then use the normal map-vote/defeat lifecycle and check the next map.
-   Bank and gameplay behavior must remain normal.
-5. Report the map, LAN/WAN scenario, executable hash/protocol and which step
-   succeeds or fails. Do not share passwords, complete logs, player identifiers
-   or recordings.
+- Speak in both directions. Release the voice key: speech must stop.
+- Mute/unmute each other, then disable/re-enable voice: check silence and recovery.
+- Reconnect each player and change maps: speech should resume with the correct speaker.
 
-For protocol 2, `voice_relay_status` reports bounded aggregate readiness, encoded,
-sent, relay/playback, rejection and mute counters. Run it on both clients and the
-server if speech fails. Counters increasing cannot prove intelligibility or the
-actual output device. `paris_voice_status`, legacy self-tests and synthetic tones
-are not the current protocol-2 player acceptance procedure.
+If it fails, report the failed step and map; run `voice_relay_status` in the console.
+Keep passwords and complete logs private.
 
-The package includes GPL/dependency notices and complete corresponding source.
-It includes no game assets or private server scripts/configuration. Protocol 1 is
-retained in the executable for historical research; a protocol-1 package is not
-interchangeable with this test. No official contribution or accepted tag is made
-until the documented validation matrix and owner evidence are complete.
+This is a private beta using the server's existing UDP port, not an official release.
