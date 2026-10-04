@@ -15,4 +15,5 @@ namespace paris_test_fixture
             c.cheats_disabled && c.native_inactivity_disabled;
     }
     bool suppress_inactivity_kick(int client_num, const char* reason);
+    bool is_protected_player(int client_num);
 }

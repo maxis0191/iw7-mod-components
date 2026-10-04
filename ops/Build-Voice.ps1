@@ -1,4 +1,4 @@
-param([switch]$TestsOnly, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave')
 $ErrorActionPreference = 'Stop'
 if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
@@ -28,10 +28,37 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$testSource" /Fe:"$testExe" /Fo:"
 if errorlevel 1 exit /b 1
 "$testExe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_state_test.cpp" /Fe:"$runtime\voice-state-test.exe" /Fo:"$runtime\voice-state-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-state-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_transport_test.cpp" /Fe:"$runtime\voice-transport-test.exe" /Fo:"$runtime\voice-transport-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-transport-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_simulation_test.cpp" /Fe:"$runtime\voice-simulation-test.exe" /Fo:"$runtime\voice-simulation-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-simulation-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib
+if errorlevel 1 exit /b 1
+"$runtime\audio-output-probe.exe" --self-test
 "@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
 if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
+if ($Sanitizers) {
+    $sanitizerCmd = Join-Path $runtime 'compile-voice-sanitizers.cmd'
+    $lines = @('@echo off', "call `"$vcvars`" >nul", 'if errorlevel 1 exit /b 1')
+    foreach ($name in @('voice_protocol_test','voice_state_test','voice_transport_test','voice_simulation_test')) {
+        $lines += "cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /Zi /fsanitize=address `"$repo\tests\native\$name.cpp`" /Fe:`"$runtime\$name-asan.exe`" /Fo:`"$runtime\$name-asan.obj`" /Fd:`"$runtime\$name-asan.pdb`" /link /INCREMENTAL:NO"
+        $lines += 'if errorlevel 1 exit /b 1'
+        $lines += "`"$runtime\$name-asan.exe`""
+        $lines += 'if errorlevel 1 exit /b 1'
+    }
+    $lines | Set-Content -LiteralPath $sanitizerCmd -Encoding ASCII
+    & $sanitizerCmd
+    if ($LASTEXITCODE) { throw 'Native AddressSanitizer tests failed.' }
+}
 if ($TestsOnly) { return }
 if (!(Test-Path -LiteralPath "$root/.git")) {
     if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }
@@ -72,7 +99,8 @@ if (Test-Path -LiteralPath $labComponent) {
     if ($currentLabComponent -ne $labProperties) { throw 'Unowned lab component overlay; preserve it and use an isolated native checkout.' }
     Remove-Item -LiteralPath $labComponent
 }
-$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp')
+$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp',
+    'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp')
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
 # Extend the existing upstream kick hook, rather than install a competing detour.
 $botsPath = Join-Path $root 'src/client/component/bots.cpp'
@@ -84,6 +112,19 @@ $testBots = $baseBots.Replace('namespace bots', '#include "paris_test_safety.hpp
 $currentBots = [IO.File]::ReadAllText($botsPath).Replace("`r`n", "`n").TrimEnd() + "`n"
 if ($currentBots -ne $baseBots -and $currentBots -ne $testBots) { throw 'Unowned bots.cpp changes; preserve them.' }
 [IO.File]::WriteAllText($botsPath,$testBots,[Text.UTF8Encoding]::new($false))
+# The pinned anti-debug helper writes legacy heap-header offsets. PageHeap uses
+# a different layout; preserve its verifier state only in the explicit private
+# diagnostic profile. Ordinary launches keep the pinned upstream behavior.
+$arxanPath = Join-Path $root 'src/client/component/arxan/arxan.cpp'
+$baseArxan = (((git -C $root show ($commit + ':src/client/component/arxan/arxan.cpp')) -join "`n").TrimEnd()) + "`n"
+$heapMarker = "void hide_being_debugged()`n`t`t{`n`t`t`tauto* const peb = PPEB(__readgsqword(0x60));"
+if (($baseArxan.Split([string[]]@($heapMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned heap-debug helper marker changed.' }
+$testArxan = $baseArxan.Replace('#include <utils/string.hpp>', "#include <utils/string.hpp>`n#include <utils/flags.hpp>").Replace($heapMarker,
+    $heapMarker + "`n`t`t`t// Keep Windows PageHeap headers and flags intact during the private trace.`n`t`t`t" +
+    'if (utils::flags::has_flag("paris-voice-native-trace") && (*reinterpret_cast<PDWORD>(LPSTR(peb) + 0xBC) & 0x02000000)) return;')
+$currentArxan = [IO.File]::ReadAllText($arxanPath).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentArxan -ne $baseArxan -and $currentArxan -ne $testArxan) { throw 'Unowned anti-debug helper edits; preserve them.' }
+[IO.File]::WriteAllText($arxanPath,$testArxan,[Text.UTF8Encoding]::new($false))
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
 $rhinoScriptInclude = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
 $enemyScriptInclude = Join-Path $root 'src/client/component/paris_enemy_scripts.inc'
@@ -211,10 +252,19 @@ Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.exe" -Destination "$
 $manifestSources = @($nativeSources)
 if ($IsolatedLab) { $manifestSources += 'paris_lab_properties.cpp' }
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
+# Retain matching symbols before the next rebuild replaces them. These local
+# files enable reliable crash stacks and must never be added to Git.
+$symbols = Join-Path $runtime ('voice-symbols/' + $manifest.SHA256)
+New-Item -ItemType Directory -Path $symbols -Force | Out-Null
+Copy-Item -LiteralPath "$output/iw7-paris-voice.exe" -Destination (Join-Path $symbols 'iw7-paris-native-trace.exe') -Force
+Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.pdb" -Destination (Join-Path $symbols 'iw7-mod.pdb') -Force
+$manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
+if ((Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')).Hash -ne $manifest.SHA256) { throw 'Archived diagnostic executable mismatch.' }
 $manifest.ServerModules = [bool]$ServerModules
 $manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
 $manifest.VoiceTrace = [bool]$VoiceTrace
 $manifest.TestKickHookSHA256 = (Get-FileHash -LiteralPath $botsPath).Hash
+$manifest.TestHeapHookSHA256 = (Get-FileHash -LiteralPath $arxanPath).Hash
 $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'

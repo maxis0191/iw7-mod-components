@@ -109,10 +109,12 @@ namespace paris_test_fixture
             std::istringstream input(request);
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "witnessroster") return;
-            if (action == "witnessroster" && (!utils::flags::has_flag("paris-voice-registration-witness") ||
+            const bool voice_control = action == "voicemute" || action == "voiceunmute" || action == "voicedisable" || action == "voiceenable" || action == "voicerestore" || action == "voicecodecprobe";
+            if (voice_control && (!utils::flags::has_flag("iw7-voice-relay") || !utils::flags::has_flag("paris-voice-base-test"))) return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control) return;
+            if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
                 !utils::flags::has_flag("paris-voice-base-test"))) return;
-            if (action == "voiceprobe" && (!utils::flags::has_flag("paris-voice-native-trace") ||
+            if ((action == "voiceprobe" || action == "voicereleasedprobe" || action == "voicecodecprobe") && (!utils::flags::has_flag("paris-voice-native-trace") ||
                 !((utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab")) ||
                   utils::flags::has_flag("paris-voice-base-test")))) return;
             if (action == "connect")
@@ -121,20 +123,36 @@ namespace paris_test_fixture
                 if (!lab_port()) return;
                 connect_pending = true;
             }
-            utils::io::write_file("iw7-mod/paris-server-client.response", request);
-            console::info("[Paris module client] Request %s acknowledged.\n", action.c_str());
             if (action == "capture") command::execute("capture_frame server-modules-fixture", true);
             else if (action == "help") command::execute("cmd say ..help", true);
             else if (action == "mods") command::execute("cmd say ..mods", true);
             else if (action == "close") command::execute("cmd say ..close", true);
             else if (action == "voiceprobe") command::execute("paris_voice_native_probe", true);
+            else if (action == "voicereleasedprobe") command::execute("paris_voice_native_released_probe", true);
+            else if (action == "voicecodecprobe") command::execute("paris_voice_native_codec_probe", true);
+            else if (action == "voicemute") command::execute("paris_voice_test_mute", true);
+            else if (action == "voiceunmute") command::execute("paris_voice_test_unmute", true);
+            else if (action == "voicedisable") command::execute("paris_voice_test_disable", true);
+            else if (action == "voiceenable") command::execute("paris_voice_test_enable", true);
+            else if (action == "voicerestore") command::execute("paris_voice_test_restore", true);
             else if (action == "witnessroster") command::execute("paris_voice_registration_roster", true);
-            else if (action == "stop") { command::execute("disconnect", true); scheduler::once([] { command::execute("quit", true); }, scheduler::main, 1s); }
+            else if (action == "registerwitness") command::execute("paris_voice_register_witness", true);
+            else if (action == "stop")
+            {
+                command::execute("paris_voice_test_restore", true);
+                // Process lifecycle commands in the native command buffer.
+                // A synchronous quit unwinds the engine stack through the
+                // scheduler's noexcept scope-exit callback and calls terminate.
+                command::execute("disconnect", false);
+                scheduler::once([] { command::execute("quit", false); }, scheduler::main, 1s);
+            }
+            utils::io::write_file("iw7-mod/paris-server-client.response", request);
+            console::info("[Paris module client] Request %s dispatched and returned.\n", action.c_str());
         }
     }
-    bool suppress_inactivity_kick(int client_num, const char* reason)
+    bool is_protected_player(int client_num)
     {
-        if (!reason || std::strcmp(reason, "EXE_PLAYERKICKED_INACTIVE") || !private_fixture() ||
+        if (!private_fixture() ||
             client_num < 0 || client_num >= static_cast<int>(protected_players.size())) return false;
         std::lock_guard lock(safety_mutex);
         const unsigned slot = static_cast<unsigned>(client_num);
@@ -145,7 +163,11 @@ namespace paris_test_fixture
             game::Com_GameMode_GetActiveGameMode() == game::GAME_MODE_CP, private_fixture(), bound, bound, bound,
             bound && (game::g_entities[slot].flags & 1) != 0, cheats && !cheats->current.enabled,
             inactivity && inactivity->type == game::DVAR_TYPE_INT && inactivity->current.integer == 0};
-        if (!allow_inactivity_exception(context, reason)) return false;
+        return allow_inactivity_exception(context, "EXE_PLAYERKICKED_INACTIVE");
+    }
+    bool suppress_inactivity_kick(int client_num, const char* reason)
+    {
+        if (!reason || std::strcmp(reason, "EXE_PLAYERKICKED_INACTIVE") || !is_protected_player(client_num)) return false;
         ++script_inactivity_suppressed;
         return true;
     }

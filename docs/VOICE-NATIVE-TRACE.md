@@ -1,9 +1,48 @@
 # Native voice investigation
 
+Latest reproducible results: [fixed-mode controls and reconnect](deployments/2026-10-04-voice-fixed-mode-controls.json)
+pass. The native VAD/DTX path suppresses most of the synthetic target; disabling
+it while retaining a previous null submode is also silent. The private control
+reapplies the saved configured mode before injection, then restores/verifies
+flags and checks that configured mode is preserved. It does not reset the codec
+or change production encoding. Human speech and the older heap fault remain open.
+Use the current [base runbook](VOICE-BASE-RUNBOOK.md). Sections below retain earlier
+failed calibrations; their pending instructions are historical.
+
+Current local signals/negative controls are recorded in
+[native control evidence](deployments/2026-10-04-voice-native-controls.json).
+Resume/reverse reconnect target tone fails, and a reconnected client exits with
+heap corruption. Do not infer voice/lifecycle acceptance from decode counters.
+VoiceCodecProbe is a separate private loopback diagnostic: it saves native encoder
+VAD/DTX, disables them for the synthetic signal and restores/verifies saved values
+before returning. Production codec behavior stays intact. Inspect its restore
+marker, encoded bytes/tiny-frame counts, decoded target-frame delta and output.
+It has not yet been validated in-game. Broad spectral metrics save no samples.
+
+The generic helper uses `-GenericRelay` on both processes, without UI/legacy
+registration witnesses. It permits A reconnect with B staying. VoiceMute/Unmute
+and VoiceDisable/Enable use native APIs with exactly one remote. VoiceRestore
+restores saved values only for the same session/UID; StopClient restores before
+disconnect. These do not prove scoreboard UI or devices. VoiceReleasedProbe
+keeps the actual talk binding released. Inspect deltas/markers/output, never
+acknowledgment alone. Probe logs include begin/return ticks. The revised stimulus
+is twenty 440-Hz prelude frames then forty 997-Hz frames, without codec reset. Keep
+the unchanged sixty-frame target-tone failures separate from this diagnostic.
+
 Voice is not accepted. Issue #4 remains open. Trace the original engine path before
 choosing a repair; the protocol-v1 overlay remains an unaccepted fallback.
 
-## Independent audio witness
+The latest paced static base witness passes synthetic playback in both directions.
+[Exact scoped results](deployments/2026-10-04-voice-paced-playback.json) include the
+baseline, native deltas and output metrics. It is now closed/restored. A separate
+[generic transport core](VOICE-TRANSPORT.md) passes pure reconnect/control tests;
+is wired into the separate opt-in v2 runtime. Earlier sections retain historical runs.
+
+## Earlier isolated audio witness
+
+Historical procedure: the owner subsequently requested the base installation.
+Use the protected base helper for the current test plan; these isolated commands
+remain available for reproducing the earlier investigation.
 
 Use a dedicated worktree and physically independent asset snapshot as described in
 [ISOLATED-LAB.md](ISOLATED-LAB.md). Reserve unused loopback ports (this investigation
@@ -175,6 +214,40 @@ Close B/A and the verified-empty dedicated, Restore, and restart without the
 witness flag before ordinary play; this clears experimental native registrations.
 See [the English contribution matrix](VOICE-CONTRIBUTION.md) for acceptance gates.
 
+## Static localhost playback experiment
+
+Research only: the legacy v1 generation defect remains open. This experiment is
+not a production relay or reconnect test. Use a fresh backed-up preparation and
+start the dedicated with `StartServer -RelayWitness`; start both clients with
+`StartClient -RegistrationWitness -RelayWitness` (B also needs `-ClientSlot B`).
+Follow the initialization, Connect, Verify and nine-sample protected idle sequence
+above. Announce the two identities with WitnessRoster, then call RegisterWitness
+on A and B before any audio. Require registered=2/voice_registered=2 and
+client_ready=1 in both logs. The server only accepts exactly localhost clients
+that currently pass its full protected-player policy.
+
+```powershell
+./ops/Voice-BaseTest.ps1 -Action RegisterWitness -ClientSlot A
+./ops/Voice-BaseTest.ps1 -Action RegisterWitness -ClientSlot B
+# Baseline: no synthetic signal. Exit 1 means no strong tone; exit 2 is an error.
+./runtime/audio-output-probe.exe 5 997
+```
+
+While a second output measurement is running, issue VoiceProbe on A only, inspect
+its sixty-frame sender delta and B's native decoder/queue/playback delta, then
+repeat in the other direction after the rate-limit refill. The stimulus is a
+997-Hz, 8-kHz post-device signal; native DirectSound may shift its rendered
+frequency. The output tool reports bounded spectral/RMS metrics and saves no
+recording. It measures the default Windows mix: require baseline/absence controls
+and native per-client counters before attributing a signal to the receiver.
+The paced candidate's decoded_peak_rms/decoded_tone_ratio are cumulative
+997-Hz PCM maxima; pair them with fresh decoder deltas rather than treating a
+previous maximum as a newly observed signal.
+Do not accept a signal if direct native send occurred, a participant disconnected,
+protection expired, or mute/registration refused the speaker. Stop and restore the
+whole static witness before ordinary play. Real microphones/two PCs are still
+required for the official feature's acceptance.
+
 ## Retained first attempt
 
 Candidate aae11b0 built and runtime-linked on private cp_zmb; its client joined with
@@ -210,6 +283,31 @@ standard Aurora identities. The owner identifies inactivity kicks; pinned retail
 reference confirms the independent GSC watchdog described above. The first voice
 fixture's one-shot protection was insufficient. These failed pair attempts are
 invalid for native voice routing conclusions and remain retained as incident evidence.
+
+## Client exit verification - 2026-10-04
+
+Full PageHeap first stops candidate 643e806 before game initialization with
+`0xC0000005`. Matching executable/PDB and the native exception dump identify
+the pinned anti-debug helper writing legacy heap-header offsets into the
+PageHeap layout. This is a diagnostic compatibility failure, distinct from the
+earlier reconnect exit corruption. The private build overlay now preserves
+heap headers/flags when both the native trace flag and Windows PageHeap flag
+are present. Ordinary launches retain upstream behavior. Retest before claiming
+that this permits heap-corruption diagnosis. Enable verification only for the
+owned trace image, then remove its persistent image setting immediately after
+launch; it remains active in that process until exit.
+
+StopClient retains a handle to the verified owned process before requesting quit.
+It records the exit code and fails on any nonzero result. PID disappearance alone
+does not establish a clean exit. Candidate b84619f reproduced `0xC0000409` even
+with one protected client and no remote registration/audio. A matching executable
+and PDB identify `abort`, `terminate`, C++ unwinding and the main scheduler's
+scope-exit callback. The exception subcode is `FAST_FAIL_FATAL_APP_EXIT` (7).
+
+The fixture had executed quit synchronously from that noexcept callback. Lifecycle
+commands now enter the native command buffer. c2de172 passes protected solo exit
+with code 0; pair/reconnect cleanup remains pending. Raw dumps stay ignored.
+This fixture failure does not establish a transport memory-corruption bug.
 
 ## Static evidence and open choices
 

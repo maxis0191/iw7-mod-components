@@ -14,6 +14,8 @@
 #include <cmath>
 #include <charconv>
 #include "paris_voice_protocol.hpp"
+#include "paris_test_safety.hpp"
+#include "voice_relay.hpp"
 
 namespace paris_voice
 {
@@ -63,8 +65,9 @@ namespace paris_voice
         utils::hook::detour decode_voice_hook;
         utils::hook::detour enqueue_voice_hook;
         utils::hook::detour capture_voice_hook;
+        utils::hook::detour encode_voice_hook;
         utils::hook::detour native_batch_hook, native_receive_hook, native_send_hook;
-        bool native_trace{};
+        bool native_trace{}, relay_witness{};
         bool native_audio_test()
         {
             return (utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab")) ||
@@ -104,6 +107,8 @@ namespace paris_voice
                 {0x14037D5C0, "\x41\x54\x48\x81\xec\x00\x09\x00\x00", 9},
                 {0x14037CFF0, "\x40\x53\x41\x54\x41\x55\x48\x81\xec\xc0\x09\x00\x00", 13},
                 {0x14037BFF0, "\x40\x53\x56\x57\x48\x81\xec\xa0\x08\x00\x00", 11},
+                {0x140B794F0, "\x48\x89\x5c\x24\x08\x48\x89\x74\x24\x10\x57\x48\x83\xec\x20", 15},
+                {0x1405E9520, "\x48\x8b\x01\x48\xff\x60\x50", 7},
             };
             for (const auto& entry : entries)
                 if (std::memcmp(reinterpret_cast<const void*>(entry.address), entry.bytes, entry.size) != 0)
@@ -118,6 +123,9 @@ namespace paris_voice
             std::atomic<std::uint64_t> captured{}, sent{}, relayed{}, decoded{}, pcm_bytes{}, rejected{}, muted{};
             std::atomic<std::uint64_t> queued_bytes{}, queue_errors{};
             std::atomic<std::uint64_t> capture_blocks{};
+            std::atomic<double> decoded_peak_rms{}, decoded_peak_tone_ratio{};
+            std::atomic<std::uint64_t> decoded_target_frames{};
+            std::atomic<std::uint64_t> encoded_bytes{}, tiny_encoded_frames{};
         } stats;
         struct server_peer
         {
@@ -162,6 +170,25 @@ namespace paris_voice
         {
             const int result = decode_voice_hook.invoke<int>(data, length, pcm, samples);
             if (result > 0) { ++stats.decoded; stats.pcm_bytes += result; }
+            if ((relay_witness || utils::flags::has_flag("iw7-voice-relay")) && pcm && result > 0 && result <= 16384 && result % 2 == 0)
+            {
+                const int count = result / 2;
+                double power{}, re{}, im{};
+                for (int i = 0; i < count; ++i)
+                {
+                    const double sample = pcm[i] / 32768.0;
+                    const double phase = 6.283185307179586 * 997 * i / 8000.0;
+                    power += sample * sample;
+                    re += sample * std::cos(phase); im += sample * std::sin(phase);
+                }
+                const double rms = std::sqrt(power / count);
+                const double ratio = power > 0 ? 2 * (re * re + im * im) / (count * power) : 0;
+                if (rms > 0.01 && ratio > 0.4) ++stats.decoded_target_frames;
+                auto prior = stats.decoded_peak_rms.load();
+                while (rms > prior && !stats.decoded_peak_rms.compare_exchange_weak(prior, rms)) {}
+                prior = stats.decoded_peak_tone_ratio.load();
+                while (ratio > prior && !stats.decoded_peak_tone_ratio.compare_exchange_weak(prior, ratio)) {}
+            }
             return result;
         }
         int enqueue_voice(void* buffer, const short* pcm, int bytes)
@@ -175,6 +202,13 @@ namespace paris_voice
         {
             ++stats.capture_blocks;
             return capture_voice_hook.invoke<int>(buffer);
+        }
+        int encode_voice(const short* pcm, char* data, int capacity)
+        {
+            const int size = encode_voice_hook.invoke<int>(pcm, data, capacity);
+            if (size > 0) stats.encoded_bytes += size;
+            if (size > 0 && size <= 5) ++stats.tiny_encoded_frames;
+            return size;
         }
         void ensure_audio()
         {
@@ -199,7 +233,9 @@ namespace paris_voice
         {
             // Parse before touching engine memory; at most 1200 bytes/10 frames.
             wire::packet p;
-            if (from.type != game::NA_IP || !wire::decode(data, p)) { ++stats.rejected; return; }
+            if (from.type != game::NA_IP || (relay_witness &&
+                (from.ip[0] != 127 || from.ip[1] || from.ip[2] || from.ip[3] != 1)) ||
+                !wire::decode(data, p)) { ++stats.rejected; return; }
             std::lock_guard lock(inbox_mutex);
             if (inbox.size() >= inbox_limit) { ++stats.rejected; return; }
             inbox.push_back({from, std::move(p), now(), static_cast<unsigned>(data.size())});
@@ -216,7 +252,8 @@ namespace paris_voice
             for (unsigned i = 0; i < wire::slots; ++i)
             {
                 auto& p = peers[i];
-                if (!clients || i >= count || clients[i].header.state != game::CS_ACTIVE || clients[i].remoteAddress.type != game::NA_IP)
+                if (!clients || i >= count || clients[i].header.state != game::CS_ACTIVE || clients[i].remoteAddress.type != game::NA_IP ||
+                    (relay_witness && !paris_test_fixture::is_protected_player(static_cast<int>(i))))
                 { p = {}; continue; }
                 const auto& c = clients[i];
                 const std::string identity(c.playerGuid, strnlen(c.playerGuid, sizeof(c.playerGuid)));
@@ -229,7 +266,8 @@ namespace paris_voice
                 if (time - msg.time > 500) { ++stats.rejected; continue; }
                 unsigned slot = count;
                 for (unsigned i = 0; clients && i < count; ++i)
-                    if (clients[i].header.state == game::CS_ACTIVE && same(clients[i].remoteAddress, msg.from)) { slot = i; break; }
+                    if (clients[i].header.state == game::CS_ACTIVE && same(clients[i].remoteAddress, msg.from) &&
+                        (!relay_witness || paris_test_fixture::is_protected_player(static_cast<int>(i)))) { slot = i; break; }
                 if (slot >= count) { ++stats.rejected; continue; }
                 auto& p = peers[slot];
                 if (msg.data.type == wire::kind::hello)
@@ -267,7 +305,8 @@ namespace paris_voice
             const auto* connection = party::get_server_connection_state();
             if (!zombies() || !connection || !connection->hostDefined || connection->host.type != game::NA_IP ||
                 !game::CL_IsGameClientActive(0) || game::clientUIActives[0].connectionState != game::CA_ACTIVE) return false;
-            host = connection->host; return true;
+            host = connection->host;
+            return !relay_witness || (host.ip[0] == 127 && !host.ip[1] && !host.ip[2] && host.ip[3] == 1);
         }
         void client_tick()
         {
@@ -301,7 +340,8 @@ namespace paris_voice
                         console::info("[paris-voice] Zombies relay ready (protocol 1, slot %u)\n", p.speaker);
                     }
                     client.token = p.token; client.own_slot = p.speaker; client.last_ready = time;
-                    ensure_audio(); continue;
+                    if (!relay_witness) ensure_audio();
+                    continue;
                 }
                 if ((p.type != wire::kind::audio && p.type != wire::kind::probe) || !client.token || p.token != client.token ||
                     (p.type == wire::kind::audio && p.speaker == client.own_slot) || (p.type == wire::kind::probe && p.speaker != client.own_slot) ||
@@ -309,19 +349,24 @@ namespace paris_voice
                     !client.rate[p.speaker].accept(static_cast<unsigned>(p.frames.size()), msg.bytes, time))
                 { ++stats.rejected; continue; }
                 if (!enabled()) { ++stats.muted; continue; }
-                ensure_audio();
+                if (!relay_witness) ensure_audio();
                 const auto samples = *reinterpret_cast<const int*>(0x145D5C6DC);
                 if (!audio_initialized() || samples <= 0 || samples > 4096) { ++stats.rejected; continue; }
                 const auto* lobby = game::Lobby_GetPartyData();
-                const auto* session = lobby ? lobby->session : nullptr;
+                const auto* session = relay_witness ? utils::hook::invoke<game::SessionData*>(0x140D32740) :
+                    (lobby ? lobby->session : nullptr);
+                if (relay_witness && (!session || !session->dyn.users[p.speaker].registered ||
+                    !session->dyn.users[p.speaker].voiceRegistered)) { ++stats.rejected; continue; }
                 // Engine scoreboard mute and platform/privacy checks remain in force.
                 if (session && utils::hook::invoke<bool>(0x14037BBA0, session, static_cast<int>(p.speaker)))
                 { ++stats.muted; continue; }
                 for (const auto& frame : p.frames)
                 {
-                    const int result = utils::hook::invoke<int>(0x140D59620, session, static_cast<int>(p.speaker),
+                    // The native caller uses no Voice_Incoming return value.
+                    // Decoder/queue counters measure work; an arbitrary RAX is
+                    // not a delivery result.
+                    utils::hook::invoke<void>(0x140D59620, session, static_cast<int>(p.speaker),
                         frame.data(), static_cast<int>(frame.size()), 0);
-                    if (result <= 0) ++stats.rejected;
                 }
             }
         }
@@ -454,7 +499,20 @@ namespace paris_voice
             if (native_trace)
             {
                 ++native_encoded;
-                return queue_voice_hook.invoke<int>(length, data);
+                const int original = queue_voice_hook.invoke<int>(length, data);
+                if (relay_witness)
+                {
+                    game::netadr_s host{};
+                    if (!client_connection(host) || !data || length <= 0 ||
+                        length > static_cast<int>(wire::max_frame_bytes)) return original;
+                    std::lock_guard lock(state_mutex);
+                    if (!client.token || !same(client.host, host) || !enabled()) return original;
+                    wire::packet p; p.type = wire::kind::audio; p.token = client.token;
+                    p.sequence = ++client.sequence; p.speaker = client.own_slot;
+                    p.frames.emplace_back(data, length);
+                    send(host, p); ++stats.sent;
+                }
+                return original;
             }
             // Native capture already applies PTT, mic mute, threshold and cl_voice.
             // Send each encoded frame promptly instead of the legacy 200 ms party batch.
@@ -520,6 +578,9 @@ namespace paris_voice
                     utils::hook::invoke<bool>(0x14037DA00), utils::hook::invoke<bool>(0x14036FE40, 0),
                     static_cast<double>(*reinterpret_cast<const float*>(0x1477A027C)));
             }
+            if ((relay_witness || utils::flags::has_flag("iw7-voice-relay")) && !game::environment::is_dedi())
+                console::info("[paris-voice-witness] decoded_peak_rms=%.6f decoded_tone_ratio=%.6f decoded_target_frames=%llu; cumulative 997-Hz PCM metrics, no recordings.\n",
+                    stats.decoded_peak_rms.load(), stats.decoded_peak_tone_ratio.load(), stats.decoded_target_frames.load());
         }
         void registration_roster_witness()
         {
@@ -602,7 +663,7 @@ namespace paris_voice
                     *reinterpret_cast<const int*>(local_info + 12));
             }
         }
-        void native_probe()
+        void run_native_probe(bool hold_talk, bool codec_control = false)
         {
             if (!native_trace || game::environment::is_dedi() || !native_audio_test()) return;
             game::netadr_s host{};
@@ -622,6 +683,39 @@ namespace paris_voice
                     !std::strcmp(game::command_whitelist[i], "+talk") && !std::strcmp(game::command_whitelist[i + 1], "-talk"))
                 { talk_binding = i; break; }
             if (!talk_binding) return;
+            auto* encoder = *reinterpret_cast<void**>(0x145D5C6E8);
+            int vad{}, dtx{}, configured_mode{};
+            const auto encoder_ctl = [](void* context, int request, int* value)
+            { return utils::hook::invoke<int>(0x1405E9520, context, request, value); };
+            if (codec_control)
+            {
+                // Private synthetic-signal control only. Production preserves
+                // native VAD/DTX, which may intentionally suppress steady tones.
+                if (!utils::flags::has_flag("iw7-voice-relay") || host.ip[0] != 127 || host.ip[1] || host.ip[2] || host.ip[3] != 1 || !encoder ||
+                    encoder_ctl(encoder, 31, &vad) || encoder_ctl(encoder, 35, &dtx)) return;
+                // Native VAD may leave the current submode at null (DTX).
+                // Disabling VAD alone retains that null mode. Reapply the saved
+                // configured narrowband submode, without resetting codec state.
+                // The pinned native ctl's SET_MODE (6) writes current+selected;
+                // selected is at +0x174 and remains the user's configuration.
+                configured_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
+                if (configured_mode < 1 || configured_mode > 8) return;
+                int off{};
+                if (encoder_ctl(encoder, 30, &off) || encoder_ctl(encoder, 34, &off) || encoder_ctl(encoder, 6, &configured_mode))
+                {
+                    encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx); return;
+                }
+            }
+            const auto restore_codec = gsl::finally([&]
+            {
+                if (!codec_control || encoder != *reinterpret_cast<void**>(0x145D5C6E8)) return;
+                encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx);
+                int after_vad{}, after_dtx{};
+                const bool restored = !encoder_ctl(encoder, 31, &after_vad) && !encoder_ctl(encoder, 35, &after_dtx) && after_vad == vad && after_dtx == dtx;
+                const int after_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
+                console::info("[paris-voice-native] Codec control restored=%d vad=%d dtx=%d configured_mode=%d mode_preserved=%d.\n", restored,
+                    after_vad, after_dtx, after_mode, after_mode == configured_mode);
+            });
             const bool saved_ptt = ptt->current.enabled;
             // Explicit post-device witness. No microphone recording and no
             // transport override. This is never evidence of human speech.
@@ -632,18 +726,99 @@ namespace paris_voice
             // earlier activity-mode attempt encoded zero and is inconclusive.
             ptt->current.enabled = true;
             // Common dispatcher handles talk before the MP/SP gameplay dispatcher.
-            utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding, 86, 1);
+            if (hold_talk) utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding, 86, 1);
             const bool pressed = utils::hook::invoke<bool>(0x14036FE40, 0);
-            const auto encoded_before = native_encoded.load();
-            for (int i = 0; i < 20; ++i)
+            const bool generic_relay = utils::flags::has_flag("iw7-voice-relay");
+            const auto probe_begin = GetTickCount64();
+            console::info("[paris-voice-native] Synthetic witness begins: hold_talk=%d tick_ms=%llu.\n", hold_talk, probe_begin);
+            const auto encoded_before = generic_relay ? voice_relay::encoded_frames() : native_encoded.load();
+            const auto bytes_before = stats.encoded_bytes.load(), tiny_before = stats.tiny_encoded_frames.load();
+            const int frames = (relay_witness || generic_relay) ? 60 : 20;
+            for (int i = 0; i < frames; ++i)
             {
+                if (relay_witness || generic_relay) for (int sample = 0; sample < samples; ++sample)
+                    pcm[sample] = static_cast<short>(10000 * std::sin(6.283185307179586 *
+                        (i < 20 ? 440 : 997) * (i * samples + sample) / 8000.0));
                 capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
                 capture_voice(&block);
+                // The static playback witness must resemble real 20-ms capture.
+                // A synchronous sixty-datagram burst relayed only sixteen frames
+                // and never reached DirectSound's 6000-byte startup threshold.
+                if ((relay_witness || generic_relay) && i + 1 < frames) Sleep(20);
             }
-            utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
+            if (hold_talk) utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
             ptt->current.enabled = saved_ptt;
             console::info("[paris-voice-native] Synthetic post-device witness: pressed=%d released=%d encoded_delta=%llu; PTT setting restored.\n",
-                pressed, !utils::hook::invoke<bool>(0x14036FE40, 0), native_encoded.load() - encoded_before);
+                pressed, !utils::hook::invoke<bool>(0x14036FE40, 0),
+                (generic_relay ? voice_relay::encoded_frames() : native_encoded.load()) - encoded_before);
+            console::info("[paris-voice-native] Synthetic witness returned: duration_ms=%llu tick_ms=%llu.\n", GetTickCount64() - probe_begin, GetTickCount64());
+            console::info("[paris-voice-native] Codec control=%d encoded_bytes_delta=%llu tiny_frames_delta=%llu.\n", codec_control,
+                stats.encoded_bytes.load() - bytes_before, stats.tiny_encoded_frames.load() - tiny_before);
+            status();
+        }
+        void native_probe() { run_native_probe(true); }
+        void native_released_probe() { run_native_probe(false); }
+        void native_codec_probe() { run_native_probe(true, true); }
+
+        struct control_baseline
+        {
+            game::dvar_t* voice{};
+            game::SessionData* session{};
+            std::uint64_t user{};
+            int slot{-1};
+            bool active{}, enabled{}, muted{};
+        } test_controls;
+        void restore_test_controls()
+        {
+            if (!test_controls.active) return;
+            if (test_controls.voice && test_controls.voice->type == game::DVAR_TYPE_BOOL)
+                game::Dvar_SetBool(test_controls.voice, test_controls.enabled);
+            auto* current = utils::hook::invoke<game::SessionData*>(0x140D32740);
+            if (current == test_controls.session && current && current->dyn.sessionHandle &&
+                test_controls.slot >= 0 && test_controls.slot < static_cast<int>(wire::slots) &&
+                current->dyn.users[test_controls.slot].registered && current->dyn.users[test_controls.slot].xuid == test_controls.user)
+                utils::hook::invoke<void>(test_controls.muted ? 0x140D59AC0 : 0x140D59FE0, current, test_controls.slot);
+            test_controls = {};
+            console::info("[paris-voice-native] Temporary native voice controls restored; prior speaker binding required.\n");
+        }
+        void test_control(const char* action)
+        {
+            if (!native_trace || !native_audio_test() || game::environment::is_dedi() ||
+                !utils::flags::has_flag("iw7-voice-relay")) return;
+            game::netadr_s host{};
+            if (!client_connection(host) || host.ip[0] != 127 || host.ip[1] || host.ip[2] || host.ip[3] != 1) return;
+            auto* current = utils::hook::invoke<game::SessionData*>(0x140D32740);
+            auto* voice = const_cast<game::dvar_t*>(game::Dvar_FindVar("cl_voice"));
+            if (!current || !current->dyn.sessionHandle || !voice || voice->type != game::DVAR_TYPE_BOOL) return;
+            const int controller = utils::hook::invoke<int>(0x140347690, 0);
+            const int own = utils::hook::invoke<int>(0x140D32920, controller, current);
+            if (own < 0 || own >= static_cast<int>(wire::slots)) return;
+            int remote = -1;
+            for (unsigned slot = 0; slot < wire::slots; ++slot)
+                if (static_cast<int>(slot) != own && current->dyn.users[slot].registered && current->dyn.users[slot].voiceRegistered)
+                { if (remote >= 0) return; remote = static_cast<int>(slot); }
+            if (remote < 0) return; // Exactly one remote test participant.
+            if (!test_controls.active)
+                test_controls = {voice, current, current->dyn.users[remote].xuid, remote, true, voice->current.enabled, current->dyn.users[remote].muted};
+            if (test_controls.session != current || test_controls.slot != remote || test_controls.user != current->dyn.users[remote].xuid) return;
+            if (!std::strcmp(action, "mute")) utils::hook::invoke<void>(0x140D59AC0, current, remote);
+            else if (!std::strcmp(action, "unmute"))
+                utils::hook::invoke<void>(test_controls.muted ? 0x140D59AC0 : 0x140D59FE0, current, remote);
+            else if (!std::strcmp(action, "disable")) game::Dvar_SetBool(voice, false);
+            else if (!std::strcmp(action, "enable")) game::Dvar_SetBool(voice, test_controls.enabled);
+            console::info("[paris-voice-native] Temporary control=%s cl_voice=%d native_muted=%d; baseline retained for restore.\n",
+                action, voice->current.enabled, utils::hook::invoke<bool>(0x14037BBA0, current, remote));
+        }
+        void register_witness()
+        {
+            if (!native_trace || !native_audio_test() || game::environment::is_dedi() ||
+                !utils::flags::has_flag("paris-voice-registration-witness")) return;
+            game::netadr_s host{};
+            if (!client_connection(host) || host.ip[0] != 127 || host.ip[1] || host.ip[2] || host.ip[3] != 1) return;
+            auto* session = utils::hook::invoke<game::SessionData*>(0x140D32740);
+            const int controller = utils::hook::invoke<int>(0x140347690, 0);
+            const int slot = session ? utils::hook::invoke<int>(0x140D32920, controller, session) : -1;
+            registration_witness(session, controller, slot, host);
             status();
         }
     }
@@ -653,19 +828,38 @@ namespace paris_voice
         void post_unpack() override
         {
             native_trace = utils::flags::has_flag("paris-voice-native-trace");
+            // The generic component owns the queue in its opt-in profile. Keep
+            // only independent forwarding diagnostics for the private harness.
+            const bool generic_relay = utils::flags::has_flag("iw7-voice-relay");
+            if (generic_relay && !native_trace) return;
+            relay_witness = native_trace && utils::flags::has_flag("paris-voice-relay-witness");
+            if (relay_witness && !game::environment::is_dedi() &&
+                !utils::flags::has_flag("paris-voice-registration-witness"))
+            {
+                console::error("[paris-voice-native] Relay witness refused: explicit registration witness required.\n");
+                return;
+            }
             if (native_trace && (!native_audio_test() || !trace_signatures_match()))
             {
                 console::error("[paris-voice-native] Trace refused: explicit protected audio test/signatures required.\n");
                 return;
             }
             scheduler::once([] { game::Dvar_RegisterBool("paris_voice_available", !native_trace, 0, "Voice transport installed; matching clients required"); }, scheduler::main);
-            if (!native_trace) network::on(transport, receive);
+            if (!native_trace || relay_witness) network::on(transport, receive);
             command::add("paris_voice_status", status);
             command::add("paris_voice_selftest", codec_selftest);
             command::add("paris_voice_network_test", network_selftest);
             command::add("paris_voice_gate_selftest", gate_selftest);
             command::add("paris_voice_native_probe", native_probe);
+            command::add("paris_voice_native_released_probe", native_released_probe);
+            command::add("paris_voice_native_codec_probe", native_codec_probe);
+            command::add("paris_voice_test_mute", [] { test_control("mute"); });
+            command::add("paris_voice_test_unmute", [] { test_control("unmute"); });
+            command::add("paris_voice_test_disable", [] { test_control("disable"); });
+            command::add("paris_voice_test_enable", [] { test_control("enable"); });
+            command::add("paris_voice_test_restore", restore_test_controls);
             command::add("paris_voice_registration_roster", registration_roster_witness);
+            command::add("paris_voice_register_witness", register_witness);
             if (native_trace)
             {
                 native_receive_hook.create(0x14037CFF0, native_receive);
@@ -673,19 +867,20 @@ namespace paris_voice
                 scheduler::loop(status, scheduler::main, 10s);
             }
             if (utils::flags::has_flag("paris-voice-diagnostics")) scheduler::loop(status, scheduler::main, 10s);
-            if (game::environment::is_dedi()) { if (!native_trace) scheduler::loop(server_tick, scheduler::server, 10ms); }
+            if (game::environment::is_dedi()) { if (!native_trace || relay_witness) scheduler::loop(server_tick, scheduler::server, 10ms); }
             else
             {
                 // The lab uses the connect fixture without opening custom
                 // microphone/output sessions or emitting calibration tones.
                 if (!utils::flags::has_flag("paris-isolated-lab") || utils::flags::has_flag("paris-voice-audio-lab"))
                 {
-                    queue_voice_hook.create(0x14037D960, queue_voice);
+                    if (!generic_relay) queue_voice_hook.create(0x14037D960, queue_voice);
                     decode_voice_hook.create(0x140B79310, decode_voice);
                     enqueue_voice_hook.create(0x140B79B60, enqueue_voice);
                     capture_voice_hook.create(0x140B79D30, capture_voice);
+                    if (native_trace) encode_voice_hook.create(0x140B794F0, encode_voice);
                     if (native_trace) native_batch_hook.create(0x14037D5C0, native_batch);
-                    else scheduler::loop(client_tick, scheduler::main, 10ms);
+                    if (!native_trace || relay_witness) scheduler::loop(client_tick, scheduler::main, 10ms);
                 }
                 if (utils::flags::has_flag("paris-voice-selftest")) scheduler::once(codec_selftest, scheduler::main, 20s);
                 if (utils::flags::has_flag("paris-voice-local-test"))
@@ -715,6 +910,7 @@ namespace paris_voice
             }
             if (native_trace) console::info("[paris-voice-native] Forwarding trace installed; original capture/session/transport/playback retained.\n");
             else console::info("[paris-voice] Native Zombies relay v1 installed; every participant needs this client build.\n");
+            if (relay_witness) console::warn("[paris-voice-native] LOOPBACK relay playback witness only; legacy generation defect retained, not a production feature.\n");
         }
     };
 }

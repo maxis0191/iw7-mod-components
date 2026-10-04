@@ -12,14 +12,63 @@
 #include <string>
 #include <algorithm>
 #include <array>
+#include <complex>
+#include <vector>
 using Microsoft::WRL::ComPtr;
 void ok(HRESULT value) { if (FAILED(value)) throw std::runtime_error("WASAPI HRESULT " + std::to_string(static_cast<unsigned long>(value))); }
+// Broad spectral diagnostics explain a failed target detector without changing
+// its acceptance threshold. Samples stay in memory and are never recorded.
+double spectral_frequency(const std::vector<double>& samples, unsigned rate)
+{
+    std::size_t size = 1;
+    while (size < samples.size()) size *= 2;
+    std::vector<std::complex<double>> spectrum(size);
+    for (std::size_t i = 0; i < samples.size(); ++i) spectrum[i] = samples[i];
+    for (std::size_t i = 1, j = 0; i < size; ++i)
+    {
+        std::size_t bit = size >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) std::swap(spectrum[i], spectrum[j]);
+    }
+    for (std::size_t width = 2; width <= size; width *= 2)
+    {
+        const auto step = std::polar(1.0, -6.283185307179586 / width);
+        for (std::size_t start = 0; start < size; start += width)
+        {
+            std::complex<double> phase(1.0);
+            for (std::size_t i = 0; i < width / 2; ++i)
+            {
+                const auto even = spectrum[start + i], odd = phase * spectrum[start + i + width / 2];
+                spectrum[start + i] = even + odd; spectrum[start + i + width / 2] = even - odd;
+                phase *= step;
+            }
+        }
+    }
+    std::size_t peak = (100 * size + rate - 1) / rate;
+    for (std::size_t i = peak; i < size / 2 && i * rate / size <= 10000; ++i)
+        if (std::norm(spectrum[i]) > std::norm(spectrum[peak])) peak = i;
+    return static_cast<double>(peak) * rate / size;
+}
 int main(int argc, char** argv)
 {
     try
     {
+        if (argc == 2 && std::string(argv[1]) == "--self-test")
+        {
+            for (unsigned frequency : {440u, 997u, 1600u})
+            {
+                std::vector<double> samples(4800);
+                for (unsigned i = 0; i < samples.size(); ++i) samples[i] = std::sin(6.283185307179586 * frequency * i / 48000);
+                if (std::abs(spectral_frequency(samples, 48000) - frequency) > 6) return 2;
+            }
+            std::cout << "PASS: broad spectral diagnostic locates three known signals within one FFT bin.\n";
+            return 0;
+        }
         const unsigned seconds = argc > 1 ? static_cast<unsigned>(std::stoul(argv[1])) : 45;
         if (seconds > 120 || seconds == 0) return 2;
+        const unsigned target_hz = argc > 2 ? static_cast<unsigned>(std::stoul(argv[2])) : 440;
+        if (target_hz < 100 || target_hz > 10000) return 2;
         ok(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
         ComPtr<IMMDeviceEnumerator> enumerator;
         ok(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)));
@@ -40,6 +89,7 @@ int main(int argc, char** argv)
         std::array<double, 17> re{}, im{};
         double power{}; unsigned window_count{};
         const unsigned window_size = rate / 10; // 100 ms matched-frequency windows
+        std::vector<double> window; window.reserve(window_size);
         while (GetTickCount64() < end)
         {
             UINT32 available{}; ok(capture->GetNextPacketSize(&available));
@@ -53,13 +103,14 @@ int main(int argc, char** argv)
                     if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT))
                         for (unsigned c = 0; c < channels; ++c) sample += reinterpret_cast<const float*>(data)[i * channels + c] / channels;
                     // Native DirectSound adjusts playback frequency around the nominal
-                    // rate to control its queue. Cover 400..480 Hz in 5 Hz steps.
+                    // rate to control its queue. Cover target +/-40 Hz in 5 Hz steps.
                     for (unsigned bin = 0; bin < re.size(); ++bin)
                     {
-                        const double phase = 6.283185307179586 * (400 + 5 * bin) * window_count / rate;
+                        const double phase = 6.283185307179586 * (target_hz - 40 + 5 * bin) * window_count / rate;
                         re[bin] += sample * std::cos(phase); im[bin] += sample * std::sin(phase);
                     }
                     power += sample * sample;
+                    window.push_back(sample);
                     ++frames; ++window_count;
                     if (window_count == window_size)
                     {
@@ -69,10 +120,14 @@ int main(int argc, char** argv)
                         {
                             const double value = power > 0 ? 2 * (re[bin] * re[bin] + im[bin] * im[bin]) / (window_count * power) : 0;
                             ratio = std::max(ratio, value);
-                            if (value > peak_tone_ratio) { peak_tone_ratio = value; peak_frequency = 400 + 5 * bin; }
+                            if (value > peak_tone_ratio) { peak_tone_ratio = value; peak_frequency = target_hz - 40 + 5 * bin; }
                         }
                         peak_rms = std::max(peak_rms, rms);
                         if (rms > 0.01 && ratio > 0.4) ++strong_windows;
+                        if (rms > 0.05) std::cout << "Active window: tick_ms=" << GetTickCount64()
+                            << " rms=" << rms << " target_ratio=" << ratio
+                            << " spectral_frequency=" << spectral_frequency(window, rate) << "\n";
+                        window.clear();
                         re.fill(0); im.fill(0); power = 0; window_count = 0;
                     }
                 }
