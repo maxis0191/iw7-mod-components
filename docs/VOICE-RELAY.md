@@ -96,10 +96,13 @@ cl /std:c++17 /EHsc /W4 /WX tests/native/voice_wan_test.cpp
 Run the resulting executables; repeat with optimized AddressSanitizer. The full
 suite additionally tests state, malformed input, the original network simulation
 and metadata concurrency. WAN scenarios use four 50-frame/s speakers, a 10-ms
-scheduler, independent boot clocks, loss, jitter, duplicates, reconnect, slot
+requested scheduler interval plus a separate 20-ms receive-service case,
+independent boot clocks, loss, jitter, duplicates, reconnect, slot
 reuse, restart and an 18-second outage. Twelve directions are checked separately.
 Recovery deadlines, stable-interval delivery, delay and gaps are separate metrics.
 The severe-impairment delivery floor checks liveness, not acceptable speech quality.
+The engine invokes the scheduler on its own frame loop; the requested interval
+does not prove an actual 10-ms native cadence.
 
 `voice_relay_status` prints aggregate readiness/relay/registration counters without
 player identifiers. For release acceptance, use actual microphones on separate

@@ -17,18 +17,21 @@ namespace
     {
         const char* name;
         unsigned one_way_ms, jitter_ms, loss_percent, minimum_delivery_percent;
+        unsigned receive_service_ms = 10;
     };
     struct datagram
     {
         int source, target;
-        std::uint64_t due, order;
+        std::uint64_t due, arrival, order;
         std::string bytes;
     };
     struct later
     {
         bool operator()(const datagram& a, const datagram& b) const
         {
-            return a.due != b.due ? a.due > b.due : a.order > b.order;
+            if (a.due != b.due)
+                return a.due > b.due;
+            return a.arrival != b.arrival ? a.arrival > b.arrival : a.order > b.order;
         }
     };
     struct flow
@@ -72,10 +75,15 @@ namespace
                 return;
             }
             const auto delay = link.one_way_ms + random() % (link.jitter_ms + 1);
-            queue.push({source, target, time + delay, ++order, bytes});
+            auto schedule = [&](std::uint64_t arrival) {
+                const auto due = (arrival + link.receive_service_ms - 1) /
+                                 link.receive_service_ms * link.receive_service_ms;
+                queue.push({source, target, due, arrival, ++order, bytes});
+            };
+            schedule(time + delay);
             if (random() % 20 == 0)
             {
-                queue.push({source, target, time + delay + 100, ++order, bytes});
+                schedule(time + delay + 100);
                 ++duplicates;
             }
             peak_queue = std::max(peak_queue, static_cast<unsigned>(queue.size()));
@@ -90,8 +98,8 @@ namespace
                 enqueue(-1, static_cast<int>(item.slot), item.data);
             }
         };
-        // The adapter services transport every 10 ms; native capture emits a
-        // 20-ms frame. Do not accidentally model both as a 20-ms receive batch.
+        // A requested 10-ms scheduler interval is not a measured engine cadence.
+        // Keep capture at 20 ms and model coarser receive service independently.
         for (; time < 240000; time += 10)
         {
             if (time == 45000)
@@ -201,6 +209,7 @@ int main()
         {
             simulate({"clean", 10, 0, 0, 99}, seed);
             simulate({"transatlantic", 90, 20, 2, 90}, seed);
+            simulate({"transatlantic-service20", 90, 20, 2, 80, 20}, seed);
             // Liveness under severe reordering, not a speech-quality target:
             // the low-latency transport deliberately discards backward frames.
             simulate({"adverse", 120, 80, 10, 40}, seed);

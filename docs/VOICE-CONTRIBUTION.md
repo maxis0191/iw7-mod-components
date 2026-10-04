@@ -144,7 +144,7 @@ distinct outcomes. A disconnected receiver invalidates an audio comparison.
 | Source review | Trace capture through routing and playback; audit input bounds, eligibility, identity and lifecycle; inspect final upstream-sized diff | Native path partly mapped; feature review pending |
 | Pure unit tests | Parser boundaries, every message/state transition, duplicates/replay, wraparound, stale speaker generations and slot reuse | Generic state/wire/control lifecycle tests pass locally; final adapter review pending |
 | Seeded fuzz and sanitizers | Truncated/oversized/malformed input, arbitrary bytes, bounded allocations and queue saturation; no crash or memory error | Core and new actual ingress-queue tests pass optimized AddressSanitizer, including 150000 outsider packets and 100000 concurrent attempts; native engine memory coverage remains open |
-| Transport simulation | Deterministic loss, jitter, duplicate/reordered packets, delayed old handshake/audio and reconnect while a listener survives | Original five-minute test plus nine four-minute WAN profiles pass their stated continuity/recovery bounds. Stable-interval minimum delivery is 100% clean, 91% transatlantic and 42% severe reordering; this is not speech-quality acceptance. Native loss/latency pending |
+| Transport simulation | Deterministic loss, jitter, duplicate/reordered packets, delayed old handshake/audio and reconnect while a listener survives | Original five-minute test plus twelve four-minute WAN profiles pass their stated continuity/recovery bounds. Stable-interval minimum delivery is 100% clean, 91% transatlantic at nominal 10-ms receive service, 84% at 20-ms service, and 42% severe reordering; this is not speech-quality acceptance. Native loss/latency pending |
 | Native local integration | Two simultaneous distinct active clients; capture, encoded, send, receive, decode and playback deltas correlated with the injected signal | Both short directions on five maps and 15000 simultaneous frames per receiver pass; actual input device is outside this post-device stimulus |
 | Audio measurement | Known signal observed on receiver output with correct timing; muted/disabled/released-PTT controls show absence of that signal | Fourteen expectations and independent full-soak receiver measurements pass; detected-tone gap bound is 3000 ms, not speech latency acceptance; shared-mix failure retained |
 | Real LAN conversation | Two physical PCs and two humans, actual microphones and speakers/headsets, intelligible speech both directions, no echo or wrong speaker | Pending |
@@ -161,7 +161,9 @@ For every agent integration run, require fresh actual engine godmode,
 throughout exposure. Voice tests must have zero alive enemies, pending spawns and
 reservations; keep suppliers paused. Require both active clients and at least 120
 seconds of idle protection before accepting pair evidence. Follow
-[VOICE-NATIVE-TRACE.md](VOICE-NATIVE-TRACE.md) for the current backed-up base helper.
+[VOICE-NATIVE-TRACE.md](VOICE-NATIVE-TRACE.md) for historical evidence and the current
+launch boundary. New runs require an explicit GenericRelay v2 pair in the
+coordinated isolated lab; the existing VoiceNative trace profile is not equivalent.
 Never terminate an owner's occupied client or interrupt an occupied game.
 
 ## Submission gate and maintainer documentation
