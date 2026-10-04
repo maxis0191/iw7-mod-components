@@ -261,6 +261,20 @@ reference confirms the independent GSC watchdog described above. The first voice
 fixture's one-shot protection was insufficient. These failed pair attempts are
 invalid for native voice routing conclusions and remain retained as incident evidence.
 
+## Client exit verification - 2026-10-04
+
+StopClient retains a handle to the verified owned process before requesting quit.
+It records the exit code and fails on any nonzero result. PID disappearance alone
+does not establish a clean exit. Candidate b84619f reproduced `0xC0000409` even
+with one protected client and no remote registration/audio. A matching executable
+and PDB identify `abort`, `terminate`, C++ unwinding and the main scheduler's
+scope-exit callback. The exception subcode is `FAST_FAIL_FATAL_APP_EXIT` (7).
+
+The fixture had executed quit synchronously from that noexcept callback. Lifecycle
+commands now enter the native command buffer; the next protected run must verify
+exit code 0 before calling this correction validated. Raw dumps stay ignored.
+This fixture failure does not establish a transport memory-corruption bug.
+
 ## Static evidence and open choices
 
 Corrected candidate 67c7c36 passes both base Verify calls and retains two idle

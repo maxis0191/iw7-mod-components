@@ -136,7 +136,15 @@ namespace paris_test_fixture
             else if (action == "voicerestore") command::execute("paris_voice_test_restore", true);
             else if (action == "witnessroster") command::execute("paris_voice_registration_roster", true);
             else if (action == "registerwitness") command::execute("paris_voice_register_witness", true);
-            else if (action == "stop") { command::execute("paris_voice_test_restore", true); command::execute("disconnect", true); scheduler::once([] { command::execute("quit", true); }, scheduler::main, 1s); }
+            else if (action == "stop")
+            {
+                command::execute("paris_voice_test_restore", true);
+                // Process lifecycle commands in the native command buffer.
+                // A synchronous quit unwinds the engine stack through the
+                // scheduler's noexcept scope-exit callback and calls terminate.
+                command::execute("disconnect", false);
+                scheduler::once([] { command::execute("quit", false); }, scheduler::main, 1s);
+            }
             utils::io::write_file("iw7-mod/paris-server-client.response", request);
             console::info("[Paris module client] Request %s dispatched and returned.\n", action.c_str());
         }
