@@ -1,5 +1,20 @@
 # Native voice investigation
 
+## Native validation continuation - 2026-10-04
+
+The base harness now permits four distinct owned clients and all five allowlisted
+Zombies maps. `Prepare -PrivateDesktop` keeps the owned game windows on a separate
+Windows desktop while using the backed-up base installation. It does not create
+an independent game installation or reserve CPU/GPU resources.
+
+The private synthetic probe now returns to the main loop between paced capture
+blocks. A synchronous 1.2-second stimulus prevented the same client from receiving
+while it emitted and therefore could not validate simultaneous speakers. Catch-up
+is bounded, connection/session changes abort, and shutdown restores controls.
+The helper requires a fresh completion marker and verified codec restoration;
+the mailbox acknowledgement alone is insufficient. Native simultaneous-speaker
+and map results are pending for this candidate.
+
 ## Dvar metadata cache audit - 2026-10-04
 
 The older reconnect dump was audited against its exact executable

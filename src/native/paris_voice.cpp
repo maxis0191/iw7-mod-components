@@ -5,6 +5,7 @@
 #include "network.hpp"
 #include "party.hpp"
 #include "scheduler.hpp"
+#include "scripting.hpp"
 #include "command.hpp"
 #include "console/console.hpp"
 #include <utils/hook.hpp>
@@ -663,9 +664,13 @@ namespace paris_voice
                     *reinterpret_cast<const int*>(local_info + 12));
             }
         }
+        bool probe_running{}; // Private probe and its callbacks run on scheduler::main.
+        std::function<void()> cancel_native_probe;
         void run_native_probe(bool hold_talk, bool codec_control = false)
         {
             if (!native_trace || game::environment::is_dedi() || !native_audio_test()) return;
+            if (probe_running)
+            { console::warn("[paris-voice-native] Probe refused: previous stimulus still active.\n"); return; }
             game::netadr_s host{};
             if (!client_connection(host) || host.ip[0] != 127 || !audio_initialized())
             { console::warn("[paris-voice-native] Probe refused: active loopback and native audio initialization required.\n"); return; }
@@ -706,23 +711,13 @@ namespace paris_voice
                     encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx); return;
                 }
             }
-            const auto restore_codec = gsl::finally([&]
-            {
-                if (!codec_control || encoder != *reinterpret_cast<void**>(0x145D5C6E8)) return;
-                encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx);
-                int after_vad{}, after_dtx{};
-                const bool restored = !encoder_ctl(encoder, 31, &after_vad) && !encoder_ctl(encoder, 35, &after_dtx) && after_vad == vad && after_dtx == dtx;
-                const int after_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
-                console::info("[paris-voice-native] Codec control restored=%d vad=%d dtx=%d configured_mode=%d mode_preserved=%d.\n", restored,
-                    after_vad, after_dtx, after_mode, after_mode == configured_mode);
-            });
             const bool saved_ptt = ptt->current.enabled;
             // Explicit post-device witness. No microphone recording and no
             // transport override. This is never evidence of human speech.
             std::vector<short> pcm(samples, 10000);
             struct capture_buffer { short* pcm; int bytes, samples, sample_bytes; int reserved[3]; int consumed; };
             // A synthetic block does not update the hardware mic-activity meter.
-            // Use a paired retail PTT binding for this synchronous witness; the
+            // Use a paired retail PTT binding for this post-device witness; the
             // earlier activity-mode attempt encoded zero and is inconclusive.
             ptt->current.enabled = true;
             // Common dispatcher handles talk before the MP/SP gameplay dispatcher.
@@ -734,27 +729,58 @@ namespace paris_voice
             const auto encoded_before = generic_relay ? voice_relay::encoded_frames() : native_encoded.load();
             const auto bytes_before = stats.encoded_bytes.load(), tiny_before = stats.tiny_encoded_frames.load();
             const int frames = (relay_witness || generic_relay) ? 60 : 20;
-            for (int i = 0; i < frames; ++i)
+            auto active = std::make_shared<bool>(true);
+            auto finish = [=](bool aborted) mutable
             {
-                if (relay_witness || generic_relay) for (int sample = 0; sample < samples; ++sample)
-                    pcm[sample] = static_cast<short>(10000 * std::sin(6.283185307179586 *
-                        (i < 20 ? 440 : 997) * (i * samples + sample) / 8000.0));
-                capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
-                capture_voice(&block);
-                // The static playback witness must resemble real 20-ms capture.
-                // A synchronous sixty-datagram burst relayed only sixteen frames
-                // and never reached DirectSound's 6000-byte startup threshold.
-                if ((relay_witness || generic_relay) && i + 1 < frames) Sleep(20);
-            }
-            if (hold_talk) utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
-            ptt->current.enabled = saved_ptt;
-            console::info("[paris-voice-native] Synthetic post-device witness: pressed=%d released=%d encoded_delta=%llu; PTT setting restored.\n",
-                pressed, !utils::hook::invoke<bool>(0x14036FE40, 0),
-                (generic_relay ? voice_relay::encoded_frames() : native_encoded.load()) - encoded_before);
-            console::info("[paris-voice-native] Synthetic witness returned: duration_ms=%llu tick_ms=%llu.\n", GetTickCount64() - probe_begin, GetTickCount64());
-            console::info("[paris-voice-native] Codec control=%d encoded_bytes_delta=%llu tiny_frames_delta=%llu.\n", codec_control,
-                stats.encoded_bytes.load() - bytes_before, stats.tiny_encoded_frames.load() - tiny_before);
-            status();
+                if (!*active) return;
+                *active = false;
+                probe_running = false;
+                if (hold_talk) utils::hook::invoke<void>(0x14032A3B0, 0, talk_binding + 1, 86, 1);
+                if (ptt == *reinterpret_cast<game::dvar_t**>(0x1421EF7A0)) ptt->current.enabled = saved_ptt;
+                if (codec_control && encoder == *reinterpret_cast<void**>(0x145D5C6E8))
+                {
+                    encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx);
+                    int after_vad{}, after_dtx{};
+                    const bool restored = !encoder_ctl(encoder, 31, &after_vad) && !encoder_ctl(encoder, 35, &after_dtx) && after_vad == vad && after_dtx == dtx;
+                    const int after_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
+                    console::info("[paris-voice-native] Codec control restored=%d vad=%d dtx=%d configured_mode=%d mode_preserved=%d.\n", restored,
+                        after_vad, after_dtx, after_mode, after_mode == configured_mode);
+                }
+                console::info("[paris-voice-native] Synthetic post-device witness: pressed=%d released=%d encoded_delta=%llu; PTT setting restored.\n",
+                    pressed, !utils::hook::invoke<bool>(0x14036FE40, 0),
+                    (generic_relay ? voice_relay::encoded_frames() : native_encoded.load()) - encoded_before);
+                console::info("[paris-voice-native] Synthetic witness returned: duration_ms=%llu tick_ms=%llu aborted=%d.\n", GetTickCount64() - probe_begin, GetTickCount64(), aborted);
+                console::info("[paris-voice-native] Codec control=%d encoded_bytes_delta=%llu tiny_frames_delta=%llu.\n", codec_control,
+                    stats.encoded_bytes.load() - bytes_before, stats.tiny_encoded_frames.load() - tiny_before);
+                status();
+            };
+            probe_running = true;
+            cancel_native_probe = [finish]() mutable { finish(true); };
+            // Return to the engine between capture blocks so a speaking client
+            // can receive other speakers. Bound catch-up after a delayed frame;
+            // never turn scheduler starvation into an unbounded packet burst.
+            scheduler::schedule([=, pcm = std::move(pcm), index = 0, due = probe_begin]() mutable
+            {
+                if (!*active) return scheduler::cond_end;
+                game::netadr_s current{};
+                const auto time = GetTickCount64();
+                if (!client_connection(current) || !network::are_addresses_equal(current, host) ||
+                    session != utils::hook::invoke<game::SessionData*>(0x140D32740) ||
+                    !audio_initialized() || (codec_control && encoder != *reinterpret_cast<void**>(0x145D5C6E8)) ||
+                    time > due + 500)
+                { finish(true); return scheduler::cond_end; }
+                for (unsigned emitted = 0; index < frames && time >= due && emitted < 4; ++emitted, ++index, due += 20)
+                {
+                    if (relay_witness || generic_relay) for (int sample = 0; sample < samples; ++sample)
+                        pcm[sample] = static_cast<short>(10000 * std::sin(6.283185307179586 *
+                            (index < 20 ? 440 : 997) * (index * samples + sample) / 8000.0));
+                    capture_buffer block{pcm.data(), samples * 2, samples, 2, {}, 0};
+                    capture_voice(&block);
+                }
+                if (index < frames) return scheduler::cond_continue;
+                finish(false);
+                return scheduler::cond_end;
+            }, scheduler::main);
         }
         void native_probe() { run_native_probe(true); }
         void native_released_probe() { run_native_probe(false); }
@@ -770,6 +796,7 @@ namespace paris_voice
         } test_controls;
         void restore_test_controls()
         {
+            if (probe_running && cancel_native_probe) cancel_native_probe();
             if (!test_controls.active) return;
             if (test_controls.voice && test_controls.voice->type == game::DVAR_TYPE_BOOL)
                 game::Dvar_SetBool(test_controls.voice, test_controls.enabled);
@@ -862,6 +889,10 @@ namespace paris_voice
             command::add("paris_voice_register_witness", register_witness);
             if (native_trace)
             {
+                if (!game::environment::is_dedi()) scripting::on_shutdown([](bool, bool post)
+                {
+                    if (!post) restore_test_controls();
+                });
                 native_receive_hook.create(0x14037CFF0, native_receive);
                 native_send_hook.create(0x14037BFF0, native_send);
                 scheduler::loop(status, scheduler::main, 10s);
