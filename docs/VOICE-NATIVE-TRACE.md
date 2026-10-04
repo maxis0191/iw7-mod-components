@@ -1,5 +1,15 @@
 # Native voice investigation
 
+Current local signals/negative controls are recorded in
+[native control evidence](deployments/2026-10-04-voice-native-controls.json).
+Resume/reverse reconnect target tone fails, and a reconnected client exits with
+heap corruption. Do not infer voice/lifecycle acceptance from decode counters.
+VoiceCodecProbe is a separate private loopback diagnostic: it saves native encoder
+VAD/DTX, disables them for the synthetic signal and restores/verifies saved values
+before returning. Production codec behavior stays intact. Inspect its restore
+marker, encoded bytes/tiny-frame counts, decoded target-frame delta and output.
+It has not yet been validated in-game. Broad spectral metrics save no samples.
+
 The generic helper uses `-GenericRelay` on both processes, without UI/legacy
 registration witnesses. It permits A reconnect with B staying. VoiceMute/Unmute
 and VoiceDisable/Enable use native APIs with exactly one remote. VoiceRestore
@@ -7,7 +17,7 @@ restores saved values only for the same session/UID; StopClient restores before
 disconnect. These do not prove scoreboard UI or devices. VoiceReleasedProbe
 keeps the actual talk binding released. Inspect deltas/markers/output, never
 acknowledgment alone. Probe logs include begin/return ticks. The revised stimulus
-is twenty440-Hz prelude frames then forty997-Hz frames, without codec reset. Keep
+is twenty 440-Hz prelude frames then forty 997-Hz frames, without codec reset. Keep
 the unchanged sixty-frame target-tone failures separate from this diagnostic.
 
 Voice is not accepted. Issue #4 remains open. Trace the original engine path before
@@ -271,8 +281,8 @@ and PDB identify `abort`, `terminate`, C++ unwinding and the main scheduler's
 scope-exit callback. The exception subcode is `FAST_FAIL_FATAL_APP_EXIT` (7).
 
 The fixture had executed quit synchronously from that noexcept callback. Lifecycle
-commands now enter the native command buffer; the next protected run must verify
-exit code 0 before calling this correction validated. Raw dumps stay ignored.
+commands now enter the native command buffer. c2de172 passes protected solo exit
+with code 0; pair/reconnect cleanup remains pending. Raw dumps stay ignored.
 This fixture failure does not establish a transport memory-corruption bug.
 
 ## Static evidence and open choices

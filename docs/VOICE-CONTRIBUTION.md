@@ -102,15 +102,15 @@ distinct outcomes. A disconnected receiver invalidates an audio comparison.
 | Form of test | Required scenarios and success criterion | Current status |
 | --- | --- | --- |
 | Source review | Trace capture through routing and playback; audit input bounds, eligibility, identity and lifecycle; inspect final upstream-sized diff | Native path partly mapped; feature review pending |
-| Pure unit tests | Parser boundaries, every message/state transition, duplicates/replay, wraparound, stale speaker generations and slot reuse | Generic generation-state tests pass; final control/wire tests pending |
-| Seeded fuzz and sanitizers | Truncated/oversized/malformed input, arbitrary bytes, bounded allocations and queue saturation; no crash or memory error | Legacy parser 200,000 inputs pass; final feature/sanitizer coverage pending |
-| Transport simulation | Deterministic loss, jitter, duplicate/reordered packets, delayed old handshake/audio and reconnect while a listener survives | Pending |
+| Pure unit tests | Parser boundaries, every message/state transition, duplicates/replay, wraparound, stale speaker generations and slot reuse | Generic state/wire/control lifecycle tests pass locally; final adapter review pending |
+| Seeded fuzz and sanitizers | Truncated/oversized/malformed input, arbitrary bytes, bounded allocations and queue saturation; no crash or memory error | Pure core seeded mutations and optimized AddressSanitizer pass; engine memory/queue coverage remains open |
+| Transport simulation | Deterministic loss, jitter, duplicate/reordered packets, delayed old handshake/audio and reconnect while a listener survives | Five simulated minutes with four simultaneous speakers, loss, jitter and lifecycle changes pass; native loss/latency pending |
 | Native local integration | Two simultaneous distinct active clients; capture, encoded, send, receive, decode and playback deltas correlated with the injected signal | Static relay witness passes 60 frames each direction; final feature pending |
-| Audio measurement | Known signal observed on receiver output with correct timing; muted/disabled/released-PTT controls show absence of that signal | Paced static witness output/baseline passes; controls/final feature pending |
+| Audio measurement | Known signal observed on receiver output with correct timing; muted/disabled/released-PTT controls show absence of that signal | Static output and negative controls pass; resume target tone fails. Native VAD/DTX control pending |
 | Real LAN conversation | Two physical PCs and two humans, actual microphones and speakers/headsets, intelligible speech both directions, no echo or wrong speaker | Pending |
 | Real WAN conversation | Same live conversation across different external connections through the existing dedicated-server arrangement | Pending |
-| Controls and devices | PTT release, voice toggle, activation threshold, each direction's mute/unmute, privacy eligibility, input/output device change and unavailable device | Pending |
-| Lifecycle | A reconnects while B stays; B reconnects; slot reused by a different identity; delayed old frames; map change; server restart; disconnect stops audio | Pending |
+| Controls and devices | PTT release, voice toggle, activation threshold, each direction's mute/unmute, privacy eligibility, input/output device change and unavailable device | Both mute/voice-off/PTT negative controls pass; resumed synthetic output fails. UI/privacy/actual devices pending |
+| Lifecycle | A reconnects while B stays; B reconnects; slot reused by a different identity; delayed old frames; map change; server restart; disconnect stops audio | Sender reconnect passes; reverse target tone fails. Solo/original pair quit code 0; reconnected client heap exit fails. Other native lifecycle gates pending |
 | Capacity and soak | One, two and four participants; simultaneous speakers, prolonged idle/talking, queue bounds, reconnect cycles; record latency, loss and resource use | Protected idle harness passes; voice soak pending |
 | Map coverage | Spaceland, Rave, Shaolin, Attack and Beast, including ordinary joins and map transitions | Pending |
 | Compatibility/regression | Standard client joins/gameplay, mixed feature versions, voice-disabled server, unsupported signatures, MP/SP behavior, normal AFK/kick behavior | Pending |

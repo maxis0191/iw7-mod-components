@@ -41,6 +41,8 @@ if errorlevel 1 exit /b 1
 "$runtime\voice-simulation-test.exe"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib
+if errorlevel 1 exit /b 1
+"$runtime\audio-output-probe.exe" --self-test
 "@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
 if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
@@ -237,6 +239,14 @@ Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.exe" -Destination "$
 $manifestSources = @($nativeSources)
 if ($IsolatedLab) { $manifestSources += 'paris_lab_properties.cpp' }
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
+# Retain matching symbols before the next rebuild replaces them. These local
+# files enable reliable crash stacks and must never be added to Git.
+$symbols = Join-Path $runtime ('voice-symbols/' + $manifest.SHA256)
+New-Item -ItemType Directory -Path $symbols -Force | Out-Null
+Copy-Item -LiteralPath "$output/iw7-paris-voice.exe" -Destination (Join-Path $symbols 'iw7-paris-native-trace.exe') -Force
+Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.pdb" -Destination (Join-Path $symbols 'iw7-mod.pdb') -Force
+$manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
+if ((Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')).Hash -ne $manifest.SHA256) { throw 'Archived diagnostic executable mismatch.' }
 $manifest.ServerModules = [bool]$ServerModules
 $manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
 $manifest.VoiceTrace = [bool]$VoiceTrace

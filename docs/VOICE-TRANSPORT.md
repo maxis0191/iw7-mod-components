@@ -2,6 +2,13 @@
 
 ## Latest native limits
 
+Local static playback and negative mute/voice-off/PTT controls pass. Resumed target
+tone output fails. Retail setup enables native VAD/DTX, so test suppression with
+the separate saved/restored private codec control before attributing this to
+transport. A reconnected client also exits with heap corruption. That lifecycle
+failure remains blocking regardless of synthetic output. No codec override is
+part of this generic component; real speech/native lifecycle remain unaccepted.
+
 The reconciled candidate passes A-to-B and A's sender reconnect with B staying.
 Reverse steady-tone output after A's receiver restart still fails despite sixty
 delivered/decoded frames. Persistent codec state is an unproven hypothesis. A

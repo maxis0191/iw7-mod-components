@@ -129,6 +129,7 @@ namespace paris_test_fixture
             else if (action == "close") command::execute("cmd say ..close", true);
             else if (action == "voiceprobe") command::execute("paris_voice_native_probe", true);
             else if (action == "voicereleasedprobe") command::execute("paris_voice_native_released_probe", true);
+            else if (action == "voicecodecprobe") command::execute("paris_voice_native_codec_probe", true);
             else if (action == "voicemute") command::execute("paris_voice_test_mute", true);
             else if (action == "voiceunmute") command::execute("paris_voice_test_unmute", true);
             else if (action == "voicedisable") command::execute("paris_voice_test_disable", true);

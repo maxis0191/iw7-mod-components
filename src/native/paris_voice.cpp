@@ -65,6 +65,7 @@ namespace paris_voice
         utils::hook::detour decode_voice_hook;
         utils::hook::detour enqueue_voice_hook;
         utils::hook::detour capture_voice_hook;
+        utils::hook::detour encode_voice_hook;
         utils::hook::detour native_batch_hook, native_receive_hook, native_send_hook;
         bool native_trace{}, relay_witness{};
         bool native_audio_test()
@@ -106,6 +107,8 @@ namespace paris_voice
                 {0x14037D5C0, "\x41\x54\x48\x81\xec\x00\x09\x00\x00", 9},
                 {0x14037CFF0, "\x40\x53\x41\x54\x41\x55\x48\x81\xec\xc0\x09\x00\x00", 13},
                 {0x14037BFF0, "\x40\x53\x56\x57\x48\x81\xec\xa0\x08\x00\x00", 11},
+                {0x140B794F0, "\x48\x89\x5c\x24\x08\x48\x89\x74\x24\x10\x57\x48\x83\xec\x20", 15},
+                {0x1405E9520, "\x48\x8b\x01\x48\xff\x60\x50", 7},
             };
             for (const auto& entry : entries)
                 if (std::memcmp(reinterpret_cast<const void*>(entry.address), entry.bytes, entry.size) != 0)
@@ -121,6 +124,8 @@ namespace paris_voice
             std::atomic<std::uint64_t> queued_bytes{}, queue_errors{};
             std::atomic<std::uint64_t> capture_blocks{};
             std::atomic<double> decoded_peak_rms{}, decoded_peak_tone_ratio{};
+            std::atomic<std::uint64_t> decoded_target_frames{};
+            std::atomic<std::uint64_t> encoded_bytes{}, tiny_encoded_frames{};
         } stats;
         struct server_peer
         {
@@ -178,6 +183,7 @@ namespace paris_voice
                 }
                 const double rms = std::sqrt(power / count);
                 const double ratio = power > 0 ? 2 * (re * re + im * im) / (count * power) : 0;
+                if (rms > 0.01 && ratio > 0.4) ++stats.decoded_target_frames;
                 auto prior = stats.decoded_peak_rms.load();
                 while (rms > prior && !stats.decoded_peak_rms.compare_exchange_weak(prior, rms)) {}
                 prior = stats.decoded_peak_tone_ratio.load();
@@ -196,6 +202,13 @@ namespace paris_voice
         {
             ++stats.capture_blocks;
             return capture_voice_hook.invoke<int>(buffer);
+        }
+        int encode_voice(const short* pcm, char* data, int capacity)
+        {
+            const int size = encode_voice_hook.invoke<int>(pcm, data, capacity);
+            if (size > 0) stats.encoded_bytes += size;
+            if (size > 0 && size <= 5) ++stats.tiny_encoded_frames;
+            return size;
         }
         void ensure_audio()
         {
@@ -566,8 +579,8 @@ namespace paris_voice
                     static_cast<double>(*reinterpret_cast<const float*>(0x1477A027C)));
             }
             if ((relay_witness || utils::flags::has_flag("iw7-voice-relay")) && !game::environment::is_dedi())
-                console::info("[paris-voice-witness] decoded_peak_rms=%.6f decoded_tone_ratio=%.6f; cumulative 997-Hz PCM metrics, no recordings.\n",
-                    stats.decoded_peak_rms.load(), stats.decoded_peak_tone_ratio.load());
+                console::info("[paris-voice-witness] decoded_peak_rms=%.6f decoded_tone_ratio=%.6f decoded_target_frames=%llu; cumulative 997-Hz PCM metrics, no recordings.\n",
+                    stats.decoded_peak_rms.load(), stats.decoded_peak_tone_ratio.load(), stats.decoded_target_frames.load());
         }
         void registration_roster_witness()
         {
@@ -650,7 +663,7 @@ namespace paris_voice
                     *reinterpret_cast<const int*>(local_info + 12));
             }
         }
-        void run_native_probe(bool hold_talk)
+        void run_native_probe(bool hold_talk, bool codec_control = false)
         {
             if (!native_trace || game::environment::is_dedi() || !native_audio_test()) return;
             game::netadr_s host{};
@@ -670,6 +683,30 @@ namespace paris_voice
                     !std::strcmp(game::command_whitelist[i], "+talk") && !std::strcmp(game::command_whitelist[i + 1], "-talk"))
                 { talk_binding = i; break; }
             if (!talk_binding) return;
+            auto* encoder = *reinterpret_cast<void**>(0x145D5C6E8);
+            int vad{}, dtx{};
+            const auto encoder_ctl = [](void* context, int request, int* value)
+            { return utils::hook::invoke<int>(0x1405E9520, context, request, value); };
+            if (codec_control)
+            {
+                // Private synthetic-signal control only. Production preserves
+                // native VAD/DTX, which may intentionally suppress steady tones.
+                if (!utils::flags::has_flag("iw7-voice-relay") || host.ip[0] != 127 || host.ip[1] || host.ip[2] || host.ip[3] != 1 || !encoder ||
+                    encoder_ctl(encoder, 31, &vad) || encoder_ctl(encoder, 35, &dtx)) return;
+                int off{};
+                if (encoder_ctl(encoder, 30, &off) || encoder_ctl(encoder, 34, &off))
+                {
+                    encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx); return;
+                }
+            }
+            const auto restore_codec = gsl::finally([&]
+            {
+                if (!codec_control || encoder != *reinterpret_cast<void**>(0x145D5C6E8)) return;
+                encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx);
+                int after_vad{}, after_dtx{};
+                const bool restored = !encoder_ctl(encoder, 31, &after_vad) && !encoder_ctl(encoder, 35, &after_dtx) && after_vad == vad && after_dtx == dtx;
+                console::info("[paris-voice-native] Codec control restored=%d vad=%d dtx=%d.\n", restored, after_vad, after_dtx);
+            });
             const bool saved_ptt = ptt->current.enabled;
             // Explicit post-device witness. No microphone recording and no
             // transport override. This is never evidence of human speech.
@@ -686,6 +723,7 @@ namespace paris_voice
             const auto probe_begin = GetTickCount64();
             console::info("[paris-voice-native] Synthetic witness begins: hold_talk=%d tick_ms=%llu.\n", hold_talk, probe_begin);
             const auto encoded_before = generic_relay ? voice_relay::encoded_frames() : native_encoded.load();
+            const auto bytes_before = stats.encoded_bytes.load(), tiny_before = stats.tiny_encoded_frames.load();
             const int frames = (relay_witness || generic_relay) ? 60 : 20;
             for (int i = 0; i < frames; ++i)
             {
@@ -705,10 +743,13 @@ namespace paris_voice
                 pressed, !utils::hook::invoke<bool>(0x14036FE40, 0),
                 (generic_relay ? voice_relay::encoded_frames() : native_encoded.load()) - encoded_before);
             console::info("[paris-voice-native] Synthetic witness returned: duration_ms=%llu tick_ms=%llu.\n", GetTickCount64() - probe_begin, GetTickCount64());
+            console::info("[paris-voice-native] Codec control=%d encoded_bytes_delta=%llu tiny_frames_delta=%llu.\n", codec_control,
+                stats.encoded_bytes.load() - bytes_before, stats.tiny_encoded_frames.load() - tiny_before);
             status();
         }
         void native_probe() { run_native_probe(true); }
         void native_released_probe() { run_native_probe(false); }
+        void native_codec_probe() { run_native_probe(true, true); }
 
         struct control_baseline
         {
@@ -802,6 +843,7 @@ namespace paris_voice
             command::add("paris_voice_gate_selftest", gate_selftest);
             command::add("paris_voice_native_probe", native_probe);
             command::add("paris_voice_native_released_probe", native_released_probe);
+            command::add("paris_voice_native_codec_probe", native_codec_probe);
             command::add("paris_voice_test_mute", [] { test_control("mute"); });
             command::add("paris_voice_test_unmute", [] { test_control("unmute"); });
             command::add("paris_voice_test_disable", [] { test_control("disable"); });
@@ -827,6 +869,7 @@ namespace paris_voice
                     decode_voice_hook.create(0x140B79310, decode_voice);
                     enqueue_voice_hook.create(0x140B79B60, enqueue_voice);
                     capture_voice_hook.create(0x140B79D30, capture_voice);
+                    if (native_trace) encode_voice_hook.create(0x140B794F0, encode_voice);
                     if (native_trace) native_batch_hook.create(0x14037D5C0, native_batch);
                     if (!native_trace || relay_witness) scheduler::loop(client_tick, scheduler::main, 10ms);
                 }
