@@ -14,6 +14,11 @@ the same retail damage/death path and records actor diagnostics locally; it neve
 zeros pending/reservation counters or deletes entities to manufacture a pass.
 This correction still requires native Attack and Beast validation.
 
+The first drain candidate c3c22b2 parses offline but fails engine compilation at
+the inline model-query diagnostic. The start helper refuses all clients because
+the protection fixture is not armed. Remove that query and retain only existing
+type/health fields; parser success remains distinct from engine compilation.
+
 ## Cold-load memory correction - 2026-10-04
 
 Two full-quality cold-loaded clients also reached 90.8% physical use. The second
