@@ -23,6 +23,14 @@ decompiled game code in the contribution.
 
 ## Current evidence and next investigation
 
+The matching protocol-2 player package and normal dedicated profile are now
+installed in the base game. [The delivery checkpoint](deployments/2026-10-04-voice-player-beta.json)
+records installer boundaries, original-file/bank/client preservation and bounded
+normal-profile startup/idle. This enables supervised real two-PC testing through
+[the player guide](VOICE-PLAYER.md). It does not satisfy microphone or official
+release acceptance. The retained stock access violation also remains uninvestigated
+beyond its matching dump and immediate null-write fault.
+
 The generic opt-in v2 adapter and its pure state/wire/transport tests are now
 implemented. Latest bounded native results are in
 [the sanitized checkpoint](deployments/2026-10-04-voice-bounded-native.json),

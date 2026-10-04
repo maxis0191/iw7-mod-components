@@ -20,7 +20,14 @@ records, logs and private hashes outside Git.
 
 No agent protection or synthetic capture flag belongs in this player profile.
 The known historical heap incident and the full [release matrix](VOICE-CONTRIBUTION.md)
-remain open. Earlier protocol-1 descriptions below are historical research.
+remain open. [The current delivery record](deployments/2026-10-04-voice-player-beta.json)
+proves normal v2 startup, preserved base files and a 126.344-second idle witness.
+The stock dedicated process required the authorized fatal-process recovery
+exception after a matching crash dump, read-only native zero-occupancy inspection
+and diagnostic/bank backups. Its null-write cause remains unknown. This incident
+did not pass the ordinary UDP gate; that gate refused before deployment changes.
+Keep the owner client running until the owner chooses to use the player launcher.
+Earlier protocol-1 descriptions below are historical research.
 
 The owner requested implementing unsupported voice, prioritizing Zombies. This authorizes native client/server work beyond the earlier GSC maintenance scope. Custom source is in `src/native/`; immutable originals and the four gameplay scripts are preserved.
 
