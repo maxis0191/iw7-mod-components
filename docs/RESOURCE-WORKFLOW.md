@@ -130,6 +130,29 @@ checks after any extraction or shader serializer change.
 
 ## Windows, GPU, storage and diagnostic decisions
 
+### Codex auxiliary-process overhead
+
+A grouped live inventory also found 70 `node.exe` processes totaling about
+3.9 GiB working set, including repeated three-process chrome-devtools MCP stacks
+(npx, wrapper, server). A later sample identified 30 chrome-devtools Node processes
+at 1.619 GiB resident/2.682 GiB private commit and 20 legacy `node_repl.exe` helpers
+at 0.235 GiB resident. Counts changed as other agents completed; these are snapshots,
+not a leak diagnosis or a guaranteed amount reclaimable immediately.
+
+The versioned `.codex/config.toml` disables only the two legacy custom MCP IDs
+`chrome-devtools` and `node_repl` for this trusted IW7 project. The app's bundled
+`cua_repl`, native telemetry, browser tools and other projects remain available.
+The actual installed Codex CLI, run from this worktree, reports `enabled=false`
+for both via `mcp get --json`; user-level configuration was not edited.
+Official [MCP configuration](https://learn.chatgpt.com/docs/extend/mcp) supports
+`enabled=false`, and [project overrides](https://learn.chatgpt.com/docs/config-file/config-advanced)
+are loaded only for trusted projects. This removes avoidable startup duplication
+when the configuration is loaded by later chats/agents. Existing app-owned
+connections are not killed or claimed reclaimed. A new/reloaded session must
+confirm the effective config; do not interrupt active work by restarting the app.
+If a specific task requires either legacy tool, use an explicit temporary
+configuration override and account for its footprint; do not re-enable it globally.
+
 The 2026-10-04 read-only inventory found 31.80 GiB visible RAM (2x16 GiB DDR4-3200),
 i5-13400F (10 cores/16 logical processors), RTX 3080 with 10,240 MiB VRAM, and a
 system-managed 18 GiB pagefile. Its observed peak usage was 14,617 MiB; that is a
@@ -198,6 +221,14 @@ and GitHub retain reviewed source, versioned tests, current decisions and saniti
 validation. Follow GIT-WORKFLOW.md: coherent commits, private PR, final diff review,
 successful CI for the exact head, merge commit and clean synchronized main in its
 existing checkout. Do not reset the dirty original checkout owned by another chat.
+
+The historical primary checkout received only an additive AGENTS routing notice
+to fetch/read the current main workflow and use its isolated worktree's reviewed
+helpers. Its complete previous instruction text was backed up under ignored
+runtime and verified as the unchanged suffix. Its pre-existing source changes
+remain uncommitted there; they were not staged into this resource PR or reset.
+This prevents new chats opening the old directory from treating stale launchers
+as the current admission policy while preserving unrelated work.
 
 The active enemy, voice and public-profile chats were contacted under the owner's
 explicit coordination instruction. Update existing worktrees to the merged helper
