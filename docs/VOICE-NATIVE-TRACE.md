@@ -1,5 +1,14 @@
 # Native voice investigation
 
+Latest reproducible results: [fixed-mode controls and reconnect](deployments/2026-10-04-voice-fixed-mode-controls.json)
+pass. The native VAD/DTX path suppresses most of the synthetic target; disabling
+it while retaining a previous null submode is also silent. The private control
+reapplies the saved configured mode before injection, then restores/verifies
+flags and checks that configured mode is preserved. It does not reset the codec
+or change production encoding. Human speech and the older heap fault remain open.
+Use the current [base runbook](VOICE-BASE-RUNBOOK.md). Sections below retain earlier
+failed calibrations; their pending instructions are historical.
+
 Current local signals/negative controls are recorded in
 [native control evidence](deployments/2026-10-04-voice-native-controls.json).
 Resume/reverse reconnect target tone fails, and a reconnected client exits with

@@ -2,6 +2,13 @@
 
 ## Latest native limits
 
+The [fixed-mode synthetic control](deployments/2026-10-04-voice-fixed-mode-controls.json)
+now passes both directions, mute/off/PTT silence, resumed output and receiver
+reconnect. Saved codec flags/configured mode are preserved; production remains
+native. Three measured client exits are code 0. The older heap failure remains
+unexplained. Real speech/maps/capacity/compatibility are still unaccepted.
+Earlier paragraphs below preserve the investigation before that calibration.
+
 Local static playback and negative mute/voice-off/PTT controls pass. Resumed target
 tone output fails. Retail setup enables native VAD/DTX, so test suppression with
 the separate saved/restored private codec control before attributing this to
