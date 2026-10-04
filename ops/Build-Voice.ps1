@@ -1,4 +1,5 @@
 param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace,
+    [ValidateRange(1,4)][int]$BuildJobs = 1,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave')
 $ErrorActionPreference = 'Stop'
 if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
@@ -277,7 +278,7 @@ Push-Location $root
 try {
     & ./tools/premake5.exe vs2022
     if ($LASTEXITCODE) { throw 'Premake failed.' }
-    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln /m:4 /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
+    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
     if ($LASTEXITCODE) { throw 'Voice build failed.' }
 } finally { Pop-Location }
 $output = Join-Path $runtime 'voice-package'
