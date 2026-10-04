@@ -1,5 +1,121 @@
 # Native voice investigation
 
+## Latest bounded native correction - 2026-10-04
+
+Executable `7E8BA830AC279EEF80DEDF35D786A458D99C9AAB30F230350823DF0AECF07834`
+restores the pending quality cache together with the private probe's saved
+encoder mode. Fixture revision `1f9068e` passes protected idle and bidirectional
+synthetic output on all five maps, including Attack-to-Beast transition. All
+fourteen native mute/voice-enable/PTT expectations pass. These results establish
+the tested synthetic path; they do not establish microphone or human speech quality.
+
+The five-minute run with driver revision `b919b52` passes delivery and output on
+both receivers independently: 15000 sent, decoded and playback calls per client,
+4800000 queued PCM bytes each and 30000 server relays. The common stimulus lasts
+297969 ms. Twenty-one protection checks pass; peak physical/committed system use
+is 58.3%/68.4%. Each receiver has more than 2790 detected target windows, maximum
+window gaps of 1297/1203 ms and zero target windows in the quiet tail. This is a
+bounded tone-presence criterion, not a measured speech latency or dropout guarantee.
+
+Keep the preceding whole-mix failure: delivery passes but its maximum detected
+signal gap is 14000 ms. Identical simultaneous tones may interfere in that mix;
+the independent measurements support this explanation without proving its exact
+cause. The earlier soak observed output for only fifteen seconds. Neither result
+may be relabeled as continuous five-minute output success.
+
+Two reduced-texture clients remain around 55-59% physical system use. The default
+launch limit is two. Launches reserve 25% projected physical and 20% committed
+headroom; soak and idle drivers abort above 80% physical or 85% committed use.
+Unknown commit-budget data fails closed. Do not retry four clients on this workstation
+to satisfy a capacity row. `TrimMemory` is optional; incorrect image/creation
+identities are rejected before the OS call. No global paging change is required.
+
+Attack's initial reservation failure is now identified: retail initializes its
+crab quest after five seconds, before the first connection populates the agent
+pool. Native diagnostics show crab undefined, agent pool zero, both boss flags
+initialized/inactive, no Elvira summon, no reserve dvar override, zero pending
+spawns and exactly one reservation. The private fixture releases that orphan
+through the retail reservation API once. It leaves boss/quest flags untouched.
+A present precombat crab uses native suicide and that same final owner cleanup.
+Both the absent startup actor and present precombat actor branches have native
+diagnostic evidence. No raw ledger reset or fabricated quest completion is allowed.
+
+Candidate 2be1dbe passes protected Attack idle (131.844 seconds), both output
+directions and simultaneous 500-frame delivery. The following Beast transition
+with its direct Attack death-script import fails: scripts load but the dedicated
+returns to frontend, with no accepted audio probe. Both clients exit with code 0;
+the exact empty frontend process is recovered after 30 seconds of valid zero-client
+UDP and a bank snapshot. Candidate 1f9068e removes the cross-map import; fresh
+Beast startup and protected joins succeed. The corrected Attack-to-Beast
+transition also passes fresh protection, an empty arena and both output
+directions. The earlier attempts below are historical snapshots.
+
+### Audio observation
+
+`audio-output-probe.exe` retains aggregate metrics only. The short single-source
+controls use default-output loopback. Concurrent/soak runs use two passive WASAPI
+process-loopback captures, one per owned receiver, without changing mute, volume,
+device settings or the stimulus. Each capture validates the executable name and
+creation time and announces readiness before either source starts. The parent
+also verifies the exact image/hash/creation identity. An unavailable API or
+identity mismatch fails the measurement; it does not fall back to the shared mix.
+
+Process loopback requires Windows build/SDK 20348 or later. It was exercised on
+Windows build 26200. The observer uses the
+[Microsoft process-loopback API](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
+and adds no audio dependency. A positive short receiver signal, wrong-image and
+wrong-creation negative checks precede the concurrent/soak measurements.
+
+Results record fixture preparation commit, driver commit/hash, native executable
+hash, observer hash, map and participants separately. A documentation-only commit
+does not mean the running native binary was rebuilt. Private logs, identities,
+bank data and raw reference scripts stay outside Git.
+
+### Lifecycle, input bounds and restoration
+
+The current pair passes a different UID taking the same native slot while the
+other client remains, followed by same-UID reconnects for B and A. Every case
+includes more than 130 seconds of fresh protected idle and both measured output
+directions. A bounded native auth-mutex witness selects another legitimate local
+key; it neither edits/deletes keys nor publishes the identities. Post-disconnect
+target output is absent. The three intermediate and two final client exits are
+actual code 0. Delayed native old frames and server-restart recovery remain open.
+
+`Test-VoiceMalformedInput.ps1` sends eleven bounded datagrams from a fresh
+loopback endpoint: truncation/size/version cases and a canonical hello without a
+game-accepted connection. The native server rejection counter increases by eleven;
+fresh protection and subsequent output in both directions pass. This is dispatch
+and rejection evidence, not a UDP-flood or cryptographic authentication claim.
+
+After valid zero-client UDP for thirty seconds, the owned dedicated is stopped.
+Seven managed targets, including the exact graphics profile, match the recovery
+manifest; newly added files are absent and current bank data is unchanged. No
+test process or observer remains. The dedicated stop is not a native exit-code-0
+claim. Original server/client relaunch is recorded separately from test restoration.
+
+The same native sources build in Debug. The private generic package's native and
+overlay hashes match its manifest; a fresh extraction of its complete corresponding
+source builds in Release with the same toolchain. The package check initially
+fails on an incorrect flattened `arxan.cpp` path; correcting it to the pinned
+`arxan/arxan.cpp` path preserves the exact hash check. This establishes local source
+bundle buildability, not byte-identical binaries or second-machine reproduction.
+No game dump, private configuration or audio recording is packaged.
+
+Reproducible private commands, after both owned clients have joined:
+
+```powershell
+./ops/Test-VoicePairIdle.ps1
+./ops/Test-VoiceControls.ps1
+./ops/Test-VoiceMalformedInput.ps1
+./ops/Test-VoiceNativeSoak.ps1 -Probe VoiceConcurrentProbe
+./ops/Test-VoiceNativeSoak.ps1 -Probe VoiceSoakProbe
+./ops/Voice-BaseTest.ps1 -Action ChangeMap -Map cp_rave
+```
+
+Every positive signal uses post-device PCM through native capture/encode, relay,
+decode and playback. It is technical synthetic evidence; actual microphones,
+privacy/UI, supported regression cases and two-PC human speech remain gates.
+
 ## Attack quiet-arena failure - 2026-10-04
 
 The protected two-client transition passes Rave and Shaolin. Attack loads with
