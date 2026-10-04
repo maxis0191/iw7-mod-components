@@ -684,7 +684,7 @@ namespace paris_voice
                 { talk_binding = i; break; }
             if (!talk_binding) return;
             auto* encoder = *reinterpret_cast<void**>(0x145D5C6E8);
-            int vad{}, dtx{};
+            int vad{}, dtx{}, configured_mode{};
             const auto encoder_ctl = [](void* context, int request, int* value)
             { return utils::hook::invoke<int>(0x1405E9520, context, request, value); };
             if (codec_control)
@@ -693,8 +693,15 @@ namespace paris_voice
                 // native VAD/DTX, which may intentionally suppress steady tones.
                 if (!utils::flags::has_flag("iw7-voice-relay") || host.ip[0] != 127 || host.ip[1] || host.ip[2] || host.ip[3] != 1 || !encoder ||
                     encoder_ctl(encoder, 31, &vad) || encoder_ctl(encoder, 35, &dtx)) return;
+                // Native VAD may leave the current submode at null (DTX).
+                // Disabling VAD alone retains that null mode. Reapply the saved
+                // configured narrowband submode, without resetting codec state.
+                // The pinned native ctl's SET_MODE (6) writes current+selected;
+                // selected is at +0x174 and remains the user's configuration.
+                configured_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
+                if (configured_mode < 1 || configured_mode > 8) return;
                 int off{};
-                if (encoder_ctl(encoder, 30, &off) || encoder_ctl(encoder, 34, &off))
+                if (encoder_ctl(encoder, 30, &off) || encoder_ctl(encoder, 34, &off) || encoder_ctl(encoder, 6, &configured_mode))
                 {
                     encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx); return;
                 }
@@ -705,7 +712,9 @@ namespace paris_voice
                 encoder_ctl(encoder, 30, &vad); encoder_ctl(encoder, 34, &dtx);
                 int after_vad{}, after_dtx{};
                 const bool restored = !encoder_ctl(encoder, 31, &after_vad) && !encoder_ctl(encoder, 35, &after_dtx) && after_vad == vad && after_dtx == dtx;
-                console::info("[paris-voice-native] Codec control restored=%d vad=%d dtx=%d.\n", restored, after_vad, after_dtx);
+                const int after_mode = *reinterpret_cast<const int*>(static_cast<const char*>(encoder) + 0x174);
+                console::info("[paris-voice-native] Codec control restored=%d vad=%d dtx=%d configured_mode=%d mode_preserved=%d.\n", restored,
+                    after_vad, after_dtx, after_mode, after_mode == configured_mode);
             });
             const bool saved_ptt = ptt->current.enabled;
             // Explicit post-device witness. No microphone recording and no

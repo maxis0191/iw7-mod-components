@@ -11,6 +11,7 @@ voice_incoming,140D59620
 voice_address_reference,140D92790
 voice_register_remote,140D59D10
 session_register_remote,140C733E0
+session_unregister_remote,140C73970
 session_voice_session,140D32740
 server_direct_connect,140C4EBD0
 server_drop_client,140C4FBA0
@@ -30,3 +31,5 @@ voice_playback_reset,140B79B00
 voice_decoder_init,140B79260
 voice_encoder_init,140B79450
 voice_codec_setting,140B79580
+# Observed through the live native encoder's mode encoder_ctl pointer.
+voice_narrowband_control,14122A990
