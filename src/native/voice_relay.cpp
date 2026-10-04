@@ -159,10 +159,10 @@ namespace voice_relay
                 return 0;
             return (static_cast<std::uint64_t>(address.addr) << 16) | address.port;
         }
-        std::vector<voice::inbox::packet> drain(std::uint64_t time)
+        std::vector<voice::inbox::packet> drain()
         {
             unsigned expired{};
-            auto result = incoming.drain(time, expired);
+            auto result = incoming.drain(now, expired);
             rejected += expired;
             return result;
         }
@@ -244,7 +244,7 @@ namespace voice_relay
             }
             incoming.admit(admitted, voice::inbox::server_capacity);
             send(server->synchronize(current, time));
-            for (const auto& packet : drain(time))
+            for (const auto& packet : drain())
             {
                 unsigned source = static_cast<unsigned>(current.size());
                 for (unsigned slot = 0; slot < current.size(); ++slot)
@@ -391,7 +391,7 @@ namespace voice_relay
                 send(host, message);
             if (was_ready && !client->ready())
                 release_users();
-            for (const auto& packet : drain(time))
+            for (const auto& packet : drain())
             {
                 wire::message data;
                 if (endpoint(host) != packet.source || !wire::decode(packet.bytes, data))
@@ -399,7 +399,8 @@ namespace voice_relay
                     ++rejected;
                     continue;
                 }
-                const auto result = client->receive(data, static_cast<unsigned>(packet.bytes.size()), time);
+                const auto result =
+                    client->receive(data, static_cast<unsigned>(packet.bytes.size()), time);
                 if (!result.accepted)
                 {
                     ++rejected;

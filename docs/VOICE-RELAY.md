@@ -40,6 +40,8 @@ reserves 128 packets for its sole server endpoint. A sender cannot use another
 sender's allowance. Drain order is round-robin with arrival order within each
 source. Packets older than 500 ms are discarded. Changing or removing an admitted
 endpoint clears its pending packets. Shutdown clears admission and queued input.
+The age clock is sampled under the inbox lock so a callback arriving after the
+game tick's earlier timestamp is not mistaken for future input.
 
 ## Identity and lifecycle
 

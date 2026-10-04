@@ -55,9 +55,14 @@ namespace voice
             return true;
         }
 
-        std::vector<packet> drain(std::uint64_t time, unsigned& expired)
+        template <typename Clock>
+        std::vector<packet> drain(Clock clock, unsigned& expired)
         {
             std::lock_guard lock(mutex_);
+            // Sample after locking: callbacks may enqueue between a caller's
+            // earlier tick snapshot and this drain. Those packets are not future
+            // input and must not be discarded at a clock tick boundary.
+            const auto time = clock();
             std::vector<packet> result;
             expired = 0;
             // Round-robin across sources; preserve each sender's arrival order.

@@ -29,7 +29,7 @@ int main()
         require(!inbox.push(peers[0], "overflow", 100), "source capacity exceeded");
         require(inbox.push(peers[1], "other player", 100), "one sender starved another");
         unsigned expired{};
-        auto packets = inbox.drain(100, expired);
+        auto packets = inbox.drain([] { return 100ull; }, expired);
         require(!expired && packets.size() == 33, "bounded fair drain size");
         require(packets[0].bytes == "0" && packets[1].bytes == "other player" &&
                     packets[2].bytes == "1" && packets.back().bytes == "31",
@@ -40,20 +40,28 @@ int main()
         peers[0] = 123;
         inbox.admit(peers, voice::inbox::server_capacity);
         require(!inbox.push(departed, "late packet", 100), "retired source admitted");
-        packets = inbox.drain(100, expired);
+        packets = inbox.drain([] { return 100ull; }, expired);
         require(packets.size() == 1 && packets[0].bytes == "staying", "retired queue retained");
         require(inbox.push(peers[0], "at boundary", 100), "age setup");
-        packets = inbox.drain(600, expired);
+        packets = inbox.drain([] { return 600ull; }, expired);
         require(packets.size() == 1 && !expired, "exact age boundary rejected");
         require(inbox.push(peers[0], "too old", 100), "age setup");
         require(inbox.push(peers[0], "future", 602), "clock setup");
-        require(inbox.drain(601, expired).empty() && expired == 2, "stale/future queue accepted");
+        require(inbox.drain([] { return 601ull; }, expired).empty() && expired == 2, "stale/future queue accepted");
+        // A valid callback can arrive after the game tick sampled its time.
+        // Drain must obtain a fresh clock value, not expire that later arrival.
+        const std::uint64_t tick_snapshot = 700, callback_time = tick_snapshot + 1;
+        require(inbox.push(peers[0], "after tick snapshot", callback_time), "clock race setup");
+        unsigned clock_reads{};
+        packets = inbox.drain([&] { ++clock_reads; return callback_time; }, expired);
+        require(clock_reads == 1 && !expired && packets.size() == 1 &&
+                    packets[0].bytes == "after tick snapshot", "tick-boundary arrival discarded");
         inbox.admit(peers, voice::inbox::client_capacity);
         for (unsigned i = 0; i < voice::inbox::client_capacity; ++i)
             require(inbox.push(peers[0], std::string(1200, 'x'), 700), "client capacity");
         require(!inbox.push(peers[0], "overflow", 700), "client capacity exceeded");
         inbox.admit({}, 0);
-        require(inbox.drain(700, expired).empty(), "shutdown retained packets");
+        require(inbox.drain([] { return 700ull; }, expired).empty(), "shutdown retained packets");
 
         // Exercise the actual callback/game-thread queue concurrently. Only
         // admitted, bounded packets may emerge; every accepted one is accounted.
@@ -75,7 +83,7 @@ int main()
         bool valid = true;
         while (finished != writers.size())
         {
-            packets = inbox.drain(1000, expired);
+            packets = inbox.drain([] { return 1000ull; }, expired);
             valid = valid && packets.size() <= 4 * voice::inbox::server_capacity && !expired;
             for (const auto& packet : packets)
                 valid = valid && packet.source >= 1 && packet.source <= 4 &&
@@ -85,7 +93,7 @@ int main()
         }
         for (auto& writer : writers)
             writer.join();
-        delivered += static_cast<unsigned>(inbox.drain(1000, expired).size());
+        delivered += static_cast<unsigned>(inbox.drain([] { return 1000ull; }, expired).size());
         require(valid && delivered == accepted, "concurrent queue corrupted or lost accepted packets");
         std::cout << "PASS: inbox admission, 150000 outsider packets, per-source isolation, "
                      "round-robin order, expiry, retirement, shutdown and 100000 concurrent attempts.\n";
