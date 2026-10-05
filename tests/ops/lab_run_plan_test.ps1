@@ -29,4 +29,18 @@ foreach ($case in @(@($sample,2,99999),@($sample,0,100001),@($sample.Replace('bu
     try { Assert-IW7LabGraphics $case[0] $case[1] $case[2] 100001 } catch { $refused = $true }
     if (!$refused) { throw 'Mismatched or stale graphics were accepted.' }
 }
-Write-Output 'PASS: explicit client count, full/reduced reservations, complete setting restoration and observed capture quality.'
+$assetTestRoot = [IO.Path]::GetFullPath("$PSScriptRoot/../../runtime/base-asset-plan-$([guid]::NewGuid().ToString('N'))")
+$assets = Join-Path $assetTestRoot 'installed game'
+$profile = Join-Path $assetTestRoot 'owned profile'
+[IO.Directory]::CreateDirectory($assets) | Out-Null
+[IO.Directory]::CreateDirectory($profile) | Out-Null
+[IO.File]::WriteAllText((Join-Path $assets 'iw7_ship.exe'),'marker')
+[IO.File]::WriteAllText((Join-Path $assets 'assetfile1.pak'),'marker')
+$arguments = Get-IW7LabAssetArguments $assets $profile
+if ($arguments -ne (' +set fs_basepath "' + $assets + '" +set fs_homepath "' + $profile + '"')) { throw 'Asset path and write profile must be independently quoted.' }
+foreach ($case in @(@($assets,$assets),@($profile,$assets),@('relative',$profile),@($assets,($profile + '"')),@(($assets + "`n"),$profile))) {
+    $refused = $false
+    try { Get-IW7LabAssetArguments $case[0] $case[1] | Out-Null } catch { $refused = $true }
+    if (!$refused) { throw 'Unsafe shared/missing/relative/quoted asset or profile root accepted.' }
+}
+Write-Output 'PASS: complete reservations, graphics evidence, and installed assets separated from owned write paths.'
