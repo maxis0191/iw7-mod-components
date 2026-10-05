@@ -118,15 +118,18 @@ namespace paris_test_fixture
         void vote_binding(const char* name, bool down)
         {
             // Pinned IW7 input.cpp routes the 118 retail bindings through this
-            // client dispatcher. Console text does not produce these usercmds.
+            // client dispatcher. Release uses the separate '-' binding, as the
+            // key-event path does. Its third argument identifies the held key.
+            const std::string binding_name = down ? name : "-" + std::string(name + 1);
+            const int key = std::strcmp(name, "+attack") == 0 ? 200 : 201;
             for (int binding = 0; binding < 118; ++binding)
             {
-                if (!game::command_whitelist[binding] || std::strcmp(name, game::command_whitelist[binding])) continue;
-                utils::hook::invoke<void>(0x14032A3B0, 0, binding, static_cast<int>(down), game::Sys_Milliseconds());
-                console::info("[Paris vote input] binding=%s down=%d catchers=%d\n", name, static_cast<int>(down), *game::keyCatchers);
+                if (!game::command_whitelist[binding] || binding_name != game::command_whitelist[binding]) continue;
+                utils::hook::invoke<void>(0x14032A3B0, 0, binding, key, game::Sys_Milliseconds());
+                console::info("[Paris vote input] binding=%s key=%d catchers=%d\n", binding_name.c_str(), key, *game::keyCatchers);
                 return;
             }
-            console::error("[Paris vote input] Missing pinned retail binding %s.\n", name);
+            console::error("[Paris vote input] Missing pinned retail binding %s.\n", binding_name.c_str());
         }
         void vote_buttons(bool attack, bool ads, bool hold = false)
         {
@@ -242,7 +245,7 @@ namespace paris_test_fixture
                     vote_witness_running = true;
                     vote_buttons(false, true); // 0 -> Beast, reverse wrap.
                     scheduler::once([] { vote_buttons(false, true); }, scheduler::main, 4s); // Attack.
-                    scheduler::once([] { vote_buttons(true, false); }, scheduler::main, 8s); // Beast.
+                    scheduler::once([] { vote_buttons(true, false); }, scheduler::main, 10s); // Beast.
                     scheduler::once([] { vote_buttons(true, false, true); }, scheduler::main, 12s); // Held Fire -> 0 once.
                     scheduler::once([] { vote_buttons(false, false); }, scheduler::main, 14s);
                     scheduler::once([] { vote_buttons(false, true); }, scheduler::main, 15s); // Beast.
