@@ -1,14 +1,5 @@
-function Get-IW7MemorySnapshot {
-    $physical = Get-CimInstance Win32_OperatingSystem -OperationTimeoutSec 5
-    $committed = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory -OperationTimeoutSec 5
-    if (!$physical.TotalVisibleMemorySize -or !$committed.CommitLimit) { throw 'Memory budget is unavailable.' }
-    [pscustomobject]@{
-        PhysicalTotal = [long]$physical.TotalVisibleMemorySize * 1KB
-        PhysicalAvailable = [long]$physical.FreePhysicalMemory * 1KB
-        CommitLimit = [long]$committed.CommitLimit
-        Committed = [long]$committed.CommittedBytes
-    }
-}
+. "$PSScriptRoot/Resource-Memory.ps1"
+function Get-IW7MemorySnapshot { Get-IW7NativeMemorySnapshot }
 
 function Test-IW7MemoryBudget($Snapshot, [long]$AdditionalPhysical = 0, [long]$AdditionalCommit = 0) {
     if (!$Snapshot -or $Snapshot.PhysicalTotal -le 0 -or $Snapshot.CommitLimit -le 0 -or

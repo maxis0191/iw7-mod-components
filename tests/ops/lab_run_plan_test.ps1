@@ -35,4 +35,4 @@ foreach ($case in @(@($sample,2,99999),@($sample,0,100001),@($sample.Replace('bu
     try { Assert-IW7LabGraphics $case[0] $case[1] $case[2] 100001 } catch { $refused = $true }
     if (!$refused) { throw 'Mismatched or stale graphics were accepted.' }
 }
-Write-Output 'PASS: explicit client count, full/reduced reservations, complete setting restoration and observed capture quality.'
+Write-Output 'PASS: complete reservations, graphics evidence and fixture/client admission.'
