@@ -213,18 +213,7 @@ namespace paris_test_fixture
             if (vote_input && !utils::flags::has_flag("paris-isolated-lab")) return;
             if (vote_input && vote_witness_running) return;
             if (voice_control && (!utils::flags::has_flag("iw7-voice-relay") || !utils::flags::has_flag("paris-voice-base-test"))) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "startscreen" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input) return;
-            if (action == "startscreen")
-            {
-                static bool confirmed = false;
-                if (!utils::flags::has_flag("paris-isolated-lab") || !connect_pending || confirmed ||
-                    game::Live_SyncOnlineDataFlags(0) == 0) return;
-                confirmed = true;
-                // Pinned input.cpp CL_KeyEvent: one explicit title-screen Space
-                // press in this owned process; no OS focus or desktop switch.
-                utils::hook::invoke<void>(0x1409A7980, 0, game::K_SPACE, 1);
-                scheduler::once([] { utils::hook::invoke<void>(0x1409A7980, 0, game::K_SPACE, 0); }, scheduler::main, 100ms);
-            }
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input) return;
             if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
                 !utils::flags::has_flag("paris-voice-base-test"))) return;
             if ((action == "voiceprobe" || action == "voicereleasedprobe" || action == "voicecodecprobe" || action == "voiceconcurrentprobe" || action == "voicesoakprobe") && (!utils::flags::has_flag("paris-voice-native-trace") ||
