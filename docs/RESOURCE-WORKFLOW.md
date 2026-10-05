@@ -89,9 +89,11 @@ agent shortcut around resource admission. No existing process is stopped by this
 retirement. Eleven real command-entry refusal cases run in CI.
 
 The old Voice-BaseTest GenericRelay switch is historical v2 evidence, not a current
-launch recipe. Port that explicit relay selection into the isolated VoiceNative
-profile before its next v2 runtime regression. Native tracing alone does not prove
-the generic relay; offline protocol tests remain useful meanwhile.
+launch recipe. Use isolated VoiceNative Install with VoiceMode Relay for explicit
+v2 plus private audio tracing, or Player for v2 without private capture/decode/codec
+hooks. Native retains the original investigation profile. Player refuses synthetic
+VoiceProbe; one-client readiness does not prove two-client speech. The complete
+planned scenario still needs admission before launch.
 
 ## Build, extraction and analysis
 
