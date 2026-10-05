@@ -98,6 +98,14 @@ before deployment, so it still runs 63888751 at this checkpoint. No player is
 removed to install the correction; deployment waits for valid empty-server
 admission and preserves the existing GSC/config/bank profile.
 
+Later the owner confirmed the server empty. The ordinary 30-second UDP/identity
+guard passed and AD167072 was deployed with the local player launcher/manifest.
+All 24 startup markers and active v2 readiness pass; 54 pre-existing files,
+including 36 backed-up bank files, retain their hashes. The preserved-profile
+checker first demanded undeployed optional Max Ammo; its inventory correction
+passes without another restart. [Deployment record](deployments/2026-10-05-voice-player-startup.json).
+This supersedes the pending-installation checkpoint, not the pending speech gate.
+
 An independent external option is [Mumble](https://www.mumble.info/downloads/),
 which supplies Windows client/server voice separately from IW7. It requires an
 additional client for each player and an accessible voice server; it does not
