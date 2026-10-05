@@ -24,3 +24,16 @@ function Assert-IW7LabFixturePlan([string]$Profile, [string]$Fixture, [int]$Plan
         throw 'StartupOnly has no player fixture; reserve a zero-client linkage witness.'
     }
 }
+
+function Get-IW7LabAssetArguments([string]$BaseAssetRoot, [string]$ProfileRoot) {
+    foreach ($path in @($BaseAssetRoot,$ProfileRoot)) {
+        if (!$path -or ![IO.Path]::IsPathRooted($path) -or $path -match '["\r\n]' -or
+            !(Test-Path -LiteralPath $path -PathType Container)) { throw 'Invalid installed asset/profile root.' }
+    }
+    if (!(Test-Path -LiteralPath (Join-Path $BaseAssetRoot 'iw7_ship.exe') -PathType Leaf) -or
+        !(Test-Path -LiteralPath (Join-Path $BaseAssetRoot 'assetfile1.pak') -PathType Leaf) -or
+        [IO.Path]::GetFullPath($BaseAssetRoot) -eq [IO.Path]::GetFullPath($ProfileRoot)) {
+        throw 'Base asset root must be an installed game separate from the owned profile.'
+    }
+    ' +set fs_basepath "' + $BaseAssetRoot + '" +set fs_homepath "' + $ProfileRoot + '"'
+}
