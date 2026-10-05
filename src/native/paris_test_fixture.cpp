@@ -7,6 +7,7 @@
 #include "gsc/script_extension.hpp"
 #include <utils/flags.hpp>
 #include <utils/io.hpp>
+#include <utils/hook.hpp>
 #include <format>
 #include "command.hpp"
 #include "party.hpp"
@@ -113,6 +114,35 @@ namespace paris_test_fixture
                 script_inactivity_suppressed, GetTickCount64());
         }
         bool connect_pending = false;
+        bool vote_witness_running = false;
+        void vote_binding(const char* name, bool down)
+        {
+            // Pinned IW7 input.cpp routes the 118 retail bindings through this
+            // client dispatcher. Release uses the separate '-' binding, as the
+            // key-event path does. Its third argument identifies the held key.
+            const std::string binding_name = down ? name : "-" + std::string(name + 1);
+            const int key = std::strcmp(name, "+attack") == 0 ? 200 : 201;
+            for (int binding = 0; binding < 118; ++binding)
+            {
+                if (!game::command_whitelist[binding] || binding_name != game::command_whitelist[binding]) continue;
+                utils::hook::invoke<void>(0x14032A3B0, 0, binding, key, game::Sys_Milliseconds());
+                console::info("[Paris vote input] binding=%s key=%d catchers=%d\n", binding_name.c_str(), key, *game::keyCatchers);
+                return;
+            }
+            console::error("[Paris vote input] Missing pinned retail binding %s.\n", binding_name.c_str());
+        }
+        void vote_buttons(bool attack, bool ads, bool hold = false)
+        {
+            vote_binding("+attack", false);
+            vote_binding("+speed_throw", false);
+            if (attack) vote_binding("+attack", true);
+            if (ads) vote_binding("+speed_throw", true);
+            if (!hold) scheduler::once([]
+            {
+                vote_binding("+attack", false);
+                vote_binding("+speed_throw", false);
+            }, scheduler::main, 200ms);
+        }
         void server_request()
         {
             if (!private_fixture() || !utils::flags::has_flag("paris-voice-base-test") || !game::SV_Loaded()) return;
@@ -179,8 +209,11 @@ namespace paris_test_fixture
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
             const bool voice_control = action == "voicemute" || action == "voiceunmute" || action == "voicedisable" || action == "voiceenable" || action == "voicerestore" || action == "voicecodecprobe" || action == "voiceconcurrentprobe" || action == "voicesoakprobe";
+            const bool vote_input = action == "votenext" || action == "voteprevious" || action == "voteboth" || action == "voteholdnext" || action == "voterelease" || action == "votewitness";
+            if (vote_input && !utils::flags::has_flag("paris-isolated-lab")) return;
+            if (vote_input && vote_witness_running) return;
             if (voice_control && (!utils::flags::has_flag("iw7-voice-relay") || !utils::flags::has_flag("paris-voice-base-test"))) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control) return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input) return;
             if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
                 !utils::flags::has_flag("paris-voice-base-test"))) return;
             if ((action == "voiceprobe" || action == "voicereleasedprobe" || action == "voicecodecprobe" || action == "voiceconcurrentprobe" || action == "voicesoakprobe") && (!utils::flags::has_flag("paris-voice-native-trace") ||
@@ -202,6 +235,25 @@ namespace paris_test_fixture
                 console::info("[Paris lab graphics] picmip=%d; bump=%d; spec=%d; tick_ms=%llu\n",
                     graphics_value("r_picmip"), graphics_value("r_picmip_bump"), graphics_value("r_picmip_spec"), GetTickCount64());
                 command::execute("capture_frame server-modules-fixture", true);
+            }
+            else if (vote_input)
+            {
+                // Fixed client usercmd buttons only, scoped to the independent lab.
+                // The operation helper requires fresh server protection first.
+                if (action == "votewitness")
+                {
+                    vote_witness_running = true;
+                    vote_buttons(false, true); // 0 -> Beast, reverse wrap.
+                    scheduler::once([] { vote_buttons(false, true); }, scheduler::main, 4s); // Attack.
+                    scheduler::once([] { vote_buttons(true, false); }, scheduler::main, 10s); // Beast.
+                    scheduler::once([] { vote_buttons(true, false, true); }, scheduler::main, 12s); // Held Fire -> 0 once.
+                    scheduler::once([] { vote_buttons(false, false); }, scheduler::main, 14s);
+                    scheduler::once([] { vote_buttons(false, true); }, scheduler::main, 15s); // Beast.
+                    scheduler::once([] { vote_buttons(true, true); }, scheduler::main, 17s); // Both ignored.
+                    scheduler::once([] { vote_buttons(false, false); vote_witness_running = false; }, scheduler::main, 19s);
+                }
+                else vote_buttons(action == "votenext" || action == "voteboth" || action == "voteholdnext",
+                    action == "voteprevious" || action == "voteboth", action == "voteholdnext");
             }
             else if (action == "help") command::execute("cmd say ..help", true);
             else if (action == "mods") command::execute("cmd say ..mods", true);
