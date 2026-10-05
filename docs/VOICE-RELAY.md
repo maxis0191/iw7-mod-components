@@ -115,3 +115,12 @@ does not prove an actual 10-ms native cadence.
 player identifiers. For release acceptance, use actual microphones on separate
 machines; verify both directions, PTT release, voice toggle, mute/unmute,
 reconnection and map change, plus the supported-mode and device regression matrix.
+
+In the current build, `ready`, `slot`, `roster_mask` and `native_mask` describe the
+client adapter even on a dedicated server. Use accepted joins/relayed/rejected
+there; do not interpret its client `ready=0` as a disabled relay. On a client,
+`roster_mask` identifies negotiated voice participants, not every connected game
+player. For two players occupying slots 0 and 1, the expected complete voice
+roster is 3. A ready slot-0 client with mask 1 has no negotiated remote listener.
+Get both clients' status and actual launch arguments before attributing that to
+microphone settings or changing networking. [Live example and limits](VOICE-LIVE-DIAGNOSIS-2026-10-05.md).
