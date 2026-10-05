@@ -65,6 +65,17 @@ foreach ($requestFails in @($true,$false)) {
         Assert-True ([bool]$result.RequestError -eq $requestFails) 'Stop failure reason was lost.'
     } finally { Close-TestProcess $test }
 }
+$test = Open-TestProcess 0 2
+try {
+    $request = '123 0123456789abcdef0123456789abcdef stop'
+    $mailboxPath = Join-Path ([IO.Path]::GetTempPath()) ('iw7-stop-scope-' + [guid]::NewGuid().ToString('N') + '.request')
+    $result = Invoke-IW7OwnedStop $test.Owned { [IO.File]::WriteAllText($mailboxPath, $request) } 10000
+    Assert-True ([IO.File]::ReadAllText($mailboxPath) -eq '123 0123456789abcdef0123456789abcdef stop') 'Stop callback shadowed its caller mailbox request.'
+    Assert-True ($result.Kind -eq 'clean' -and $result.Code -eq 0) 'Acknowledged normal child exit was counted as forced.'
+} finally {
+    Close-TestProcess $test
+    if (Test-Path -LiteralPath $mailboxPath) { Remove-Item -LiteralPath $mailboxPath }
+}
 $unconfirmed = [pscustomobject]@{HasExited=$false}
 $unconfirmed | Add-Member ScriptMethod WaitForExit { param($ms) return $false }
 $unconfirmed | Add-Member ScriptMethod Terminate { param($code) }
