@@ -71,8 +71,11 @@ int main()
     try
     {
         fixture f;
+        require(f.server.ready_mask() == 0, "game admission is not voice admission");
         f.join(0, f.a);
+        require(f.server.ready_mask() == 1, "one negotiated voice participant");
         f.join(1, f.b);
+        require(f.server.ready_mask() == 3, "two negotiated voice participants");
         // Audio directions, no self echo, duplicates and reordered old data.
         auto first = f.up(0, f.a.audio("frame"));
         require(first.size() == 1 && first[0].slot == 1, "audio recipient");
@@ -90,6 +93,7 @@ int main()
         // Same UID and endpoint reconnect still has a new accepted-game incarnation.
         f.connections[0].incarnation = {9, 9};
         f.deliver(f.server.synchronize(f.connections, ++f.time));
+        require(f.server.ready_mask() == 2, "reconnect clears only the departing participant");
         require(!f.down(f.b, old_audio).accepted, "disconnected generation audio");
         f.a.reset();
         f.join(0, f.a);
