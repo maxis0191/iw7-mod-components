@@ -7,6 +7,7 @@
 #include "gsc/script_extension.hpp"
 #include <utils/flags.hpp>
 #include <utils/io.hpp>
+#include <utils/hook.hpp>
 #include <format>
 #include "command.hpp"
 #include "party.hpp"
@@ -114,16 +115,29 @@ namespace paris_test_fixture
         }
         bool connect_pending = false;
         bool vote_witness_running = false;
+        void vote_binding(const char* name, bool down)
+        {
+            // Pinned IW7 input.cpp routes the 118 retail bindings through this
+            // client dispatcher. Console text does not produce these usercmds.
+            for (int binding = 0; binding < 118; ++binding)
+            {
+                if (!game::command_whitelist[binding] || std::strcmp(name, game::command_whitelist[binding])) continue;
+                utils::hook::invoke<void>(0x14032A3B0, 0, binding, static_cast<int>(down), game::Sys_Milliseconds());
+                console::info("[Paris vote input] binding=%s down=%d catchers=%d\n", name, static_cast<int>(down), *game::keyCatchers);
+                return;
+            }
+            console::error("[Paris vote input] Missing pinned retail binding %s.\n", name);
+        }
         void vote_buttons(bool attack, bool ads, bool hold = false)
         {
-            command::execute("-attack", true);
-            command::execute("-speed_throw", true);
-            if (attack) command::execute("+attack", true);
-            if (ads) command::execute("+speed_throw", true);
+            vote_binding("+attack", false);
+            vote_binding("+speed_throw", false);
+            if (attack) vote_binding("+attack", true);
+            if (ads) vote_binding("+speed_throw", true);
             if (!hold) scheduler::once([]
             {
-                command::execute("-attack", true);
-                command::execute("-speed_throw", true);
+                vote_binding("+attack", false);
+                vote_binding("+speed_throw", false);
             }, scheduler::main, 200ms);
         }
         void server_request()
