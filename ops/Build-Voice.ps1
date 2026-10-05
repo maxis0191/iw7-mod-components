@@ -66,7 +66,7 @@ if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
 if ($Sanitizers) {
     $sanitizerCmd = Join-Path $runtime 'compile-voice-sanitizers.cmd'
     $lines = @('@echo off', "call `"$vcvars`" >nul", 'if errorlevel 1 exit /b 1')
-    foreach ($name in @('voice_protocol_test','voice_state_test','voice_transport_test','voice_simulation_test','voice_inbox_test','voice_wan_test','dvar_metadata_test')) {
+    foreach ($name in @('voice_protocol_test','voice_state_test','voice_launch_test','voice_transport_test','voice_simulation_test','voice_inbox_test','voice_wan_test','dvar_metadata_test')) {
         $lines += "cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /Zi /fsanitize=address `"$repo\tests\native\$name.cpp`" /Fe:`"$runtime\$name-asan.exe`" /Fo:`"$runtime\$name-asan.obj`" /Fd:`"$runtime\$name-asan.pdb`" /link /INCREMENTAL:NO"
         $lines += 'if errorlevel 1 exit /b 1'
         $lines += "`"$runtime\$name-asan.exe`""
@@ -87,7 +87,7 @@ git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
 $flagsPath = Join-Path $root 'src/common/utils/flags.cpp'
 $baseFlags = (((git -C $root show ($commit + ':src/common/utils/flags.cpp')) -join "`n").TrimEnd()) + "`n"
-$flagsMarker = '`t`t`tLocalFree(argv);'.Replace('`t', "`t")
+$flagsMarker = "`t`t`tLocalFree(argv);"
 if (($baseFlags.Split([string[]]@($flagsMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned flag parser changed.' }
 $playerFlags = $baseFlags.Replace('#include "nt.hpp"', '#include "nt.hpp"' + "`n" + '#include "../../client/component/voice_relay.hpp"').Replace($flagsMarker,
     "`t`t`tvoice_relay::apply_player_defaults(nt::library{}.get_name(), num_args, flags);`n" + $flagsMarker)
