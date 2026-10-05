@@ -2,14 +2,25 @@
 import ctypes
 import re
 import sys
+import json
 
 client_fixture = sys.argv[1] == "--module-client"
-args = sys.argv[2:] if client_fixture else sys.argv[1:]
-pid, command = int(args[0]), args[1]
+private_maintenance = sys.argv[1] == "--private-maintenance"
+args = sys.argv[2:] if client_fixture or private_maintenance else sys.argv[1:]
+pid = int(args[0])
+if private_maintenance:
+    # Local ignored settings only: never place the password in process arguments.
+    with open(args[1], encoding="utf-8-sig") as settings_file:
+        password = json.load(settings_file)["ServerPassword"]
+    if not isinstance(password, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", password):
+        raise ValueError("Invalid local maintenance password")
+    command = 'set g_password "' + password + '"\rkick all'
+else:
+    command = args[1]
 if client_fixture:
     if command not in ("connect 127.0.0.1:27016", "disconnect", "quit"):
         raise ValueError("Only fixed loopback connect/disconnect/quit is accepted")
-elif not re.fullmatch(r"set paris_mod_[a-z_]+ [01]", command):
+elif not private_maintenance and not re.fullmatch(r"set paris_mod_[a-z_]+ [01]", command):
     raise ValueError("Only a module switch is accepted")
 k = ctypes.WinDLL("kernel32", use_last_error=True)
 k.FreeConsole()

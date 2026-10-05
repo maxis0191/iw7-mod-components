@@ -150,6 +150,19 @@ checks after any extraction or shader serializer change.
 
 ## Windows, GPU, storage and diagnostic decisions
 
+### Fresh native memory telemetry - 2026-10-05
+
+Repeated WMI memory-provider timeouts refused admission and interrupted a protected
+replay even though measured RAM/commit stayed below the limits. Both admission and
+the watchdog now read fresh RAM/commit through Windows GetPerformanceInfo. Page
+counts are converted with the returned page size, with checked arithmetic and
+snapshot validation. Native failure still refuses admission; there is no cached
+fallback and all reservation/headroom thresholds stay unchanged. Process identity
+remains independently checked. Paging rates unavailable through this API are null.
+The Windows ABI and 100 real reads pass in CI's operations test.
+[Microsoft API](https://learn.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-getperformanceinfo),
+[field definitions](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-performance_information).
+
 ### Codex auxiliary-process overhead
 
 A grouped live inventory also found 70 `node.exe` processes totaling about

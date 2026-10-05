@@ -1,21 +1,11 @@
 # Shared by every worktree on this Windows account. No process is stopped here.
 # Keep admission + reservation atomic; a snapshot alone is not a reservation.
+. "$PSScriptRoot/Resource-Memory.ps1"
 function Get-IW7ResourceRoot {
     Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'IW7Paris/ResourceScheduler'
 }
 function Get-IW7ResourceSnapshot {
-    $os = Get-CimInstance Win32_OperatingSystem -OperationTimeoutSec 5 -ErrorAction Stop
-    $mem = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory -OperationTimeoutSec 5 -ErrorAction Stop
-    if (!$os.TotalVisibleMemorySize -or !$mem.CommitLimit) { throw 'Memory telemetry unavailable; admission refused.' }
-    [pscustomobject]@{
-        PhysicalTotal = [long]$os.TotalVisibleMemorySize * 1KB
-        PhysicalAvailable = [long]$os.FreePhysicalMemory * 1KB
-        Committed = [long]$mem.CommittedBytes
-        CommitLimit = [long]$mem.CommitLimit
-        PagesInputPerSecond = [long]$mem.PagesInputPersec
-        PagesOutputPerSecond = [long]$mem.PagesOutputPersec
-        CapturedUtc = [datetime]::UtcNow.ToString('o')
-    }
+    Get-IW7NativeMemorySnapshot
 }
 function Test-IW7ResourceBudget($Snapshot, [long]$PhysicalBytes, [long]$CommitBytes) {
     if (!$Snapshot -or $Snapshot.PhysicalTotal -le 0 -or $Snapshot.CommitLimit -le 0 -or

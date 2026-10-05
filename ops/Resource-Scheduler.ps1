@@ -28,7 +28,7 @@ try {
         Disks=@(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,FreeSpace,Size)}
     $writer.WriteLine(($metadata | ConvertTo-Json -Depth 6 -Compress))
     $deadline=[datetime]::UtcNow.AddSeconds($Seconds)
-    $samples=0; $maxPhysical=0.0; $maxCommit=0.0; $maxInput=0L; $maxOutput=0L
+    $samples=0; $maxPhysical=0.0; $maxCommit=0.0; $maxInput=$null; $maxOutput=$null
     do {
         $snapshot=Get-IW7ResourceSnapshot
         $budget=Test-IW7ResourceBudget $snapshot 0 0
@@ -55,8 +55,8 @@ try {
         $writer.WriteLine(($row | ConvertTo-Json -Depth 7 -Compress)); $writer.Flush()
         $maxPhysical=[math]::Max($maxPhysical,$budget.PhysicalUsedPercent)
         $maxCommit=[math]::Max($maxCommit,$budget.CommitUsedPercent)
-        $maxInput=[math]::Max($maxInput,$snapshot.PagesInputPerSecond)
-        $maxOutput=[math]::Max($maxOutput,$snapshot.PagesOutputPerSecond)
+        if ($null -ne $snapshot.PagesInputPerSecond) { $maxInput=[math]::Max($maxInput,$snapshot.PagesInputPerSecond) }
+        if ($null -ne $snapshot.PagesOutputPerSecond) { $maxOutput=[math]::Max($maxOutput,$snapshot.PagesOutputPerSecond) }
         $samples++
         if ([datetime]::UtcNow -lt $deadline) { Start-Sleep -Seconds 1 }
     } while ([datetime]::UtcNow -lt $deadline)
