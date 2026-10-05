@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/../../ops/Lab-RunPlan.ps1"
 . "$PSScriptRoot/../../ops/Lab-Evidence.ps1"
-foreach ($expected in @(@('Full',1,16,0),@('Reduced',1,12,2),@('Full',2,28,0),@('Reduced',2,20,2))) {
+foreach ($expected in @(@('Full',0,4,0),@('Reduced',0,4,2),@('Full',1,16,0),@('Reduced',1,12,2),@('Full',2,28,0),@('Reduced',2,20,2))) {
     $plan = Get-IW7LabRunPlan $expected[0] $expected[1]
     if ($plan.PhysicalBytes -ne ($expected[2] * 1GB) -or $plan.CommitBytes -ne ($expected[2] * 1GB) -or
         $plan.Picmip -ne $expected[3] -or $plan.PlannedClients -ne $expected[1]) { throw 'Whole-session reservation differs from the explicit plan.' }
@@ -11,6 +11,11 @@ foreach ($expected in @(@('Full',1,16,0),@('Reduced',1,12,2),@('Full',2,28,0),@(
     if ($plan.EnableAudio) { throw 'Functional runs must stay silent by default.' }
     $audioPlan = Get-IW7LabRunPlan $expected[0] $expected[1] -EnableAudio
     if (!$audioPlan.EnableAudio -or $audioPlan.PhysicalBytes -ne $plan.PhysicalBytes) { throw 'Game audio selection corrupted the run reservation.' }
+}
+foreach ($case in @(@(0,'A',$false),@(0,'B',$false),@(1,'A',$true),@(1,'B',$false),@(2,'A',$true),@(2,'B',$true))) {
+    $accepted = $true
+    try { Assert-IW7LabClientPlan (Get-IW7LabRunPlan Reduced $case[0]) $case[1] } catch { $accepted = $false }
+    if ($accepted -ne $case[2]) { throw 'Unreserved client admission differs from the complete plan.' }
 }
 $sample = '[Paris lab graphics] picmip=0; bump=0; spec=0; tick_ms=100000'
 Assert-IW7LabGraphics $sample 0 99999 100001
