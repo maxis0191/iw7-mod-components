@@ -18,6 +18,11 @@ foreach ($case in @(@(0,'A',$false),@(0,'B',$false),@(1,'A',$true),@(1,'B',$fals
     if ($accepted -ne $case[2]) { throw 'Unreserved client admission differs from the complete plan.' }
 }
 $sample = '[Paris lab graphics] picmip=0; bump=0; spec=0; tick_ms=100000'
+foreach ($case in @(@('Modules','StartupOnly',0,$true),@('Modules','StartupOnly',1,$false),@('Modules','StartupOnly',2,$false),@('Modules','CrossMap',1,$true),@('VoiceNative','CrossMap',2,$true))) {
+    $accepted = $true
+    try { Assert-IW7LabFixturePlan $case[0] $case[1] $case[2] } catch { $accepted = $false }
+    if ($accepted -ne $case[3]) { throw 'Startup-only witness admitted an unprotected player plan.' }
+}
 Assert-IW7LabGraphics $sample 0 99999 100001
 foreach ($case in @(@($sample,2,99999),@($sample,0,100001),@($sample.Replace('bump=0','bump=2'),0,99999),@($sample.Replace('picmip=0','picmip=-1'),0,99999))) {
     $refused = $false

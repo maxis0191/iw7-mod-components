@@ -18,3 +18,9 @@ function Assert-IW7LabClientPlan($Plan, [ValidateSet('A','B')][string]$Slot = 'A
         throw 'Client was not included in the complete reservation; close the server and select a new plan.'
     }
 }
+
+function Assert-IW7LabFixturePlan([string]$Profile, [string]$Fixture, [int]$PlannedClients) {
+    if ($Profile -eq 'Modules' -and $Fixture -eq 'StartupOnly' -and $PlannedClients -ne 0) {
+        throw 'StartupOnly has no player fixture; reserve a zero-client linkage witness.'
+    }
+}
