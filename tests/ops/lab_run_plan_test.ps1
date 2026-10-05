@@ -1,6 +1,12 @@
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/../../ops/Lab-RunPlan.ps1"
 . "$PSScriptRoot/../../ops/Lab-Evidence.ps1"
+foreach ($mode in @('Native','Relay','Player')) {
+    $arguments = Get-IW7LabVoiceArguments $mode
+    if (($arguments.Contains('-iw7-voice-relay')) -ne ($mode -ne 'Native') -or
+        ($arguments.Contains('-paris-voice-native-trace')) -ne ($mode -ne 'Player') -or
+        !$arguments.Contains('-paris-voice-audio-lab')) { throw 'Voice profile selection changed its audio path.' }
+}
 foreach ($expected in @(@('Full',0,4,0),@('Reduced',0,4,2),@('Full',1,16,0),@('Reduced',1,12,2),@('Full',2,28,0),@('Reduced',2,20,2))) {
     $plan = Get-IW7LabRunPlan $expected[0] $expected[1]
     if ($plan.PhysicalBytes -ne ($expected[2] * 1GB) -or $plan.CommitBytes -ne ($expected[2] * 1GB) -or

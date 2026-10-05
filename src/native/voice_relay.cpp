@@ -135,12 +135,19 @@ namespace voice_relay
         std::atomic<std::uint64_t> encoded{}, sent{}, relayed{}, played{}, rejected{}, muted{},
             joins{}, registrations{};
         std::atomic<std::uint64_t> registration_attempts{}, registration_failures{};
+        std::atomic<std::uint64_t> packets_received{}, hellos_sent{}, confirms_sent{};
+        std::uint32_t eligible_mask{};
+        const char* client_gate = "initializing";
 
         void send(const game::netadr_s& target, const wire::message& data)
         {
             const auto bytes = wire::encode(data);
             if (!bytes.empty())
+            {
                 network::send(target, command_name, bytes);
+                if (data.type == wire::kind::hello) ++hellos_sent;
+                if (data.type == wire::kind::confirm) ++confirms_sent;
+            }
         }
         void send(const std::vector<transport::delivery>& messages)
         {
@@ -168,6 +175,7 @@ namespace voice_relay
         }
         void receive(const game::netadr_s& source, const std::string_view& bytes)
         {
+            ++packets_received;
             if (!installed || !incoming.push(endpoint(source), bytes, now()))
                 ++rejected;
         }
@@ -199,6 +207,7 @@ namespace voice_relay
                 return;
             if (!zombies() || !game::SV_Loaded())
             {
+                eligible_mask = 0;
                 if (server_running)
                     server->reset();
                 server_running = false;
@@ -215,6 +224,7 @@ namespace voice_relay
             const auto* players = *game::svs_clients;
             const auto count = std::min(*game::svs_numclients, voice::state::max_speakers);
             const auto* lobby = game::SV_MainMP_GetServerLobby();
+            eligible_mask = 0;
             for (unsigned slot = 0; slot < current.size(); ++slot)
             {
                 if (!players || !lobby || slot >= count ||
@@ -239,6 +249,7 @@ namespace voice_relay
                     user != lobby->dyn.users[slot].xuid)
                     continue;
                 current[slot] = {user, incarnations[slot], true};
+                eligible_mask |= 1u << slot;
                 addresses[slot] = players[slot].remoteAddress;
                 admitted[slot] = endpoint(addresses[slot]);
             }
@@ -347,12 +358,24 @@ namespace voice_relay
             target = connection->host;
             return true;
         }
+        const char* connection_gate()
+        {
+            const auto* connection = party::get_server_connection_state();
+            if (!zombies()) return "not_zombies";
+            if (game::Com_IsAnyLocalServerRunning()) return "local_game";
+            if (!connection || !connection->hostDefined) return "no_server";
+            if (connection->host.type != game::NA_IP) return "unsupported_address";
+            if (!game::CL_IsGameClientActive(0) ||
+                game::clientUIActives[0].connectionState != game::CA_ACTIVE) return "game_loading";
+            return "no_session";
+        }
         void client_tick()
         {
             std::lock_guard lock(state_mutex);
             game::netadr_s target{};
             if (!installed || !current_connection(target))
             {
+                client_gate = installed ? connection_gate() : "not_installed";
                 reset_client();
                 return;
             }
@@ -360,6 +383,7 @@ namespace voice_relay
             const auto* connection = party::get_server_connection_state();
             if (!selected || !selected->dyn.sessionHandle)
             {
+                client_gate = "no_session";
                 reset_client();
                 return;
             }
@@ -368,6 +392,7 @@ namespace voice_relay
             const int own = engine::own_slot(controller, selected);
             if (!user || own < 0 || own >= static_cast<int>(voice::state::max_speakers))
             {
+                client_gate = !user ? "no_local_identity" : "no_local_slot";
                 reset_client();
                 return;
             }
@@ -408,6 +433,7 @@ namespace voice_relay
                 }
                 if (client->ready() && client->own_slot() != static_cast<unsigned>(local_slot))
                 {
+                    client_gate = "slot_mismatch";
                     reset_client();
                     ++rejected;
                     return;
@@ -453,6 +479,7 @@ namespace voice_relay
                 if (missing)
                     mirror_roster(missing);
             }
+            client_gate = client && client->ready() ? "ready" : "negotiating";
         }
         int queue_encoded(int length, const char* bytes)
         {
@@ -500,12 +527,16 @@ namespace voice_relay
                 "[voice-relay] version=2 installed=%d dedicated=%d ready=%d slot=%d encoded=%llu "
                 "sent=%llu relayed=%llu playback_calls=%llu rejected=%llu muted=%llu "
                 "accepted_joins=%llu registrations=%llu registration_attempts=%llu "
-                "registration_failures=%llu roster_mask=%u native_mask=%u\n",
+                "registration_failures=%llu roster_mask=%u native_mask=%u "
+                "gate=%s voice_enabled=%d packets_received=%llu hellos_sent=%llu confirms_sent=%llu "
+                "server_running=%d eligible_mask=%u voice_peers_mask=%u\n",
                 installed.load(), game::environment::is_dedi(), client && client->ready(),
                 local_slot, encoded.load(), sent.load(), relayed.load(), played.load(),
                 rejected.load(), muted.load(), joins.load(), registrations.load(),
                 registration_attempts.load(), registration_failures.load(), roster_mask,
-                native_mask);
+                native_mask, game::environment::is_dedi() ? "server" : client_gate,
+                voice_enabled(), packets_received.load(), hellos_sent.load(), confirms_sent.load(),
+                server_running, eligible_mask, server ? server->ready_mask() : 0);
         }
     }
     std::uint64_t encoded_frames()
@@ -517,10 +548,17 @@ namespace voice_relay
     public:
         void post_unpack() override
         {
+            command::add("voice_relay_status", status);
             if (!utils::flags::has_flag("iw7-voice-relay"))
+            {
+                client_gate = "disabled_missing_launch_option";
+                console::info("[voice-relay] Disabled: launch Start-IW7-Zombies-Voice.bat "
+                              "or add -iw7-voice-relay. voice_relay_status remains available.\n");
                 return;
+            }
             if (!engine::supported())
             {
+                client_gate = "unsupported_native_signatures";
                 console::error(
                     "[voice-relay] Unsupported native signatures; component disabled. Use "
                     "the supported retail binary.\n");
@@ -559,7 +597,6 @@ namespace voice_relay
                                   "matching clients/server required.\n");
                 },
                 scheduler::main);
-            command::add("voice_relay_status", status);
             if (utils::flags::has_flag("voice-relay-diagnostics"))
                 scheduler::loop(status, scheduler::main, 10s);
         }

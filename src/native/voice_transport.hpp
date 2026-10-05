@@ -95,6 +95,13 @@ namespace voice::transport
         {
             return epoch_;
         }
+        std::uint32_t ready_mask() const
+        {
+            std::uint32_t mask{};
+            for (unsigned slot = 0; slot < peers_.size(); ++slot)
+                if (!peers_[slot].recipient.empty()) mask |= 1u << slot;
+            return mask;
+        }
 
         std::vector<delivery> synchronize(const connections& current, std::uint64_t time)
         {

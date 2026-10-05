@@ -33,6 +33,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_state_te
 if errorlevel 1 exit /b 1
 "$runtime\voice-state-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_launch_test.cpp" /Fe:"$runtime\voice-launch-test.exe" /Fo:"$runtime\voice-launch-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-launch-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_transport_test.cpp" /Fe:"$runtime\voice-transport-test.exe" /Fo:"$runtime\voice-transport-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\voice-transport-test.exe"
@@ -81,6 +85,15 @@ if (!(Test-Path -LiteralPath "$root/.git")) {
 if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
 git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
+$flagsPath = Join-Path $root 'src/common/utils/flags.cpp'
+$baseFlags = (((git -C $root show ($commit + ':src/common/utils/flags.cpp')) -join "`n").TrimEnd()) + "`n"
+$flagsMarker = '`t`t`tLocalFree(argv);'.Replace('`t', "`t")
+if (($baseFlags.Split([string[]]@($flagsMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned flag parser changed.' }
+$playerFlags = $baseFlags.Replace('#include "nt.hpp"', '#include "nt.hpp"' + "`n" + '#include "../../client/component/voice_relay.hpp"').Replace($flagsMarker,
+    "`t`t`tvoice_relay::apply_player_defaults(nt::library{}.get_name(), num_args, flags);`n" + $flagsMarker)
+$currentFlags = [IO.File]::ReadAllText($flagsPath).Replace("`r`n", "`n").TrimEnd() + "`n"
+if ($currentFlags -ne $baseFlags -and $currentFlags -ne $playerFlags) { throw 'Unowned flag parser edits; use an isolated checkout.' }
+[IO.File]::WriteAllText($flagsPath, $playerFlags, [Text.UTF8Encoding]::new($false))
 $properties = Join-Path $root 'src/common/utils/properties.cpp'
 $baseProperties = (((git -C $root show ($commit + ':src/common/utils/properties.cpp')) -join "`n").TrimEnd()) + "`n"
 $labProperties = [IO.File]::ReadAllText("$repo/src/native/paris_lab_properties.cpp").Replace("`r`n", "`n").TrimEnd() + "`n"
@@ -312,6 +325,7 @@ $manifest.VoiceTrace = [bool]$VoiceTrace
 $manifest.TestKickHookSHA256 = (Get-FileHash -LiteralPath $botsPath).Hash
 $manifest.TestHeapHookSHA256 = (Get-FileHash -LiteralPath $arxanPath).Hash
 $manifest.DvarMetadataOverlaySHA256 = (Get-FileHash -LiteralPath $dvarsPath).Hash
+$manifest.PlayerFlagsOverlaySHA256 = (Get-FileHash -LiteralPath $flagsPath).Hash
 $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
