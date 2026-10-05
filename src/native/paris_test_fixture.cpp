@@ -217,9 +217,10 @@ namespace paris_test_fixture
             if (action == "startscreen")
             {
                 static bool confirmed = false;
-                if (!utils::flags::has_flag("paris-isolated-lab") || !connect_pending || confirmed ||
-                    game::Live_SyncOnlineDataFlags(0) == 0) return;
+                if (!utils::flags::has_flag("paris-isolated-lab") || !connect_pending || confirmed) return;
                 confirmed = true;
+                console::info("[Paris title probe] Explicit confirmation; mode=%d sync_flags=%u.\n",
+                    game::Com_GameMode_GetActiveGameMode(), game::Live_SyncOnlineDataFlags(0));
                 // Pinned input.cpp CL_KeyEvent: one explicit title-screen Space
                 // press in this owned process; no OS focus or desktop switch.
                 utils::hook::invoke<void>(0x1409A7980, 0, game::K_SPACE, 1);
