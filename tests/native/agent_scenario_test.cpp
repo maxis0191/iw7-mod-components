@@ -8,6 +8,14 @@ int main()
 {
     using namespace iw7::agent;
     const std::string nonce(32, 'a');
+    std::uint32_t key_offset = 0xFFFFFFFF;
+    assert(movement_key_offset(button::forward, key_offset) && key_offset == 0);
+    assert(movement_key_offset(button::back, key_offset) && key_offset == 0x14);
+    assert(movement_key_offset(button::left, key_offset) && key_offset == 0x50);
+    assert(movement_key_offset(button::right, key_offset) && key_offset == 0x64);
+    assert(!movement_key_offset(button::fire, key_offset) && key_offset == 0x64);
+    assert(!movement_key_offset(button::none, key_offset));
+    assert(!movement_key_offset(static_cast<button>(999), key_offset));
     // Upstream crypto is an independently initialized translation-unit global.
     // The native adapter's global lab_session must not touch it during CRT init.
     unsigned generated{}; bool crypto_ready{};

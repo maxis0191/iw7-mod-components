@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -12,6 +13,24 @@
 namespace iw7::agent
 {
     enum class button : unsigned { forward, back, left, right, jump, melee, use, reload, ads, fire, none };
+    // Read-only adapter layout proven by retail KeyDown/KeyUp and movement
+    // binding cases. This is kbutton state, not a usercmd or gameplay outcome.
+    struct movement_key_snapshot
+    {
+        std::int32_t down[2]{};
+        std::int32_t downtime{}, msec{};
+        std::uint8_t active{}, was_pressed{};
+        std::uint8_t padding[2]{};
+    };
+    static_assert(sizeof(movement_key_snapshot) == 0x14);
+    static_assert(offsetof(movement_key_snapshot, active) == 0x10);
+    inline constexpr std::array<std::uint32_t, 4> movement_key_offsets{0, 0x14, 0x50, 0x64};
+    inline bool movement_key_offset(button key, std::uint32_t& offset)
+    {
+        const auto index = static_cast<unsigned>(key);
+        if (index >= movement_key_offsets.size()) return false;
+        offset = movement_key_offsets[index]; return true;
+    }
     inline constexpr std::array<const char*, 10> bindings{
         "+forward", "+back", "+moveleft", "+moveright", "+gostand", "+melee", "+activate", "+reload", "+speed_throw", "+attack"};
     inline constexpr std::array<std::string_view, 11> names{

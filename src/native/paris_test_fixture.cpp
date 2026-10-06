@@ -10,6 +10,7 @@
 #include <utils/hook.hpp>
 #include <utils/cryptography.hpp>
 #include <format>
+#include <cstring>
 #include "command.hpp"
 #include "party.hpp"
 #include "paris_test_safety.hpp"
@@ -139,6 +140,45 @@ namespace paris_test_fixture
         std::string agent_connection_challenge;
         std::uint64_t agent_last_probe{}, agent_last_ack{};
         bool agent_binding_failed{};
+        void agent_input_snapshot(iw7::agent::button key, const char* phase, const std::string& binding_name)
+        {
+            if (!agent_runtime.client || !utils::flags::has_flag("paris-isolated-lab") ||
+                !utils::flags::has_flag("paris-server-client-test")) return;
+            const auto& ui = game::clientUIActives[0];
+            iw7::agent::movement_key_snapshot state{};
+            std::uint32_t offset{};
+            bool key_valid = iw7::agent::movement_key_offset(key, offset);
+            // Verify the four retail movement cases before reading their static
+            // kbutton data. No pointer from an untrusted mailbox is dereferenced.
+            constexpr std::array<std::uintptr_t, 4> cases{0x14032DA64, 0x14032DA91, 0x14032DABE, 0x14032DAEB};
+            constexpr std::array<std::int32_t, 4> displacements{0x1CB7E96, 0x1CB7E7D, 0x1CB7E8C, 0x1CB7E73};
+            constexpr unsigned char prefix[]{0x48, 0x69, 0xCF, 0x60, 0x04, 0x00, 0x00, 0x48, 0x8D, 0x05};
+            if (key_valid)
+            {
+                const auto index = static_cast<unsigned>(key);
+                std::int32_t displacement{};
+                std::memcpy(&displacement, reinterpret_cast<const void*>(cases[index] + sizeof(prefix)), sizeof(displacement));
+                key_valid = !std::memcmp(reinterpret_cast<const void*>(cases[index]), prefix, sizeof(prefix)) &&
+                    displacement == displacements[index];
+                const auto address = static_cast<std::uintptr_t>(0x141FE5908) + offset;
+                MEMORY_BASIC_INFORMATION region{};
+                if (key_valid)
+                {
+                    key_valid = VirtualQuery(reinterpret_cast<const void*>(address), &region, sizeof(region)) == sizeof(region) &&
+                        region.State == MEM_COMMIT && !(region.Protect & (PAGE_GUARD | PAGE_NOACCESS)) &&
+                        (region.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
+                            PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) &&
+                        address >= reinterpret_cast<std::uintptr_t>(region.BaseAddress) &&
+                        address + sizeof(state) <= reinterpret_cast<std::uintptr_t>(region.BaseAddress) + region.RegionSize;
+                }
+                if (key_valid) std::memcpy(&state, reinterpret_cast<const void*>(address), sizeof(state));
+            }
+            console::info("[Paris agent input] phase=%s seq=%llu step=%llu binding=%s tick_ms=%llu frontend=%u cgame_initialized=%u catchers=%d connection=%d kbutton_valid=%d key0=%d key1=%d active=%u was_pressed=%u downtime=%d msec=%d usercmd=unmeasured\n",
+                phase, agent_runtime.client->sequence(), agent_runtime.client->step(), binding_name.c_str(), GetTickCount64(),
+                static_cast<unsigned>(ui.frontEndSceneState[0]), static_cast<unsigned>(ui.cgameInitialized), ui.keyCatchers,
+                static_cast<int>(ui.connectionState), static_cast<int>(key_valid), state.down[0], state.down[1],
+                static_cast<unsigned>(state.active), static_cast<unsigned>(state.was_pressed), state.downtime, state.msec);
+        }
         void agent_binding(iw7::agent::button key, bool down)
         {
             const auto index = static_cast<unsigned>(key);
@@ -148,7 +188,9 @@ namespace paris_test_fixture
             for (int binding = 0; binding < 118; ++binding)
             {
                 if (!game::command_whitelist[binding] || binding_name != game::command_whitelist[binding]) continue;
+                agent_input_snapshot(key, "before", binding_name);
                 utils::hook::invoke<void>(0x14032A3B0, 0, binding, 210 + static_cast<int>(index), game::Sys_Milliseconds());
+                agent_input_snapshot(key, "after", binding_name);
                 console::info("[Paris agent binding] step=%llu binding=%s down=%d tick_ms=%llu\n",
                     agent_runtime.client->step(), binding_name.c_str(), static_cast<int>(down), GetTickCount64());
                 return;
