@@ -484,7 +484,9 @@ owners do not constitute an exhaustive whole-image reference scan; peer review
 and a passive factory/volume witness remain required before audio acceptance.
 Policy/COM mock tests compile `/W4 /WX` and pass explicit endpoint volume success,
 failure without owner fallback, wrong flow/identity refusal and normal-path
-forwarding. The complete native game translation unit has not been built yet.
+forwarding. The complete isolated native build passed on source `38e15c9`
+(binary SHA-256 prefix `70A0697D`), with the selector inactive during the subsequent
+input witness. Explicit GUID/volume admission and real audio remain unverified.
 
 Default restitution on any returned setup is now independent of optional driver
 rollback. Post-snapshot failure retries twice, then refuses unproven writes;
@@ -495,3 +497,91 @@ rejected by automatic approval review with `blocked by policy`; nothing executed
 Do not retry it through another route or substitute private IPolicyConfig ABI.
 Driver installation remains blocked on a reviewed executable restitution route;
 the GUID adapter and passive bench can advance without installing a driver.
+
+Explicit source renderer is prepared independently under `ops/voice-agent`:
+`render_wave.cpp`, `RenderWave.hpp`, `Render.Core.ps1` and `Play-Source.ps1`.
+It accepts only one active exact CABLE Input endpoint ID/GUID and a hash-verified
+original mono PCM16/16 kHz WAV with at most 240000 frames (15 seconds). No default
+endpoint query, fallback, volume/mute setter or Listen-to-device path exists.
+Source and helper image files remain locked against mutation. The helper validates
+CoreAudio identity again before opening its explicit WASAPI shared render client.
+It uses the endpoint mix format (PCM16 or float32, mono/stereo, 8..192 kHz), records
+rate/channels/bits/encoding, and explicitly interpolates the 16 kHz source while
+duplicating mono into stereo when needed. Unsupported formats refuse playback.
+
+The helper bounds its stream loop to 20 seconds, stops/releases its own client on
+all exits and drains submitted frames before success. The wrapper imposes an
+independent 25-second total watchdog on the exact owned helper handle using the
+existing `OwnedProbe`; it never stops an IW7 process or unrelated child. Fresh
+completion evidence must match source frame count, negotiated format and exact
+converted frame count before its local manifest reports completion. This proves
+buffer submission/drain only, not receiver audibility or intelligibility.
+
+The renderer and pure tests compile `/W4 /WX`. C++ RIFF/header/frame/format and
+known-sample conversion tests pass; PowerShell route and completion tests reject
+inactive/personal/ambiguous endpoints, malformed WAVs, stale/duplicate logs,
+wrong frames, unsupported bounds and fallback markers. No render client has been
+activated. The independent helper builder now compiles both new C++ files and runs
+`tests/ops/voice_agent_render_test.ps1`; both are included in private CI, keeping
+actual streaming out of CI.
+
+Ordinary PTT preparation is separate from historical synthetic probes. Retained
+retail whitelist table `0x1414D1B70` has `+talk` at index 81/string
+`0x1414D2DC8`, and `-talk` at index 82/string `0x1414D2DD0`; no voicerecord name
+appears in its 118 entries. The downstream common table cases 81/82 resolve to
+its no-op epilogue, while a lower MP route maps to `0x140368419`/`0x1403693E9`.
+That initially suggested an unclosed PTT chain, but the ordinary entry has special
+81/82 branches before either lower dispatcher. The ordinary CP/MP producer and
+getter are now statically proven below. The actual audio consumer still needs a
+separate witness before claiming microphone capture or codec input. Do not use
+post-device PCM probes, VAD/PTT dvar overrides or a stale timestamp as substitutes
+for that proof. No PTT or audio action was dispatched during this preparation.
+
+PTT evidence correction: ordinary entry `0x14032A3B0` uses ECX=local client,
+EDX=binding, R8D=physical key and R9D=event time. It compares binding 81 at
+`0x14032A3C7`, before UI checks or game-mode-specific vtable dispatch. The special
+branch uses key structure `0x141FE5B4C + local*0x460`, inserts the key into either
+of its two slots and, if inactive, writes retail timestamp `0x1460053C0` to +0x08
+then word `0x0101` to +0x10/+0x11 at `0x14032A420`. It returns immediately.
+Binding 82 at `0x14032A436` removes only the matching physical key and clears
+active +0x10 only when no other key remains; unmatched releases return unchanged.
+Thus it preserves another held PTT key rather than globally releasing talk.
+
+Getter `0x14036FE40` reads exactly `0x141FE5B5C + local*0x460`, the same active
+byte. This proves the ordinary input-to-PTT-state path for both CP and MP without
+following the obfuscated lower MP object. Root independently reviewed the early
+branches/getter. The earlier statement that a downstream no-op implied an
+unhandled ordinary talk binding was incorrect; the historical source comment
+about talk being handled before MP/SP dispatch was correct. No native source was
+changed for this correction.
+
+Shareable pinned evidence: entry prefix 282 bytes, SHA-256
+`18B3FB9295FC6E85A10255BABC40D0368BCDBE2686351AD9E2384B3BB00C814A`,
+with pdata record RVA begin/end/unwind `0032A3B0/0032A4CA/0171E894` (follow its
+chained ranges for the shared epilogue). The complete 22-byte linear getter
+through RET has SHA-256
+`ED81DBCB75EE924B2DEFDF56E9CDE53E3CC030D9AB3CF925178813A60BC9527A`.
+Its signature is `4863C14869C860040000488D050B5DC7010FB60401C3`; it has no exact
+pdata entry. Raw bytes, chain ranges and ABI are retained only in ignored
+`runtime/voice-agent/ptt-ordinary-contract.local.json`; expected text-reference
+SHA-256 is `5F2953F04A8D5F2A53D1E5A5E076DE8F29D5B5303CA652F2420FEC8D2A6A9138`.
+These are static retained-reference witnesses, not runtime acceptance.
+
+`PTT-Contract.Core.ps1` prepares a pure 200 ms ordinary press/release plan with
+bindings 81/82, one exact owned key and matching process/session evidence. It
+requires typed fresh native identity/protection/UI observations, vacant talk
+slots and inactive PTT. For the state-only bench it additionally requires
+cl_voice disabled, absent native voice initialization/capture interface and no
+audio probe; missing observations refuse rather than implying audio absence.
+Observe getter 0→1→0 with fresh seq/step/tick correlation and release the exact
+owned key on every exit. No action, dvar override, PCM hook or audio stream is
+performed by this plan. Its CP/MP pure refusal tests pass. The actual driver and
+MP protection fixture remain separate implementation work; static mode parity
+does not prove that today's CP-specific safety fixture admits an MP runtime.
+
+`ops/voice-agent/Build-Render.ps1` now compiles only the independent render helper
+and pure tests into a fresh ignored output directory, retains source/executable
+hashes and runs no audio stream. The actual lean Windows `/W4 /WX /RTC1` helper
+build and both C++/PowerShell test sets pass. Exact private-phase commands and
+evidence limits are in `ops/voice-agent/README.md`; no main builder or native source
+was changed for this helper tranche.
