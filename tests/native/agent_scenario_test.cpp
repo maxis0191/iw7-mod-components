@@ -52,8 +52,30 @@ int main()
     assert(!heartbeat_valid(nonce, nonce, nonce, true, 1000, 999, 1000, 999));
     for (unsigned i = 0; i < bindings.size(); ++i)
     {
-        assert(parse(wire("1 1 hold " + std::string(names[i]) + " 5000"), r));
+        assert(parse(wire("1 1 hold " + std::string(names[i]) + (aiming(static_cast<button>(i)) ? " 250" : " 5000")), r));
         assert(static_cast<unsigned>(r.key) == i);
+    }
+    for (auto key : {button::aim_left, button::aim_right, button::aim_up, button::aim_down})
+    {
+        assert((std::string(bindings[static_cast<unsigned>(key)]) == std::array<const char*, 4>{"+left", "+right", "+lookup", "+lookdown"}[static_cast<unsigned>(key) - static_cast<unsigned>(button::aim_left)]));
+        key_probe probe{};
+        assert(key_probe_for(key, probe) && probe.code + 14 + probe.displacement == probe.address);
+        assert(parse(wire("1 1 hold " + std::string(names[static_cast<unsigned>(key)]) + " 250"), r));
+        assert(!parse(wire("1 1 hold " + std::string(names[static_cast<unsigned>(key)]) + " 251"), r));
+        std::vector<std::pair<button, bool>> aim_events;
+        const auto aim_dispatch = [&](button k, bool down) { aim_events.emplace_back(k, down); };
+        scenario aim_run(42, nonce); safety aim_s{true, true, "cp_zmb", 1000};
+        assert(std::string(aim_run.accept({42, nonce, 1, 1, action::arm}, 1000, aim_s, aim_dispatch)) == "armed");
+        assert(std::string(aim_run.accept({42, nonce, 2, 2, action::hold, key, 251}, 1000, aim_s, aim_dispatch)) == "duration_rejected");
+        assert(aim_events.empty());
+        assert(std::string(aim_run.accept({42, nonce, 3, 3, action::hold, key, 250}, 1000, aim_s, aim_dispatch)) == "dispatched");
+        assert(!aim_run.tick(1249, aim_s, aim_dispatch));
+        assert(std::string(aim_run.tick(1250, aim_s, aim_dispatch)) == "step_complete");
+        assert(aim_events.size() == 2 && aim_events.back() == std::make_pair(key, false));
+        assert(std::string(aim_run.accept({42, nonce, 4, 4, action::press, key}, 1250, aim_s, aim_dispatch)) == "dispatched");
+        aim_s.protected_now = false;
+        assert(std::string(aim_run.tick(1251, aim_s, aim_dispatch)) == "protection_lost");
+        assert(!aim_run.active() && !aim_run.pending() && aim_events.back() == std::make_pair(key, false));
     }
     std::vector<std::pair<button, bool>> events;
     const auto dispatch = [&](button key, bool down) { events.emplace_back(key, down); };
