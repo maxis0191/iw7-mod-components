@@ -169,6 +169,21 @@ function Assert-IW7BaseLease($Lease,$Plan,$ServerIdentity) {
         [math]::Abs((([datetimeoffset]$records[0].CreatedUtc)-([datetimeoffset]$ServerIdentity.CreatedUtc)).TotalMilliseconds) -gt 1) { throw 'Registered server identity mismatch.' }
 }
 
+function Get-IW7BaseClientArguments($Plan,[string]$Password) {
+    if ($Password -notmatch '^[a-zA-Z0-9_-]{1,64}$') { throw 'Use a generated private test password.' }
+    if ($Plan.RunPlan.Picmip -notin @(0,2) -or
+        $Plan.ServerPort -lt 27100 -or $Plan.ServerPort -gt 27999 -or
+        $Plan.ClientPort -lt 27100 -or $Plan.ClientPort -gt 27999 -or $Plan.ClientPort -eq $Plan.ServerPort) { throw 'Invalid reserved client launch profile.' }
+    # Match the verified Isolated-Lab startup path. A client +exec in iw7-mod
+    # is not a reliable startup dvar source: retail profile loading can leave
+    # password/graphics at owner defaults. Apply them as startup +set values.
+    # This string contains the private password; never write it to evidence.
+    $picmip=$Plan.RunPlan.Picmip
+    $arguments="-noupdate -nosteam -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_ip 127.0.0.1 +set net_port $($Plan.ClientPort) +set paris_lab_server_port $($Plan.ServerPort) +set password `"$Password`" +set r_fullscreen 0 +set r_mode 1280x720 +set r_vsync 1 +set com_maxfps 30 +set r_picmip $picmip +set r_picmip_bump $picmip +set r_picmip_spec $picmip"
+    if ($Plan.RunPlan.Debugger) { $arguments+=' -paris-debugger' }
+    $arguments
+}
+
 function Start-IW7BaseClient {
     param([Parameter(Mandatory)]$Plan,[Parameter(Mandatory)]$ServerIdentity,[Parameter(Mandatory)][string]$LeaseToken,
         [Parameter(Mandatory)][string]$Password,[Parameter(Mandatory)][string]$OutputRoot)
@@ -216,8 +231,7 @@ function Start-IW7BaseClient {
         $cfg="set password `"$Password`"`nset r_fullscreen 0`nset r_mode 1280x720`nset com_maxfps 30`nset r_vsync 1`nset r_picmip $picmip`nset r_picmip_bump $picmip`nset r_picmip_spec $picmip`n"
         [IO.File]::WriteAllText((Resolve-IW7BasePath $Plan.GameRoot 'iw7-mod/agent-base-client.cfg'),$cfg,[Text.UTF8Encoding]::new($false))
         if (!('IW7LabProcess' -as [type])) { Add-Type -Path "$PSScriptRoot/native/LabProcess.cs" }
-        $args="-noupdate -nosteam -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_port $($Plan.ClientPort) +set paris_lab_server_port $($Plan.ServerPort) +exec agent-base-client.cfg"
-        if ($Plan.RunPlan.Debugger) { $args+=' -paris-debugger' }
+        $args=Get-IW7BaseClientArguments $Plan $Password
         [ordered]@{Image=$Plan.Image;SHA256=$Plan.SHA256;DesktopName=$context.DesktopName;PlannedUtc=[datetime]::UtcNow.ToString('o')} |
             ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'client.launch.local.json')
         $context.Handle=[IW7LabProcess]::StartOwned($Plan.Image,$args,$Plan.GameRoot,(Join-Path $output 'client.stdout.log'),(Join-Path $output 'client.stderr.log'),$context.DesktopName)

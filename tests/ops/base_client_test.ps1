@@ -18,6 +18,19 @@ try {
     Assert-Test ($plan.RunPlan.PhysicalBytes -eq 12GB -and $plan.RunPlan.CommitBytes -eq 12GB) 'Full server/client budget absent.'
     $debug=New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -Debugger
     Assert-Test ($debug.RunPlan.PhysicalBytes -eq 18GB -and $debug.RunPlan.CommitBytes -eq 19GB) 'Debugger overhead omitted.'
+    # A cfg on disk cannot prove startup applies authentication or latched
+    # graphics. Verify the actual launch boundary uses one explicit value per
+    # setting, independently of any existing owner config or exec search path.
+    $fixturePassword=[guid]::NewGuid().ToString('N')
+    $launch=Get-IW7BaseClientArguments $plan $fixturePassword
+    foreach ($setting in @{'password'=('"'+$fixturePassword+'"');'r_picmip'='2';'r_picmip_bump'='2';'r_picmip_spec'='2';'r_fullscreen'='0';'r_mode'='1280x720';'r_vsync'='1';'com_maxfps'='30';'net_ip'='127.0.0.1';'net_port'='27117';'paris_lab_server_port'='27116'}.GetEnumerator()) {
+        $matches=[regex]::Matches($launch,('\+set\s+'+[regex]::Escape($setting.Key)+'\s+("[^"]*"|\S+)'))
+        Assert-Test ($matches.Count -eq 1 -and $matches[0].Groups[1].Value -eq $setting.Value) ('Startup setting absent/ambiguous: '+$setting.Key)
+    }
+    Assert-Test ($launch -notmatch '\+exec\s' -and $launch -notmatch '-paris-debugger') 'Launch still depends on client exec or unreserved debugger.'
+    $fullLaunch=Get-IW7BaseClientArguments $debug $fixturePassword
+    Assert-Test ($fullLaunch -match '\+set r_picmip 0(?:\s|$)' -and $fullLaunch -match '-paris-debugger(?:\s|$)') 'Full/debug reserved profile changed.'
+    Assert-Refused { Get-IW7BaseClientArguments $plan 'unsafe" +set sv_cheats 1' } 'Startup password injection accepted.'
     Assert-Refused { Resolve-IW7BasePath $game '../outside' } 'Traversal accepted.'
     Assert-Refused { New-IW7BaseClientPlan -GameRoot $game -ClientImage $realExe -ServerPort 27116 -ClientPort 27117 } 'External image accepted.'
     Assert-Refused { New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27016 -ClientPort 27117 } 'Main port accepted.'
