@@ -30,6 +30,18 @@ try {
     if ($LASTEXITCODE) { throw 'Live supervisor failed with real target.' }
     $live=@(Get-Content ($output+'.live.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
     if (@($live | Where-Object type -EQ 'sample').Count -lt 1 -or $live[-1].type -ne 'complete') { throw 'Live supervisor did not complete acquisition.' }
+    $childScript=$output+'.exit.ps1'
+    'Start-Sleep -Seconds 4; exit 7' | Set-Content $childScript
+    $child=Start-Process -FilePath $hostProcess.MainModule.FileName -ArgumentList @('-NoProfile','-File',('"'+$childScript+'"')) -WindowStyle Hidden -PassThru
+    try {
+        $childIdentity=(& $observer -Action Identity -ProcessId $child.Id | ConvertFrom-Json)
+        @([ordered]@{name='ExitTest';pid=$child.Id;image=$childIdentity.Image;created_utc=([datetimeoffset]$childIdentity.CreatedUtc).ToString('o');sha256=$childIdentity.SHA256}) | ConvertTo-Json -AsArray | Set-Content ($targetsPath+'.exit') -Encoding utf8
+        & python "$repo/ops/iw7_watch.py" --targets ($targetsPath+'.exit') --seconds 6 --output ($output+'.exit.jsonl') | Out-Null
+        if ($LASTEXITCODE) { throw 'Live exit acquisition failed.' }
+        $exitRows=@(Get-Content ($output+'.exit.jsonl') | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object code -EQ 'process.exit')
+        if ($exitRows.Count -ne 1 -or $exitRows[0].evidence.exit_code -ne '0x7') { throw 'Retained process exit was not captured exactly.' }
+        if (!$child.WaitForExit(12000)) { throw 'Owned test child did not exit naturally.' }
+    } finally { $child.Dispose() }
     . "$repo/ops/Lab-RunPlan.ps1"
     $plain=Get-IW7LabRunPlan -PlannedClients 0
     $debug=Get-IW7LabRunPlan -PlannedClients 0 -Debugger

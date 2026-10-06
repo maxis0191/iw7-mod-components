@@ -179,7 +179,7 @@ def main():
                     rec = target["record"]; name = rec["name"]; obs = target["observer"]; detector = target["detector"]
                     current = obs.sample()
                     if current is None:
-                        for event in detector.alert("process.exit", elapsed, {"identity": obs.identity}): write({"target": name, **event})
+                        for event in detector.alert("process.exit", elapsed, {"identity": obs.identity, 'exit_code': obs.exit_code(), 'meaning': 'Retained-handle process exit; termination/fault causality requires logs or exception evidence.'}): write({"target": name, **event})
                     else:
                         all_exited = False
                         before = target["before"]

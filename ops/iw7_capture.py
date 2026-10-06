@@ -50,6 +50,7 @@ class Observer:
         self.close_handle = function(self.kernel, "CloseHandle", [w.HANDLE], w.BOOL)
         self.get_times = function(self.kernel, "GetProcessTimes", [w.HANDLE] + [c.POINTER(w.FILETIME)] * 4, w.BOOL)
         self.wait = function(self.kernel, "WaitForSingleObject", [w.HANDLE, w.DWORD], w.DWORD)
+        self.get_exit_code = function(self.kernel, 'GetExitCodeProcess', [w.HANDLE, c.POINTER(w.DWORD)], w.BOOL)
         self.memory = function(self.psapi, "GetProcessMemoryInfo", [w.HANDLE, c.POINTER(Memory), w.DWORD], w.BOOL)
         self.performance = function(self.psapi, "GetPerformanceInfo", [c.POINTER(Performance), w.DWORD], w.BOOL)
         self.io = function(self.kernel, "GetProcessIoCounters", [w.HANDLE, c.POINTER(IO)], w.BOOL)
@@ -86,6 +87,12 @@ class Observer:
         if not fn(handle, *(c.byref(x) for x in values)):
             raise c.WinError(c.get_last_error())
         return ticks(values[0]), ticks(values[2]), ticks(values[3])
+
+    def exit_code(self):
+        if self.wait(self.handle, 0) != 0: return None
+        code = w.DWORD()
+        if not self.get_exit_code(self.handle, c.byref(code)): raise c.WinError(c.get_last_error())
+        return hex(code.value)
 
     def threads(self):
         handle = self.snapshot(4, 0)
