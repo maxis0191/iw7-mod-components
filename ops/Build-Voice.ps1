@@ -77,6 +77,15 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib mmdevapi.lib
 if errorlevel 1 exit /b 1
 "$runtime\audio-output-probe.exe" --self-test
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\ops\voice-agent\capture_adapter_test.cpp" /Fe:"$runtime\capture-adapter-test.exe" /Fo:"$runtime\capture-adapter-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\capture-adapter-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_probe_worker_test.cpp" /Fe:"$runtime\audio-probe-worker-test.exe" /Fo:"$runtime\audio-probe-worker-test.obj"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\voice_agent_recorder_test.ps1" -WorkerPath "$runtime\audio-probe-worker-test.exe"
+if errorlevel 1 exit /b 1
 "@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
 if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
@@ -142,7 +151,7 @@ if (Test-Path -LiteralPath $labComponent) {
     if ($currentLabComponent -ne $labProperties) { throw 'Unowned lab component overlay; preserve it and use an isolated native checkout.' }
     Remove-Item -LiteralPath $labComponent
 }
-$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp',
+$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','voice_capture_adapter.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp',
     'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','voice_inbox.hpp','dvar_metadata.hpp','agent_scenario.hpp')
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
 else {
@@ -160,6 +169,11 @@ else {
     }
 }
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
+$copiedVoice=Join-Path $root 'src/client/component/paris_voice.cpp'
+if ($IsolatedLab) {
+    $voiceSource=[IO.File]::ReadAllText($copiedVoice)
+    [IO.File]::WriteAllText($copiedVoice,"#define IW7_PARIS_ISOLATED_VOICE_CAPTURE 1`n"+$voiceSource,[Text.UTF8Encoding]::new($false))
+}
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
@@ -370,6 +384,9 @@ $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and s
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
 $manifest.SessionAliases = 'Temporary duplicate names, server only'
 $manifest.IsolatedLab = [bool]$IsolatedLab
+$manifest.VoiceCaptureSelectorBuild = [bool]$IsolatedLab
+$manifest.VoiceCopiedSourceSHA256 = (Get-FileHash -LiteralPath $copiedVoice).Hash
+$manifest.VoiceSourceTransformation = if ($IsolatedLab) { 'prepend IW7_PARIS_ISOLATED_VOICE_CAPTURE=1; explicit startup admission still required' } else { 'none; selector code excluded' }
 if ($IsolatedLab) {
     $manifest.LabPropertiesSHA256 = (Get-FileHash -LiteralPath $properties).Hash
     $manifest.LabAuthSHA256 = (Get-FileHash -LiteralPath $authPath).Hash
