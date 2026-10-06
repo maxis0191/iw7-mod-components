@@ -42,6 +42,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_launch_t
 if errorlevel 1 exit /b 1
 "$runtime\voice-launch-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\take_chat_test.cpp" /Fe:"$runtime\take-chat-test.exe" /Fo:"$runtime\take-chat-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\take-chat-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_transport_test.cpp" /Fe:"$runtime\voice-transport-test.exe" /Fo:"$runtime\voice-transport-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\voice-transport-test.exe"
@@ -71,7 +75,7 @@ if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
 if ($Sanitizers) {
     $sanitizerCmd = Join-Path $runtime 'compile-voice-sanitizers.cmd'
     $lines = @('@echo off', "call `"$vcvars`" >nul", 'if errorlevel 1 exit /b 1')
-    foreach ($name in @('voice_protocol_test','voice_state_test','voice_launch_test','voice_transport_test','voice_simulation_test','voice_inbox_test','voice_wan_test','dvar_metadata_test')) {
+    foreach ($name in @('voice_protocol_test','voice_state_test','voice_launch_test','take_chat_test','voice_transport_test','voice_simulation_test','voice_inbox_test','voice_wan_test','dvar_metadata_test')) {
         $lines += "cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /Zi /fsanitize=address `"$repo\tests\native\$name.cpp`" /Fe:`"$runtime\$name-asan.exe`" /Fo:`"$runtime\$name-asan.obj`" /Fd:`"$runtime\$name-asan.pdb`" /link /INCREMENTAL:NO"
         $lines += 'if errorlevel 1 exit /b 1'
         $lines += "`"$runtime\$name-asan.exe`""
@@ -130,9 +134,10 @@ if (Test-Path -LiteralPath $labComponent) {
     if ($currentLabComponent -ne $labProperties) { throw 'Unowned lab component overlay; preserve it and use an isolated native checkout.' }
     Remove-Item -LiteralPath $labComponent
 }
-$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp',
+$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp',
     'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','voice_inbox.hpp','dvar_metadata.hpp')
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
+& "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
 # Preserve the engine's metadata API while serializing its cache and keeping it
@@ -336,6 +341,7 @@ $manifest.TestKickHookSHA256 = (Get-FileHash -LiteralPath $botsPath).Hash
 $manifest.TestHeapHookSHA256 = (Get-FileHash -LiteralPath $arxanPath).Hash
 $manifest.DvarMetadataOverlaySHA256 = (Get-FileHash -LiteralPath $dvarsPath).Hash
 $manifest.PlayerFlagsOverlaySHA256 = (Get-FileHash -LiteralPath $flagsPath).Hash
+$manifest.PlayerChatOverlaySHA256 = (Get-FileHash -LiteralPath (Join-Path $root 'src/client/component/logprint.cpp')).Hash
 $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
