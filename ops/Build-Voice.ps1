@@ -102,6 +102,7 @@ if ($Sanitizers) {
     & $sanitizerCmd
     if ($LASTEXITCODE) { throw 'Native AddressSanitizer tests failed.' }
 }
+& "$repo/tests/ops/download_cache_overlay_test.ps1"
 if ($TestsOnly) { return }
 if (!(Test-Path -LiteralPath "$root/.git")) {
     if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }
@@ -176,6 +177,10 @@ if ($IsolatedLab) {
     [IO.File]::WriteAllText($copiedVoice,(Convert-IW7IsolatedVoiceSource $voiceSource),[Text.UTF8Encoding]::new($false))
 }
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
+$downloadCacheOverlay = $null
+if ($commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
+    $downloadCacheOverlay = & "$PSScriptRoot/Apply-DownloadCacheOverlay.ps1" -NativeRoot $root -Commit $commit
+}
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
 # Preserve the engine's metadata API while serializing its cache and keeping it
@@ -362,6 +367,7 @@ $manifestSources = @($nativeSources)
 if ($IsolatedLab) { $manifestSources += 'paris_lab_properties.cpp' }
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
 $manifest.ProjectCommit = (git -C $repo rev-parse HEAD)
+$manifest.DownloadCacheOverlay = $downloadCacheOverlay
 $manifest.ProjectDirty = [bool](git -C $repo status --porcelain)
 # Retain matching symbols before the next rebuild replaces them. These local
 # files enable reliable crash stacks and must never be added to Git.
