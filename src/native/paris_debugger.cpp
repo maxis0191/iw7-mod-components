@@ -71,14 +71,14 @@ namespace paris_debugger
             for (std::size_t id = 0; id < snapshot.size(); ++id)
             {
                 const auto& c = snapshot[id];
-                if (!c.started && !c.calls && !c.failed_clock) continue;
+                if (!c.started && !c.calls && !c.failed_clock && !c.active) continue;
                 const char* category = id >= 0x2100 ? "gsc_region" : id >= 0x1100 ? "gsc_method" : id >= 0x100 ? "gsc_function" : "engine_scope";
                 const auto token = id >= 0x2100 ? id - 0x2100 : id >= 0x1100 ? id - 0x1100 + 0x8000 : id >= 0x100 ? id - 0x100 : id;
                 buffer << "{\"type\":\"timing\",\"tick_ms\":" << tick << ",\"category\":\"" << category
                     << "\",\"id\":" << token << ",\"started\":" << c.started << ",\"calls\":" << c.calls
                     << ",\"total_us\":" << static_cast<double>(c.total_ns) / 1000.0
                     << ",\"max_us\":" << static_cast<double>(c.max_ns) / 1000.0
-                    << ",\"failed_clock\":" << c.failed_clock << "}\n";
+                    << ",\"failed_clock\":" << c.failed_clock << ",\"active\":" << c.active << "}\n";
             }
             const auto text = buffer.str();
             if (bytes + text.size() <= 16 * 1024 * 1024) { output << text; output.flush(); bytes += text.size(); }

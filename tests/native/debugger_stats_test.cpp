@@ -15,6 +15,8 @@ int main()
     assert(result[0].started == 2 && result[0].calls == 2 && result[0].total_ns == 400 && result[0].max_ns == 300);
     assert(result[1].failed_clock == 1 && result[1].calls == 0);
     assert(result[2].started == 1 && result[2].calls == 0);
+    assert(stats.take()[2].active == 1); // Retain a spanning/incomplete scope.
+    assert(stats.end(2, 1, 100)); assert(stats.take()[2].active == 0);
     assert(stats.take()[0].calls == 0);
     std::vector<std::thread> threads;
     for (int t = 0; t < 4; ++t) threads.emplace_back([&] { for (int i = 0; i < 10000; ++i) { stats.begin(3); stats.end(3, 1, 101); } });

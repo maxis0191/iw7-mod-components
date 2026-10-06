@@ -47,7 +47,7 @@ namespace iw7::debugger
     };
     struct counter
     {
-        std::uint64_t started{}, calls{}, total_ns{}, max_ns{}, failed_clock{};
+        std::uint64_t started{}, calls{}, total_ns{}, max_ns{}, failed_clock{}, active{};
     };
     // Fixed storage, consistent snapshots and no lock held across an engine call.
     template <std::size_t N> class counters
@@ -60,6 +60,7 @@ namespace iw7::debugger
             if (id >= N) return false;
             std::lock_guard<std::mutex> lock(mutex_);
             ++values_[id].started;
+            ++values_[id].active;
             return true;
         }
         bool end(std::size_t id, std::uint64_t begin, std::uint64_t end)
@@ -67,6 +68,7 @@ namespace iw7::debugger
             if (id >= N) return false;
             std::lock_guard<std::mutex> lock(mutex_);
             auto& v = values_[id];
+            if (v.active) --v.active;
             if (end < begin) { ++v.failed_clock; return false; }
             const auto ns = end - begin;
             ++v.calls;
@@ -79,7 +81,11 @@ namespace iw7::debugger
         {
             std::lock_guard<std::mutex> lock(mutex_);
             auto copy = values_;
-            values_ = {};
+            for (auto& v : values_)
+            {
+                const auto active = v.active;
+                v = {}; v.active = active;
+            }
             return copy;
         }
     };

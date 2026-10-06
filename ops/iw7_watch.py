@@ -50,6 +50,8 @@ class Detector:
         self.last_alert = {}
         self.server_idle = False
         self.phase = None
+        self.frame_low = {}
+        self.unreturned = {}
 
     def alert(self, code, now, evidence, confidence="symptom", interval=10):
         if now - self.last_alert.get(code, -100000) < interval:
@@ -87,6 +89,11 @@ class Detector:
         return result
 
     def native(self, row, now):
+        if row.get('type') == 'timing':
+            key = str(row.get('category'))+'.'+str(row.get('id'))
+            self.unreturned[key] = self.unreturned.get(key, 0) + 1 if row.get('active', 0) and not row.get('calls', 0) else 0
+            if now >= self.warmup and self.unreturned[key] >= 3 and not (self.server_idle and row.get('category', '').startswith('gsc_')):
+                return self.alert('scope.unreturned.'+key, now, {'active': row['active'], 'meaning': 'Unreturned scope or interrupted VM invocation; waits/loading are possible. Correlate CPU and a fresh all-thread snapshot.'}, 'hypothesis')
         if row.get("type") == "server_ticks":
             if row.get("resets") or self.server_idle or now < self.warmup or row.get("game_time_ms", -1) < 0:
                 self.tick_low = 0; return []
@@ -100,17 +107,28 @@ class Detector:
                                "meaning": "Inclusive wall time. Waits and nested calls are included; this is not proof of an abnormal loop."})
         elif row.get('type') == 'render_window' and row.get('max_interval_ms', 0) > self.frame_budget * 2:
             return self.alert('render.callback_spike', now, {k: row.get(k) for k in ('swapchain_slot', 'callback_rate_fps', 'max_interval_ms', 'meaning')})
+        elif row.get('type') == 'render_window':
+            return self.cadence(row.get('callback_rate_fps', 0), now, 'callback.'+str(row.get('swapchain_slot')), row.get('meaning'))
         elif row.get('type') == 'gpu_budget' and row.get('hresult') == 0 and row.get('budget_bytes', 0) > 0 and row.get('usage_bytes', 0) > row['budget_bytes'] * .9:
             return self.alert('gpu.process_budget_pressure', now, {k: row[k] for k in ('usage_bytes', 'budget_bytes', 'meaning')})
+        elif row.get('type') == 'gpu_budget' and row.get('hresult') != 0:
+            return self.alert('coverage.gpu_budget', now, {'hresult': row.get('hresult'), 'meaning': 'Process DXGI budget query failed; no valid VRAM metric.'}, 'coverage', 30)
         return []
 
-    def presents(self, frames, now):
+    def cadence(self, rate, now, channel, meaning):
+        if now < self.warmup: return []
+        self.frame_low[channel] = self.frame_low.get(channel, 0) + 1 if rate < .8 * 1000 / self.frame_budget else 0
+        if self.frame_low[channel] >= 5:
+            return self.alert('render.cadence_drop.'+channel, now, {'rate': rate, 'channel': channel, 'meaning': meaning, 'expected_rate': 1000 / self.frame_budget})
+        return []
+
+    def presents(self, frames, now, channel='present'):
         positive = [x for x in frames if x > 0 and math.isfinite(x)]
         if positive and max(positive) > self.frame_budget * 2:
             return self.alert("render.frame_spike", now, {"frames": len(positive), "max_frame_ms": max(positive),
                               "budget_ms": self.frame_budget, "instantaneous_fps_at_spike": 1000 / max(positive),
                               "meaning": "PresentMon presentation interval; loading/minimization are separate phases."})
-        return []
+        return self.cadence(len(positive) * 1000 / sum(positive), now, channel, 'Present intervals; correlate phase, occlusion and native render cadence.') if positive else []
 
 
 def main():
@@ -231,7 +249,7 @@ def main():
                         for (process_id, swapchain), intervals in frames.items():
                             target = next(t for t in targets if t['record']['pid'] == process_id)
                             write({"type": "present_window", "target": target['record']['name'], 'swapchain': swapchain, "frames": len(intervals), "mean_ms": sum(intervals) / len(intervals), "max_ms": max(intervals), "present_rate_fps": len(intervals) * 1000 / sum(intervals)})
-                            for event in target["detector"].presents(intervals, elapsed): write({'target': target['record']['name'], 'swapchain': swapchain, **event})
+                            for event in target["detector"].presents(intervals, elapsed, 'present.'+swapchain): write({'target': target['record']['name'], 'swapchain': swapchain, **event})
                     elif elapsed > 15:
                         for event in targets[-1]["detector"].alert("coverage.present_gap", elapsed, {"meaning": "No fresh presentations; missing access, loading, occlusion or collection failure."}): write(event)
                 if smi and samples % 5 == 0:

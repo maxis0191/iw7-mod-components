@@ -209,7 +209,7 @@ class DebuggerTests(unittest.TestCase):
     def test_renderer_and_gpu_alerts_preserve_semantics(self):
         detector = watch.Detector()
         self.assertTrue(detector.native({'type': 'render_window', 'max_interval_ms': 100, 'callback_rate_fps': 30}, 50))
-        self.assertFalse(detector.native({'type': 'gpu_budget', 'hresult': -1, 'budget_bytes': 100, 'usage_bytes': 99}, 50))
+        self.assertEqual(detector.native({'type': 'gpu_budget', 'hresult': -1, 'budget_bytes': 100, 'usage_bytes': 99}, 50)[0]['code'], 'coverage.gpu_budget')
         self.assertEqual(detector.native({'type': 'gpu_budget', 'hresult': 0, 'budget_bytes': 100, 'usage_bytes': 99, 'meaning': 'process budget'}, 50)[0]['code'], 'gpu.process_budget_pressure')
 
     def test_renderer_metrics_do_not_become_displayed_fps(self):
@@ -217,6 +217,20 @@ class DebuggerTests(unittest.TestCase):
         report = dbg.perf_report(path)
         self.assertEqual(report['metrics']['Client:renderer_0:callback_rate_fps']['mean'], 30)
         self.assertFalse(any('present_rate_fps' in k for k in report['metrics']))
+
+    def test_sustained_render_drop_is_per_channel(self):
+        detector = watch.Detector(frame_budget_ms=33.34, warmup=0)
+        for i in range(4):
+            self.assertFalse(detector.native({'type': 'render_window', 'callback_rate_fps': 20, 'max_interval_ms': 50, 'swapchain_slot': 0}, i))
+            self.assertFalse(detector.native({'type': 'render_window', 'callback_rate_fps': 30, 'max_interval_ms': 34, 'swapchain_slot': 1}, i))
+        self.assertTrue(detector.native({'type': 'render_window', 'callback_rate_fps': 20, 'max_interval_ms': 50, 'swapchain_slot': 0}, 5))
+
+    def test_unreturned_scope_requires_repetition_and_is_hypothesis(self):
+        detector = watch.Detector(warmup=0)
+        row = {'type': 'timing', 'category': 'engine_scope', 'id': 1, 'active': 1, 'calls': 0}
+        self.assertFalse(detector.native(row, 1)); self.assertFalse(detector.native(row, 2))
+        self.assertEqual(detector.native(row, 3)[0]['confidence'], 'hypothesis')
+        self.assertFalse(detector.native({**row, 'active': 0, 'calls': 1}, 4))
 
     def test_invalid_pdb_directory(self):
         data = bytearray(make_pdb()); struct.pack_into("<I", data, 2 * 512, 99999)
