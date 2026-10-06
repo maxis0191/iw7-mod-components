@@ -17,11 +17,129 @@
 #include "paris_voice_protocol.hpp"
 #include "paris_test_safety.hpp"
 #include "voice_relay.hpp"
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+#include "voice_capture_adapter.hpp"
+#include <utils/io.hpp>
+#include <shellapi.h>
+#include <sstream>
+#endif
 
 namespace paris_voice
 {
     namespace
     {
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+        iw7_voice_capture_plan::context selected_capture;
+        std::wstring selected_endpoint;
+        HANDLE selected_image_guard=INVALID_HANDLE_VALUE;
+        iw7_voice_capture_plan::factory selected_original_factory{};
+        std::wstring capture_argument(const wchar_t* prefix,bool* present=nullptr)
+        {
+            int count{};auto** args=CommandLineToArgvW(GetCommandLineW(),&count);
+            if (!args) throw std::runtime_error("Voice capture command line unavailable");
+            std::wstring result;unsigned matches{};
+            for (int i=1;i<count;++i) if (std::wcsncmp(args[i],prefix,std::wcslen(prefix)) == 0)
+            { ++matches;result=args[i]+std::wcslen(prefix); }
+            LocalFree(args);
+            if (matches > 1) throw std::runtime_error("Duplicate voice capture selector");
+            if (present) *present=matches == 1;
+            return result;
+        }
+        bool capture_owned_identity()
+        {
+            std::string session;
+            if (!utils::io::read_file("iw7-mod/paris-agent.session",&session) || session.size() > 96 || session.empty() || session.back() != '\n') return false;
+            std::istringstream record(session);DWORD pid{};std::string nonce,extra;
+            record>>pid>>nonce;
+            if (pid != GetCurrentProcessId() || nonce.size() != 32 || record>>extra ||
+                nonce.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) return false;
+            FILETIME creation{},exit{},kernel{},user{};WIN32_FILE_ATTRIBUTE_DATA file{};
+            if (!GetProcessTimes(GetCurrentProcess(),&creation,&exit,&kernel,&user) ||
+                !GetFileAttributesExW(L"iw7-mod/paris-agent.session",GetFileExInfoStandard,&file) ||
+                (file.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) || CompareFileTime(&file.ftLastWriteTime,&creation) < 0) return false;
+            return selected_image_guard != INVALID_HANDLE_VALUE;
+        }
+        bool refresh_selected_capture()
+        {
+            selected_capture.owned_identity=capture_owned_identity();
+            return iw7_voice_capture_plan::correlate_endpoint(selected_capture,selected_endpoint);
+        }
+        HRESULT WINAPI selected_capture_factory(LPCGUID guid,LPDIRECTSOUNDCAPTURE* output,LPUNKNOWN outer)
+        {
+            return iw7_voice_capture_plan::guard_hresult([&]() -> HRESULT {
+            const auto original=selected_original_factory;
+            if (*reinterpret_cast<iw7_voice_capture_plan::factory*>(0x14B2B2EA0) != original) return DSERR_INVALIDPARAM;
+            if (!refresh_selected_capture()) return DSERR_INVALIDPARAM;
+            const auto result=iw7_voice_capture_plan::dispatch(selected_capture,original,guid,output,outer);
+            console::info("[paris-voice-capture] factory pid=%lu explicit=1 HRESULT=0x%08X core=%u directsound=%u tick_ms=%llu\n",
+                GetCurrentProcessId(),static_cast<unsigned>(result),selected_capture.core_matches,selected_capture.directsound_matches,GetTickCount64());
+            return result;
+            },DSERR_INVALIDPARAM);
+        }
+        HRESULT selected_volume_endpoint(IMMDeviceEnumerator* enumerator,EDataFlow flow,ERole role,IMMDevice** output)
+        {
+            if (output) *output=nullptr;
+            return iw7_voice_capture_plan::guard_hresult([&]() -> HRESULT {
+            if (!refresh_selected_capture()) { if (output) *output=nullptr;return E_INVALIDARG; }
+            return iw7_voice_capture_plan::volume_endpoint(selected_capture,enumerator,flow,role,output,selected_endpoint);
+            },E_INVALIDARG);
+        }
+        void install_capture_selector()
+        {
+            bool guid_present{},port_present{},endpoint_present{},hash_present{};
+            const auto guid=capture_argument(L"-paris-lab-capture-guid=",&guid_present);
+            const auto port=capture_argument(L"-paris-lab-capture-port=",&port_present);
+            selected_endpoint=capture_argument(L"-paris-lab-capture-endpoint=",&endpoint_present);
+            const auto expected_hash=capture_argument(L"-paris-lab-capture-image-sha256=",&hash_present);
+            const auto intent=iw7_voice_capture_plan::selector_intent(guid_present,!guid.empty(),port_present || endpoint_present || hash_present);
+            if (intent == iw7_voice_capture_plan::intent::ordinary) return;
+            if (intent == iw7_voice_capture_plan::intent::invalid) throw std::runtime_error("Empty/orphaned capture selector refused");
+            selected_capture.requested=true;selected_capture.isolated_build=true;
+            selected_capture.client_test_flag=utils::flags::has_flag("paris-server-client-test") && !game::environment::is_dedi();
+            selected_capture.isolated_flag=utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab");
+            std::string marker;selected_capture.marker_verified=utils::io::read_file("iw7-mod/paris-isolated-lab.marker",&marker) && marker == "iw7-paris-isolated-lab-v1";
+            if (port.empty() || port.size() != 5 || port.find_first_not_of(L"0123456789") != std::wstring::npos) throw std::runtime_error("Explicit voice capture test port required");
+            selected_capture.server_port=static_cast<unsigned>(std::stoul(port));
+            if (selected_endpoint.empty() || selected_endpoint.size() > 512 || FAILED(CLSIDFromString(guid.c_str(),&selected_capture.endpoint_guid))) throw std::runtime_error("Explicit capture endpoint/GUID invalid");
+            wchar_t image[MAX_PATH]{};
+            const auto length=GetModuleFileNameW(nullptr,image,MAX_PATH);
+            if (!length || length >= MAX_PATH || expected_hash.size() != 64 || expected_hash.find_first_not_of(L"0123456789abcdefABCDEF") != std::wstring::npos) throw std::runtime_error("Capture image identity missing");
+            selected_image_guard=CreateFileW(image,GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+            LARGE_INTEGER size{};
+            if (selected_image_guard == INVALID_HANDLE_VALUE || !GetFileSizeEx(selected_image_guard,&size) || size.QuadPart <= 0 || size.QuadPart > 64*1024*1024) throw std::runtime_error("Capture image cannot be retained");
+            std::string bytes(static_cast<size_t>(size.QuadPart),'\0');DWORD read{};
+            if (!ReadFile(selected_image_guard,bytes.data(),static_cast<DWORD>(bytes.size()),&read,nullptr) || read != bytes.size()) throw std::runtime_error("Capture image identity read failed");
+            const auto hash=utils::cryptography::sha256::compute(bytes,true);
+            const std::wstring actual_hash(hash.begin(),hash.end());
+            if (_wcsicmp(actual_hash.c_str(),expected_hash.c_str()) != 0) throw std::runtime_error("Capture image hash mismatch");
+            selected_capture.expected_output=reinterpret_cast<LPDIRECTSOUNDCAPTURE*>(0x145D5DC48);
+            // Selector must precede either initialization: never retain/rebind an
+            // existing owner capture or default endpoint-volume object.
+            if (*selected_capture.expected_output || *reinterpret_cast<void**>(0x1477A0190) ||
+                *reinterpret_cast<const int*>(0x1477A0188) != 0) throw std::runtime_error("Capture/volume already initialized; selector refused");
+            selected_capture.signatures_verified=
+                std::memcmp(reinterpret_cast<const void*>(0x140B7A082),"\x45\x33\xc0\x48\x89\x05\xcc\x3b\x1e\x05\x48\x8d\x15\xb5\x3b\x1e\x05\x33\xc9\xe8\x74\x3e\x64\x00",24) == 0 &&
+                std::memcmp(reinterpret_cast<const void*>(0x1411BDF0E),"\xff\x25\x8c\x4f\x0f\x0a",6) == 0 &&
+                std::memcmp(reinterpret_cast<const void*>(0x140D5A34B),"\x4c\x8d\x4c\x24\x50\x45\x33\xc0\x48\x8b\x01\x41\x8d\x50\x01\xff\x50\x20\x85\xc0\x78\xdb",22) == 0;
+            const auto dsound=GetModuleHandleW(L"dsound.dll");
+            selected_original_factory=dsound ? reinterpret_cast<iw7_voice_capture_plan::factory>(GetProcAddress(dsound,MAKEINTRESOURCEA(6))) : nullptr;
+            selected_capture.signatures_verified=selected_capture.signatures_verified && selected_original_factory &&
+                *reinterpret_cast<iw7_voice_capture_plan::factory*>(0x14B2B2EA0) == selected_original_factory;
+            // Session is created by the client test component during post_unpack;
+            // factory/volume calls require its fresh identity, not this early phase.
+            selected_capture.owned_identity=true;
+            if (!iw7_voice_capture_plan::correlate_endpoint(selected_capture,selected_endpoint)) throw std::runtime_error("Capture selector admission refused");
+            utils::hook::call(0x140B7A095,reinterpret_cast<void*>(selected_capture_factory));
+            const auto stub=utils::hook::assemble([](utils::hook::assembler& a)
+            {
+                const auto success=a.newLabel();
+                a.call(reinterpret_cast<void*>(selected_volume_endpoint));a.test(eax,eax);a.jns(success);
+                a.jmp(0x140D5A33C);a.bind(success);a.jmp(0x140D5A361);
+            });
+            utils::hook::jump(0x140D5A35A,stub);utils::hook::nop(0x140D5A35F,2);
+            console::info("[paris-voice-capture] Explicit lab factory/volume selector installed pid=%lu; defaults/gain untouched.\n",GetCurrentProcessId());
+        }
+#endif
         // Config "set" may create a string dvar. Read only the union member
         // matching its type, so string "0" cannot be mistaken for its pointer.
         bool read_module_enabled(const game::dvar_t* setting)
@@ -904,6 +1022,9 @@ namespace paris_voice
     public:
         void post_unpack() override
         {
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            install_capture_selector();
+#endif
             native_trace = utils::flags::has_flag("paris-voice-native-trace");
             // The generic component owns the queue in its opt-in profile. Keep
             // only independent forwarding diagnostics for the private harness.

@@ -1,0 +1,568 @@
+{
+  "schema": "iw7.agent-capacity-inventory/1",
+  "status": "research-only-incomplete-not-ready",
+  "retail_agent_capacity": 24,
+  "requested_agent_capacity": 48,
+  "image_base": "0x140000000",
+  "metadata_reconstruction": {
+    "reason": "Owned uncommitted JSON truncated after cp1252 encoding error; empty copy preserved locally before repair.",
+    "sources": [
+      "docs/AGENT-CAPACITY.md",
+      "docs/RUSH-AUDIT.md",
+      "runtime/agent-capacity/light-reading-20261006.json",
+      "runtime/agent-capacity/xref-owners-20261006.json",
+      "runtime/agent-capacity/xref-owners-priority-20261006-225800.json",
+      "runtime/agent-capacity/allocator-selected-next.log"
+    ],
+    "missing_prior_metadata": "unknown; no byte-for-byte recovery claimed",
+    "readiness": false
+  },
+  "evidence": {
+    "unpacked-text.bin": {
+      "bytes": 21135360,
+      "sha256": "5f2953f04a8d5f2a53d1e5a5e076de8f29d5b5303ca652f2420fec8d2a6a9138",
+      "scope": "existing retained capture; not current runtime binary identity"
+    },
+    "unpacked-rdata.bin": {
+      "bytes": 3194880,
+      "sha256": "28b66189c1f35442d3e32ea5077e785e7cb8fbf45ed420094dc6b2795afd04e5",
+      "scope": "existing retained capture; not current runtime binary identity"
+    },
+    "unpacked-pdata.bin": {
+      "bytes": 832608,
+      "sha256": "8ff97607018c0c531a9d6851282701074a50b141729060f9f23ae728c9fad41e",
+      "scope": "existing retained capture; not current runtime binary identity"
+    },
+    "live-text.bin": {
+      "bytes": 19922944,
+      "sha256": "b01cab22729377e67bf9ba1d092a76677afa945ebbf3e5a0b6efd9a9b506627a",
+      "scope": "historical failed64 candidate; immutable retained evidence"
+    },
+    "agent-64-crash.dmp": {
+      "bytes": 796125,
+      "sha256": "e51f2e4bb91cd38d3785aa994821b827f79bf5e2e209ca4690faeebdc697bc6c",
+      "scope": "historical failed64 candidate; immutable retained evidence"
+    }
+  },
+  "constraints": [
+    {
+      "id": "selector",
+      "owner_or_leaf": "0x140c18d00",
+      "observation": "limit24 atC18D76",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "setup",
+      "owner_or_leaf": "0x140c19b00",
+      "observation": "byte GameStateInfo+546 atC19B22",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "mode_ranges",
+      "owner_or_leaf": "0x1405affc0",
+      "observation": "18/42/58 globals144C6F20C/208/210; corpse partition unknown",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "server_agent_pool",
+      "owner_or_leaf": "0x140449450",
+      "observation": "pool143C986B8 count143C986C0 stride5010; entity pointer+190 then+4D10",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "sv_agent_pool",
+      "owner_or_leaf": "0x140c18dc0",
+      "observation": "pool146B2C508 stride3F08 and leafC1A290",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "character_reference_read",
+      "owner_or_leaf": "0x140449260",
+      "observation": "table143F9B358 rows42 stride40",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "character_reference_write",
+      "owner_or_leaf": "0x140449330",
+      "observation": "table143F9B358 rows42 stride40",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "agent_reference_restore",
+      "owner_or_leaf": "0x1404494e0",
+      "observation": "null0,index1..24 limit4494FB",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "entity_classification",
+      "owner_or_leaf": "0x140073c90",
+      "observation": "map prefix144C6F210; exclusive upper2046",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "client_character_storage",
+      "owner_or_leaf": "0x1401823c0",
+      "observation": "loop count144C6F208; indexed bytescontext+86B17; allocation bounds unknown",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "client_character_lookup",
+      "owner_or_leaf": "0x140184660",
+      "observation": "limit42 at18466E",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "sv_allocation",
+      "owner_or_leaf": "0x140c1a190",
+      "observation": "count*3F08+count*88; context146B22AC8 pointer+28/count+30",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "character_table_allocation",
+      "owner_or_leaf": "0x140b1f4e0",
+      "observation": "tag2 and486E70 tag1 reserveA88=8+42*40; mode assignment unconfirmed",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    },
+    {
+      "id": "character_table_constructor",
+      "owner_or_leaf": "0x140434fb0",
+      "observation": "42 rows stride40; wrapper4491E0; Ghidra type inference not authoritative",
+      "confidence": "retained instruction evidence described in AGENT-CAPACITY; not current runtime acceptance"
+    }
+  ],
+  "historical_crash": {
+    "rip": "0x14044949a",
+    "null_read_target": "0x4d10",
+    "entity_index": 58,
+    "entity_stride": 1016,
+    "g_entities": "0x143d22610",
+    "source": "docs/AGENT-CAPACITY.md and retained minidump; no new runtime"
+  },
+  "unresolved": [
+    "complete allocation/free/reset of5010 pool",
+    "lifetime/producers of3F8 entities and+190 pointers",
+    "corpse partition42..58 and recycle",
+    "snapshot codec/schema and bit width",
+    "client allocation/initialization/model/animation bounds",
+    "CP/MP routing of tag1/2 and GameStateInfo",
+    "old metadata fields not recoverable exactly"
+  ],
+  "wire_policy": {
+    "width": "unknown",
+    "six_bits_demonstrated": false,
+    "existing_compatibility48": "unknown",
+    "release_ready": false
+  },
+  "lightweight_reading": {
+    "schema": "iw7.agent-capacity-light-reading/1",
+    "input_hashes": {
+      "unpacked-text.bin": "5f2953f04a8d5f2a53d1e5a5e076de8f29d5b5303ca652f2420fec8d2a6a9138",
+      "unpacked-rdata.bin": "28b66189c1f35442d3e32ea5077e785e7cb8fbf45ed420094dc6b2795afd04e5",
+      "unpacked-pdata.bin": "8ff97607018c0c531a9d6851282701074a50b141729060f9f23ae728c9fad41e"
+    },
+    "slices": [
+      {
+        "name": "map_entity_index_predicate",
+        "start": "0x140073c90",
+        "end": "0x140073ca9",
+        "bytes": 25,
+        "signature_sha256": "c329f416ec2445c207ebd1349e23e6b2df7fbe2e698c39a2cc6dc4478af11e57",
+        "pdata_owners": [],
+        "ownership": "leaf-both-return-paths-no-pdata"
+      },
+      {
+        "name": "entity_type_6_or_14_predicate",
+        "start": "0x140073cc0",
+        "end": "0x140073cd1",
+        "bytes": 17,
+        "signature_sha256": "77e5d344af50b50c5804c7a75588b24ff00c5e46dc650392a85c519b32762737",
+        "pdata_owners": [],
+        "ownership": "leaf-both-return-paths-no-pdata"
+      },
+      {
+        "name": "entity_type_predicate_wrapper",
+        "start": "0x140449430",
+        "end": "0x14044944a",
+        "bytes": 26,
+        "signature_sha256": "222c979f7023a46b7dfd72232ca8688c35ba717ad47b18771538829fa959f11c",
+        "pdata_owners": [
+          {
+            "start": "0x140449430",
+            "end": "0x14044944a",
+            "unwind_rva": "0x1650bf4"
+          }
+        ],
+        "ownership": "complete-unwind-owner"
+      }
+    ],
+    "rdata_candidate_count": 2,
+    "rdata_candidates": [
+      {
+        "address": "0x141445b50",
+        "name": "clientNum",
+        "rdata_direct_pointer_sites": []
+      },
+      {
+        "address": "0x1414491c8",
+        "name": "number",
+        "rdata_direct_pointer_sites": []
+      }
+    ],
+    "verified_wire_codec_roots": [],
+    "wire_width_status": "unknown",
+    "limits": "Names/direct pointers only; no text-wide scan, RVA/relative references or writable data captured."
+  },
+  "bounded_xref_pass": {
+    "input_hashes": {
+      "unpacked-text.bin": "5f2953f04a8d5f2a53d1e5a5e076de8f29d5b5303ca652f2420fec8d2a6a9138",
+      "unpacked-rdata.bin": "28b66189c1f35442d3e32ea5077e785e7cb8fbf45ed420094dc6b2795afd04e5",
+      "unpacked-pdata.bin": "8ff97607018c0c531a9d6851282701074a50b141729060f9f23ae728c9fad41e"
+    },
+    "matching_owners": 149,
+    "decoded_bytes": 19046142,
+    "incomplete_records": 4239,
+    "unresolved_unwind_records": 0
+  },
+  "selected_allocator_decompilation": {
+    "status": "parent-completed-lease-released",
+    "derived_output": "runtime/agent-capacity/allocator-selected-next.c",
+    "derived_log": "runtime/agent-capacity/allocator-selected-next.log",
+    "owners": [
+      {
+        "name": "sv_agent_allocation",
+        "start": "0x140c1a190",
+        "end_exclusive": "0x140c1a21e",
+        "union_bytes": 142
+      },
+      {
+        "name": "character_table_init_tag2",
+        "start": "0x140b1f4e0",
+        "end_exclusive": "0x140b1f884",
+        "union_bytes": 932
+      },
+      {
+        "name": "character_table_constructor",
+        "start": "0x1404491e0",
+        "end_exclusive": "0x140449201",
+        "union_bytes": 33
+      },
+      {
+        "name": "character_table_base_constructor",
+        "start": "0x140434fb0",
+        "end_exclusive": "0x140435025",
+        "union_bytes": 117
+      },
+      {
+        "name": "capacity_reset",
+        "start": "0x1405b00b0",
+        "end_exclusive": "0x1405b0108",
+        "union_bytes": 88
+      },
+      {
+        "name": "character_table_init_tag1",
+        "start": "0x140486e70",
+        "end_exclusive": "0x140487223",
+        "union_bytes": 947
+      },
+      {
+        "name": "agent_reference_collector",
+        "start": "0x140449450",
+        "end_exclusive": "0x1404494d7",
+        "union_bytes": 135
+      },
+      {
+        "name": "client_character_storage",
+        "start": "0x1401823c0",
+        "end_exclusive": "0x140183488",
+        "union_bytes": 4296
+      }
+    ],
+    "function_list_sha256": "6e48b4d9213f61eda1b45988359e5f1cad652914b48a39353a99d4ba96348640",
+    "owner_script_sha256": "54112210445b4bd37330e7e0fa2892db02bfe5cc9c3be0f14f1898810ee86314"
+  },
+  "priority_pool_caller_reading": {
+    "source_report": "runtime/agent-capacity/xref-owners-priority-20261006-225800.json",
+    "derived_bounded_reading": "runtime/agent-capacity/pool-caller-light-20261007.json",
+    "candidate_count": 167,
+    "selected_count": 32,
+    "incomplete_records": 4239,
+    "unresolved_unwind_records": 0,
+    "facts": [
+      {
+        "owner": "0x140c56a90",
+        "callsite": "0x140c56b76",
+        "callee": "0x140c1a190",
+        "count_source": "GameStateInfo.agentMaxCount byte+546 viaE7AD70 when6E6770predicate permits; caller-context+CF active forces0",
+        "allocator_argument": "146B22A80"
+      },
+      {
+        "owner": "0x140c56be0",
+        "leaf_size": "0x140c1a230",
+        "reservation": "align128(count*3F08)+align128(count*88); leaf26bytes endsC1A24B no pdata"
+      },
+      {
+        "owner": "0x140445fe0",
+        "partition": "index18; B8agent(index-18)*5010+4CFC vs lower-index pool7218+71C0"
+      },
+      {
+        "owner": "0x140449600",
+        "bound": "non-null agent-reference pointer converted to indexplus1 and guardindex<=24"
+      },
+      {
+        "owners": [
+          "0x1400ba830",
+          "0x1400bb710"
+        ],
+        "distinct_pool": "B0 stride1F88 forpointerfield+198;4byte transfer; context not certified network"
+      }
+    ],
+    "next_function_list": "ops/agent-capacity/pool-caller-functions.csv",
+    "patch_ready": false
+  },
+  "validation_limit": "No engine patch/build/game by this capacity work. Parent admitted selected Ghidra/full xref completed; static evidence remains incomplete for48.",
+  "selected_pool_caller_decompilation": {
+    "status": "parent-completed-lease-released",
+    "derived_output": "runtime/agent-capacity/pool-caller-selected-20261007.c",
+    "derived_log": "runtime/agent-capacity/pool-caller-selected-20261007.log",
+    "function_list_sha256": "4a6ddf8cdd7c60b77131028c6007813d2a3c498ac62452d0d3bfd4d524b63520",
+    "output_sha256": "db5e1ac46caf7d4fe76dc84af362db217f525e8ccaee0e448b886dc14bd28fae",
+    "owners": [
+      {
+        "role": "sv_memory_count_caller",
+        "start": "0x140c56a90",
+        "end_exclusive": "0x140c56bdb",
+        "union_bytes": 331
+      },
+      {
+        "role": "sv_memory_reservation",
+        "start": "0x140c56be0",
+        "end_exclusive": "0x140c56c79",
+        "union_bytes": 153
+      },
+      {
+        "role": "server_fixed_memory_size",
+        "start": "0x140b205a0",
+        "end_exclusive": "0x140b205e2",
+        "union_bytes": 66
+      },
+      {
+        "role": "agent_reference_encode",
+        "start": "0x140449600",
+        "end_exclusive": "0x140449727",
+        "union_bytes": 295
+      },
+      {
+        "role": "agent_entity_index_consumer",
+        "start": "0x140445fe0",
+        "end_exclusive": "0x140446041",
+        "union_bytes": 97
+      },
+      {
+        "role": "server_frame_agent_consumer",
+        "start": "0x140b213f0",
+        "end_exclusive": "0x140b2198c",
+        "union_bytes": 1436
+      },
+      {
+        "role": "pointer_reference_restore",
+        "start": "0x1400ba830",
+        "end_exclusive": "0x1400bb4dc",
+        "union_bytes": 3244
+      },
+      {
+        "role": "pointer_reference_store",
+        "start": "0x1400bb710",
+        "end_exclusive": "0x1400bc174",
+        "union_bytes": 2660
+      }
+    ],
+    "facts": [
+      {
+        "owner": "0x140c56a90",
+        "proof": "Same gated individual GameStateInfo byte+0x546 supplies arena reservation and SV allocator; caller-context+0xCF forces zero. Mode and producer of byte remain unresolved."
+      },
+      {
+        "owner": "0x140c56be0",
+        "proof": "Arena size = align128(server_size(flag)) + align128(client_count*0xAEA98) + aligned agent_size + 0x96000 + C68880 result; publishes 146B22A80 before dependent allocations.",
+        "caveat": "153-byte complete owner ends with tailcall B6D2A0; additional inferred callee statements in Ghidra C are not assigned to this owner."
+      },
+      {
+        "owner": "0x140b213f0",
+        "proof": "Server frame consumer: C0 loop reads B8+i*0x5010+0x4A90 entity number; 0x7FF sentinel skipped; g_entities stride0x3F8 and active flags checked; calls AF9ED0/B1EF30. Another C0 loop uses entity range starting at18 and calls C18900.",
+        "caveat": "CSV historical name recycle_consumer was only a hypothesis; no pool allocation/free demonstrated. Captured owner contains mod hook1600DC7A0, not pristine-stock identity."
+      },
+      {
+        "owner": "0x140449600",
+        "proof": "Agent pointer-reference bound24, plus-one index and B8 stride0x5010 confirmed.",
+        "caveat": "Save/snapshot/network codec context unknown; not a field bit-width proof."
+      },
+      {
+        "owners": [
+          "0x1400ba830",
+          "0x1400bb710"
+        ],
+        "proof": "B0 pointer-field+0x198 reference pair uses stride0x1F88 and four-byte transfers, distinct from B8.",
+        "caveat": "Caller/persistence role and bounded allocation still unresolved."
+      }
+    ],
+    "patch_ready": false,
+    "next_questions": [
+      "B8/C0 indirect producer and exact pool size",
+      "B0 lifecycle",
+      "0x5010 initialization/destruction/reset",
+      "corpse reservation partition",
+      "client allocations and network codec compatibility"
+    ]
+  },
+  "lightweight_audit": {
+    "xref_synthetic_tests": 11,
+    "exact_java_resolver_tests": "PASS: union, padding, fragment, cycle, missing parent, truncation, version, depth, size",
+    "retained_complete_owner_tests": 4,
+    "ghidra_executed_by_this_audit": false,
+    "native_edits": false
+  },
+  "next_pool_lifecycle_pass": {
+    "status": "executed-parent-admitted-lease-released",
+    "function_list": "ops/agent-capacity/pool-lifecycle-functions.csv",
+    "maximum_functions": 6,
+    "maximum_union_bytes_per_owner": 65536,
+    "total_verified_union_bytes": 2744,
+    "proof_source": "Existing pdata/rdata exact chain resolver only; no text/global scan for this preparation.",
+    "objectives": [
+      {
+        "name": "arena_dependent_allocation",
+        "root": "0x140c68b00",
+        "verified_union_bytes": 865,
+        "question": "C56A90 direct call; recover complete chained dependent allocations and stores, B8/C0 publication is not yet proven."
+      },
+      {
+        "name": "client_record_allocation",
+        "root": "0x140c54980",
+        "verified_union_bytes": 285,
+        "question": "C56A90 direct call; recover whole client-count allocation and lifetime, not an assumed agent pool."
+      },
+      {
+        "name": "server_context_constructor",
+        "root": "0x140449e90",
+        "verified_union_bytes": 55,
+        "question": "B1F4E0 publishes constructor result in143F25A88; resolve base/vtable before following initialization methods."
+      },
+      {
+        "name": "server_pool_constructor_candidate",
+        "root": "0x1404458d0",
+        "verified_union_bytes": 265,
+        "question": "4459E0 direct callee; test actual constructor field writes. Link to B0/B8 remains hypothesis."
+      },
+      {
+        "name": "tag2_context_teardown",
+        "root": "0x140b21dd0",
+        "verified_union_bytes": 637,
+        "question": "Previously bounded teardown clears tag2-owned pointers; distinguish pointer reset from memory release and B8 lifecycle."
+      },
+      {
+        "name": "tag1_context_teardown",
+        "root": "0x14048abf0",
+        "verified_union_bytes": 637,
+        "question": "Previously bounded teardown clears tag1-owned pointers; pair mode/lifetime without claiming B8 free."
+      }
+    ],
+    "stop_if_no_producer": "Follow only proven field/vtable indirections from complete selected roots. Do not add generic frame consumers to fill quota or claim B0/B8 destruction from unrelated table teardown.",
+    "requires_separate_admission": true,
+    "patch_ready": false
+  },
+  "selected_pool_lifecycle_decompilation": {
+    "status": "parent-completed-lease-released",
+    "derived_output": "runtime/agent-capacity/pool-lifecycle-selected-20261007.c",
+    "derived_log": "runtime/agent-capacity/pool-lifecycle-selected-20261007.log",
+    "output_sha256": "db7c7dbdbde22aaaf1030fe1a2f1a5d95733c17bbba8a62550d1af1e6a3d9fe0",
+    "complete_owners": 6,
+    "facts": [
+      {
+        "owner": "0x140c68b00",
+        "proof": "Dependent aligned128 arena allocations use146B398xx/146B3CCxx globals; selected complete owner does not directly publish B8/C0.",
+        "limit": "No absence claim for its callees or indirect stores."
+      },
+      {
+        "owner": "0x140c54980",
+        "proof": "Client count*AEA98 allocation, construction, pointer array146B22950 and count146B229E0; not B8 allocation."
+      },
+      {
+        "owner": "0x1404458d0",
+        "proof": "Initializes indexed records strideC7A8 and internal tables; not the known5010/1F88 pools."
+      },
+      {
+        "owners": [
+          "0x140b21dd0",
+          "0x14048abf0"
+        ],
+        "proof": "Mode tags2/1 gate pointer reset; context143F25A88 slot0 called with argument0 then pointer cleared; character table435030 reset also called.",
+        "limit": "Not proof of heap release or B8 lifecycle."
+      }
+    ],
+    "context_vtable_bounded_followup": {
+      "constructor": "0x140449e90",
+      "vtable": "0x141477508",
+      "table_bytes_read": 160,
+      "allocated_bytes": "0x7a0d8",
+      "zeroed_bytes": "0x7a0d0",
+      "index_predicate": {
+        "vtable_slot": "0x38",
+        "target": "0x140242e20",
+        "bound_inclusive": 41
+      },
+      "record_accessor": {
+        "vtable_slots": [
+          "0x28",
+          "0x30"
+        ],
+        "target": "0x14044a0a0",
+        "base_offset": "0x46b8",
+        "stride": "0x2ca0"
+      },
+      "aux_accessor": {
+        "vtable_slots": [
+          "0x18",
+          "0x20"
+        ],
+        "target": "0x14044a0c0",
+        "base_offset": "0x798f8",
+        "stride": "0x70"
+      },
+      "exact_layout_arithmetic": "0x46B8 + 42*0x2CA0 + 18*0x70 = 0x7A0D8",
+      "hypothetical_66_layout_arithmetic": "0x46B8 + 66*0x2CA0 + 18*0x70 = 0xBCFD8; candidate only, not patch ready",
+      "destructor_slot0": "0x140449ed0; size0x7A0D8 passed to allocator release only if DL&1. Teardown passes0, so selected teardown does not establish heap release.",
+      "limits": [
+        "Accessor count/use must be tied to complete callers before semantic array names are certified",
+        "More than the small64-byte character table must change together",
+        "No B8/5010 producer found from these selected owners",
+        "Corpse partition and save/network codecs unresolved"
+      ]
+    },
+    "patch_ready": false
+  },
+  "next_indirect_producer_xrefs": {
+    "status": "prepared-not-executed",
+    "helper": "ops/agent-capacity/Invoke-XrefAnalysis.ps1",
+    "exact_rip_anchors": [
+      "0x143c98650",
+      "0x143c98660",
+      "0x143c98668",
+      "0x143f25a88"
+    ],
+    "candidate_block_anchor": "143C98650 is neighbouring-block candidate, not certified SDK game::level base",
+    "verified_context": "143F25A88 receives449E90 constructor result;143C98660/668 are player pointer/count consumers inB213F0",
+    "selection": "WRITE/LEA exact anchors join pool producers before allocator caller, then readers; max32 complete owners,64KiB each",
+    "retained_reuse_limit": "Previous167 roots do not establish coverage for new anchor-only owners; next admitted full pdata pass required to seek those roots.",
+    "sdk_pin": "77e6d4d24e918ee363b3feee3735c3b889dff7d7",
+    "sdk_layout_limit": "No game::level/level_locals_t symbol declaration found in pinned game/symbols.hpp or game/structs.hpp. gentity.agent impliedSDK180 differs from actual selectedCPowner190; no SDK offsetof accepted as store proof.",
+    "required_proof": [
+      "Trace anchor through call arguments to complete constructor/initializer",
+      "Demonstrate actual indirect store address equalsB0/B8/C0 and its value provenance",
+      "Link count,size,stride,zero/init and teardown/reset from same mode/lifetime",
+      "Stop if only getters/readers or guessed field layouts remain"
+    ],
+    "requires_separate_admission": true,
+    "output_command": "pwsh -NoProfile -File ./ops/agent-capacity/Invoke-XrefAnalysis.ps1 -ReferenceRoot $ReferenceRoot -OutputPath ./runtime/agent-capacity/xref-indirect-anchors-20261007.json",
+    "patch_ready": false
+  }
+}

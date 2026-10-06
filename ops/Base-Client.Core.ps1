@@ -31,14 +31,36 @@ function New-IW7BaseClientPlan {
         ProfileDirectory='iw7-mod/players2';ProfileDirectories=@('iw7-mod/players2','iw7-mod/lab-appdata')}
 }
 
-function Assert-IW7BaseIdentity($Record) {
+function Assert-IW7BaseIdentity($Record,$OwnedHandle=$null) {
     if (!$Record -or !$Record.PID -or !$Record.Image -or !$Record.CreatedUtc -or $Record.SHA256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Complete exact process identity required.' }
-    $process=Get-Process -Id $Record.PID -ErrorAction Stop
+    if ($OwnedHandle -and $OwnedHandle.Id -ne $Record.PID) { throw 'Retained handle and process identity differ; preserve transaction.' }
+    if ($OwnedHandle -and $OwnedHandle.HasExited) { return }
+    try { $process=Get-Process -Id $Record.PID -ErrorAction Stop }
+    catch {
+        # A signaled original kernel handle proves exit even when its PID has
+        # vanished between the first wait and Get-Process. Other errors remain.
+        if ($OwnedHandle -and $OwnedHandle.HasExited -and $_.FullyQualifiedErrorId -like 'NoProcessFoundForGivenId*') { return }
+        throw
+    }
     try {
-        if (![string]::Equals($process.MainModule.FileName,$Record.Image,[StringComparison]::OrdinalIgnoreCase) -or
-            [math]::Abs(($process.StartTime.ToUniversalTime()-([datetimeoffset]$Record.CreatedUtc).UtcDateTime).TotalMilliseconds) -gt 1 -or
+        try { $image=$process.MainModule.FileName; $created=$process.StartTime.ToUniversalTime() }
+        catch {
+            # Property reads can race exit too. Never suppress a comparison
+            # failure or image-hash failure below, even if exit follows it.
+            if ($OwnedHandle -and $OwnedHandle.HasExited) { return }
+            throw
+        }
+        if (![string]::Equals($image,$Record.Image,[StringComparison]::OrdinalIgnoreCase) -or
+            [math]::Abs(($created-([datetimeoffset]$Record.CreatedUtc).UtcDateTime).TotalMilliseconds) -gt 1 -or
             (Get-FileHash -LiteralPath $Record.Image).Hash -ne $Record.SHA256) { throw 'Process identity changed; preserve it.' }
     } finally { $process.Dispose() }
+}
+
+function Test-IW7BaseClientActive($Context) {
+    if (!$Context.Handle -or $Context.Handle.HasExited) { return $false }
+    Assert-IW7BaseIdentity $Context.Identity $Context.Handle
+    # This second wait covers exit during successful identity verification.
+    !$Context.Handle.HasExited
 }
 
 function Assert-IW7BaseVacant([string]$GameRoot,[int]$OwnedPid=0) {
@@ -274,8 +296,8 @@ function Update-IW7BaseProtection($Context,[string]$FreshLog,[long]$NowTick=[Env
 function Update-IW7BaseClient($Context,[ValidateRange(1,180)][int]$ProtectionTimeoutSeconds=180) {
     if ($Context.Failed) { throw 'Session previously failed; no more gameplay actions.' }
     try {
-        if ($Context.Handle.HasExited) { throw 'Owned client exited.' }
-        Assert-IW7BaseIdentity $Context.Identity; Assert-IW7BaseIdentity $Context.Server
+        if (!(Test-IW7BaseClientActive $Context)) { throw 'Owned client exited.' }
+        Assert-IW7BaseIdentity $Context.Server
         $log=Read-IW7BaseLog $Context.Server.Stdout
         if ($log.Length -lt $Context.LogLength) { throw 'Server log reset; protection evidence is ambiguous.' }
         $fresh=$log.Substring($Context.LogLength);$Context.LogLength=$log.Length
@@ -294,8 +316,7 @@ function Send-IW7BaseRequest($Context,[string]$Action,[switch]$AllowUnprotected)
     if ($Action -notmatch '^[a-z][a-z0-9_]{0,63}$') { throw 'Typed mailbox action required; arbitrary commands refused.' }
     if ($AllowUnprotected -and $Action -notin @('connect','stop')) { throw 'Only lifecycle actions may bypass the protection precondition.' }
     if (!$AllowUnprotected) { $sample=Update-IW7BaseClient $Context; if (!$sample.Protected) { throw 'Wait for fresh protection before gameplay action.' } }
-    if (!$Context.Handle -or $Context.Handle.HasExited) { throw 'Client is not active.' }
-    Assert-IW7BaseIdentity $Context.Identity
+    if (!(Test-IW7BaseClientActive $Context)) { throw 'Client is not active.' }
     $request="$($Context.Identity.PID) $([guid]::NewGuid().ToString('N')) $Action"
     [IO.File]::WriteAllText((Resolve-IW7BasePath $Context.Plan.GameRoot 'iw7-mod/paris-server-client.request'),$request,[Text.Encoding]::ASCII)
     # Acknowledgement proves dispatch only; the scenario checks its own outcome.
@@ -304,8 +325,7 @@ function Send-IW7BaseRequest($Context,[string]$Action,[switch]$AllowUnprotected)
 
 function Stop-IW7BaseClient($Context) {
     . "$PSScriptRoot/Lab-Lifecycle.ps1"
-    if ($Context.Handle -and !$Context.Handle.HasExited) {
-        Assert-IW7BaseIdentity $Context.Identity
+    if (Test-IW7BaseClientActive $Context) {
         Assert-IW7BaseVacant $Context.Plan.GameRoot $Context.Identity.PID
         # Native abort is safe even after protection loss. Use its session identity,
         # advancing the acknowledged sequence so held player keys are released.

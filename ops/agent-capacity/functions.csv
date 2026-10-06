@@ -1,0 +1,10 @@
+# Propriétaires simples complets selon unwind ; noms analytiques, pas symboles retail.
+# Première sélection conservée à sept fonctions simples. Le helper sait désormais
+# réunir les spans chaînés ; son intégration Ghidra reste à exécuter sous admission.
+agent_count_selector,140C18D00
+agent_count_setup,140C19B00
+cp_mp_capacity_init,1405AFFC0
+sv_agent_indexed_consumer,140C18DC0
+character_reference_read_candidate,140449260
+character_reference_write_candidate,140449330
+client_character_lookup,140184660

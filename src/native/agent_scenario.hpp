@@ -12,7 +12,9 @@
 
 namespace iw7::agent
 {
-    enum class button : unsigned { forward, back, left, right, jump, melee, use, reload, ads, fire, none };
+    enum class button : unsigned { forward, back, left, right, jump, melee, use, reload, ads, fire,
+        aim_left, aim_right, aim_up, aim_down, none };
+    inline bool aiming(button key) { return key >= button::aim_left && key <= button::aim_down; }
     // Read-only adapter layout proven by retail KeyDown/KeyUp and movement
     // binding cases. This is kbutton state, not a usercmd or gameplay outcome.
     struct movement_key_snapshot
@@ -31,10 +33,26 @@ namespace iw7::agent
         if (index >= movement_key_offsets.size()) return false;
         offset = movement_key_offsets[index]; return true;
     }
-    inline constexpr std::array<const char*, 10> bindings{
-        "+forward", "+back", "+moveleft", "+moveright", "+gostand", "+melee", "+activate", "+reload", "+speed_throw", "+attack"};
-    inline constexpr std::array<std::string_view, 11> names{
-        "forward", "back", "left", "right", "jump", "melee", "use", "reload", "ads", "fire", "none"};
+    inline constexpr std::array<const char*, 14> bindings{
+        "+forward", "+back", "+moveleft", "+moveright", "+gostand", "+melee", "+activate", "+reload", "+speed_throw", "+attack",
+        "+left", "+right", "+lookup", "+lookdown"};
+    inline constexpr std::array<std::string_view, 15> names{
+        "forward", "back", "left", "right", "jump", "melee", "use", "reload", "ads", "fire",
+        "aim_left", "aim_right", "aim_up", "aim_down", "none"};
+    struct key_probe { std::uintptr_t code{}, address{}; std::int32_t displacement{}; bool lea_rdi{}; };
+    inline bool key_probe_for(button key, key_probe& result)
+    {
+        constexpr std::array<key_probe, 8> probes{{
+            {0x14032DA64, 0x141FE5908, 0x1CB7E96, false}, {0x14032DA91, 0x141FE591C, 0x1CB7E7D, false},
+            {0x14032DABE, 0x141FE5958, 0x1CB7E8C, false}, {0x14032DAEB, 0x141FE596C, 0x1CB7E73, false},
+            {0x14032EB4E, 0x141FE58E0, 0x1CB6D84, true}, {0x14032EB85, 0x141FE58F4, 0x1CB6D61, false},
+            {0x14032EBB2, 0x141FE5930, 0x1CB6D70, false}, {0x14032EBDF, 0x141FE5944, 0x1CB6D57, false}}};
+        const auto index = static_cast<unsigned>(key);
+        if (index < 4) { result = probes[index]; return true; }
+        if (aiming(key)) { result = probes[4 + index - static_cast<unsigned>(button::aim_left)]; return true; }
+        return false;
+    }
+    inline constexpr key_probe strafe_probe{0x14032EC0C, 0x141FE5980, 0x1CB6D66, false};
     enum class action { arm, press, release, hold, release_all, abort };
     struct request { std::uint32_t pid{}; std::string nonce; std::uint64_t sequence{}, step{}; action operation{}; button key{button::none}; std::uint64_t duration{}; };
     inline bool nonce_valid(std::string_view value)
@@ -75,6 +93,7 @@ namespace iw7::agent
         const bool keyed = candidate.operation == action::press || candidate.operation == action::release || candidate.operation == action::hold;
         if (keyed == (candidate.key == button::none)) return false;
         if (candidate.operation == action::hold ? candidate.duration < 1 || candidate.duration > 5000 : candidate.duration != 0) return false;
+        if (aiming(candidate.key) && candidate.duration > 250) return false;
         result = candidate; return true;
     }
     struct safety { bool connected{}, protected_now{}; std::string map; std::uint64_t received{}; };
@@ -84,7 +103,7 @@ namespace iw7::agent
     {
         std::uint32_t pid_; std::string nonce_; std::uint64_t sequence_{}, step_{}, began_{}, clock_{};
         bool armed_{}; std::string map_;
-        std::array<bool, 10> held_{}; std::array<std::uint64_t, 10> until_{};
+        std::array<bool, bindings.size()> held_{}; std::array<std::uint64_t, bindings.size()> until_{};
     public:
         scenario(std::uint32_t pid, std::string nonce) : pid_(pid), nonce_(std::move(nonce)) {}
         bool active() const { return armed_; }
@@ -132,6 +151,7 @@ namespace iw7::agent
             if (!armed_) return "not_armed";
             const auto i = static_cast<unsigned>(r.key);
             if (i >= held_.size()) return "binding_rejected";
+            if (r.operation == action::hold && aiming(r.key) && (r.duration < 1 || r.duration > 250)) return "duration_rejected";
             if (r.operation == action::release)
             { dispatch(r.key, false); held_[i] = false; until_[i] = 0; return "released"; }
             if (held_[i]) dispatch(r.key, false);

@@ -1,0 +1,11 @@
+# Prochaine sélection bornée : noms analytiques, tags de mode sans attribution CP.
+# Entrées racines ; le helper réunit leurs spans UNW_FLAG_CHAININFO.
+sv_agent_allocation,140C1A190
+character_table_init_tag2,140B1F4E0
+character_table_constructor,1404491E0
+character_table_base_constructor,140434FB0
+capacity_reset,1405B00B0
+# Compléments corps/références/client, sans dupliquer le premier CSV simple.
+character_table_init_tag1,140486E70
+agent_reference_collector,140449450
+client_character_storage,1401823C0

@@ -77,6 +77,15 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib mmdevapi.lib
 if errorlevel 1 exit /b 1
 "$runtime\audio-output-probe.exe" --self-test
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\ops\voice-agent\capture_adapter_test.cpp" /Fe:"$runtime\capture-adapter-test.exe" /Fo:"$runtime\capture-adapter-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\capture-adapter-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_probe_worker_test.cpp" /Fe:"$runtime\audio-probe-worker-test.exe" /Fo:"$runtime\audio-probe-worker-test.obj"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\voice_agent_recorder_test.ps1" -WorkerPath "$runtime\audio-probe-worker-test.exe"
+if errorlevel 1 exit /b 1
 "@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
 if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
@@ -93,6 +102,7 @@ if ($Sanitizers) {
     & $sanitizerCmd
     if ($LASTEXITCODE) { throw 'Native AddressSanitizer tests failed.' }
 }
+& "$repo/tests/ops/download_cache_overlay_test.ps1"
 if ($TestsOnly) { return }
 if (!(Test-Path -LiteralPath "$root/.git")) {
     if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }
@@ -142,7 +152,7 @@ if (Test-Path -LiteralPath $labComponent) {
     if ($currentLabComponent -ne $labProperties) { throw 'Unowned lab component overlay; preserve it and use an isolated native checkout.' }
     Remove-Item -LiteralPath $labComponent
 }
-$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp',
+$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','voice_capture_adapter.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp',
     'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','voice_inbox.hpp','dvar_metadata.hpp','agent_scenario.hpp')
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
 else {
@@ -160,7 +170,17 @@ else {
     }
 }
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
+$copiedVoice=Join-Path $root 'src/client/component/paris_voice.cpp'
+if ($IsolatedLab) {
+    . "$PSScriptRoot/voice-agent/Build-Copy.Core.ps1"
+    $voiceSource=[IO.File]::ReadAllText($copiedVoice)
+    [IO.File]::WriteAllText($copiedVoice,(Convert-IW7IsolatedVoiceSource $voiceSource),[Text.UTF8Encoding]::new($false))
+}
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
+$downloadCacheOverlay = $null
+if ($commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
+    $downloadCacheOverlay = & "$PSScriptRoot/Apply-DownloadCacheOverlay.ps1" -NativeRoot $root -Commit $commit
+}
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
 # Preserve the engine's metadata API while serializing its cache and keeping it
@@ -347,6 +367,7 @@ $manifestSources = @($nativeSources)
 if ($IsolatedLab) { $manifestSources += 'paris_lab_properties.cpp' }
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
 $manifest.ProjectCommit = (git -C $repo rev-parse HEAD)
+$manifest.DownloadCacheOverlay = $downloadCacheOverlay
 $manifest.ProjectDirty = [bool](git -C $repo status --porcelain)
 # Retain matching symbols before the next rebuild replaces them. These local
 # files enable reliable crash stacks and must never be added to Git.
@@ -370,6 +391,10 @@ $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and s
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
 $manifest.SessionAliases = 'Temporary duplicate names, server only'
 $manifest.IsolatedLab = [bool]$IsolatedLab
+$manifest.VoiceCaptureSelectorBuild = [bool]$IsolatedLab
+$manifest.VoiceCopiedSourceSHA256 = (Get-FileHash -LiteralPath $copiedVoice).Hash
+$manifest.VoiceSourceTransformation = if ($IsolatedLab) { 'insert IW7_PARIS_ISOLATED_VOICE_CAPTURE=1 immediately after exact leading PCH include; explicit startup admission still required' } else { 'none; selector code excluded' }
+$manifest.VoiceSourceTransformationHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/voice-agent/Build-Copy.Core.ps1").Hash
 if ($IsolatedLab) {
     $manifest.LabPropertiesSHA256 = (Get-FileHash -LiteralPath $properties).Hash
     $manifest.LabAuthSHA256 = (Get-FileHash -LiteralPath $authPath).Hash
