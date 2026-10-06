@@ -211,8 +211,12 @@ periodic trims, standby-list purges or suspension as a fake capacity increase.
 The [pagefile extends the commit limit](https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/introduction-to-the-page-file)
 but does not make SSD access as fast as RAM. Leave it system-managed here. Free
 disk was about 34.9 GiB during this inventory: do not make another 84 GiB stock
-copy on this volume. Reuse the chat's existing isolated snapshot. Existing lab
-server/client roots already hardlink only to their internal read-only stock copy.
+copy on this volume. Inventory and reuse an existing suitable test dedicated;
+a new chat/worktree does not justify another snapshot. Follow
+[STORAGE-WORKFLOW.md](STORAGE-WORKFLOW.md) for retained and retired stock. At that
+original checkpoint, lab server/client roots linked only their internal read-only
+stock copy. The 2026-10-06 inventory records two candidate dedicateds also using
+their retained parent lab's stock, with separate mutable state.
 Global cache deduplication would need manifests, immutable content and ownership
 verification before changing hardlinks; deleting other active chats' assets is
 not an optimization. Preserve banks, matching PDBs and crash evidence.
