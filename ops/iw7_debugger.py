@@ -7,6 +7,7 @@ import argparse
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 import hashlib
+import csv
 import json
 import math
 from pathlib import Path
@@ -80,7 +81,7 @@ RULES = [
     ("gsc.link", "error", r"unknown (?:script|function)|script link error", "Inspect dependency graph and actual loaded ScriptFiles."),
     ("gsc.compile", "error", r"compil(?:e|ation|er) error|syntax error|\[ERROR\]", "Parse then compile the named script; parser success is not linkage."),
     ("gsc.runtime", "error", r"script runtime error|script error|stack overflow|undefined is not|parameter .*does not exist", "Correlate the fresh GSC stack with the exact source hashes."),
-    ("asset.capacity", "fatal", r"Exceeded limit of .* assets|Out of custom script memory|out of .* memory", "Reduce the dependency closure; retain the failing asset type and map."),
+    ("asset.capacity", "fatal", r"Exceeded limit of .* assets|Out of custom script memory|out of .* memory|MAX_CANONICAL_STRING", "Reduce the dependency closure; retain the failing asset/string type and map."),
     ("native.exception", "fatal", r"0xC0000005|access violation|exception code|fatal error|crash dump", "Analyze exception context and matching binary/PDB; the faulting module alone is not causality."),
     ("native.heap", "fatal", r"heap corruption|0xC0000374|0xC0000409|VERIFIER STOP", "Use a separately scoped PageHeap/verifier reproduction, with memory admission."),
     ("fixture.safety", "error", r"protection failure|protected=0|godmode=0|EXE_PLAYERKICKED_INACTIVE", "Invalidate encounter evidence until current engine protection is verified."),
@@ -95,13 +96,15 @@ def log_events(path):
     if raw.startswith(b"\xff\xfe"):
         text = raw.decode("utf-16", errors="replace")
     events = []
-    for line_num, line in enumerate(text.splitlines(), 1):
+    lines = text.splitlines()
+    for line_num, line in enumerate(lines, 1):
         for code, severity, pattern, action in RULES:
             if re.search(pattern, line, re.I):
                 stamp = re.search(r"\b(?:\d{4}-\d\d-\d\d[T ][\d:.+-]+|tick_ms=\d+)\b", line)
                 events.append({"line": line_num, "code": code, "severity": severity,
                                "text": scrub(line), "timestamp": stamp.group() if stamp else None,
-                               "next_action": action, "causality": "unproven"})
+                               "next_action": action, "causality": "unproven",
+                               "context": [scrub(x) for x in lines[max(0, line_num - 3):line_num + 12]] if severity in ('error', 'fatal') else []})
                 break
     counts = Counter(e["code"] for e in events)
     return {"schema": SCHEMA, "kind": "logs", "file": Path(path).name,
@@ -402,25 +405,39 @@ def builtin_labels(root):
 def perf_report(path, token_root=None):
     metrics, timings = defaultdict(list), defaultdict(lambda: {"calls": 0, "total_us": 0., "max_us": 0., "windows": 0})
     coverage = Counter()
+    alerts = Counter()
+    gaps = []
     context, identities, high_pressure = [], [], 0
     labels = builtin_labels(token_root)
     for row in jsonl(path):
         typ = row.get("type", row.get("Type", "unknown"))
         coverage[typ] += 1
+        if typ == 'alert':
+            alerts[str(row.get('target', 'all')) + ':' + str(row.get('code', 'unknown'))] += 1
+        if typ == 'coverage':
+            gaps.append({k: row[k] for k in ('target', 'sensor', 'status', 'reason') if k in row})
         if typ == "header":
             context.append(row.get("scenario", row.get("limits")))
-            identities.append(row.get("identity"))
+            identities.append(row.get("identity", row.get("identities")))
         elif typ == "sample":
+            prefix = str(row["target"]) + ":" if row.get("target") else ""
             for key in ("cpu_core_percent", "private_bytes", "working_set", "read_bytes_delta", "write_bytes_delta", "thread_count", "physical_percent", "commit_percent", "udp_rtt_ms"):
                 if row.get(key) is not None:
-                    metrics[key].append(row[key])
+                    metrics[prefix + key].append(row[key])
             if row.get("physical_percent", 0) > 80 or row.get("commit_percent", 0) > 85:
                 high_pressure += 1
             for thread in row.get("threads", []):
-                metrics[f"thread_{thread['id']}_cpu_core_percent"].append(thread["cpu_core_percent"])
+                metrics[prefix + f"thread_{thread['id']}_cpu_core_percent"].append(thread["cpu_core_percent"])
+        elif typ == "server_ticks":
+            metrics[str(row.get("target", "server")) + ":simulation_hz"].append(row.get("hz"))
+        elif typ == "present_window":
+            prefix = str(row.get('target', 'Client')) + ':' + str(row.get('swapchain', 'unknown')) + ':'
+            metrics[prefix + "present_rate_fps"].append(row.get("present_rate_fps"))
+            metrics[prefix + "window_max_frame_ms"].append(row.get("max_ms"))
         elif typ == "timing":
             key = str(row.get("label", f"{row.get('category')}:{row.get('id')}"))
             key = labels.get(key, key)
+            if row.get("target"): key = str(row["target"]) + ":" + key
             entry = timings[key]
             entry["calls"] += int(row["calls"])
             entry["total_us"] += float(row["total_us"])
@@ -432,11 +449,31 @@ def perf_report(path, token_root=None):
     hot.sort(key=lambda x: x["total_us"], reverse=True)
     return {"schema": SCHEMA, "kind": "performance", "sha256": digest(path),
             "builtin_map": {"root": str(token_root), "hashes": [digest(Path(token_root) / f) for f in ("iw7_func.cpp", "iw7_meth.cpp")]} if token_root else None,
-            "coverage": dict(coverage), "context": context, "identities": identities,
+            "coverage": dict(coverage), "alerts": dict(alerts), "coverage_gaps": gaps, "context": context, "identities": identities,
             "metrics": {k: quantiles(v) for k, v in metrics.items()}, "hotspots": hot,
             "high_pressure_samples": high_pressure,
             "acceptance": "invalid under memory pressure" if high_pressure else "observation; scenario/repetition/overhead controls required",
             "limits": "CPU uses one-core scale (100% = one busy logical CPU). Wall scopes overlap; do not sum nested timings. No renderer FPS claim."}
+
+
+def presents_report(path, pid=None):
+    if Path(path).stat().st_size > MAX_INPUT:
+        raise ValueError("PresentMon CSV too large")
+    groups = defaultdict(list)
+    with Path(path).open(encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        if not {"ProcessID", "MsBetweenPresents", "SwapChainAddress"}.issubset(reader.fieldnames or []):
+            raise ValueError("Expected PresentMon --v1_metrics CSV")
+        for row in reader:
+            try:
+                process = int(row["ProcessID"]); ms = float(row["MsBetweenPresents"])
+            except (TypeError, ValueError): continue
+            if (pid is None or pid == process) and math.isfinite(ms) and ms > 0:
+                groups[(process, row["SwapChainAddress"])].append(ms)
+    return {"schema": SCHEMA, "kind": "presents", "sha256": digest(path),
+            "swapchains": [{"pid": process, "swapchain": chain, "frame_ms": quantiles(values),
+                             "present_rate_fps": len(values) * 1000 / sum(values)} for (process, chain), values in groups.items()],
+            "limits": "Present() cadence per swapchain. Dropped/occluded/generated frames and display cadence need separate interpretation; no averaging across swapchains."}
 
 
 def compare_reports(before, after):
@@ -479,6 +516,27 @@ def address_report(image, address):
             "rva": hex(rva), "next_action": "Use CDB ln/u for matching unpacked memory, or a selected-function Ghidra list; packed PE bytes may differ."}
 
 
+def triage(logs, dumps, traces, root, token_root=None):
+    index = source_index(root)
+    evidence = [log_events(x) for x in logs] + [dump_report(x) for x in dumps] + [perf_report(x, token_root) for x in traces]
+    for report in evidence:
+        for event in report.get("events", []):
+            text = event["text"]
+            refs = re.findall(r"([\w/]+)::([A-Za-z_]\w*)", text)
+            matches = []
+            for script, function_name in refs:
+                for fn in index["functions"]:
+                    if fn["name"] == function_name and (fn["path"].endswith(script + ".gsc") or Path(fn["path"]).stem == script.split("/")[-1]):
+                        matches.append({"path": fn["path"], "function": fn["name"], "line": fn["line"],
+                                        "relationship": "named in error; source version still needs deployed-hash verification"})
+            event["source_candidates"] = matches
+    return {"schema": SCHEMA, "kind": "triage", "source_commit": index["commit"], "dirty": index["dirty"],
+            "source_hashes": index["files"], "evidence": evidence,
+            "root_cause": "not automatically established",
+            "next_actions": sorted({e["next_action"] for report in evidence for e in report.get("events", [])}),
+            "limits": "Named source/callsite, fault context and performance correlation are evidence, not a causal verdict."}
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output", help="New JSON file under ignored runtime")
@@ -486,6 +544,7 @@ def main(argv=None):
     for cmd in ("logs", "dump", "cdb"):
         subs.add_parser(cmd).add_argument("input")
     s = subs.add_parser("perf"); s.add_argument("input"); s.add_argument("--token-root")
+    s = subs.add_parser("presents"); s.add_argument("input"); s.add_argument("--pid", type=int)
     s = subs.add_parser("index"); s.add_argument("--root", default=str(REPO))
     s = subs.add_parser("symbols"); s.add_argument("--image", required=True); s.add_argument("--pdb", required=True); s.add_argument("--dump")
     s = subs.add_parser("compare"); s.add_argument("before"); s.add_argument("after")
@@ -493,11 +552,15 @@ def main(argv=None):
     s = subs.add_parser("blame"); s.add_argument("file"); s.add_argument("--line", type=int, required=True); s.add_argument("--root", default=str(REPO))
     s = subs.add_parser("case"); s.add_argument("--scenario", required=True); s.add_argument("--artifacts", nargs="*", default=[])
     s = subs.add_parser("report"); s.add_argument("inputs", nargs="+")
+    s = subs.add_parser("triage"); s.add_argument("--logs", nargs="*", default=[]); s.add_argument("--dumps", nargs="*", default=[])
+    s.add_argument("--traces", nargs="*", default=[]); s.add_argument("--root", default=str(REPO)); s.add_argument("--token-root")
     args = p.parse_args(argv)
     if args.command in ("logs", "dump", "perf", "cdb"):
         result = perf_report(args.input, args.token_root) if args.command == "perf" else {"logs": log_events, "dump": dump_report, "cdb": cdb_report}[args.command](args.input)
     elif args.command == "index":
         result = source_index(args.root)
+    elif args.command == "presents":
+        result = presents_report(args.input, args.pid)
     elif args.command == "symbols":
         result = symbols_report(args.image, args.pdb, args.dump)
     elif args.command == "compare":
@@ -525,6 +588,10 @@ def main(argv=None):
         result = {"schema": SCHEMA, "kind": "report", "evidence": reports,
                   "root_cause": "not automatically established", "next_actions": sorted(set(
                       e["next_action"] for r in reports for e in r.get("events", [])))}
+    elif args.command == "triage":
+        if not (args.logs or args.dumps or args.traces):
+            raise ValueError("Triage requires evidence inputs")
+        result = triage(args.logs, args.dumps, args.traces, args.root, args.token_root)
     if args.output:
         save(args.output, result)
     emit(result)

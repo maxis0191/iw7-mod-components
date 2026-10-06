@@ -6,13 +6,17 @@ function Set-DebugOverlay([string]$Relative,[hashtable]$Replacements,[string]$In
     $path=Join-Path $NativeRoot $Relative
     $base=(((git -C $NativeRoot show ($Commit+':'+$Relative)) -join "`n").TrimEnd())+"`n"
     if ($LASTEXITCODE) { throw 'Pinned profiler source could not be read.' }
-    $overlay=$Include+"`n"+$base
+    $pch='#include <std_include.hpp>'
+    if (($base.Split([string[]]@($pch),[StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned precompiled header marker changed.' }
+    $overlay=$base.Replace($pch,$pch+"`n"+$Include)
+    $failedOverlay=$Include+"`n"+$base
     foreach ($marker in $Replacements.Keys) {
         if (($base.Split([string[]]@($marker),[StringSplitOptions]::None)).Count -ne 2) { throw "Profiler marker changed in $Relative; inspect pinned source." }
         $overlay=$overlay.Replace($marker,$Replacements[$marker])
+        $failedOverlay=$failedOverlay.Replace($marker,$Replacements[$marker])
     }
     $current=[IO.File]::ReadAllText($path).Replace("`r`n","`n").TrimEnd()+"`n"
-    if ($current -ne $base -and $current -ne $overlay) { throw "Unowned profiler source edit: $Relative. Preserve it." }
+    if ($current -ne $base -and $current -ne $overlay -and $current -ne $failedOverlay) { throw "Unowned profiler source edit: $Relative. Preserve it." }
     [IO.File]::WriteAllText($path,$(if ($Enabled) { $overlay } else { $base }),[Text.UTF8Encoding]::new($false))
 }
 Set-DebugOverlay 'src/client/component/scheduler.cpp' @{

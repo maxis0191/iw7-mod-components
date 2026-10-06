@@ -18,6 +18,10 @@ namespace paris_debugger
         std::mutex output_mutex;
         std::uint64_t deadline{};
         std::size_t bytes{};
+        std::atomic<int> last_game_time{-1};
+        std::atomic<unsigned> server_ticks{0};
+        std::atomic<unsigned> game_resets{0};
+        std::uint64_t last_flush{};
         std::uint64_t now_ns() noexcept
         {
             return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -30,6 +34,13 @@ namespace paris_debugger
             const auto snapshot = stats.take();
             std::ostringstream buffer;
             const auto tick = GetTickCount64();
+            const auto ticks = server_ticks.exchange(0);
+            const auto resets = game_resets.exchange(0);
+            const auto window = tick - last_flush; last_flush = tick;
+            buffer << "{\"type\":\"server_ticks\",\"tick_ms\":" << tick << ",\"window_ms\":" << window
+                << ",\"ticks\":" << ticks << ",\"hz\":" << (window ? ticks * 1000.0 / window : 0)
+                << ",\"game_time_ms\":" << last_game_time.load() << ",\"resets\":" << resets
+                << ",\"meaning\":\"Distinct simulation times witnessed by the GSC frame coroutine, not network packet rate.\"}\n";
             for (std::size_t id = 0; id < snapshot.size(); ++id)
             {
                 const auto& c = snapshot[id];
@@ -83,8 +94,17 @@ namespace paris_debugger
             gsc::function::add("paris_debug_end", [](const gsc::function_args& args) -> scripting::script_value
             {
                 const auto id = args[0].as<int>(); const auto token = args[1].as<float>();
-                if (id >= 0 && id < 256 && std::isfinite(token) && token >= 1.0f && token <= 120001.0f)
+                if (id >= 0 && id < 256 && std::isfinite(token) && token >= 1.0f && token <= 600001.0f)
                     end(0x2100 + static_cast<std::size_t>(id), epoch_ + static_cast<std::uint64_t>((token - 1.0f) * 1000000.0f));
+                return {};
+            });
+            gsc::function::add("paris_debug_tick", [](const gsc::function_args& args) -> scripting::script_value
+            {
+                if (!enabled.load(std::memory_order_acquire)) return {};
+                const auto game_time = args[0].as<int>();
+                const auto previous = last_game_time.exchange(game_time);
+                if (game_time != previous) ++server_ticks;
+                if (previous >= 0 && game_time < previous) ++game_resets;
                 return {};
             });
             scheduler::once([]
@@ -96,7 +116,7 @@ namespace paris_debugger
                 if (!output) return;
                 output << "{\"type\":\"header\",\"schema\":\"iw7.debugger/1\",\"scenario\":\"instrumented laboratory\",\"pid\":"
                     << GetCurrentProcessId() << ",\"limits\":\"Inclusive wall scopes, not all GSC functions or renderer frames; interrupted VM scopes may not complete.\"}\n";
-                output.flush(); epoch_ = now_ns(); deadline = GetTickCount64() + 120000; enabled.store(true);
+                output.flush(); epoch_ = now_ns(); last_flush = GetTickCount64(); deadline = last_flush + 600000; enabled.store(true);
             }, scheduler::pipeline::main);
             scheduler::loop(flush, scheduler::pipeline::async, std::chrono::seconds(1));
         }

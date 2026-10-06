@@ -7,10 +7,13 @@ import tempfile
 import unittest
 import uuid
 import zipfile
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("debugger", ROOT / "ops/iw7_debugger.py")
 dbg = importlib.util.module_from_spec(spec); spec.loader.exec_module(dbg)
+sys.path.insert(0, str(ROOT / "ops"))
+import iw7_watch as watch
 
 
 def make_dump():
@@ -38,6 +41,23 @@ def make_pdb():
     struct.pack_into("<4I", data, 3 * 512, 2, 0, 28, 4)
     struct.pack_into("<III", data, 4 * 512, 20000404, 123, 2)
     data[4 * 512 + 12:4 * 512 + 28] = uuid.UUID(int=1).bytes_le
+    return bytes(data)
+
+
+def make_pe():
+    data = bytearray(2048)
+    data[:2] = b"MZ"; struct.pack_into("<I", data, 60, 128)
+    data[128:132] = b"PE\0\0"; struct.pack_into("<HHI", data, 132, 0x8664, 1, 123)
+    struct.pack_into("<H", data, 148, 240)
+    opt = 152; struct.pack_into("<H", data, opt, 0x20b)
+    struct.pack_into("<Q", data, opt + 24, 0x140000000)
+    struct.pack_into("<I", data, opt + 56, 0x10000)
+    struct.pack_into("<I", data, opt + 108, 16)
+    struct.pack_into("<II", data, opt + 112 + 6 * 8, 0x1000, 28)
+    struct.pack_into("<IIII", data, opt + 240 + 8, 1024, 0x1000, 1024, 512)
+    cv = b"RSDS" + uuid.UUID(int=1).bytes_le + struct.pack("<I", 2) + b"test.pdb\0"
+    struct.pack_into("<IIII", data, 512 + 12, 2, len(cv), 0x1100, 768)
+    data[768:768 + len(cv)] = cv
     return bytes(data)
 
 
@@ -80,6 +100,111 @@ class DebuggerTests(unittest.TestCase):
         self.assertEqual(a["guid"], str(uuid.UUID(int=1)))
         self.assertEqual(a["age"], 2)
         with self.assertRaises(ValueError): dbg.pdb_identity(self.write("fake.pdb", b"fake"))
+
+    def test_image_pdb_dump_match_and_rejection(self):
+        image = self.write("image.exe", make_pe()); pdb = self.write("symbols.pdb", make_pdb())
+        dump = self.write("dump.dmp", make_dump())
+        self.assertTrue(dbg.symbols_report(image, pdb, dump)["valid"])
+        changed = bytearray(make_pdb()); struct.pack_into("<I", changed, 4 * 512 + 8, 3)
+        bad = self.write("wrong.pdb", bytes(changed))
+        self.assertFalse(dbg.symbols_report(image, bad, dump)["valid"])
+
+    def test_unused_dump_stream_placeholders(self):
+        data = bytearray(make_dump()); struct.pack_into("<I", data, 8, 4)
+        # Move stream directory away from payload and add repeated unused entries.
+        struct.pack_into("<I", data, 12, 800)
+        data[800:824] = data[32:56]
+        struct.pack_into("<6I", data, 824, 0, 0, 0, 0, 0, 0)
+        self.assertEqual(dbg.MiniDump(bytes(data)).summary()["exception"]["code"], "0xC0000005")
+
+    def test_builtin_label_resolution(self):
+        self.write("iw7_func.cpp", '{ 0x001, "abs" },')
+        self.write("iw7_meth.cpp", '{ 0x8001, "getorigin" },')
+        trace = self.write("tokens.jsonl", '{"type":"timing","category":"gsc_method","id":32769,"calls":1,"total_us":50,"max_us":50}')
+        self.assertEqual(dbg.perf_report(trace, self.path)["hotspots"][0]["label"], "gsc_method:getorigin")
+
+    def test_presentmon_quantiles_keep_swapchains_separate(self):
+        path = self.write("presents.csv", "ProcessID,SwapChainAddress,MsBetweenPresents\n1,0xA,10\n1,0xA,30\n2,0xB,100\n")
+        report = dbg.presents_report(path, 1)
+        self.assertEqual(len(report["swapchains"]), 1)
+        self.assertEqual(report["swapchains"][0]["present_rate_fps"], 50)
+        self.assertEqual(report["swapchains"][0]["frame_ms"]["p50"], 20)
+
+    def test_live_detector_growth_is_hypothesis(self):
+        detector = watch.Detector(warmup=10)
+        alerts = []
+        for second in range(40):
+            alerts += detector.sample({"private_bytes": 100000000 + second * 2000000, "cpu_core_percent": 10, "physical_percent": 40, "commit_percent": 40}, second)
+        growth = [a for a in alerts if a["code"] == "memory.growth_candidate"]
+        self.assertTrue(growth)
+        self.assertEqual(growth[0]["confidence"], "hypothesis")
+
+    def test_live_detector_flat_memory_no_leak_alert(self):
+        detector = watch.Detector(warmup=0)
+        alerts = []
+        for second in range(40):
+            alerts += detector.sample({"private_bytes": 100000000, "physical_percent": 40, "commit_percent": 40}, second)
+        self.assertFalse([x for x in alerts if "memory" in x["code"]])
+
+    def test_live_tick_slow_and_transition_grace(self):
+        detector = watch.Detector(warmup=0)
+        row = {"type": "server_ticks", "hz": 3, "game_time_ms": 100}
+        self.assertFalse(detector.native(row, 1)); self.assertFalse(detector.native(row, 2))
+        self.assertEqual(detector.native(row, 3)[0]["code"], "server.simulation_cadence")
+        self.assertFalse(detector.native({**row, "resets": 1}, 20))
+        self.assertFalse(detector.native(row, 21))
+
+    def test_live_present_spike_and_repeat_suppression(self):
+        detector = watch.Detector(frame_budget_ms=10)
+        self.assertTrue(detector.presents([10, 50], 20))
+        self.assertFalse(detector.presents([10, 50], 21))
+        self.assertFalse(detector.presents([10, 11], 40))
+
+    def test_live_tail_partial_line_and_truncation(self):
+        path = self.write("live.jsonl", '{"type":"sample"}')
+        tail = watch.Tail(path)
+        self.assertEqual(tail.lines(), [])
+        with path.open("ab") as f: f.write(b"\n")
+        self.assertEqual(tail.lines(), ['{"type":"sample"}'])
+        path.write_bytes(b"")
+        with self.assertRaises(ValueError): tail.lines()
+
+    def test_multitarget_perf_does_not_mix_server_client(self):
+        path = self.write("multi.jsonl", '\n'.join(json.dumps(x) for x in [
+            {"type": "sample", "target": "Server", "cpu_core_percent": 10},
+            {"type": "sample", "target": "Client", "cpu_core_percent": 200}]))
+        report = dbg.perf_report(path)
+        self.assertEqual(report["metrics"]["Server:cpu_core_percent"]["mean"], 10)
+        self.assertEqual(report["metrics"]["Client:cpu_core_percent"]["mean"], 200)
+
+    def test_idle_server_is_not_tps_drop(self):
+        detector = watch.Detector(warmup=0)
+        detector.sample({'private_bytes': 100, 'physical_percent': 30, 'commit_percent': 30, 'server': {'clients': '0', 'mapname': 'cp_zmb'}}, 50)
+        for i in range(10):
+            self.assertFalse(detector.native({'type': 'server_ticks', 'hz': 0, 'game_time_ms': 50}, 51+i))
+
+    def test_loading_growth_is_excluded_from_retained_window(self):
+        detector = watch.Detector(warmup=30)
+        alerts = []
+        for second in range(60):
+            alerts += detector.sample({'private_bytes': min(second, 29)*50*1024*1024, 'physical_percent': 30, 'commit_percent': 30}, second)
+        self.assertFalse([a for a in alerts if a['code'] == 'memory.growth_candidate'])
+
+    def test_live_performance_retains_gaps_and_swapchains(self):
+        path = self.write('windows.jsonl', '\n'.join(json.dumps(x) for x in [
+            {'type': 'present_window', 'target': 'Client', 'swapchain': 'a', 'present_rate_fps': 30},
+            {'type': 'present_window', 'target': 'Client', 'swapchain': 'b', 'present_rate_fps': 1},
+            {'type': 'coverage', 'sensor': 'displayed_fps', 'status': 'unavailable'},
+            {'type': 'alert', 'target': 'Server', 'code': 'gsc.runtime'}]))
+        report = dbg.perf_report(path)
+        self.assertEqual(report['metrics']['Client:a:present_rate_fps']['mean'], 30)
+        self.assertEqual(report['metrics']['Client:b:present_rate_fps']['mean'], 1)
+        self.assertEqual(report['alerts']['Server:gsc.runtime'], 1)
+        self.assertEqual(report['coverage_gaps'][0]['status'], 'unavailable')
+
+    def test_gsc_stack_context_is_retained(self):
+        report = dbg.log_events(self.write('stack.log', 'script runtime error\nwhile processing instruction OP_CastFieldObject\n at function "init_cryobomb" in file "scripts/test.gsc"\n'))
+        self.assertIn('init_cryobomb', '\n'.join(report['events'][0]['context']))
 
     def test_invalid_pdb_directory(self):
         data = bytearray(make_pdb()); struct.pack_into("<I", data, 2 * 512, 99999)

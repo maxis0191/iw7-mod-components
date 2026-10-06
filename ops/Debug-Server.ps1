@@ -15,7 +15,8 @@ param(
     [switch]$MicrosoftSymbols,
     [string]$ReferenceRoot,
     [string]$FunctionList,
-    [string]$GhidraRoot
+    [string]$GhidraRoot,
+    [string]$RuntimeLeaseToken
 )
 $ErrorActionPreference='Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'Use PowerShell 7 (the bundled pwsh is sufficient).' }
@@ -76,6 +77,25 @@ function Invoke-DebugTool([string]$Exe,[string[]]$Arguments,[int]$Timeout=120) {
         [pscustomobject]@{Code=$process.ExitCode;Text=$stdout.GetAwaiter().GetResult()+$stderr.GetAwaiter().GetResult()}
     } finally { $process.Dispose() }
 }
+function Invoke-DebugAnalysis([scriptblock]$Body,[long]$PhysicalBytes,[long]$CommitBytes,[string]$Owner) {
+    if (!$RuntimeLeaseToken) {
+        Invoke-IW7ResourceJob -Scope $repo -Kind Analysis -Owner $Owner -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Body $Body
+        return
+    }
+    # A debug lab budgets its diagnostics BEFORE the first game process.
+    # Reuse only that exact runtime lease; never release, shrink or steal it.
+    $status=Get-IW7ResourceStatus
+    $lease=@($status.Leases | Where-Object { $_.Token -eq $RuntimeLeaseToken -and $_.Kind -eq 'Runtime' -and $_.Scope -eq (Get-IW7CanonicalScope (Join-Path $repo 'runtime/isolated-lab')) })
+    $statePath=Join-Path $repo 'runtime/isolated-lab/lab.json'
+    if ($lease.Count -ne 1 -or !(Test-Path $statePath)) { throw 'Exact owned debugger runtime reservation required.' }
+    $state=Get-Content $statePath -Raw | ConvertFrom-Json
+    if (!$state.Debugger -or !$state.RunPlan.Debugger -or $PhysicalBytes -gt 2GB -or $CommitBytes -gt 3GB -or
+        $lease[0].PhysicalBytes -lt $state.RunPlan.PhysicalBytes -or $lease[0].CommitBytes -lt $state.RunPlan.CommitBytes) { throw 'Diagnostics were not included in the complete runtime reservation.' }
+    if ($status.Budget.HighWater) { throw 'Runtime diagnostics refused under current memory pressure.' }
+    $lockPath=Join-Path $repo 'runtime/isolated-lab/debugger-analysis.lock'
+    $handle=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None')
+    try { & $Body } finally { $handle.Dispose() }
+}
 switch ($Action) {
     'Doctor' {
         $cdb=$null; $cdbError=$null
@@ -125,7 +145,7 @@ switch ($Action) {
             $cache=Join-Path $runtime 'microsoft-symbols'; [IO.Directory]::CreateDirectory($cache) | Out-Null
             $symbolArgs=@('-y',($(if ($SymbolsPath) { $symbols+';' } else { '' })+'srv*'+$cache+'*https://msdl.microsoft.com/download/symbols'))
         }
-        $result=Invoke-IW7ResourceJob -Scope $repo -Kind Analysis -Owner 'Offline CDB crash triage' -PhysicalBytes 2GB -CommitBytes 3GB -Body {
+        $result=Invoke-DebugAnalysis -Owner 'Offline CDB crash triage' -PhysicalBytes 2GB -CommitBytes 3GB -Body {
             Invoke-DebugTool $cdb (@('-z',$dumpPath)+$symbolArgs+@('-c','!analyze -v; .ecxr; kv; ~* kP; lmv; .time; !address -summary; q')) 120
         }
         [IO.File]::WriteAllText($destination,$result.Text,[Text.UTF8Encoding]::new($false))
@@ -141,7 +161,7 @@ switch ($Action) {
         $destination=New-DebugOutput $OutputPath '.etl'
         $session='IW7Debugger-'+[guid]::NewGuid().ToString('N')
         $wpr=(Get-Command wpr -ErrorAction Stop).Source
-        Invoke-IW7ResourceJob -Scope $repo -Kind Analysis -Owner 'Bounded named WPR CPU recording' -PhysicalBytes 1GB -CommitBytes 2GB -Body {
+        Invoke-DebugAnalysis -Owner 'Bounded named WPR CPU recording' -PhysicalBytes 1GB -CommitBytes 2GB -Body {
             $start=Invoke-DebugTool $wpr @('-start','CPU.light','-instancename',$session) 20
             if ($start.Code) { throw "WPR could not start its private instance: $($start.Text)" }
             $stopped=$false
