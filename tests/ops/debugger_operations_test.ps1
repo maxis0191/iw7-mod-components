@@ -31,8 +31,19 @@ try {
     $live=@(Get-Content ($output+'.live.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
     if (@($live | Where-Object type -EQ 'sample').Count -lt 1 -or $live[-1].type -ne 'complete') { throw 'Live supervisor did not complete acquisition.' }
     $childScript=$output+'.exit.ps1'
-    'Start-Sleep -Seconds 4; exit 7' | Set-Content $childScript
-    $child=Start-Process -FilePath $hostProcess.MainModule.FileName -ArgumentList @('-NoProfile','-File',('"'+$childScript+'"')) -WindowStyle Hidden -PassThru
+    # Exit only after the watcher has opened/validated its retained process
+    # handle and flushed the header. A fixed four-second delay raced identity
+    # hashing and Python startup on a loaded CI runner.
+    @'
+param([string]$Witness)
+$deadline=[datetime]::UtcNow.AddSeconds(30)
+while ([datetime]::UtcNow -lt $deadline) {
+    if ([IO.File]::Exists($Witness) -and ([IO.FileInfo]::new($Witness)).Length -gt 0) { exit 7 }
+    Start-Sleep -Milliseconds 50
+}
+exit 9
+'@ | Set-Content $childScript
+    $child=Start-Process -FilePath $hostProcess.MainModule.FileName -ArgumentList @('-NoProfile','-File',('"'+$childScript+'"'),'-Witness',('"'+$output+'.exit.jsonl"')) -WindowStyle Hidden -PassThru
     try {
         $childIdentity=(& $observer -Action Identity -ProcessId $child.Id | ConvertFrom-Json)
         @([ordered]@{name='ExitTest';pid=$child.Id;image=$childIdentity.Image;created_utc=([datetimeoffset]$childIdentity.CreatedUtc).ToString('o');sha256=$childIdentity.SHA256}) | ConvertTo-Json -AsArray | Set-Content ($targetsPath+'.exit') -Encoding utf8
