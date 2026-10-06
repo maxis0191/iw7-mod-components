@@ -6,6 +6,8 @@
 #include "paris_debugger.hpp"
 #include "debugger_stats.hpp"
 #include <fstream>
+#include <dxgi1_4.h>
+#include <wrl/client.h>
 
 namespace paris_debugger
 {
@@ -13,6 +15,12 @@ namespace paris_debugger
     {
         constexpr std::size_t slots = 0x2200;
         iw7::debugger::counters<slots> stats;
+        iw7::debugger::frames<8> render_stats;
+        std::atomic<unsigned> dropped_swapchains{0};
+        std::mutex gpu_mutex;
+        DXGI_QUERY_VIDEO_MEMORY_INFO gpu_info{};
+        HRESULT gpu_status = E_PENDING;
+        std::uint64_t gpu_tick{};
         std::atomic<bool> enabled{false};
         std::ofstream output;
         std::mutex output_mutex;
@@ -34,6 +42,25 @@ namespace paris_debugger
             const auto snapshot = stats.take();
             std::ostringstream buffer;
             const auto tick = GetTickCount64();
+            const auto rendering = render_stats.take();
+            for (std::size_t i = 0; i < rendering.size(); ++i)
+            {
+                const auto& v = rendering[i];
+                if (!v.intervals || !v.total_ns) continue;
+                buffer << "{\"type\":\"render_window\",\"tick_ms\":" << tick << ",\"swapchain_slot\":" << i
+                    << ",\"intervals\":" << v.intervals << ",\"callback_rate_fps\":" << v.intervals * 1e9 / v.total_ns
+                    << ",\"mean_interval_ms\":" << v.total_ns / 1e6 / v.intervals << ",\"max_interval_ms\":" << v.max_ns / 1e6
+                    << ",\"meaning\":\"Engine render-present callback cadence, not proof of displayed frames.\"}\n";
+            }
+            if (const auto dropped = dropped_swapchains.exchange(0))
+                buffer << "{\"type\":\"coverage\",\"sensor\":\"render\",\"status\":\"channel_capacity\",\"dropped\":" << dropped << "}\n";
+            {
+                std::lock_guard<std::mutex> lock(gpu_mutex);
+                if (gpu_tick)
+                    buffer << "{\"type\":\"gpu_budget\",\"tick_ms\":" << gpu_tick << ",\"hresult\":" << static_cast<long>(gpu_status)
+                        << ",\"budget_bytes\":" << gpu_info.Budget << ",\"usage_bytes\":" << gpu_info.CurrentUsage
+                        << ",\"meaning\":\"Process local-segment DXGI budget on adapter node zero; not all GPU allocations.\"}\n";
+            }
             const auto ticks = server_ticks.exchange(0);
             const auto resets = game_resets.exchange(0);
             const auto window = tick - last_flush; last_flush = tick;
@@ -63,6 +90,27 @@ namespace paris_debugger
             }
             if (!output) enabled.store(false);
         }
+    }
+    void render_frame(IDXGISwapChain* swap_chain) noexcept
+    {
+        if (!swap_chain || !enabled.load(std::memory_order_acquire)) return;
+        try
+        {
+            if (!render_stats.record(reinterpret_cast<std::uintptr_t>(swap_chain), now_ns())) ++dropped_swapchains;
+            // Query at most once per second on the renderer callback. COM
+            // ownership stays local; no stale device pointer crosses threads.
+            std::lock_guard<std::mutex> lock(gpu_mutex);
+            const auto tick = GetTickCount64();
+            if (tick - gpu_tick < 1000) return;
+            gpu_tick = tick; gpu_info = {};
+            Microsoft::WRL::ComPtr<IDXGIDevice> device;
+            Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+            Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter3;
+            gpu_status = swap_chain->GetDevice(IID_PPV_ARGS(&device));
+            if (SUCCEEDED(gpu_status)) gpu_status = device->GetAdapter(&adapter);
+            if (SUCCEEDED(gpu_status)) gpu_status = adapter.As(&adapter3);
+            if (SUCCEEDED(gpu_status)) gpu_status = adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &gpu_info);
+        } catch (...) { }
     }
     std::uint64_t begin(std::size_t id) noexcept
     {

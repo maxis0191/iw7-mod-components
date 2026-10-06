@@ -27,6 +27,9 @@ Set-DebugOverlay 'src/client/component/gsc/script_extension.cpp' @{
     'const std::uint16_t function_id = get_function_id();'='const std::uint16_t function_id = get_function_id();'+"`n`t`t`t"+'paris_debugger::scope paris_function_scope(0x100 + function_id);';
     'const auto custom_function_id = static_cast<std::uint16_t>(meth_function_id);'='paris_debugger::scope paris_method_scope(0x1100 + (static_cast<unsigned>(meth_function_id) - 0x8000));'+"`n`t`t`t"+'const auto custom_function_id = static_cast<std::uint16_t>(meth_function_id);'
 } '#include "../paris_debugger.hpp"'
+Set-DebugOverlay 'src/client/component/gui/gui.cpp' @{
+    'frame_capture::on_present(swap_chain);'='frame_capture::on_present(swap_chain);'+"`n`t`t`t`t"+'paris_debugger::render_frame(swap_chain);'
+} '#include "../paris_debugger.hpp"'
 foreach ($name in @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp')) {
     $source=Join-Path $repo ('src/native/'+$name)
     $target=Join-Path $NativeRoot ('src/client/component/'+$name)

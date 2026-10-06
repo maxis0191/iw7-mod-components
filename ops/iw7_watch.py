@@ -98,6 +98,10 @@ class Detector:
             return self.alert(f"scope.slow.{row.get('category')}.{row.get('id')}", now,
                               {"category": row.get("category"), "id": row.get("id"), "max_us": row["max_us"],
                                "meaning": "Inclusive wall time. Waits and nested calls are included; this is not proof of an abnormal loop."})
+        elif row.get('type') == 'render_window' and row.get('max_interval_ms', 0) > self.frame_budget * 2:
+            return self.alert('render.callback_spike', now, {k: row.get(k) for k in ('swapchain_slot', 'callback_rate_fps', 'max_interval_ms', 'meaning')})
+        elif row.get('type') == 'gpu_budget' and row.get('hresult') == 0 and row.get('budget_bytes', 0) > 0 and row.get('usage_bytes', 0) > row['budget_bytes'] * .9:
+            return self.alert('gpu.process_budget_pressure', now, {k: row[k] for k in ('usage_bytes', 'budget_bytes', 'meaning')})
         return []
 
     def presents(self, frames, now):
@@ -191,7 +195,10 @@ def main():
                         for line in tail.lines():
                             row = json.loads(line); target["last_native"] = elapsed; target["native_seen"] = True
                             write({"target": name, **row})
+                            if row.get('type') == 'render_window': target['last_render'] = elapsed
                             for event in detector.native(row, elapsed): write({"target": name, **event})
+                    if name == 'Client' and elapsed > 15 and elapsed - target.get('last_render', 0) > 5:
+                        for event in detector.alert('coverage.render_gap', elapsed, {'meaning': 'No fresh engine render callback windows; loading, stall or absent probe.'}): write({'target': name, **event})
                     if elapsed > 15 and elapsed - target["last_native"] > 5:
                         for event in detector.alert("coverage.native_gap", elapsed, {"seen": target["native_seen"], "age_seconds": elapsed - target["last_native"], "meaning": "Loading, stall, expired profiler or missing instrumentation; investigate rather than report clean."}): write({"target": name, **event})
                     for path in (root / "minidumps").glob("*.zip"):

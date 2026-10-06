@@ -25,7 +25,8 @@ try {
     }
     if (!$state.Debugger -and $Action -eq 'Observe') { throw 'Observe requires an explicitly installed debugger lab.' }
     if ($Action -eq 'Run') {
-        if ($state.Server -or $state.Client) { throw 'Run requires a closed lab; use its existing Stop actions or Observe.' }
+        # Closed identities are retained as evidence. Install checks actual
+        # owned/unrecorded processes, including PID reuse, before any mutation.
         & $labOps -Action Install -Profile Modules -Debugger -ModuleFixture $(if ($Client) {'CrossMap'} else {'StartupOnly'}) -Map $Map
         & $labOps -Action StartServer -PlannedClients $([int][bool]$Client) -ReducedGraphics:$ReducedGraphics -EnableAudio:$Client
         $startedServer=$true
@@ -33,6 +34,10 @@ try {
         $state=Get-Content $statePath -Raw | ConvertFrom-Json
     }
     if (!$state.Debugger -or !$state.RunPlan.Debugger -or !$state.ResourceToken -or !$state.Server) { throw 'Exact active debugger runtime plan required.' }
+    . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
+    $status=Get-IW7ResourceStatus
+    $lease=@($status.Leases | Where-Object { $_.Token -eq $state.ResourceToken -and $_.Kind -eq 'Runtime' -and $_.Scope -eq (Get-IW7CanonicalScope $lab) })
+    if ($lease.Count -ne 1 -or $lease[0].PhysicalBytes -lt $state.RunPlan.PhysicalBytes -or $lease[0].CommitBytes -lt $state.RunPlan.CommitBytes) { throw 'Complete active reservation could not be verified.' }
     [IO.Directory]::CreateDirectory($case) | Out-Null
     $targets=@()
     foreach ($kind in @('Server','Client')) {

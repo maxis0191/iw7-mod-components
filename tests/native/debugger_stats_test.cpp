@@ -22,5 +22,13 @@ int main()
     result = stats.take(); assert(result[3].started == 40000 && result[3].calls == 40000 && result[3].total_ns == 4000000);
     stats.begin(0); stats.end(0, 0, UINT64_MAX); stats.begin(0); stats.end(0, 0, 20);
     assert(stats.take()[0].total_ns == UINT64_MAX);
+    iw7::debugger::frames<2> frames;
+    assert(!frames.record(0, 100)); assert(frames.record(1, 100));
+    assert(frames.record(1, 300)); assert(frames.record(2, 500));
+    assert(!frames.record(3, 500));
+    auto rendering = frames.take();
+    assert(rendering[0].intervals == 1 && rendering[0].total_ns == 200 && rendering[1].intervals == 0);
+    assert(frames.record(1, 800)); rendering = frames.take();
+    assert(rendering[0].intervals == 1 && rendering[0].max_ns == 500);
     std::cout << "Debugger counter bounds, interruption, rollover and contention passed\n";
 }

@@ -206,6 +206,18 @@ class DebuggerTests(unittest.TestCase):
         report = dbg.log_events(self.write('stack.log', 'script runtime error\nwhile processing instruction OP_CastFieldObject\n at function "init_cryobomb" in file "scripts/test.gsc"\n'))
         self.assertIn('init_cryobomb', '\n'.join(report['events'][0]['context']))
 
+    def test_renderer_and_gpu_alerts_preserve_semantics(self):
+        detector = watch.Detector()
+        self.assertTrue(detector.native({'type': 'render_window', 'max_interval_ms': 100, 'callback_rate_fps': 30}, 50))
+        self.assertFalse(detector.native({'type': 'gpu_budget', 'hresult': -1, 'budget_bytes': 100, 'usage_bytes': 99}, 50))
+        self.assertEqual(detector.native({'type': 'gpu_budget', 'hresult': 0, 'budget_bytes': 100, 'usage_bytes': 99, 'meaning': 'process budget'}, 50)[0]['code'], 'gpu.process_budget_pressure')
+
+    def test_renderer_metrics_do_not_become_displayed_fps(self):
+        path = self.write('render.jsonl', json.dumps({'type': 'render_window', 'target': 'Client', 'swapchain_slot': 0, 'callback_rate_fps': 30, 'max_interval_ms': 80}))
+        report = dbg.perf_report(path)
+        self.assertEqual(report['metrics']['Client:renderer_0:callback_rate_fps']['mean'], 30)
+        self.assertFalse(any('present_rate_fps' in k for k in report['metrics']))
+
     def test_invalid_pdb_directory(self):
         data = bytearray(make_pdb()); struct.pack_into("<I", data, 2 * 512, 99999)
         with self.assertRaises(ValueError): dbg.pdb_identity(self.write("bad.pdb", bytes(data)))

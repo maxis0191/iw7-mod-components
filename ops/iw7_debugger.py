@@ -434,6 +434,13 @@ def perf_report(path, token_root=None):
             prefix = str(row.get('target', 'Client')) + ':' + str(row.get('swapchain', 'unknown')) + ':'
             metrics[prefix + "present_rate_fps"].append(row.get("present_rate_fps"))
             metrics[prefix + "window_max_frame_ms"].append(row.get("max_ms"))
+        elif typ == 'render_window':
+            prefix = str(row.get('target', 'Client')) + ':renderer_' + str(row.get('swapchain_slot', 'unknown')) + ':'
+            for key in ('callback_rate_fps', 'mean_interval_ms', 'max_interval_ms'):
+                metrics[prefix + key].append(row.get(key))
+        elif typ == 'gpu_budget' and row.get('hresult') == 0:
+            for key in ('usage_bytes', 'budget_bytes'):
+                metrics[str(row.get('target', 'Client')) + ':gpu_' + key].append(row.get(key))
         elif typ == "timing":
             key = str(row.get("label", f"{row.get('category')}:{row.get('id')}"))
             key = labels.get(key, key)
@@ -521,8 +528,10 @@ def triage(logs, dumps, traces, root, token_root=None):
     evidence = [log_events(x) for x in logs] + [dump_report(x) for x in dumps] + [perf_report(x, token_root) for x in traces]
     for report in evidence:
         for event in report.get("events", []):
-            text = event["text"]
+            text = event["text"] + '\n' + '\n'.join(event.get('context', []))
             refs = re.findall(r"([\w/]+)::([A-Za-z_]\w*)", text)
+            refs += [(script.removesuffix('.gsc'), fn) for fn, script in re.findall(r'at function "([A-Za-z_]\w*)" in file "([\w/]+\.gsc)"', text)]
+            refs = list(dict.fromkeys(refs))
             matches = []
             for script, function_name in refs:
                 for fn in index["functions"]:
