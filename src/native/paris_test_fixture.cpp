@@ -8,10 +8,13 @@
 #include <utils/flags.hpp>
 #include <utils/io.hpp>
 #include <utils/hook.hpp>
+#include <utils/cryptography.hpp>
 #include <format>
+#include <cstring>
 #include "command.hpp"
 #include "party.hpp"
 #include "paris_test_safety.hpp"
+#include "agent_scenario.hpp"
 
 namespace paris_test_fixture
 {
@@ -115,6 +118,217 @@ namespace paris_test_fixture
         }
         bool connect_pending = false;
         bool vote_witness_running = false;
+        void vote_binding(const char* name, bool down);
+        std::string agent_nonce()
+        {
+            std::array<unsigned char, 16> bytes{};
+            utils::cryptography::random::get_data(bytes.data(), bytes.size());
+            constexpr char digits[] = "0123456789abcdef";
+            std::string result;
+            for (const auto b : bytes) { result += digits[b >> 4]; result += digits[b & 15]; }
+            return result;
+        }
+        // Never call the upstream PRNG from a global initializer: its state is
+        // constructed in another translation unit and CRT order is unspecified.
+        iw7::agent::lab_session agent_runtime;
+        struct agent_packet { game::netadr_s address{}; std::string nonce, generation, map; std::uint64_t probe{}; bool safe{}; };
+        std::mutex agent_packet_mutex;
+        std::array<agent_packet, 4> agent_queries{};
+        agent_packet agent_reply{};
+        iw7::agent::safety agent_safety{};
+        std::string agent_generation;
+        std::string agent_connection_challenge;
+        std::uint64_t agent_last_probe{}, agent_last_ack{};
+        bool agent_binding_failed{};
+        void agent_input_snapshot(iw7::agent::button key, const char* phase, const std::string& binding_name)
+        {
+            if (!agent_runtime.client || !utils::flags::has_flag("paris-isolated-lab") ||
+                !utils::flags::has_flag("paris-server-client-test")) return;
+            const auto& ui = game::clientUIActives[0];
+            iw7::agent::movement_key_snapshot state{};
+            std::uint32_t offset{};
+            bool key_valid = iw7::agent::movement_key_offset(key, offset);
+            // Verify the four retail movement cases before reading their static
+            // kbutton data. No pointer from an untrusted mailbox is dereferenced.
+            constexpr std::array<std::uintptr_t, 4> cases{0x14032DA64, 0x14032DA91, 0x14032DABE, 0x14032DAEB};
+            constexpr std::array<std::int32_t, 4> displacements{0x1CB7E96, 0x1CB7E7D, 0x1CB7E8C, 0x1CB7E73};
+            constexpr unsigned char prefix[]{0x48, 0x69, 0xCF, 0x60, 0x04, 0x00, 0x00, 0x48, 0x8D, 0x05};
+            if (key_valid)
+            {
+                const auto index = static_cast<unsigned>(key);
+                std::int32_t displacement{};
+                std::memcpy(&displacement, reinterpret_cast<const void*>(cases[index] + sizeof(prefix)), sizeof(displacement));
+                key_valid = !std::memcmp(reinterpret_cast<const void*>(cases[index]), prefix, sizeof(prefix)) &&
+                    displacement == displacements[index];
+                const auto address = static_cast<std::uintptr_t>(0x141FE5908) + offset;
+                MEMORY_BASIC_INFORMATION region{};
+                if (key_valid)
+                {
+                    key_valid = VirtualQuery(reinterpret_cast<const void*>(address), &region, sizeof(region)) == sizeof(region) &&
+                        region.State == MEM_COMMIT && !(region.Protect & (PAGE_GUARD | PAGE_NOACCESS)) &&
+                        (region.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
+                            PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) &&
+                        address >= reinterpret_cast<std::uintptr_t>(region.BaseAddress) &&
+                        address + sizeof(state) <= reinterpret_cast<std::uintptr_t>(region.BaseAddress) + region.RegionSize;
+                }
+                if (key_valid) std::memcpy(&state, reinterpret_cast<const void*>(address), sizeof(state));
+            }
+            console::info("[Paris agent input] phase=%s seq=%llu step=%llu binding=%s tick_ms=%llu frontend=%u cgame_initialized=%u catchers=%d connection=%d kbutton_valid=%d key0=%d key1=%d active=%u was_pressed=%u downtime=%d msec=%d usercmd=unmeasured\n",
+                phase, agent_runtime.client->sequence(), agent_runtime.client->step(), binding_name.c_str(), GetTickCount64(),
+                static_cast<unsigned>(ui.frontEndSceneState[0]), static_cast<unsigned>(ui.cgameInitialized), ui.keyCatchers,
+                static_cast<int>(ui.connectionState), static_cast<int>(key_valid), state.down[0], state.down[1],
+                static_cast<unsigned>(state.active), static_cast<unsigned>(state.was_pressed), state.downtime, state.msec);
+        }
+        void agent_binding(iw7::agent::button key, bool down)
+        {
+            const auto index = static_cast<unsigned>(key);
+            if (index >= iw7::agent::bindings.size()) return;
+            const auto* name = iw7::agent::bindings[index];
+            const std::string binding_name = down ? name : "-" + std::string(name + 1);
+            for (int binding = 0; binding < 118; ++binding)
+            {
+                if (!game::command_whitelist[binding] || binding_name != game::command_whitelist[binding]) continue;
+                agent_input_snapshot(key, "before", binding_name);
+                utils::hook::invoke<void>(0x14032A3B0, 0, binding, 210 + static_cast<int>(index), game::Sys_Milliseconds());
+                agent_input_snapshot(key, "after", binding_name);
+                console::info("[Paris agent binding] step=%llu binding=%s down=%d tick_ms=%llu\n",
+                    agent_runtime.client->step(), binding_name.c_str(), static_cast<int>(down), GetTickCount64());
+                return;
+            }
+            agent_binding_failed = true;
+            console::error("[Paris agent binding] Missing retail whitelist binding %s; tick_ms=%llu\n", binding_name.c_str(), GetTickCount64());
+        }
+        bool agent_bindings_available()
+        {
+            for (const auto* name : iw7::agent::bindings)
+                for (const bool down : {false, true})
+                {
+                    const std::string desired = down ? name : "-" + std::string(name + 1);
+                    bool found{};
+                    for (int binding = 0; binding < 118; ++binding)
+                        if (game::command_whitelist[binding] && desired == game::command_whitelist[binding]) { found = true; break; }
+                    if (!found) { console::error("[Paris agent binding] Preflight missing %s\n", desired.c_str()); return false; }
+                }
+            return true;
+        }
+        void agent_result(const char* status, const iw7::agent::request* request = nullptr)
+        {
+            const auto result = std::format("{} {} {} {} {} {}\n", GetCurrentProcessId(), agent_runtime.client_nonce,
+                request ? request->sequence : agent_runtime.client->sequence(), request ? request->step : agent_runtime.client->step(), status, GetTickCount64());
+            utils::io::write_file("iw7-mod/paris-agent.response", result);
+            console::info("[Paris agent dispatch] %s", result.c_str());
+        }
+        // Network callbacks only parse and replace a bounded mailbox. Engine
+        // entities/dvars and binding dispatch are read on their scheduler thread.
+        void agent_receive_query(const game::netadr_s& from, std::string_view wire)
+        {
+            if (!loopback(from) || wire.size() > 64) return;
+            agent_packet packet; std::string probe, extra;
+            std::istringstream input{std::string(wire)};
+            if (!(input >> packet.nonce >> probe) || (input >> extra) || !iw7::agent::nonce_valid(packet.nonce) ||
+                !iw7::agent::number(probe, packet.probe) || !packet.probe) return;
+            packet.address = from;
+            std::lock_guard lock(agent_packet_mutex);
+            for (auto& pending : agent_queries)
+                if (pending.nonce.empty() || network::are_addresses_equal(pending.address, from)) { pending = packet; return; }
+        }
+        void agent_receive_reply(const game::netadr_s& from, std::string_view wire)
+        {
+            if (!loopback(from) || wire.size() > 160) return;
+            agent_packet packet; std::string probe, safe, extra;
+            std::istringstream input{std::string(wire)};
+            if (!(input >> packet.nonce >> probe >> packet.generation >> safe >> packet.map) || (input >> extra) ||
+                packet.nonce != agent_runtime.client_nonce || !iw7::agent::nonce_valid(packet.generation) ||
+                !iw7::agent::number(probe, packet.probe) || (safe != "0" && safe != "1")) return;
+            packet.safe = safe == "1"; packet.address = from;
+            std::lock_guard lock(agent_packet_mutex); agent_reply = packet;
+        }
+        void agent_server_tick()
+        {
+            if (agent_runtime.server_generation.empty() || !private_fixture() || !utils::flags::has_flag("paris-isolated-lab") || !game::SV_Loaded()) return;
+            std::array<agent_packet, 4> queries;
+            { std::lock_guard lock(agent_packet_mutex); queries = std::move(agent_queries); agent_queries = {}; }
+            const auto* map = game::Dvar_FindVar("mapname");
+            const std::string map_name = map && map->type == game::DVAR_TYPE_STRING && map->current.string ? map->current.string : "none";
+            const auto* clients = *game::svs_clients;
+            for (const auto& query : queries)
+            {
+                if (query.nonce.empty()) continue;
+                bool safe{};
+                { std::lock_guard lock(safety_mutex);
+                    for (unsigned slot = 0; clients && slot < protected_players.size() && slot < *game::svs_numclients; ++slot)
+                        if (clients[slot].header.state == game::CS_ACTIVE &&
+                            network::are_addresses_equal(query.address, clients[slot].remoteAddress) && refresh_protection(slot)) safe = true;
+                }
+                network::send(query.address, "parisAgentSafe", std::format("{} {} {} {} {}", query.nonce, query.probe,
+                    agent_runtime.server_generation, static_cast<int>(safe), map_name));
+            }
+        }
+        void agent_client_tick()
+        {
+            if (!agent_runtime.client || !utils::flags::has_flag("paris-isolated-lab")) return;
+            const auto now = GetTickCount64();
+            const auto* connection = party::get_server_connection_state();
+            const auto* port = game::Dvar_FindVar("paris_lab_server_port");
+            const int expected_port = port && port->type == game::DVAR_TYPE_STRING && port->current.string ? std::atoi(port->current.string) :
+                port && port->type == game::DVAR_TYPE_INT ? port->current.integer : 0;
+            agent_safety.connected = connection && connection->hostDefined && loopback(connection->host) &&
+                expected_port >= 27100 && expected_port <= 27999 && ntohs(connection->host.port) == expected_port &&
+                !game::Com_IsAnyLocalServerRunning() && game::Com_GameMode_GetActiveGameMode() == game::GAME_MODE_CP &&
+                game::CL_IsGameClientActive(0) && game::clientUIActives[0].connectionState == game::CA_ACTIVE;
+            agent_packet reply;
+            { std::lock_guard lock(agent_packet_mutex); reply = std::move(agent_reply); agent_reply = {}; }
+            if (agent_safety.connected)
+            {
+                if (agent_connection_challenge != connection->challenge)
+                {
+                    if (agent_runtime.client->active()) { agent_runtime.client->stop(agent_binding); agent_result("connection_changed"); }
+                    agent_connection_challenge = connection->challenge; agent_last_ack = agent_last_probe;
+                    agent_safety.protected_now = false; agent_safety.received = 0;
+                }
+                if (iw7::agent::heartbeat_valid(reply.nonce, agent_runtime.client_nonce, reply.generation,
+                    network::are_addresses_equal(reply.address, connection->host), reply.probe, agent_last_ack, agent_last_probe, now))
+                {
+                    if (agent_runtime.client->active() && agent_generation != reply.generation)
+                    {
+                        agent_runtime.client->stop(agent_binding); agent_result("server_changed");
+                    }
+                    agent_generation = reply.generation; agent_last_ack = reply.probe;
+                    // Age from the local query time: network latency must not
+                    // extend how long an old server safety sample can authorize input.
+                    agent_safety.protected_now = reply.safe; agent_safety.map = reply.map; agent_safety.received = reply.probe;
+                }
+                agent_last_probe = now;
+                network::send(connection->host, "parisAgentQuery", std::format("{} {}", agent_runtime.client_nonce, now));
+            }
+            if (const auto* failure = agent_runtime.client->tick(now, agent_safety, agent_binding)) agent_result(failure);
+            utils::io::write_file("iw7-mod/paris-agent.safety", std::format("{} {} {} {} {}\n", GetCurrentProcessId(), agent_runtime.client_nonce,
+                static_cast<int>(iw7::agent::scenario::safe(agent_safety, now)), now, agent_safety.map.empty() ? "none" : agent_safety.map));
+            static std::string previous;
+            const auto wire = utils::io::read_file("iw7-mod/paris-agent.request");
+            if (wire.empty() || wire == previous) return;
+            previous = wire; iw7::agent::request request;
+            if (!iw7::agent::parse(wire, request)) { agent_result("parse_rejected"); return; }
+            if (vote_witness_running && request.operation != iw7::agent::action::abort && request.operation != iw7::agent::action::release_all)
+            { agent_result("vote_busy", &request); return; }
+            if (request.operation == iw7::agent::action::arm && !agent_bindings_available())
+            { agent_result("binding_rejected", &request); return; }
+            agent_binding_failed = false;
+            const auto* status = agent_runtime.client->accept(request, now, agent_safety, agent_binding);
+            if (std::strcmp(status, "armed") == 0)
+            {
+                // A prior legacy voteholdnext uses different synthetic keys.
+                // Clear those keys before the scenario owns Fire/ADS.
+                vote_binding("+attack", false); vote_binding("+speed_throw", false);
+            }
+            if (agent_binding_failed)
+            {
+                agent_runtime.client->release_all(agent_binding);
+                agent_safety.protected_now = false;
+                agent_runtime.client->tick(now, agent_safety, agent_binding); status = "binding_rejected";
+            }
+            agent_result(status, &request);
+        }
         void vote_binding(const char* name, bool down)
         {
             // Pinned IW7 input.cpp routes the 118 retail bindings through this
@@ -212,6 +426,7 @@ namespace paris_test_fixture
             const bool vote_input = action == "votenext" || action == "voteprevious" || action == "voteboth" || action == "voteholdnext" || action == "voterelease" || action == "votewitness";
             if (vote_input && !utils::flags::has_flag("paris-isolated-lab")) return;
             if (vote_input && vote_witness_running) return;
+            if (vote_input && agent_runtime.client && agent_runtime.client->active()) return;
             if (voice_control && (!utils::flags::has_flag("iw7-voice-relay") || !utils::flags::has_flag("paris-voice-base-test"))) return;
             if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input) return;
             if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
@@ -272,6 +487,7 @@ namespace paris_test_fixture
             else if (action == "registerwitness") command::execute("paris_voice_register_witness", true);
             else if (action == "stop")
             {
+                if (agent_runtime.client) agent_runtime.client->stop(agent_binding);
                 command::execute("paris_voice_test_restore", true);
                 // Process lifecycle commands in the native command buffer.
                 // A synchronous quit unwinds the engine stack through the
@@ -310,12 +526,27 @@ namespace paris_test_fixture
         void post_unpack() override
         {
             if (!game::environment::is_dedi() && utils::flags::has_flag("paris-server-client-test"))
+            {
                 scheduler::loop(client_request, scheduler::main, 100ms);
+                if (utils::flags::has_flag("paris-isolated-lab"))
+                {
+                    agent_runtime.activate(GetCurrentProcessId(), true, false, agent_nonce);
+                    utils::io::write_file("iw7-mod/paris-agent.session", std::format("{} {}\n", GetCurrentProcessId(), agent_runtime.client_nonce));
+                    network::on("parisAgentSafe", agent_receive_reply);
+                    scheduler::loop(agent_client_tick, scheduler::main, 50ms);
+                }
+            }
             if (game::environment::is_dedi() && utils::flags::has_flag("paris-server-test"))
             {
                 scheduler::loop(server_request, scheduler::main, 100ms);
                 scheduler::loop(maintain_protection, scheduler::server, 100ms);
                 scheduler::loop(safety_status, scheduler::server, 10s);
+                if (utils::flags::has_flag("paris-isolated-lab"))
+                {
+                    agent_runtime.activate(GetCurrentProcessId(), false, true, agent_nonce);
+                    network::on("parisAgentQuery", agent_receive_query);
+                    scheduler::loop(agent_server_tick, scheduler::server, 50ms);
+                }
             }
             gsc::method::add("paris_test_protect", [](game::scr_entref_t ent, const gsc::function_args&) -> scripting::script_value
             {

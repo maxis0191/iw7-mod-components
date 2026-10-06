@@ -1,5 +1,10 @@
 # Concurrent agent work on a bounded workstation
 
+Owner update, 2026-10-06: remove the RAM reserve entirely, including the former
+25%/4 GiB minimum and 80% runtime stop threshold. This supersedes those numbers
+in dated evidence and older runbooks. RAM admission compares the full estimated
+workload directly with available RAM. Commit accounting remains independent.
+
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
 Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
@@ -28,8 +33,8 @@ The atomic JSON replacement retains one previous version for diagnosis. Registry
 content is local operational state, not source and not a security boundary.
 
 Reserve the **complete planned scenario before starting its first process**.
-RAM and commit budgets are independent. Leave at least 25% of physical RAM and
-20% of the commit limit free after the projection (minimum 4 GiB each). Baseline
+RAM and commit budgets are independent. There is no fixed or percentage RAM
+reserve. Leave 20% of the commit limit free after projection (minimum 4 GiB). Baseline
 usage includes Windows, Codex, browsers and the owner's running game/server.
 Do not subtract a working-set trim from commit, shrink a live reservation or
 assume a process has reached its peak just because startup uses little RAM.
@@ -89,8 +94,9 @@ Never delete the registry to bypass contention.
 The scheduler itself never kills or suspends any game. The lab watchdog retains
 responsibility for sustained pressure, fresh godmode/inactivity, diagnostic
 capture and identity-checked orderly stop. Admission cannot prevent a user from
-launching another unrelated application afterwards. The pressure thresholds are
-80% physical/85% commit; tests that exceed them are not valid performance runs.
+launching another unrelated application afterwards. The committed-memory pressure
+threshold is 85%; there is no RAM-use stop or automatic performance invalidation
+threshold. Record physical use as telemetry.
 
 Use `ops/Isolated-Lab.ps1` for the test dedicated. New sessions use the base game
 client under [INSTANCE-WORKFLOW.md](INSTANCE-WORKFLOW.md); separate clients

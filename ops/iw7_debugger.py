@@ -424,7 +424,7 @@ def perf_report(path, token_root=None):
             for key in ("cpu_core_percent", "private_bytes", "working_set", "read_bytes_delta", "write_bytes_delta", "thread_count", "physical_percent", "commit_percent", "udp_rtt_ms"):
                 if row.get(key) is not None:
                     metrics[prefix + key].append(row[key])
-            if row.get("physical_percent", 0) > 80 or row.get("commit_percent", 0) > 85:
+            if row.get("commit_percent", 0) > 85:
                 high_pressure += 1
             for thread in row.get("threads", []):
                 metrics[prefix + f"thread_{thread['id']}_cpu_core_percent"].append(thread["cpu_core_percent"])

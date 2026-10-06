@@ -250,7 +250,7 @@ class DebuggerTests(unittest.TestCase):
 
     def test_metrics_and_pressure(self):
         rows = [{"type": "header", "scenario": "same map/settings"}]
-        rows += [{"type": "sample", "cpu_core_percent": v, "physical_percent": 81 if v == 30 else 40} for v in (10, 20, 30)]
+        rows += [{"type": "sample", "cpu_core_percent": v, "physical_percent": 95, "commit_percent": 86 if v == 30 else 40} for v in (10, 20, 30)]
         rows += [{"type": "timing", "category": "gsc_region", "id": 1, "calls": 2, "total_us": 100, "max_us": 70}]
         p = self.write("perf.jsonl", "\n".join(json.dumps(x) for x in rows))
         r = dbg.perf_report(p)
@@ -258,6 +258,14 @@ class DebuggerTests(unittest.TestCase):
         self.assertEqual(r["hotspots"][0]["mean_us"], 50)
         self.assertEqual(r["high_pressure_samples"], 1)
         self.assertFalse(dbg.compare_reports(p, p)["pressure_free"])
+
+    def test_high_ram_alone_does_not_invalidate_or_alert(self):
+        row = {"type": "sample", "private_bytes": 100, "physical_percent": 99, "commit_percent": 40}
+        report = dbg.perf_report(self.write("ram.jsonl", json.dumps(row)))
+        self.assertEqual(report["high_pressure_samples"], 0)
+        detector = watch.Detector(warmup=0)
+        self.assertFalse([x for x in detector.sample(row, 1) if x["code"] == "resource.pressure"])
+        self.assertTrue([x for x in detector.sample({**row, "commit_percent": 86}, 2) if x["code"] == "resource.pressure"])
 
     def test_nonfinite_and_truncated_trace(self):
         for text in ('{"type":"sample","cpu_core_percent":NaN}', '{"type":'):

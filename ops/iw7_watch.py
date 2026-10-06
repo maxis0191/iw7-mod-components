@@ -69,7 +69,7 @@ class Detector:
             self.memory.clear()
             self.tick_low = 0
         self.phase = phase
-        if row["physical_percent"] > 80 or row["commit_percent"] > 85:
+        if row["commit_percent"] > 85:
             result += self.alert("resource.pressure", now, {k: row[k] for k in ("physical_percent", "commit_percent")})
         self.cpu_high = self.cpu_high + 1 if row.get("cpu_core_percent", 0) > 90 else 0
         if self.cpu_high >= 5 and now >= self.warmup:
