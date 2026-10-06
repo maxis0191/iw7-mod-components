@@ -1,5 +1,11 @@
 # IW7-Mod voice contribution: implementation and release gates
 
+Current instance policy (2026-10-06): use the base game client for ordinary
+in-game and sequential A/B tests; stage server changes on a separate test dedicated.
+Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
+supersedes older systematic client-copy requirements and launch recipes below.
+Dated test results remain historical evidence.
+
 Status: investigation in progress. There is no accepted voice feature and no
 official pull request. The owner requests a generic, readable contribution with
 English documentation, submitted only after complete, varied validation. The

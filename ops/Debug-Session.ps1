@@ -2,6 +2,7 @@ param(
     [ValidateSet('Run','Observe')][string]$Action='Observe',
     [ValidateRange(1,600)][int]$Seconds=60,
     [switch]$Client,
+    [string]$SeparateClientReason,
     [switch]$ReducedGraphics,
     [ValidateRange(1,1000)][double]$ExpectedFps=30,
     [ValidateRange(1,1000)][double]$ExpectedTPS=20,
@@ -9,6 +10,9 @@ param(
     [switch]$SkipPresentMon
 )
 $ErrorActionPreference='Stop'
+if ($Client -and [string]::IsNullOrWhiteSpace($SeparateClientReason)) {
+    throw 'The automated debugger client uses a separate lab root. Use the base client by default, or document a necessary exception with -SeparateClientReason; see docs/INSTANCE-WORKFLOW.md.'
+}
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'Use PowerShell 7.' }
 $repo=Split-Path $PSScriptRoot -Parent
 $lab=Join-Path $repo 'runtime/isolated-lab'
@@ -30,7 +34,7 @@ try {
         & $labOps -Action Install -Profile Modules -Debugger -ModuleFixture $(if ($Client) {'CrossMap'} else {'StartupOnly'}) -Map $Map
         & $labOps -Action StartServer -PlannedClients $([int][bool]$Client) -ReducedGraphics:$ReducedGraphics -EnableAudio:$Client
         $startedServer=$true
-        if ($Client) { & $labOps -Action StartClient; $startedClient=$true }
+        if ($Client) { & $labOps -Action StartClient -SeparateClientReason $SeparateClientReason; $startedClient=$true }
         $state=Get-Content $statePath -Raw | ConvertFrom-Json
     }
     if (!$state.Debugger -or !$state.RunPlan.Debugger -or !$state.ResourceToken -or !$state.Server) { throw 'Exact active debugger runtime plan required.' }
