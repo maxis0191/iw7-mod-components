@@ -40,6 +40,26 @@ $child.Image='C:\Windows\unrelated.exe'; $child.CreatedUtc='2026-10-04T11:00:00Z
 Exit-IW7ResourceLease -Token $lease.Token
 Assert (@((Get-IW7ResourceStatus).Leases).Count -eq 0) 'Reused PID must not be targeted or retain an old lease.'
 $script:fakeProcesses=@($script:fakeProcesses | Where-Object PID -EQ $PID)
+# The base client is an explicitly declared executable outside the server lab.
+# Only its scoped fixture flags permit attachment; normal owner clients cannot
+# be adopted, and the declaration/whole-scenario budget stay immutable.
+$baseImage=Join-Path $TestRoot 'base/iw7-paris-voice.exe'
+$baseLease=Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 12GB -CommitBytes 12GB -Owner 'base-client test' -BaseClientImage $baseImage
+$baseChild=[pscustomobject]@{PID=33333;ParentPID=$PID;CreatedUtc='2026-10-04T12:00:00Z';Image=$baseImage;Name='iw7-paris-voice.exe';Lab=$true;BaseClientTest=$false;Heavy=$true;WorkingSet=4GB;PrivateBytes=5GB}
+$script:fakeProcesses += $baseChild
+$rejected=$false; try { Add-IW7ResourceProcess -Token $baseLease.Token -ProcessId 33333 } catch { $rejected=$true }; Assert $rejected 'Ordinary owner client cannot be adopted.'
+$baseChild.BaseClientTest=$true; $baseChild.Lab=$false
+$rejected=$false; try { Add-IW7ResourceProcess -Token $baseLease.Token -ProcessId 33333 } catch { $rejected=$true }; Assert $rejected 'Both private client fixture markers are required.'
+$baseChild.Lab=$true
+$rejected=$false; try { Exit-IW7ResourceLease -Token $baseLease.Token } catch { $rejected=$true }; Assert $rejected 'Unregistered declared client must retain reservation.'
+Add-IW7ResourceProcess -Token $baseLease.Token -ProcessId 33333
+$again=Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 8GB -CommitBytes 8GB -Owner 'base-client test'
+Assert ($again.Token -eq $baseLease.Token -and $again.PhysicalBytes -eq 12GB) 'Declared client re-entry keeps full scenario budget.'
+$rejected=$false; try { Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 12GB -CommitBytes 12GB -Owner 'base-client test' -BaseClientImage (Join-Path $TestRoot 'other.exe') } catch { $rejected=$true }; Assert $rejected 'Cannot change declared base image after reservation.'
+$baseChild.Image=Join-Path $TestRoot 'foreign/iw7-paris-voice.exe'
+$rejected=$false; try { Add-IW7ResourceProcess -Token $baseLease.Token -ProcessId 33333 } catch { $rejected=$true }; Assert $rejected 'A different executable remains outside scope.'
+$script:fakeProcesses=@($script:fakeProcesses | Where-Object PID -EQ $PID)
+Exit-IW7ResourceLease -Token $baseLease.Token
 # Unmanaged labs and builds must also block admission, without touching them.
 $rogue=[pscustomobject]@{PID=22222;ParentPID=0;CreatedUtc='2026-10-04T12:00:00Z';Image='C:\foreign\iw7-paris-lab.exe';Name='iw7-paris-lab.exe';Lab=$true;Heavy=$true;WorkingSet=1GB;PrivateBytes=2GB}
 $script:fakeProcesses += $rogue

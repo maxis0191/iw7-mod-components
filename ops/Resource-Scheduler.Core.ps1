@@ -37,6 +37,7 @@ function Get-IW7ResourceProcesses {
             Image = $_.ExecutablePath
             Name = $_.Name
             Lab = [bool]($_.CommandLine -match '(?:^|\s)-paris-isolated-lab(?:\s|$)')
+            BaseClientTest = [bool]($_.CommandLine -match '(?:^|\s)-paris-server-client-test(?:\s|$)' -and $_.CommandLine -notmatch '(?:^|\s)-dedicated(?:\s|$)')
             Heavy = [bool]($_.Name -match '^(?:iw7.*|zonetool.*|MSBuild|cl|link|java)\.exe$')
             WorkingSet = [long]$_.WorkingSetSize
             PrivateBytes = [long]$_.PrivatePageCount
@@ -55,6 +56,13 @@ function Get-IW7CanonicalScope([string]$Scope) {
 }
 function Test-IW7ProcessInScope($Process, [string]$Scope) {
     $Process.Image -and $Process.Image.StartsWith($Scope + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
+}
+function Test-IW7ReservedProcess($Process, $Lease) {
+    if (Test-IW7ProcessInScope $Process $Lease.Scope) { return $true }
+    $declared=$Lease.PSObject.Properties['BaseClientImage']
+    $fixture=$Process.PSObject.Properties['BaseClientTest']
+    return $declared -and $declared.Value -and $fixture -and $fixture.Value -and $Process.Lab -and
+        $Process.Image -and [IO.Path]::GetFullPath($Process.Image) -eq $declared.Value
 }
 function Invoke-IW7ResourceLock([scriptblock]$Body) {
     $root = Get-IW7ResourceRoot
@@ -106,7 +114,7 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes) {
         $ownerAlive = $owner.Count -and (Test-IW7ResourceIdentity $lease.OwnerIdentity $owner[0])
         $ownerUnknown = $owner.Count -and (!$owner[0].Image -or !$owner[0].CreatedUtc)
         $live = @(Get-IW7LeaseLiveProcesses $lease $Processes)
-        $inScope = @($Processes | Where-Object { Test-IW7ProcessInScope $_ $lease.Scope })
+        $inScope = @($Processes | Where-Object { Test-IW7ReservedProcess $_ $lease })
         # A crashed builder might have detached children outside its root. Keep it
         # quarantined until explicit release; runtime children must be inside scope.
         !($lease.Kind -eq 'Runtime' -and !$ownerAlive -and !$ownerUnknown -and !$live.Count -and !$inScope.Count)
@@ -116,9 +124,15 @@ function Enter-IW7ResourceLease {
     param([Parameter(Mandatory)][string]$Scope,
         [ValidateSet('Runtime','Build','Extract','Analysis')][string]$Kind,
         [Parameter(Mandatory)][long]$PhysicalBytes, [Parameter(Mandatory)][long]$CommitBytes,
-        [Parameter(Mandatory)][ValidateLength(1,100)][string]$Owner)
+        [Parameter(Mandatory)][ValidateLength(1,100)][string]$Owner,
+        [string]$BaseClientImage)
     $canonical = Get-IW7CanonicalScope $Scope
     if ($PhysicalBytes -le 0 -or $CommitBytes -le 0) { throw 'A positive full-workload reservation is required.' }
+    if ($BaseClientImage) {
+        if ($Kind -ne 'Runtime' -or ![IO.Path]::IsPathRooted($BaseClientImage) -or
+            [IO.Path]::GetExtension($BaseClientImage) -ne '.exe') { throw 'A base client needs one absolute executable declared on a runtime reservation.' }
+        $BaseClientImage=[IO.Path]::GetFullPath($BaseClientImage)
+    }
     Invoke-IW7ResourceLock {
         $state = Read-IW7ResourceState
         $processes = @(Get-IW7ResourceProcesses)
@@ -129,10 +143,11 @@ function Enter-IW7ResourceLease {
         if ($same.Count -gt 1) { throw 'Duplicate lease; registry requires investigation.' }
         # Runtime re-entry is a lab transaction; builds must never nest/share a lease.
         if ($same.Count -and $Kind -ne 'Runtime') { throw 'Heavy job already reserved, including this worktree.' }
+        if ($same.Count -and $BaseClientImage -and $same[0].BaseClientImage -ne $BaseClientImage) { throw 'Base client declaration cannot change after reservation.' }
         $foreignLabs = @($processes | Where-Object { ($_.Lab -or $_.Name -eq 'iw7-paris-lab.exe') -and
-            !(Test-IW7ProcessInScope $_ $canonical) })
+            !(Test-IW7ProcessInScope $_ $canonical) -and !($same.Count -and (Test-IW7ReservedProcess $_ $same[0])) })
         if ($foreignLabs.Count) { throw 'An unreserved or foreign laboratory is running; wait for its owner to close it.' }
-        if (!$same.Count -and @($processes | Where-Object { $_.Lab -or $_.Name -eq 'iw7-paris-lab.exe' }).Count) {
+        if (!$same.Count -and @($processes | Where-Object { $_.Lab -or $_.Name -eq 'iw7-paris-lab.exe' -or ($BaseClientImage -and $_.Image -eq $BaseClientImage) }).Count) {
             throw 'Existing lab has no reservation. Close it through its owner before first admission.'
         }
         $builders = @($processes | Where-Object { $_.Name -match '^(?:zonetool.*|MSBuild|cl|link|java)\.exe$' })
@@ -155,7 +170,7 @@ function Enter-IW7ResourceLease {
             if (!$identity.Image -or !$identity.CreatedUtc) { throw 'Launcher identity unavailable.' }
             $lease = [pscustomobject]@{Token=[guid]::NewGuid().ToString('N');Scope=$canonical;Kind=$Kind;Owner=$Owner;
                 OwnerIdentity=$identity;CreatedUtc=[datetime]::UtcNow.ToString('o');Phase='Pending';
-                PhysicalBytes=$PhysicalBytes;CommitBytes=$CommitBytes;Processes=@()}
+                PhysicalBytes=$PhysicalBytes;CommitBytes=$CommitBytes;BaseClientImage=$BaseClientImage;Processes=@()}
             $state.Leases = @($state.Leases) + $lease
         }
         $lease.PhysicalBytes=$PhysicalBytes; $lease.CommitBytes=$CommitBytes
@@ -171,7 +186,7 @@ function Add-IW7ResourceProcess {
         if ($lease.Count -ne 1) { throw 'Resource lease not found.' }
         $identity=@(Get-IW7ResourceProcesses | Where-Object PID -EQ $ProcessId)
         if ($identity.Count -ne 1 -or !$identity[0].Image -or !$identity[0].CreatedUtc) { throw 'Child identity unavailable; reservation retained.' }
-        if ($lease[0].Kind -eq 'Runtime' -and !(Test-IW7ProcessInScope $identity[0] $lease[0].Scope)) {
+        if ($lease[0].Kind -eq 'Runtime' -and !(Test-IW7ReservedProcess $identity[0] $lease[0])) {
             throw 'Runtime child is outside its reserved lab.'
         }
         $lease[0].Processes=@($lease[0].Processes | Where-Object PID -NE $ProcessId) + $identity[0]
@@ -188,7 +203,7 @@ function Exit-IW7ResourceLease {
         $processes=@(Get-IW7ResourceProcesses)
         if (@(Get-IW7LeaseLiveProcesses $lease[0] $processes).Count) { throw 'Reserved child is still alive; lease retained.' }
         if ($lease[0].Kind -eq 'Runtime') {
-            if (@($processes | Where-Object { Test-IW7ProcessInScope $_ $lease[0].Scope }).Count) { throw 'Unattached lab process is alive; lease retained.' }
+            if (@($processes | Where-Object { Test-IW7ReservedProcess $_ $lease[0] }).Count) { throw 'Unattached lab process is alive; lease retained.' }
         } else {
             $owner=@($processes | Where-Object PID -EQ $lease[0].OwnerIdentity.PID)
             if ($owner.Count -and (!$owner[0].Image -or !$owner[0].CreatedUtc)) { throw 'Heavy job owner identity unavailable; lease retained.' }
