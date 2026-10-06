@@ -45,6 +45,12 @@ $script:fakeProcesses=@($script:fakeProcesses | Where-Object PID -EQ $PID)
 # be adopted, and the declaration/whole-scenario budget stay immutable.
 $baseImage=Join-Path $TestRoot 'base/iw7-paris-voice.exe'
 $baseLease=Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 12GB -CommitBytes 12GB -Owner 'base-client test' -BaseClientImage $baseImage
+$state=Read-IW7ResourceState
+$state.Leases[0].BaseClientImage='relative/client.exe'
+Save-IW7ResourceState $state
+$rejected=$false; try { Get-IW7ResourceStatus } catch { $rejected=$true }; Assert $rejected 'Malformed persisted client declaration must refuse admission.'
+$state.Leases[0].BaseClientImage=$baseImage
+Save-IW7ResourceState $state
 $baseChild=[pscustomobject]@{PID=33333;ParentPID=$PID;CreatedUtc='2026-10-04T12:00:00Z';Image=$baseImage;Name='iw7-paris-voice.exe';Lab=$true;BaseClientTest=$false;Heavy=$true;WorkingSet=4GB;PrivateBytes=5GB}
 $script:fakeProcesses += $baseChild
 $rejected=$false; try { Add-IW7ResourceProcess -Token $baseLease.Token -ProcessId 33333 } catch { $rejected=$true }; Assert $rejected 'Ordinary owner client cannot be adopted.'

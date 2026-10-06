@@ -87,6 +87,11 @@ function Read-IW7ResourceState {
         if (!$lease.Token -or !$lease.Scope -or !$lease.OwnerIdentity -or $lease.PhysicalBytes -le 0 -or
             $lease.CommitBytes -le 0 -or $lease.Phase -notin @('Pending','Running') -or
             $lease.Kind -notin @('Runtime','Build','Extract','Analysis')) { throw 'Invalid resource lease; admission refused.' }
+        if ($lease.PSObject.Properties.Name -contains 'BaseClientImage' -and $lease.BaseClientImage) {
+            if ($lease.Kind -ne 'Runtime' -or $lease.BaseClientImage -isnot [string] -or
+                ![IO.Path]::IsPathRooted($lease.BaseClientImage) -or [IO.Path]::GetExtension($lease.BaseClientImage) -ne '.exe' -or
+                [IO.Path]::GetFullPath($lease.BaseClientImage) -ne $lease.BaseClientImage) { throw 'Invalid base client declaration; reservation retained.' }
+        }
     }
     $state
 }
