@@ -1,5 +1,11 @@
 # Agent debugger and supervised IW7 sessions
 
+Current instance policy (2026-10-06): use the base game client for ordinary
+in-game and sequential A/B tests; stage server changes on a separate test dedicated.
+Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
+supersedes older systematic client-copy requirements and launch recipes below.
+Dated test results remain historical evidence.
+
 The debugger is a CLI evidence pipeline, with an explicitly instrumented isolated
 build for deeper observations. Use it before inventing engine patches or tuning
 dvars. Production UDP 27016, the owner client, voice protocol, configuration and
@@ -30,9 +36,11 @@ Ghidra/Temurin, GSC compiler and Visual Studio remain their separately pinned to
 
 Use an isolated worktree with the current resource/lab helpers. The native builder
 must have its own source checkout; never borrow another active chat's dirty sources.
-`Prepare` copies legitimate stock files into this lab, with internal hardlinks for
-its server/client roots; allow approximately 84 GB disk. Reuse a prepared snapshot
-within this same owned lab. Preparation is substantial I/O and needs admission.
+`Prepare` prepares only the test dedicated and its stock cache by default. Reuse
+the existing stopped server snapshot. Observe gameplay from the base client;
+automated separate-client recipes require a concrete SeparateClientReason. A new
+server stock snapshot is substantial I/O and needs admission. Do not make a new
+client snapshot for ordinary debugging or sequential A/B.
 
 ```powershell
 ./ops/Install-Tools.ps1 -IncludeDebugger
@@ -47,8 +55,12 @@ Invoke-IW7ResourceJob -Scope $PWD.Path -Kind Extract -Owner 'debugger stock snap
 # Dedicated-only: compilation/linkage/simulation witness, no player gameplay.
 ./ops/Debug-Session.ps1 -Action Run -Seconds 60
 
-# Protected gameplay fixture: reduced graphics qualify logic, not normal FPS.
+# Conditional separate-client automation: first document a concrete necessity,
+# then explicitly prepare that client with the same SeparateClientReason.
+# Prefer the base client for ordinary gameplay/debugging; this old automation
+# does not yet manage base-client launch/restoration. Reduced is not normal FPS.
 ./ops/Debug-Session.ps1 -Action Run -Client -ReducedGraphics -Seconds 120 `
+    -SeparateClientReason '<concrete necessity or base-instance risk>' `
     -ExpectedFps 30 -ExpectedTPS 20
 ```
 

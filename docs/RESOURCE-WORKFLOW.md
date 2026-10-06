@@ -1,5 +1,11 @@
 # Concurrent agent work on a bounded workstation
 
+Current instance policy (2026-10-06): use the base game client for ordinary
+in-game and sequential A/B tests; stage server changes on a separate test dedicated.
+Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
+supersedes older systematic client-copy requirements and launch recipes below.
+Dated test results remain historical evidence.
+
 Current decision, 2026-10-04: agents may develop, review and run light tests in
 parallel. This 32 GiB workstation admits **one heavy workload group at a time**:
 one isolated gameplay scenario (server and its explicitly budgeted client(s)),
@@ -78,7 +84,9 @@ capture and identity-checked orderly stop. Admission cannot prevent a user from
 launching another unrelated application afterwards. The pressure thresholds are
 80% physical/85% commit; tests that exceed them are not valid performance runs.
 
-Use `ops/Isolated-Lab.ps1` for new agent game sessions. Historical base-instance
+Use `ops/Isolated-Lab.ps1` for the test dedicated. New sessions use the base game
+client under [INSTANCE-WORKFLOW.md](INSTANCE-WORKFLOW.md); separate clients
+require a documented necessity or risk. Historical base-instance
 entry points now refuse new launches before reading machine settings or changing
 files: Voice-BaseTest Prepare/StartServer/StartClient/TrimMemory,
 Module-ClientProbe Start, Rhino-ClientProbe agent Start/Spawn and every
@@ -137,9 +145,10 @@ job queue or an OS limit on arbitrary direct executable launches.
 Keep 1280x720 and 30 fps for bounded functional fixtures unless the measured
 feature requires more. Retain the true audio path for audio tests. Reduced
 `r_picmip`, bump and spec values belong only to the isolated client profile.
-Restore/profile-reset before judging texture quality. Godmode, inactivity bypass,
-`sv_cheats=0`, separate AppData/keys/bank/ports and the owner's base isolation stay
-mandatory. Remove unrelated enemies for audio/UI tests through legitimate
+Restore/profile-reset before judging texture quality. Godmode, inactivity bypass
+and `sv_cheats=0` stay mandatory. Test dedicated AppData/keys/bank/ports stay
+separate from Paris Main. Base-client files/profiles are backed up and restored;
+separate client assets/profiles are conditional on necessity or concrete risk. Remove unrelated enemies for audio/UI tests through legitimate
 lifecycle cleanup; do not change counters or remove the combat subject.
 
 Extract minimal enemy dependency closures, including only required sound aliases.

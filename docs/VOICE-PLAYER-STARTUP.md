@@ -1,5 +1,11 @@
 # Player startup and ordinary audio-path witness - 2026-10-05
 
+Current instance policy (2026-10-06): use the base game client for ordinary
+in-game and sequential A/B tests; stage server changes on a separate test dedicated.
+Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
+supersedes older systematic client-copy requirements and launch recipes below.
+Dated test results remain historical evidence.
+
 The earlier live failure had two game players but only one negotiated voice
 participant. The remote cause remains unknown; the owner requests useful local
 work beyond waiting for another machine's status. This change removes reproduced

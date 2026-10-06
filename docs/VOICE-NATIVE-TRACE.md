@@ -1,5 +1,11 @@
 # Native voice investigation
 
+Current instance policy (2026-10-06): use the base game client for ordinary
+in-game and sequential A/B tests; stage server changes on a separate test dedicated.
+Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
+supersedes older systematic client-copy requirements and launch recipes below.
+Dated test results remain historical evidence.
+
 ## Current launch boundary - 2026-10-04
 
 The base-instance procedures below preserve historical evidence. Their new
@@ -327,10 +333,13 @@ is wired into the separate opt-in v2 runtime. Earlier sections retain historical
 ## Earlier isolated audio witness
 
 Historical procedure: the owner subsequently requested the base installation.
-Use the protected base helper for the current test plan; these isolated commands
-remain available for reproducing the earlier investigation.
+Current policy uses the base client with a separate test dedicated. The old base
+helper also modified the Main server and remains retired. These cloned-client
+commands are historical; use them only for a documented necessity under
+[INSTANCE-WORKFLOW.md](INSTANCE-WORKFLOW.md).
 
-Use a dedicated worktree and physically independent asset snapshot as described in
+Historical exceptional separate-client recipe: use a dedicated worktree and
+its retained server stock, with client duplication only if required as described in
 [ISOLATED-LAB.md](ISOLATED-LAB.md). Reserve unused loopback ports (this investigation
 uses 27316/27317). Never target the normal 27016 or another laboratory's roots.
 
@@ -402,13 +411,15 @@ Verify, VoiceProbe and StopClient for B. Its mutable root, AppData/identity and 
 are independent; its stock links target only this lab's own asset snapshot. Close B
 and A before StopServer. This is a same-machine technical witness, not remote speech.
 
-## Owner-authorized base installation test
+## Historical base installation and Main-server test (superseded)
 
 The owner subsequently requests closing all IW7 instances and moving this work
 to the existing base game installation. Close recorded clients through their
 owned helpers, stop dedicateds after valid empty replies for thirty seconds, and
 verify no IW7 process remains. This supersedes the independent-root restriction
-for voice testing only; never deploy the isolated binary to the base installation.
+for voice testing only at that historical checkpoint. The current policy instead
+uses the base client plus a separate candidate server; do not reuse this recipe
+to experiment on Paris Main. Do not overwrite its normal native executable.
 
 ```powershell
 ./ops/Build-Voice.ps1 -ServerModules
@@ -457,7 +468,8 @@ This base witness also cannot prove two-machine speech or automatic Aurora deliv
 
 ## Explicit native registration and recipient witness
 
-This causal experiment uses the same backed-up base helper. Start both clients
+At this historical checkpoint the causal experiment used the backed-up base
+helper. That Main-server recipe is now retired. Its former instructions were: start both clients
 with the explicit flag, after Prepare/StartServer and verified server readiness:
 
 ```powershell
