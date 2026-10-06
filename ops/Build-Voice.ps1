@@ -138,8 +138,23 @@ if (Test-Path -LiteralPath $labComponent) {
     if ($currentLabComponent -ne $labProperties) { throw 'Unowned lab component overlay; preserve it and use an isolated native checkout.' }
     Remove-Item -LiteralPath $labComponent
 }
-$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp','paris_doom.cpp','paris_doom.hpp',
+$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp',
     'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','voice_inbox.hpp','dvar_metadata.hpp')
+if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
+else {
+    # The older standalone voice SDK does not expose the pinned CP WeaponDef.
+    # Clear only this task's exact previously copied adapter when switching
+    # profiles; an independently edited component requires investigation.
+    foreach ($file in @('paris_doom.cpp','paris_doom.hpp')) {
+        $target=Join-Path $root ('src/client/component/' + $file)
+        if (Test-Path -LiteralPath $target) {
+            if ((Get-FileHash -LiteralPath $target).Hash -ne (Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $file))).Hash) {
+                throw 'Unowned Doom overlay; preserve it and use a separate native source checkout.'
+            }
+            Remove-Item -LiteralPath $target
+        }
+    }
+}
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
