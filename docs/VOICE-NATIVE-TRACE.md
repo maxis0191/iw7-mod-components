@@ -42,8 +42,9 @@ cause. The earlier soak observed output for only fifteen seconds. Neither result
 may be relabeled as continuous five-minute output success.
 
 Two reduced-texture clients remain around 55-59% physical system use. The default
-launch limit is two. Launches reserve 25% projected physical and 20% committed
-headroom; soak and idle drivers abort above 80% physical or 85% committed use.
+launch limit is two. Since the 2026-10-06 owner decision, launches use no RAM
+reserve or RAM-percent stop threshold. They retain independent 20% commit
+headroom; soak and idle drivers abort above 85% committed use.
 Unknown commit-budget data fails closed. Do not retry four clients on this workstation
 to satisfy a capacity row. `TrimMemory` is optional; incorrect image/creation
 identities are rejected before the OS call. No global paging change is required.

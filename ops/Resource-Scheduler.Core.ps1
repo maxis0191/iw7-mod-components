@@ -12,7 +12,8 @@ function Test-IW7ResourceBudget($Snapshot, [long]$PhysicalBytes, [long]$CommitBy
         $Snapshot.PhysicalAvailable -lt 0 -or $Snapshot.PhysicalAvailable -gt $Snapshot.PhysicalTotal -or
         $Snapshot.Committed -lt 0 -or $Snapshot.Committed -gt $Snapshot.CommitLimit -or
         $PhysicalBytes -lt 0 -or $CommitBytes -lt 0) { throw 'Invalid resource snapshot or reservation.' }
-    $physicalReserve = [math]::Max(4GB, $Snapshot.PhysicalTotal * 0.25)
+    # Owner decision 2026-10-06: no fixed or percentage RAM reserve.
+    $physicalReserve = 0L
     $commitReserve = [math]::Max(4GB, $Snapshot.CommitLimit * 0.20)
     [pscustomobject]@{
         Allowed = (($Snapshot.PhysicalAvailable - $PhysicalBytes) -ge $physicalReserve -and
@@ -23,8 +24,7 @@ function Test-IW7ResourceBudget($Snapshot, [long]$PhysicalBytes, [long]$CommitBy
         CommitReserve = [long]$commitReserve
         AdditionalPhysical = $PhysicalBytes
         AdditionalCommit = $CommitBytes
-        HighWater = ($Snapshot.PhysicalAvailable -lt $Snapshot.PhysicalTotal * 0.20 -or
-            $Snapshot.Committed -gt $Snapshot.CommitLimit * 0.85)
+        HighWater = ($Snapshot.Committed -gt $Snapshot.CommitLimit * 0.85)
     }
 }
 function Get-IW7ResourceProcesses {
@@ -168,7 +168,7 @@ function Enter-IW7ResourceLease {
         }
         $budget = Test-IW7ResourceBudget (Get-IW7ResourceSnapshot) ([math]::Max(0L,$PhysicalBytes-$resident)) ([math]::Max(0L,$CommitBytes-$committed))
         if (!$budget.Allowed -or $budget.HighWater) {
-            throw "Resource budget refuses admission: physical=$($budget.PhysicalUsedPercent)%, commit=$($budget.CommitUsedPercent)%; full workload must leave 25% RAM and 20% commit headroom."
+            throw "Resource budget refuses admission: physical=$($budget.PhysicalUsedPercent)%, commit=$($budget.CommitUsedPercent)%; estimated workload must fit available RAM (no reserve) and leave configured commit headroom."
         }
         if (!$same.Count) {
             $identity = @($processes | Where-Object PID -EQ $PID)[0]

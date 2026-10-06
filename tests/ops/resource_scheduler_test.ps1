@@ -19,9 +19,13 @@ if ($Contender) {
     return
 }
 $snapshot=Get-IW7ResourceSnapshot
-Assert (Test-IW7ResourceBudget $snapshot 20GB 26.4GB).Allowed 'Exact reserve boundary must pass.'
-Assert (!(Test-IW7ResourceBudget $snapshot (20GB+1) 1GB).Allowed) 'Physical reserve boundary must fail.'
+Assert (Test-IW7ResourceBudget $snapshot 28GB 26.4GB).Allowed 'All available RAM can be reserved without a margin.'
+Assert ((Test-IW7ResourceBudget $snapshot 20GB 1GB).PhysicalReserve -eq 0) 'A fixed RAM reserve must not survive.'
+Assert (!(Test-IW7ResourceBudget $snapshot (28GB+1) 1GB).Allowed) 'An estimate exceeding actual available RAM must fail.'
 Assert (!(Test-IW7ResourceBudget $snapshot 1GB 27GB).Allowed) 'Commit reserve must be independent.'
+$ramBusy=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=1GB;CommitLimit=48GB;Committed=12GB}
+$busyBudget=Test-IW7ResourceBudget $ramBusy 1GB 1GB
+Assert ($busyBudget.Allowed -and !$busyBudget.HighWater) 'High RAM use alone must neither refuse nor stop work.'
 $bad=[pscustomobject]@{PhysicalTotal=0;PhysicalAvailable=0;CommitLimit=0;Committed=0}
 $rejected=$false; try { Test-IW7ResourceBudget $bad 0 0 } catch { $rejected=$true }; Assert $rejected 'Missing telemetry must refuse.'
 $scope=Join-Path $TestRoot 'lab-a'

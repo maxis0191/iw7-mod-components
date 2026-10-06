@@ -13,6 +13,6 @@ foreach ($i in 1..100) {
     if ($snapshot.Source -ne 'GetPerformanceInfo' -or $snapshot.PhysicalTotal -ne $first.PhysicalTotal -or
         $snapshot.Committed -le 0 -or !$snapshot.CapturedUtc -or
         $null -ne $snapshot.PagesInputPerSecond -or $null -ne $snapshot.PagesOutputPerSecond -or
-        $budget.PhysicalReserve -lt 4GB -or $budget.CommitReserve -lt 4GB) { throw 'Invalid fresh native snapshot or weakened reserve.' }
+        $budget.PhysicalReserve -ne 0 -or $budget.CommitReserve -lt 4GB) { throw 'Invalid fresh native snapshot or memory policy mismatch.' }
 }
 Write-Output 'PASS: actual Windows ABI and 100 fresh RAM/commit reads; unavailable paging remains null.'
