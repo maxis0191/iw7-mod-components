@@ -46,6 +46,13 @@ try {
     $plain=Get-IW7LabRunPlan -PlannedClients 0
     $debug=Get-IW7LabRunPlan -PlannedClients 0 -Debugger
     if ($debug.PhysicalBytes -ne ($plain.PhysicalBytes+2GB) -or $debug.CommitBytes -ne ($plain.CommitBytes+3GB) -or !$debug.Debugger) { throw 'Diagnostics not included in full scenario.' }
+    $legacyRoot=Join-Path $repo ('runtime/debugger/tests/legacy-'+[guid]::NewGuid().ToString('N'))
+    [IO.Directory]::CreateDirectory((Join-Path $legacyRoot 'src/client/component/gui')) | Out-Null
+    $legacyGui=Join-Path $legacyRoot 'src/client/component/gui/gui.cpp'
+    '// Historical GUI has no frame_capture or debugger marker.' | Set-Content $legacyGui
+    $legacyHash=(Get-FileHash $legacyGui).Hash
+    & "$repo/ops/Apply-DebuggerOverlay.ps1" -NativeRoot $legacyRoot -Commit 'historical-no-debugger'
+    if ((Get-FileHash $legacyGui).Hash -ne $legacyHash) { throw 'Ordinary legacy source was changed by disabled profiler.' }
     # Invalid build/install flags refuse before build tools, files or lab settings.
     foreach ($action in @({ & "$repo/ops/Build-Voice.ps1" -Debugger }, { & "$repo/ops/Isolated-Lab.ps1" -Action Status -Debugger })) {
         $refused=$false; try { & $action } catch { $refused=$true }

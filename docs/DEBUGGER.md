@@ -129,7 +129,7 @@ Fixed counter storage records starts/completions and clock failures; a VM error
 can skip scope completion. Do not assume a missing completion is an infinite loop.
 Active scope counts survive window flushes so a call spanning several windows
 remains visible; an aborted VM call can also leave a persistent active count.
-Native recording is bounded to 600 s / 16 MiB. Session observation is bounded to 600 s / 
+Native recording is bounded to 600 s / 16 MiB. Session observation is bounded to 600 s /
 128 MiB. Gaps, missing probes, profiler expiry and collector failure are evidence
 limits, not clean-health reports. Longer leak investigation needs repeated scoped
 sessions and comparable retained-memory checkpoints.

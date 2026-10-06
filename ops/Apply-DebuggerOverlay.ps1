@@ -2,6 +2,11 @@
 param([Parameter(Mandatory)][string]$NativeRoot,[Parameter(Mandatory)][string]$Commit,[switch]$Enabled)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
+if (!$Enabled -and !(Test-Path -LiteralPath (Join-Path $NativeRoot 'src/client/component/paris_debugger.cpp'))) {
+    # Legacy non-debugger forks predate frame_capture. An ordinary build must
+    # not require any diagnostic marker or touch its source files.
+    return
+}
 function Set-DebugOverlay([string]$Relative,[hashtable]$Replacements,[string]$Include) {
     $path=Join-Path $NativeRoot $Relative
     $base=(((git -C $NativeRoot show ($Commit+':'+$Relative)) -join "`n").TrimEnd())+"`n"
