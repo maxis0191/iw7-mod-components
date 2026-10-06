@@ -69,6 +69,14 @@ budgets only the remaining projected growth. This is an estimate, not a kernel
 memory cap. Unregistered labs, compilers, ZoneTool and Java analysis also block
 new heavy admission. Existing owner processes are never stopped by this API.
 
+For a separate dedicated using the base client, declare the exact absolute client
+executable with `Enter-IW7ResourceLease -BaseClientImage` on the initial runtime
+reservation. Budget server plus client together. Only that image with both
+`-paris-isolated-lab` and `-paris-server-client-test` may attach outside the scope;
+an ordinary owner client cannot be adopted. The declaration cannot change on
+re-entry, and an unregistered declared test client retains the lease. Older leases
+without this optional field remain valid for clients inside their lab scope.
+
 Process records bind PID, creation time and image. Missing identity retains the
 reservation. PID reuse never authorizes killing or adopting a process. A runtime
 lease may be reclaimed only when its owner, attached children and any process
