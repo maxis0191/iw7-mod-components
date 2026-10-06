@@ -8,6 +8,21 @@ int main()
 {
     using namespace iw7::agent;
     const std::string nonce(32, 'a');
+    // Upstream crypto is an independently initialized translation-unit global.
+    // The native adapter's global lab_session must not touch it during CRT init.
+    unsigned generated{}; bool crypto_ready{};
+    const auto generate = [&]() { assert(crypto_ready); ++generated; return nonce; };
+    lab_session lazy;
+    assert(!lazy.client && lazy.client_nonce.empty() && lazy.server_generation.empty() && generated == 0);
+    lazy.activate(42, false, false, generate); // Ordinary profiles are inert even before crypto readiness.
+    assert(generated == 0 && !lazy.client);
+    crypto_ready = true;
+    lazy.activate(42, false, true, generate);
+    assert(generated == 1 && !lazy.client && lazy.client_nonce.empty() && lazy.server_generation == nonce);
+    lazy.activate(42, false, true, generate); assert(generated == 1); // Repeat lifecycle callback is idempotent.
+    lazy.activate(42, true, false, generate);
+    assert(generated == 2 && lazy.client && lazy.client_nonce == nonce && !lazy.client->active());
+    lazy.activate(42, true, true, generate); assert(generated == 2);
     request r;
     const auto wire = [&](std::string tail) { return "42 " + nonce + " " + tail; };
     assert(parse(wire("1 1 arm none 0"), r));

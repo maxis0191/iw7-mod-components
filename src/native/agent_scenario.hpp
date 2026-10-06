@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace iw7::agent
 {
@@ -117,6 +119,24 @@ namespace iw7::agent
             dispatch(r.key, true); held_[i] = true;
             until_[i] = now + (r.operation == action::press ? 200 : r.duration);
             return "dispatched";
+        }
+    };
+    // Safe at namespace/static initialization: construction performs no crypto,
+    // clock or engine calls. Activate only after the engine component lifecycle
+    // has finished CRT initialization and only for explicit laboratory profiles.
+    struct lab_session
+    {
+        std::string client_nonce, server_generation;
+        std::unique_ptr<scenario> client;
+        template<typename Generate> void activate(std::uint32_t pid, bool client_enabled, bool server_enabled, Generate generate)
+        {
+            if (client_enabled && !client)
+            {
+                const auto nonce = generate();
+                auto state = std::make_unique<scenario>(pid, nonce);
+                client_nonce = nonce; client = std::move(state);
+            }
+            if (server_enabled && server_generation.empty()) server_generation = generate();
         }
     };
 }
