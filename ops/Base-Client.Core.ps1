@@ -7,7 +7,7 @@ function Resolve-IW7BasePath([string]$Root, [string]$Relative) {
     if (!$target.StartsWith($rootPath+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Path escapes base installation.' }
     $cursor=$target
     while ($cursor) {
-        if ((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Redirected base-client path refused.' }
+        if ((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Redirected base-client path refused.' }
         $cursor=Split-Path $cursor -Parent
     }
     $target
@@ -92,9 +92,9 @@ function Save-IW7BaseTransaction {
         if ((Get-FileHash -LiteralPath $dest).Hash -ne $entry.SHA256) { throw 'Backup hash mismatch; no launch permitted.' }
     }
     $protected=@()
-    $mainPaths=@(Get-ChildItem -LiteralPath $Plan.GameRoot -File -Filter '*.exe' | ForEach-Object Name)
+    $mainPaths=@(Get-ChildItem -LiteralPath $Plan.GameRoot -File -Filter '*.exe' -Force | ForEach-Object Name)
     $configRoot=Resolve-IW7BasePath $Plan.GameRoot 'iw7-mod'
-    if (Test-Path -LiteralPath $configRoot) { $mainPaths+=@(Get-ChildItem -LiteralPath $configRoot -File -Filter 'server*.cfg' | ForEach-Object { 'iw7-mod/'+$_.Name }) }
+    if (Test-Path -LiteralPath $configRoot) { $mainPaths+=@(Get-ChildItem -LiteralPath $configRoot -File -Filter 'server*.cfg' -Force | ForEach-Object { 'iw7-mod/'+$_.Name }) }
     foreach ($directory in @('iw7-mod/custom_scripts/cp','mods/paris_beta/bank')) { $mainPaths+=@(Get-IW7BaseFiles $Plan.GameRoot $directory) }
     foreach ($relative in $mainPaths | Select-Object -Unique) {
         $path=Resolve-IW7BasePath $Plan.GameRoot $relative
@@ -196,7 +196,8 @@ function Start-IW7BaseClient {
     $null=Resolve-IW7BasePath (Split-Path $output) (Split-Path $output -Leaf)
     [IO.Directory]::CreateDirectory($output) | Out-Null
     $context=[pscustomobject]@{Plan=$Plan;Server=$ServerIdentity;LeaseToken=$LeaseToken;OutputRoot=$output;Transaction=$null;Handle=$null;Client=$null;Identity=$null;
-        LogLength=(Read-IW7BaseLog $ServerIdentity.Stdout).Length;PendingLog='';LastHeartbeatUtc=$null;LastHeartbeatTick=0L;StartedTick=[Environment]::TickCount64;StartedUtc=[datetime]::UtcNow;Protected=$false;Failed=$false;Lock=$null}
+        LogLength=(Read-IW7BaseLog $ServerIdentity.Stdout).Length;PendingLog='';LastHeartbeatUtc=$null;LastHeartbeatTick=0L;StartedTick=[Environment]::TickCount64;StartedUtc=[datetime]::UtcNow;Protected=$false;Failed=$false;Lock=$null;
+        DesktopName=('IW7ParisLab_'+[guid]::NewGuid().ToString('N'))}
     $lockRoot=Join-Path $env:LOCALAPPDATA 'IW7Paris/BaseClient'
     [IO.Directory]::CreateDirectory($lockRoot) | Out-Null
     $key=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Plan.GameRoot.ToLowerInvariant())))
@@ -217,10 +218,12 @@ function Start-IW7BaseClient {
         if (!('IW7LabProcess' -as [type])) { Add-Type -Path "$PSScriptRoot/native/LabProcess.cs" }
         $args="-noupdate -nosteam -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_port $($Plan.ClientPort) +set paris_lab_server_port $($Plan.ServerPort) +exec agent-base-client.cfg"
         if ($Plan.RunPlan.Debugger) { $args+=' -paris-debugger' }
-        $context.Handle=[IW7LabProcess]::StartOwned($Plan.Image,$args,$Plan.GameRoot,(Join-Path $output 'client.stdout.log'),(Join-Path $output 'client.stderr.log'),('IW7ParisLab_'+[guid]::NewGuid().ToString('N')))
+        [ordered]@{Image=$Plan.Image;SHA256=$Plan.SHA256;DesktopName=$context.DesktopName;PlannedUtc=[datetime]::UtcNow.ToString('o')} |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'client.launch.local.json')
+        $context.Handle=[IW7LabProcess]::StartOwned($Plan.Image,$args,$Plan.GameRoot,(Join-Path $output 'client.stdout.log'),(Join-Path $output 'client.stderr.log'),$context.DesktopName)
         $context.Client=$context.Handle
         $process=Get-Process -Id $context.Handle.Id
-        try { $context.Identity=[pscustomobject]@{PID=$context.Handle.Id;Image=$Plan.Image;CreatedUtc=$process.StartTime.ToUniversalTime().ToString('o');SHA256=$Plan.SHA256;Stdout=(Join-Path $output 'client.stdout.log');Stderr=(Join-Path $output 'client.stderr.log')} } finally { $process.Dispose() }
+        try { $context.Identity=[pscustomobject]@{PID=$context.Handle.Id;Image=$Plan.Image;CreatedUtc=$process.StartTime.ToUniversalTime().ToString('o');SHA256=$Plan.SHA256;Stdout=(Join-Path $output 'client.stdout.log');Stderr=(Join-Path $output 'client.stderr.log');DesktopName=$context.DesktopName} } finally { $process.Dispose() }
         $context.Identity | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'client.identity.local.json')
         Add-IW7ResourceProcess -Token $LeaseToken -ProcessId $context.Handle.Id
         $null=Send-IW7BaseRequest $context 'connect' -AllowUnprotected

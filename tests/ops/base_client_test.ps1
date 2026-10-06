@@ -21,6 +21,20 @@ try {
     Assert-Refused { Resolve-IW7BasePath $game '../outside' } 'Traversal accepted.'
     Assert-Refused { New-IW7BaseClientPlan -GameRoot $game -ClientImage $realExe -ServerPort 27116 -ClientPort 27117 } 'External image accepted.'
     Assert-Refused { New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27016 -ClientPort 27117 } 'Main port accepted.'
+    # Windows CI puts TEMP below hidden AppData. Existence does not imply
+    # Get-Item can inspect a hidden ancestor without Force.
+    $hiddenParent=Join-Path $testRoot 'hidden-parent'
+    [IO.Directory]::CreateDirectory("$hiddenParent/game/iw7-mod/players2") | Out-Null
+    $hiddenItem=Get-Item -LiteralPath $hiddenParent -Force
+    $hiddenItem.Attributes=$hiddenItem.Attributes -bor [IO.FileAttributes]::Hidden
+    Copy-Item -LiteralPath $realExe -Destination "$hiddenParent/game/test-client.exe"
+    [IO.File]::WriteAllText("$hiddenParent/game/iw7-mod/players2/config.cfg",'hidden-parent owner profile')
+    Assert-Test ((Get-Item -LiteralPath $hiddenParent -Force).Attributes -band [IO.FileAttributes]::Hidden) 'Hidden-parent regression was not established.'
+    $hiddenPlan=New-IW7BaseClientPlan -GameRoot "$hiddenParent/game" -ClientImage "$hiddenParent/game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -GraphicsProfile Reduced
+    $hiddenTransaction=Save-IW7BaseTransaction $hiddenPlan (Join-Path $testRoot 'hidden-backup')
+    [IO.File]::WriteAllText("$hiddenParent/game/iw7-mod/players2/config.cfg",'temporary modification')
+    Restore-IW7BaseTransaction $hiddenTransaction
+    Assert-Test ([IO.File]::ReadAllText("$hiddenParent/game/iw7-mod/players2/config.cfg") -eq 'hidden-parent owner profile') 'Hidden-ancestor transaction failed.'
     $server=[pscustomobject]@{PID=123;Image=(Join-Path $testRoot 'dedicated/test.exe');CreatedUtc=[datetime]::UtcNow.ToString('o')}
     $lease=[pscustomobject]@{Kind='Runtime';Scope=(Join-Path $testRoot 'dedicated');BaseClientImage=$plan.Image;PhysicalBytes=12GB;CommitBytes=12GB;Processes=@($server)}
     Assert-IW7BaseLease $lease $plan $server
