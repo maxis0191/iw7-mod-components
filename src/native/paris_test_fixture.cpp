@@ -244,13 +244,13 @@ namespace paris_test_fixture
                 {
                     vote_witness_running = true;
                     vote_buttons(false, true); // 0 -> Beast, reverse wrap.
-                    scheduler::once([] { vote_buttons(false, true); }, scheduler::main, 4s); // Attack.
-                    scheduler::once([] { vote_buttons(true, false); }, scheduler::main, 10s); // Beast.
-                    scheduler::once([] { vote_buttons(true, false, true); }, scheduler::main, 12s); // Held Fire -> 0 once.
-                    scheduler::once([] { vote_buttons(false, false); }, scheduler::main, 14s);
-                    scheduler::once([] { vote_buttons(false, true); }, scheduler::main, 15s); // Beast.
-                    scheduler::once([] { vote_buttons(true, true); }, scheduler::main, 17s); // Both ignored.
-                    scheduler::once([] { vote_buttons(false, false); vote_witness_running = false; }, scheduler::main, 19s);
+                    scheduler::once([] { vote_buttons(false, true); }, scheduler::main, 2s); // Attack.
+                    scheduler::once([] { vote_buttons(true, false); }, scheduler::main, 4s); // Beast.
+                    scheduler::once([] { vote_buttons(true, false, true); }, scheduler::main, 5s); // Held Fire -> 0 once.
+                    scheduler::once([] { vote_buttons(false, false); }, scheduler::main, 7s);
+                    scheduler::once([] { vote_buttons(false, true); }, scheduler::main, 8s); // Beast.
+                    scheduler::once([] { vote_buttons(true, true); }, scheduler::main, 9s); // Both ignored.
+                    scheduler::once([] { vote_buttons(false, false); vote_witness_running = false; }, scheduler::main, 10s);
                 }
                 else vote_buttons(action == "votenext" || action == "voteboth" || action == "voteholdnext",
                     action == "voteprevious" || action == "voteboth", action == "voteholdnext");
