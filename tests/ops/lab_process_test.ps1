@@ -8,7 +8,12 @@ function Assert-True($value, [string]$message) {
     if (!$value) { throw $message }
 }
 function Open-TestProcess([int]$exitCode, [int]$delay = 2) {
-    $child = Start-Process -FilePath $shell -ArgumentList @('-NoProfile','-Command',('"Start-Sleep -Seconds ' + $delay + '; exit ' + $exitCode + '"')) -WindowStyle Hidden -PassThru
+    $release = Join-Path ([IO.Path]::GetTempPath()) ('iw7-owned-ready-' + [guid]::NewGuid().ToString('N') + '.release')
+    # A cold WMI query on CI can exceed the old two-second child lifetime.
+    # Start the exit countdown only after OpenOwned validates the retained handle.
+    $script = '$deadline=[datetime]::UtcNow.AddSeconds(30); while (!(Test-Path -LiteralPath ''{0}'') -and [datetime]::UtcNow -lt $deadline) {{ Start-Sleep -Milliseconds 20 }}; if (!(Test-Path -LiteralPath ''{0}'')) {{ exit 91 }}; Start-Sleep -Seconds {1}; exit {2}' -f $release.Replace("'","''"),$delay,$exitCode
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+    $child = Start-Process -FilePath $shell -ArgumentList @('-NoProfile','-EncodedCommand',$encoded) -WindowStyle Hidden -PassThru
     # Cache this original process handle before any operation that could fail.
     $null = $child.Handle
     try {
@@ -16,16 +21,21 @@ function Open-TestProcess([int]$exitCode, [int]$delay = 2) {
         if (!$identity) { throw 'Test child exited before ownership capture.' }
         $created = $identity.CreationDate.ToUniversalTime().ToFileTimeUtc()
         $owned = [IW7LabProcess]::OpenOwned($child.Id, $identity.ExecutablePath, $created)
-        [pscustomobject]@{Child=$child;Owned=$owned;Image=$identity.ExecutablePath;Created=$created}
+        [IO.File]::WriteAllText($release, 'owned')
+        [pscustomobject]@{Child=$child;Owned=$owned;Image=$identity.ExecutablePath;Created=$created;Release=$release}
     } catch {
         if (!$child.HasExited) { $child.Kill(); $child.WaitForExit() }
         $child.Dispose()
+        if (Test-Path -LiteralPath $release) { Remove-Item -LiteralPath $release }
         throw
     }
 }
 function Close-TestProcess($test) {
     try { if (!$test.Owned.HasExited) { $test.Owned.Terminate(66); $null = $test.Owned.WaitForExit(5000) } }
-    finally { $test.Owned.Dispose(); $test.Child.Dispose() }
+    finally {
+        $test.Owned.Dispose(); $test.Child.Dispose()
+        if (Test-Path -LiteralPath $test.Release) { Remove-Item -LiteralPath $test.Release }
+    }
 }
 
 foreach ($code in @(0,7,259)) {
