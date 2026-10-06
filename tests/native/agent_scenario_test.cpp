@@ -31,6 +31,40 @@ int main()
     lazy.activate(42, true, false, generate);
     assert(generated == 2 && lazy.client && lazy.client_nonce == nonce && !lazy.client->active());
     lazy.activate(42, true, true, generate); assert(generated == 2);
+    // Server stamps authorize only a fresh original single-slot observation.
+    assert(observation_valid(nonce, nonce, 0, 1000, 1500, true, true));
+    assert(!observation_valid(nonce, nonce, 0, 1000, 1501, true, true));
+    assert(!observation_valid(nonce, nonce, 0, 1000, 999, true, true));
+    assert(!observation_valid(nonce, nonce, 1, 1000, 1000, true, true));
+    assert(!observation_valid(nonce, nonce, 0, 1000, 1000, false, true));
+    assert(!observation_valid(nonce, nonce, 0, 1000, 1000, true, false));
+    assert(!observation_valid("", nonce, 0, 1000, 1000, true, true));
+    // Inject dispatch latency: deadline starts after actual down, not mailbox
+    // parsing. A frame check releases independently of the 50ms IO poll.
+    scenario actual_run(42, nonce); safety actual_safety{true, true, "cp_zmb", 1000};
+    std::vector<std::pair<button, bool>> actual_events;
+    std::uint64_t actual_clock = 1000;
+    const auto stamped_dispatch = [&](button key, bool down) { actual_events.emplace_back(key, down); return actual_clock; };
+    assert(std::string(actual_run.accept(request{42, nonce, 1, 1, action::arm}, 1000, actual_safety, stamped_dispatch)) == "armed");
+    actual_clock = 1040;
+    assert(std::string(actual_run.accept(request{42, nonce, 2, 2, action::hold, button::aim_left, 40}, 1000, actual_safety, stamped_dispatch)) == "dispatched");
+    assert(actual_run.due(button::aim_left) == 1080);
+    assert(!actual_run.tick(1079, actual_safety, stamped_dispatch));
+    actual_clock = 1081;
+    assert(std::string(actual_run.tick(1081, actual_safety, stamped_dispatch)) == "step_complete");
+    assert(actual_events.back() == std::make_pair(button::aim_left, false));
+    actual_clock = 1601;
+    assert(std::string(actual_run.accept(request{42, nonce, 3, 3, action::hold, button::aim_left, 40}, 1081, actual_safety, stamped_dispatch)) == "aborted");
+    assert(!actual_run.active() && !actual_run.pending() && actual_events.back() == std::make_pair(button::aim_left, false));
+    actual_clock = 2000; actual_safety.received = 2000;
+    assert(std::string(actual_run.accept(request{42, nonce, 4, 4, action::arm}, 2000, actual_safety, stamped_dispatch)) == "armed");
+    actual_clock = 1999;
+    assert(std::string(actual_run.accept(request{42, nonce, 5, 5, action::press, button::fire}, 2000, actual_safety, stamped_dispatch)) == "clock_reversed");
+    assert(!actual_run.pending() && !actual_run.active());
+    const auto high = std::numeric_limits<std::uint64_t>::max(); actual_clock = high - 50; actual_safety.received = high - 100;
+    assert(std::string(actual_run.accept(request{42, nonce, 6, 6, action::arm}, high - 100, actual_safety, stamped_dispatch)) == "armed");
+    assert(std::string(actual_run.accept(request{42, nonce, 7, 7, action::hold, button::aim_left, 100}, high - 100, actual_safety, stamped_dispatch)) == "clock_overflow");
+    assert(!actual_run.pending() && !actual_run.active());
     request r;
     const auto wire = [&](std::string tail) { return "42 " + nonce + " " + tail; };
     assert(parse(wire("1 1 arm none 0"), r));
