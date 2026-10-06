@@ -55,6 +55,18 @@ class OwnershipTests(unittest.TestCase):
 
 
 class SelectionTests(unittest.TestCase):
+    def test_exact_indirect_anchors_prioritize_producers_not_readers(self):
+        rows = {i: [{'target': '0x143c986b8', 'access': 'read'}] for i in range(74)}
+        rows[100] = [{'target': '0x143c98650', 'access': 'address'}]
+        rows[101] = [{'target': '0x143c98660', 'access': 'write'}]
+        rows[102] = [{'target': '0x143c98668', 'access': 'write'}]
+        rows[103] = [{'target': '0x143f25a88', 'access': 'write'}]
+        rows[104] = [{'target': '0x140c1a190', 'access': 'call'}]
+        rows[105] = [{'target': '0x143c98650', 'access': 'read'}]
+        ranked = ranked_roots(rows)
+        self.assertEqual(ranked[:5], [101, 102, 103, 100, 104])
+        self.assertNotIn(105, ranked[:32])
+
     def test_pool_and_exact_caller_precede_32_owner_quota(self):
         rows = {i: [{'target': '0x143f9b358', 'access': 'write'}] for i in range(40)}
         rows[100] = [{'target': '0x143c986b0', 'access': 'read'}]

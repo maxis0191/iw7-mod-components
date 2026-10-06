@@ -279,7 +279,7 @@ owner ne référençant que B0 situé hors de cette liste. Pour ces racines
 manquantes, la prochaine passe unique admise omettra cette option et parcourra
 les spans pdata existants, avec recherche limitée aux cibles nommées.
 Ces deux modes restent soumis à Analysis 4 GiB / 6 GiB ; aucun n’a été lancé
-pour cette préparation. Dix tests synthétiques passent, dont le dépassement
+pour cette préparation. Onze tests synthétiques passent, dont le dépassement
 du quota par des writers génériques, la priorité du pool/appelant et le refus
 d’un rapport incomplet, dupliqué, modifié ou trop grand.
 
@@ -430,7 +430,7 @@ aux entités actives, mais ne démontre ni allocation, ni destruction, ni
 partition des corps. Le propriétaire capturé contient aussi un hook mod :
 il n’est pas une image stock intacte ni l’identité du binaire actuel.
 
-L’audit léger repasse dix tests synthétiques de classement/réutilisation et
+L’audit léger repasse onze tests synthétiques de classement/réutilisation et
 le résolveur Java exact : union, padding, fragment refusé, cycle, parent
 manquant, troncature, version, profondeur et taille. Quatre propriétaires
 retenus passent aussi la résolution complète sans scan text ni Ghidra.
@@ -456,3 +456,73 @@ l’initialisation et le reset/free du pool avant les corps et les codecs.
 Le compte 48, les 66 personnages et la réserve arithmétique de 82 slots restent
 un candidat de dimensionnement ; ils ne sont pas un ensemble d’invariants
 validé pour patch.
+
+
+## Six racines lifecycle : nouvelle contrainte de stockage
+
+Les six décompilations ont terminé dans le résultat local
+`pool-lifecycle-selected-20261007.c`. C68B00 construit des blocs serveur
+alignés, sans store direct B8/C0 dans cet owner ; C54980 construit les clients
+de stride 0xAEA98 ; 4458D0 configure des records de stride 0xC7A8. Ces pools
+ne deviennent pas ceux de stride 0x5010 ou 0x1F88 par proximité d’adresse.
+Les callees et stores indirects restent des pistes ouvertes.
+
+Une lecture ciblée de 160 octets de la vtable 141477508, publiée par 449E90,
+révèle une contrainte supplémentaire cohérente. Le slot +0x38 vise la leaf
+242E20 : index non signé inférieur ou égal à 41. Les getters 44A0A0 aux slots
++0x28/+0x30 retournent contexte +0x46B8 + index ×0x2CA0 ; 44A0C0 aux slots
++0x18/+0x20 retourne contexte +0x798F8 + index ×0x70. Leur sens exact doit
+encore être relié aux appelants, mais l’arithmétique du stockage est exacte :
+0x46B8 +42 ×0x2CA0 +18 ×0x70 =0x7A0D8, taille allouée par B1F4E0 et mise
+à zéro par le constructeur. Le checker 42 et ces getters appartiennent à la
+même vtable. Ce bloc conséquent s’ajoute aux petites lignes de 64 octets déjà
+identifiées ; une extension cohérente ne peut modifier seulement ces lignes.
+
+L’hypothèse arithmétique 66 donnerait une séparation des sous-blocs différente,
+0xBC7F8 au lieu de 0x798F8 et une taille totale 0xBCFD8. Ce calcul ne vaut pas
+patch : les consommateurs, bornes, mode et durées de vie doivent être reliés.
+Le rapprochement numérique de 0x7A0D8 avec 24 ×0x5010 ne démontre pas un pool
+agents et est écarté comme explication de cette allocation.
+
+Les teardowns B21DD0/48ABF0 appellent le slot0 de ce contexte avec argument0,
+puis effacent le pointeur. Le slot vise 449ED0, qui ne transmet la taille
+0x7A0D8 au libérateur que si DL &1. Les appels observés ne prouvent donc pas
+une libération du heap ; ils peuvent participer à un reset d’objet sur arène.
+Le libérateur effectif d’arène et le producteur indirect B0/B8 demeurent
+inconnus. La prochaine racine doit provenir d’un store ou d’une méthode de
+cette vtable avec champ concret, plutôt que d’une autre boucle de frame.
+
+
+## Racine bloquante suivante : producteur indirect B0/B8/C0
+
+Le rapport des 167 candidats ne contient aucun WRITE/LEA exact vers B0, B8
+ou C0. Cela n’exclut pas un store depuis un pointeur du bloc englobant.
+La passe suivante préparée ajoute quatre cibles RIP exactes : 143C98650
+(ancre de bloc candidate), 143C98660 et 143C98668 (pointeur/compte joueurs
+lus dans B213F0), et 143F25A88 (contexte construit effectivement observé).
+Les écrivains et LEA de ces ancres passent avant les lecteurs dans le quota32.
+Un onzième test vérifie que ces quatre producteurs candidats précèdent une
+masse de lecteurs ; aucun scan n’a été exécuté pour cette préparation.
+
+Les sources SDK épinglées 77e6d4d ne déclarent pas game::level ou level_locals_t
+dans game/symbols.hpp et game/structs.hpp. Elles ne certifient donc pas la base
+143C98650. Leur gentity_s suggère agent à +0x180, alors que le chemin CP retenu
+lit réellement +0x190 : aucune déduction offsetof n’est admise pour construire
+la preuve. Il faut suivre une ancre passée en paramètre jusqu’au store indirect,
+calculer son adresse effective et confirmer qu’elle publie B0/B8/C0 avec le
+compte et la taille correspondants. Une déclaration ou un getter seul ne suffit
+pas. Les éventuels nouveaux owners hors des 167 racines imposent une passe
+pdata admise complète, pas une réutilisation silencieusement incomplète.
+
+Commande préparée, non exécutée, après libération et admission :
+
+```powershell
+pwsh -NoProfile -File ./ops/agent-capacity/Invoke-XrefAnalysis.ps1 `
+  -ReferenceRoot $ReferenceRoot `
+  -OutputPath ./runtime/agent-capacity/xref-indirect-anchors-20261007.json
+```
+
+La sélection Ghidra ultérieure dépendra des véritables writers/LEA révélés,
+avec maximum32 propriétaires complets et64 KiB chacun. Aucune liste de callees
+non liés n’est ajoutée pour remplir un quota. Si seuls des lecteurs persistent,
+la racine manque encore et la proposition de patch reste refusée.

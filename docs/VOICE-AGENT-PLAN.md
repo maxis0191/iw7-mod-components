@@ -585,3 +585,78 @@ hashes and runs no audio stream. The actual lean Windows `/W4 /WX /RTC1` helper
 build and both C++/PowerShell test sets pass. Exact private-phase commands and
 evidence limits are in `ops/voice-agent/README.md`; no main builder or native source
 was changed for this helper tranche.
+
+## CP to MP compatibility map and next candidate — 2026-10-07
+
+This is a source plan, not an MP launch or audio result. It uses retained upstream
+`77e6d4d24e918ee363b3feee3735c3b889dff7d7` (`dedicated.cpp`, `party.cpp`,
+`game/structs.hpp`) and the current tracked generic v2 relay. No upstream poll,
+native modification, driver action or audio stream was performed for this map.
+
+| Boundary | Current source behavior | Required MP evidence / minimal change |
+| --- | --- | --- |
+| Dedicated mode | Pinned `dedicated.cpp` selects CP only with `cpMode`/`zombies`, otherwise MP; executes `default_mp.cfg` for MP. Its dedicated `Voice_Init` patch disables local audio devices. | Explicit MP arguments/config, real loaded MP map and gametype, local audio only in rendering clients. A native MP launch capability is not a completed protected MP runner. |
+| Relay installation | `-iw7-voice-relay` installs v2 on either process after signature checks. `zombies()` still gates accepted incarnations, server synchronization and client connection. | Report actual mode and native passthrough explicitly; installation alone must not be labelled an MP v2 session. |
+| Module/dvars | V2 reads typed boolean `cl_voice`; it does **not** read `paris_mod_voice`. That module switch belongs to legacy v1 `paris_voice.cpp`. With generic relay and no native trace, that component returns before its v1 module gate. | Treat v2 flag and typed `cl_voice` as the actual current controls. If a future common module switch is desired, define and test its semantics separately; never assume `paris_mod_voice=0` stops v2. Retain original engine settings without guessing an `sv_voice` override. |
+| Sender path | Queue hook `0x14037D960` forwards the original queue for MP today. CP external games replace that queue only after the ordinary capture/codec/PTT path. | Baseline MP must keep original queue/capture/codec/VAD/PTT. A negotiation-only candidate must also keep original queue and reject v2 audio messages. |
+| Server identity | V2 requires active IP client, accepted-join incarnation, hex GUID matching registered lobby XUID, and an admitted exact endpoint. Pinned party server-info hook registers XUID in `SV_MainMP_GetServerLobby`; private-slot rules include agent count. | Witness actual MP slot/XUID equality internally, active humans versus bots/agents, accepted-join callback and generation on reconnect. No synthetic registration to make an otherwise ineligible MP peer pass. Keep raw identities local. |
+| Client session | Selected session `0x140D32740`, controller `0x140347690`, slot `0x140D32920`; session handle, host, challenge, local user and slot trigger resets. | Verify selected MP game session and own slot against native roster; a lobby/session name containing MP does not prove runtime equivalence. Mode change must invalidate the negotiated state too. |
+| Registration ownership | `mirror_roster` preserves same-user mute, can register missing remote users, refuses foreign registered occupants; `release_users` removes only recorded same-user registrations. | First MP candidate observes registrations without replacing them. Full v2 later needs proof that remote registrations and voice flags survive without changing team/privacy semantics or native-owned users. |
+| Recipient routing | `voice_transport.hpp::server::receive` broadcasts accepted audio to every other leased peer. No team, dead, spectator or native destination predicate is supplied. | **Blocking for MP v2 audio:** derive actual engine-authorized sender→recipient eligibility. Do not widen the CP predicate and broadcast enemy/dead/private speech. Missing/ambiguous authorization fails closed. |
+| Receiver privacy | V2 checks typed `cl_voice`, exact registered member/XUID and `engine::muted` at `0x14037BBA0`, then calls `Voice_Incoming` at `0x140D59620`. | Preserve those checks and prove actual platform/scoreboard behavior. Receiver mute does not establish server team/dead delivery eligibility, nor undo data already sent to an unauthorized receiver. |
+| Capacity | Wire/state arrays support 18 speakers. Pinned session layout has compile-time size/offset assertions; its game-client team/session fields are not presently an authorization adapter. | Cap the initial candidate at two humans and reject out-of-range slots; no 48-player voice claim. Layout assertions are source facts, not a runtime team/dead policy proof. |
+| Protection and audio admission | Current `paris_test_fixture` private heartbeat and client connect path are CP-specific; `client_request` can explicitly select CP. Explicit capture selector also requires its fresh owned native client session. | Implement a separate mode-aware MP fixture/runner before MP automated PTT or capture. Do not reuse CP auto-join/heartbeat and silently switch the test back to Zombies. |
+
+The first candidate should make MP observable while retaining native transport.
+Proposed ownership after the current native freeze: `voice_relay.cpp` for a
+read-only mode/session status record and a pure mode policy test; a separate
+mode-aware lab fixture for MP protection/admission. It should report
+`native_passthrough_mp`, current session validity, slot/registered/voice masks,
+and eligibility unknown separately from false. Do not log XUIDs, endpoint
+addresses or privacy settings identifying an owner. With no new lab flag, CP
+v2 behavior and MP/SP/local passthrough must remain identical.
+
+A second, still silent candidate can add explicit lab-only **MP negotiation**
+once that fixture exists. Require isolated build/marker, exact process/session,
+loopback test ports, fresh protection and two independently reserved endpoints.
+Reuse wire parsing, generation/challenge/replay/rate budgets, but reject audio
+up/down, keep the original queue, and observe native registrations rather than
+calling `mirror_roster`. Its source tests must prove absent flag behavior,
+MP-only admission, malformed/foreign endpoint rejection and no audio dispatch.
+Its live witness is hello/confirm/current slot/generation with reconnect and
+map/mode transition resets; it is not MP voice acceptance. A guarded no-audio
+PTT 0→1→0 witness can then use the proven ordinary 81/82 entry contract without
+enabling a microphone or creating a private PCM route.
+
+The full MP port remains blocked on a bounded retail authorization trace. The
+pinned SDK exposes `gclient_s.sess.sessionState` (asserted offset 19092) and
+`sess.cs.team` (19424), but reading these two fields is insufficient: FFA, team,
+spectator, intermission, alive/dead rules, private-party channels and engine
+dvars can change permissions. Trace the ordinary voice recipient selection
+and its actual predicates from known queue/send consumers; use one verified
+engine predicate or a faithfully tested adapter. Do not infer a universal
+same-team-only rule. The existing relay transport needs an explicit recipient
+filter input so unauthorized recipients are excluded **before** sending encoded
+frames. Generation and authorization must be revalidated at dispatch, with
+unknown state refusing audio. This requires a separate reviewed native delta;
+the present source has no such MP policy implementation.
+
+The ordinary speech matrix follows the native MP baseline first, then the same
+cases on a reviewed v2 candidate: permitted teammate/FFA speech; enemy isolation
+according to the original mode; alive→dead, dead→alive, dead→dead and spectator
+transitions; scoreboard mute/unmute; native voice disabled; disconnect/reconnect,
+slot reuse, team change and map change. Use distinct original SAPI phrases through
+explicit CABLE Input rendering → approved DirectSound capture GUID → ordinary
+capture/encode/PTT → selected transport → native decode/render → owned receiver
+process-tree loopback. Record whether each recipient was permitted, encoded
+frames sent to that recipient, decoder/enqueue work and matching receiver phrase
+window. Known voice-disabled or forbidden cases require silence as well as no
+unauthorized relay delivery; positive counters alone cannot prove intelligibility.
+
+The current machine has no completed two-endpoint voice admission and no live
+virtual route witness. Budgets stay at their current estimates until repeated
+actual CP/MP measurements justify revision, or a genuinely independent second
+endpoint is available. The SoundVolumeView execution was rejected by automatic
+review (`blocked by policy`); no retry or alternate execution route is included
+here. A driver/default-restoration block does not prevent the silent MP/session
+work above, but still prevents claiming the complete audio route is ready.

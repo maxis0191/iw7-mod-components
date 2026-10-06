@@ -12,9 +12,12 @@ IMAGE = 0x140000000
 TEXT = 0x140001000
 RDATA = 0x141435000
 POOL_TARGETS = {0x143C986B0, 0x143C986B8, 0x143C986C0}
+# Exact neighbouring/context anchors only. A match is not a certified level
+# layout: producer proof still needs the indirect store and its actual offset.
+ANCHOR_TARGETS = {0x143C98650, 0x143C98660, 0x143C98668, 0x143F25A88}
 CALL_TARGETS = {0x140C1A190}
 TARGETS = {0x143C986B0, 0x143C986B8, 0x143C986C0, 0x146B2C508, 0x143F9B358,
-           0x144C6F208, 0x144C6F20C, 0x144C6F210}
+           0x144C6F208, 0x144C6F20C, 0x144C6F210} | ANCHOR_TARGETS
 
 
 class Owners:
@@ -85,12 +88,12 @@ class Owners:
 
 def priority(xrefs):
     # Pool producers/consumers and the exact allocator caller precede the quota.
-    pool = any(int(x['target'], 16) in POOL_TARGETS for x in xrefs)
+    pool = any(int(x['target'], 16) in POOL_TARGETS | ANCHOR_TARGETS for x in xrefs)
     caller = any(x['access'] == 'call' and int(x['target'], 16) in CALL_TARGETS for x in xrefs)
     access = (0 if any(x['access'] == 'write' for x in xrefs) else
               1 if any(x['access'] == 'address' for x in xrefs) else 2)
     # Do not let numerous generic pool readers starve the sole exact caller.
-    pool_producer = any(int(x['target'], 16) in POOL_TARGETS and x['access'] in ('write', 'address') for x in xrefs)
+    pool_producer = any(int(x['target'], 16) in POOL_TARGETS | ANCHOR_TARGETS and x['access'] in ('write', 'address') for x in xrefs)
     family = 0 if pool_producer else 1 if caller else 2 if pool else 3
     return (family, access)
 
@@ -192,6 +195,8 @@ def run(reference_root, retained_report=None):
     return {'schema': 'iw7.agent-capacity-xrefs/1',
             'input_hashes': {name: expected for name, expected in INPUTS.values()},
             'capstone_version': capstone.__version__, 'targets': sorted(map(hex, TARGETS)),
+            'indirect_producer_anchors': sorted(map(hex, ANCHOR_TARGETS)),
+            'anchor_caveat': 'Neighbouring block/context address candidates only; certify B0/B8/C0 indirect stores from decoded complete owners, never SDK offsetof alone.',
             'direct_call_targets': sorted(map(hex, CALL_TARGETS)),
             'decode_scope': 'retained-candidate-owners-only' if scope is not None else 'all-captured-pdata',
             'retained_candidates_reused': len(scope) if scope is not None else 0,

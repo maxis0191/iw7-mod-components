@@ -415,14 +415,14 @@
     ]
   },
   "lightweight_audit": {
-    "xref_synthetic_tests": 10,
+    "xref_synthetic_tests": 11,
     "exact_java_resolver_tests": "PASS: union, padding, fragment, cycle, missing parent, truncation, version, depth, size",
     "retained_complete_owner_tests": 4,
     "ghidra_executed_by_this_audit": false,
     "native_edits": false
   },
   "next_pool_lifecycle_pass": {
-    "status": "prepared-not-executed",
+    "status": "executed-parent-admitted-lease-released",
     "function_list": "ops/agent-capacity/pool-lifecycle-functions.csv",
     "maximum_functions": 6,
     "maximum_union_bytes_per_owner": 65536,
@@ -468,6 +468,101 @@
     ],
     "stop_if_no_producer": "Follow only proven field/vtable indirections from complete selected roots. Do not add generic frame consumers to fill quota or claim B0/B8 destruction from unrelated table teardown.",
     "requires_separate_admission": true,
+    "patch_ready": false
+  },
+  "selected_pool_lifecycle_decompilation": {
+    "status": "parent-completed-lease-released",
+    "derived_output": "runtime/agent-capacity/pool-lifecycle-selected-20261007.c",
+    "derived_log": "runtime/agent-capacity/pool-lifecycle-selected-20261007.log",
+    "output_sha256": "db7c7dbdbde22aaaf1030fe1a2f1a5d95733c17bbba8a62550d1af1e6a3d9fe0",
+    "complete_owners": 6,
+    "facts": [
+      {
+        "owner": "0x140c68b00",
+        "proof": "Dependent aligned128 arena allocations use146B398xx/146B3CCxx globals; selected complete owner does not directly publish B8/C0.",
+        "limit": "No absence claim for its callees or indirect stores."
+      },
+      {
+        "owner": "0x140c54980",
+        "proof": "Client count*AEA98 allocation, construction, pointer array146B22950 and count146B229E0; not B8 allocation."
+      },
+      {
+        "owner": "0x1404458d0",
+        "proof": "Initializes indexed records strideC7A8 and internal tables; not the known5010/1F88 pools."
+      },
+      {
+        "owners": [
+          "0x140b21dd0",
+          "0x14048abf0"
+        ],
+        "proof": "Mode tags2/1 gate pointer reset; context143F25A88 slot0 called with argument0 then pointer cleared; character table435030 reset also called.",
+        "limit": "Not proof of heap release or B8 lifecycle."
+      }
+    ],
+    "context_vtable_bounded_followup": {
+      "constructor": "0x140449e90",
+      "vtable": "0x141477508",
+      "table_bytes_read": 160,
+      "allocated_bytes": "0x7a0d8",
+      "zeroed_bytes": "0x7a0d0",
+      "index_predicate": {
+        "vtable_slot": "0x38",
+        "target": "0x140242e20",
+        "bound_inclusive": 41
+      },
+      "record_accessor": {
+        "vtable_slots": [
+          "0x28",
+          "0x30"
+        ],
+        "target": "0x14044a0a0",
+        "base_offset": "0x46b8",
+        "stride": "0x2ca0"
+      },
+      "aux_accessor": {
+        "vtable_slots": [
+          "0x18",
+          "0x20"
+        ],
+        "target": "0x14044a0c0",
+        "base_offset": "0x798f8",
+        "stride": "0x70"
+      },
+      "exact_layout_arithmetic": "0x46B8 + 42*0x2CA0 + 18*0x70 = 0x7A0D8",
+      "hypothetical_66_layout_arithmetic": "0x46B8 + 66*0x2CA0 + 18*0x70 = 0xBCFD8; candidate only, not patch ready",
+      "destructor_slot0": "0x140449ed0; size0x7A0D8 passed to allocator release only if DL&1. Teardown passes0, so selected teardown does not establish heap release.",
+      "limits": [
+        "Accessor count/use must be tied to complete callers before semantic array names are certified",
+        "More than the small64-byte character table must change together",
+        "No B8/5010 producer found from these selected owners",
+        "Corpse partition and save/network codecs unresolved"
+      ]
+    },
+    "patch_ready": false
+  },
+  "next_indirect_producer_xrefs": {
+    "status": "prepared-not-executed",
+    "helper": "ops/agent-capacity/Invoke-XrefAnalysis.ps1",
+    "exact_rip_anchors": [
+      "0x143c98650",
+      "0x143c98660",
+      "0x143c98668",
+      "0x143f25a88"
+    ],
+    "candidate_block_anchor": "143C98650 is neighbouring-block candidate, not certified SDK game::level base",
+    "verified_context": "143F25A88 receives449E90 constructor result;143C98660/668 are player pointer/count consumers inB213F0",
+    "selection": "WRITE/LEA exact anchors join pool producers before allocator caller, then readers; max32 complete owners,64KiB each",
+    "retained_reuse_limit": "Previous167 roots do not establish coverage for new anchor-only owners; next admitted full pdata pass required to seek those roots.",
+    "sdk_pin": "77e6d4d24e918ee363b3feee3735c3b889dff7d7",
+    "sdk_layout_limit": "No game::level/level_locals_t symbol declaration found in pinned game/symbols.hpp or game/structs.hpp. gentity.agent impliedSDK180 differs from actual selectedCPowner190; no SDK offsetof accepted as store proof.",
+    "required_proof": [
+      "Trace anchor through call arguments to complete constructor/initializer",
+      "Demonstrate actual indirect store address equalsB0/B8/C0 and its value provenance",
+      "Link count,size,stride,zero/init and teardown/reset from same mode/lifetime",
+      "Stop if only getters/readers or guessed field layouts remain"
+    ],
+    "requires_separate_admission": true,
+    "output_command": "pwsh -NoProfile -File ./ops/agent-capacity/Invoke-XrefAnalysis.ps1 -ReferenceRoot $ReferenceRoot -OutputPath ./runtime/agent-capacity/xref-indirect-anchors-20261007.json",
     "patch_ready": false
   }
 }
