@@ -177,9 +177,12 @@ function Get-IW7BaseClientArguments($Plan,[string]$Password) {
     # Match the verified Isolated-Lab startup path. A client +exec in iw7-mod
     # is not a reliable startup dvar source: retail profile loading can leave
     # password/graphics at owner defaults. Apply them as startup +set values.
+    # Retail r_mode selects fullscreen resolution. Windowed dimensions come
+    # from vid_width/vid_height; the retained owner profile can otherwise leave
+    # a 1879x1057 backbuffer despite r_mode=1280x720. Disable monitor-sized window.
     # This string contains the private password; never write it to evidence.
     $picmip=$Plan.RunPlan.Picmip
-    $arguments="-noupdate -nosteam -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_ip 127.0.0.1 +set net_port $($Plan.ClientPort) +set paris_lab_server_port $($Plan.ServerPort) +set password `"$Password`" +set r_fullscreen 0 +set r_mode 1280x720 +set r_vsync 1 +set com_maxfps 30 +set r_picmip $picmip +set r_picmip_bump $picmip +set r_picmip_spec $picmip"
+    $arguments="-noupdate -nosteam -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_ip 127.0.0.1 +set net_port $($Plan.ClientPort) +set paris_lab_server_port $($Plan.ServerPort) +set password `"$Password`" +set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 1280 +set vid_height 720 +set r_mode 1280x720 +set r_vsync 1 +set com_maxfps 30 +set r_picmip $picmip +set r_picmip_bump $picmip +set r_picmip_spec $picmip"
     if ($Plan.RunPlan.Debugger) { $arguments+=' -paris-debugger' }
     $arguments
 }
@@ -228,7 +231,7 @@ function Start-IW7BaseClient {
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
         }
         $picmip=$Plan.RunPlan.Picmip
-        $cfg="set password `"$Password`"`nset r_fullscreen 0`nset r_mode 1280x720`nset com_maxfps 30`nset r_vsync 1`nset r_picmip $picmip`nset r_picmip_bump $picmip`nset r_picmip_spec $picmip`n"
+        $cfg="set password `"$Password`"`nset r_fullscreen 0`nset r_fullscreenWindow 0`nset vid_width 1280`nset vid_height 720`nset r_mode 1280x720`nset com_maxfps 30`nset r_vsync 1`nset r_picmip $picmip`nset r_picmip_bump $picmip`nset r_picmip_spec $picmip`n"
         [IO.File]::WriteAllText((Resolve-IW7BasePath $Plan.GameRoot 'iw7-mod/agent-base-client.cfg'),$cfg,[Text.UTF8Encoding]::new($false))
         if (!('IW7LabProcess' -as [type])) { Add-Type -Path "$PSScriptRoot/native/LabProcess.cs" }
         $args=Get-IW7BaseClientArguments $Plan $Password

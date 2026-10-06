@@ -10,6 +10,8 @@ function Assert-Refused([scriptblock]$Body,[string]$Message) {
 }
 try {
     [IO.File]::WriteAllText("$game/iw7-mod/players2/config.cfg",'owner profile')
+    $ownerWindowProfile="seta vid_width `"1879`"`nseta vid_height `"1057`"`nseta r_fullscreenWindow `"1`"`n"
+    [IO.File]::WriteAllText("$game/iw7-mod/players2/config_mp.cfg",$ownerWindowProfile)
     [IO.File]::WriteAllText("$game/iw7-mod/paris-server-client.request",'owner mailbox')
     [IO.File]::WriteAllText("$game/iw7-mod/server_spaceland.cfg",'Main configuration')
     $realExe=(Get-Process -Id $PID).MainModule.FileName
@@ -23,7 +25,7 @@ try {
     # setting, independently of any existing owner config or exec search path.
     $fixturePassword=[guid]::NewGuid().ToString('N')
     $launch=Get-IW7BaseClientArguments $plan $fixturePassword
-    foreach ($setting in @{'password'=('"'+$fixturePassword+'"');'r_picmip'='2';'r_picmip_bump'='2';'r_picmip_spec'='2';'r_fullscreen'='0';'r_mode'='1280x720';'r_vsync'='1';'com_maxfps'='30';'net_ip'='127.0.0.1';'net_port'='27117';'paris_lab_server_port'='27116'}.GetEnumerator()) {
+    foreach ($setting in @{'password'=('"'+$fixturePassword+'"');'r_picmip'='2';'r_picmip_bump'='2';'r_picmip_spec'='2';'r_fullscreen'='0';'r_fullscreenWindow'='0';'vid_width'='1280';'vid_height'='720';'r_mode'='1280x720';'r_vsync'='1';'com_maxfps'='30';'net_ip'='127.0.0.1';'net_port'='27117';'paris_lab_server_port'='27116'}.GetEnumerator()) {
         $matches=[regex]::Matches($launch,('\+set\s+'+[regex]::Escape($setting.Key)+'\s+("[^"]*"|\S+)'))
         Assert-Test ($matches.Count -eq 1 -and $matches[0].Groups[1].Value -eq $setting.Value) ('Startup setting absent/ambiguous: '+$setting.Key)
     }
@@ -62,6 +64,7 @@ try {
     Assert-Refused { Assert-IW7BaseLease $lease $plan $wrongServer } 'Stale registered server identity accepted.'
     $transaction=Save-IW7BaseTransaction $plan $backup
     [IO.File]::WriteAllText("$game/iw7-mod/players2/config.cfg",'test modified profile')
+    [IO.File]::WriteAllText("$game/iw7-mod/players2/config_mp.cfg",'temporary windowed dimensions')
     [IO.File]::WriteAllText("$game/iw7-mod/players2/new.dat",'test generated profile')
     [IO.File]::WriteAllText("$game/iw7-mod/paris-server-client.request",'test mailbox')
     [IO.File]::WriteAllText("$game/iw7-mod/paris-agent.session",'test native session')
@@ -74,6 +77,7 @@ try {
     [IO.File]::WriteAllText("$backup/iw7-mod/paris-server-client.request",'owner mailbox')
     Restore-IW7BaseTransaction $transaction
     Assert-Test ([IO.File]::ReadAllText("$game/iw7-mod/players2/config.cfg") -eq 'owner profile') 'Profile bytes not restored.'
+    Assert-Test ([IO.File]::ReadAllText("$game/iw7-mod/players2/config_mp.cfg") -eq $ownerWindowProfile) 'Owner window dimensions/borderless profile not restored byte-for-byte.'
     Assert-Test ([IO.File]::ReadAllText("$game/iw7-mod/paris-server-client.request") -eq 'owner mailbox') 'Existing mailbox not restored.'
     Assert-Test (!(Test-Path "$game/iw7-mod/players2/new.dat") -and !(Test-Path "$game/iw7-mod/paris-agent.session")) 'Generated files survived restoration.'
     Assert-Test (!(Test-Path "$game/iw7-mod/lab-appdata") -and !(Test-Path "$game/iw7-mod/paris-isolated-lab.marker")) 'Isolated profile/marker not restored to absent state.'
