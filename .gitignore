@@ -2,6 +2,7 @@
 /runtime/
 /backups/
 /compiled/
+/disassembled/
 *.log
 *.cgsc
 *.gscbin
