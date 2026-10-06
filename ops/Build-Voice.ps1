@@ -171,8 +171,9 @@ else {
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
 $copiedVoice=Join-Path $root 'src/client/component/paris_voice.cpp'
 if ($IsolatedLab) {
+    . "$PSScriptRoot/voice-agent/Build-Copy.Core.ps1"
     $voiceSource=[IO.File]::ReadAllText($copiedVoice)
-    [IO.File]::WriteAllText($copiedVoice,"#define IW7_PARIS_ISOLATED_VOICE_CAPTURE 1`n"+$voiceSource,[Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText($copiedVoice,(Convert-IW7IsolatedVoiceSource $voiceSource),[Text.UTF8Encoding]::new($false))
 }
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
@@ -386,7 +387,8 @@ $manifest.SessionAliases = 'Temporary duplicate names, server only'
 $manifest.IsolatedLab = [bool]$IsolatedLab
 $manifest.VoiceCaptureSelectorBuild = [bool]$IsolatedLab
 $manifest.VoiceCopiedSourceSHA256 = (Get-FileHash -LiteralPath $copiedVoice).Hash
-$manifest.VoiceSourceTransformation = if ($IsolatedLab) { 'prepend IW7_PARIS_ISOLATED_VOICE_CAPTURE=1; explicit startup admission still required' } else { 'none; selector code excluded' }
+$manifest.VoiceSourceTransformation = if ($IsolatedLab) { 'insert IW7_PARIS_ISOLATED_VOICE_CAPTURE=1 immediately after exact leading PCH include; explicit startup admission still required' } else { 'none; selector code excluded' }
+$manifest.VoiceSourceTransformationHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/voice-agent/Build-Copy.Core.ps1").Hash
 if ($IsolatedLab) {
     $manifest.LabPropertiesSHA256 = (Get-FileHash -LiteralPath $properties).Hash
     $manifest.LabAuthSHA256 = (Get-FileHash -LiteralPath $authPath).Hash
