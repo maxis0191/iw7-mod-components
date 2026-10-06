@@ -1,7 +1,8 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1)
 $ErrorActionPreference = 'Stop'
+if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requires ServerModules and IsolatedLab.' }
 if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
 if ($ServerModules -and ($RhinoExperiment -or $EnemyExperiment)) {
     throw 'ServerModules is incompatible with enemy/Rhino overlays.'
@@ -28,6 +29,10 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$testSource" /Fe:"$testExe" /Fo:"$runtime\voice-protocol-test.obj"
 if errorlevel 1 exit /b 1
 "$testExe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\debugger_stats_test.cpp" /Fe:"$runtime\debugger-stats-test.exe" /Fo:"$runtime\debugger-stats-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\debugger-stats-test.exe"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_state_test.cpp" /Fe:"$runtime\voice-state-test.exe" /Fo:"$runtime\voice-state-test.obj"
 if errorlevel 1 exit /b 1
@@ -128,6 +133,8 @@ if (Test-Path -LiteralPath $labComponent) {
 $nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','paris_country.cpp','paris_identity.cpp','paris_test_fixture.cpp','paris_test_safety.hpp',
     'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','voice_inbox.hpp','dvar_metadata.hpp')
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
+& "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
+if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
 # Preserve the engine's metadata API while serializing its cache and keeping it
 # alive during CRT shutdown. Accept only the pinned file or this exact overlay.
 $dvarsPath = Join-Path $root 'src/client/game/dvars.cpp'
@@ -318,6 +325,7 @@ New-Item -ItemType Directory -Path $symbols -Force | Out-Null
 Copy-Item -LiteralPath "$output/iw7-paris-voice.exe" -Destination (Join-Path $symbols 'iw7-paris-native-trace.exe') -Force
 Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.pdb" -Destination (Join-Path $symbols 'iw7-mod.pdb') -Force
 $manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
+$manifest.Debugger = [bool]$Debugger
 if ((Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')).Hash -ne $manifest.SHA256) { throw 'Archived diagnostic executable mismatch.' }
 $manifest.ServerModules = [bool]$ServerModules
 $manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
