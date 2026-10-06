@@ -1,6 +1,7 @@
 #pragma once
 // Shared native/test policy. The component is included only in isolated builds.
 #include <windows.h>
+#include <mmreg.h>
 #include <dsound.h>
 #include <cstring>
 #include <mmdeviceapi.h>
