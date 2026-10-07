@@ -223,6 +223,14 @@ function Get-IW7BaseClientArguments($Plan,[string]$Password) {
     $arguments
 }
 
+function New-IW7BaseClientContext($Plan,$ServerIdentity,[string]$LeaseToken,[string]$OutputRoot,[long]$LogLength,$PairOwnership=$null,[ValidateSet('A','B')][string]$PairRole='A') {
+    # Both lifecycle paths read this contract under StrictMode. Ordinary clients
+    # must explicitly carry null pair ownership, including launch-failure cleanup.
+    [pscustomobject]@{Plan=$Plan;Server=$ServerIdentity;LeaseToken=$LeaseToken;OutputRoot=$OutputRoot;Transaction=$null;Handle=$null;Client=$null;Identity=$null;
+        LogLength=$LogLength;PendingLog='';LastHeartbeatUtc=$null;LastHeartbeatTick=0L;StartedTick=[Environment]::TickCount64;StartedUtc=[datetime]::UtcNow;Protected=$false;Failed=$false;Lock=$null;
+        DesktopName=('IW7ParisLab_'+[guid]::NewGuid().ToString('N'));PairOwnership=$PairOwnership;PairRole=$PairRole}
+}
+
 function Start-IW7BaseClient {
     param([Parameter(Mandatory)]$Plan,[Parameter(Mandatory)]$ServerIdentity,[Parameter(Mandatory)][string]$LeaseToken,
         [Parameter(Mandatory)][string]$Password,[Parameter(Mandatory)][string]$OutputRoot,$PairOwnership=$null,[ValidateSet('A','B')][string]$PairRole='A')
@@ -250,10 +258,7 @@ function Start-IW7BaseClient {
     if ($output.StartsWith($Plan.GameRoot+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Evidence/backup must stay outside the game installation.' }
     $null=Resolve-IW7BasePath (Split-Path $output) (Split-Path $output -Leaf)
     [IO.Directory]::CreateDirectory($output) | Out-Null
-    $context=[pscustomobject]@{Plan=$Plan;Server=$ServerIdentity;LeaseToken=$LeaseToken;OutputRoot=$output;Transaction=$null;Handle=$null;Client=$null;Identity=$null;
-        LogLength=(Read-IW7BaseLog $ServerIdentity.Stdout).Length;PendingLog='';LastHeartbeatUtc=$null;LastHeartbeatTick=0L;StartedTick=[Environment]::TickCount64;StartedUtc=[datetime]::UtcNow;Protected=$false;Failed=$false;Lock=$null;
-        DesktopName=('IW7ParisLab_'+[guid]::NewGuid().ToString('N'))}
-    if ($PairOwnership) { $context|Add-Member PairOwnership $PairOwnership; $context|Add-Member PairRole $PairRole }
+    $context=New-IW7BaseClientContext $Plan $ServerIdentity $LeaseToken $output (Read-IW7BaseLog $ServerIdentity.Stdout).Length $PairOwnership $PairRole
     $lockRoot=Join-Path $env:LOCALAPPDATA 'IW7Paris/BaseClient'
     [IO.Directory]::CreateDirectory($lockRoot) | Out-Null
     $key=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Plan.GameRoot.ToLowerInvariant())))
