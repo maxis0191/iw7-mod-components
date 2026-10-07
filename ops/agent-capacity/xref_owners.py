@@ -14,8 +14,11 @@ RDATA = 0x141435000
 POOL_TARGETS = {0x143C986B0, 0x143C986B8, 0x143C986C0}
 # Exact neighbouring/context anchors only. A match is not a certified level
 # layout: producer proof still needs the indirect store and its actual offset.
-ANCHOR_TARGETS = {0x143C98650, 0x143C98660, 0x143C98668, 0x143F25A88}
-CALL_TARGETS = {0x140C1A190}
+# 650 was a false level-base candidate (actual dvar slot). Preserve that
+# history in the inventory; do not let its writers starve real reset callers.
+ANCHOR_TARGETS = {0x143C98660, 0x143C98668, 0x143C98670, 0x143F25A88}
+RESET_CALL_TARGETS = {0x1403FCC10}
+CALL_TARGETS = {0x140C1A190} | RESET_CALL_TARGETS
 TARGETS = {0x143C986B0, 0x143C986B8, 0x143C986C0, 0x146B2C508, 0x143F9B358,
            0x144C6F208, 0x144C6F20C, 0x144C6F210} | ANCHOR_TARGETS
 
@@ -87,6 +90,10 @@ class Owners:
 
 
 def priority(xrefs):
+    # Exact reset callers are the current missing producer bridge. Retained
+    # selected-only call lists cannot establish their absence across the image.
+    if any(x['access'] == 'call' and int(x['target'], 16) in RESET_CALL_TARGETS for x in xrefs):
+        return (-1, 0)
     # Pool producers/consumers and the exact allocator caller precede the quota.
     pool = any(int(x['target'], 16) in POOL_TARGETS | ANCHOR_TARGETS for x in xrefs)
     caller = any(x['access'] == 'call' and int(x['target'], 16) in CALL_TARGETS for x in xrefs)
@@ -196,7 +203,7 @@ def run(reference_root, retained_report=None):
             'input_hashes': {name: expected for name, expected in INPUTS.values()},
             'capstone_version': capstone.__version__, 'targets': sorted(map(hex, TARGETS)),
             'indirect_producer_anchors': sorted(map(hex, ANCHOR_TARGETS)),
-            'anchor_caveat': 'Neighbouring block/context address candidates only; certify B0/B8/C0 indirect stores from decoded complete owners, never SDK offsetof alone.',
+            'anchor_caveat': '650 rejected as dvar.660/668/670 reset/player/entity anchors verified, not B8/C0 publication proof; certify indirect stores from complete owners, never SDK offsetof alone.',
             'direct_call_targets': sorted(map(hex, CALL_TARGETS)),
             'decode_scope': 'retained-candidate-owners-only' if scope is not None else 'all-captured-pdata',
             'retained_candidates_reused': len(scope) if scope is not None else 0,

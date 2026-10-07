@@ -1,0 +1,30 @@
+{
+  "schema": "iw7.capacity-fixed-entry-plan/1",
+  "plan": "reset-entry-targets",
+  "parent_capture": "runtime/agent-lab/20261007-001859-322-c7dcac46/capacity-pages-ba1b5da84cb042ad847c0d86c8bcba9d",
+  "manifest_sha256": "cb580b02e07914df1a75b8ed646dc5ca319ffcc2942f0c41ecfeb25f20417960",
+  "entries": [
+    {
+      "owner": "0x140488520",
+      "thunk": "0x14BF22C47",
+      "resolved_target": "0x14B8E6A6B",
+      "page": "0x14B8E6000",
+      "parent_page": "140488520-000000014BF22000.bin",
+      "parent_page_sha256": "1F4B7C03465EE9AA5DF8A301D334BB9B78BDCF1A9A14728B0A9D1914B15D09A7"
+    },
+    {
+      "owner": "0x140B20760",
+      "thunk": "0x14BA00414",
+      "resolved_target": "0x14B4B225D",
+      "page": "0x14B4B2000",
+      "parent_page": "140B20760-000000014BA00000.bin",
+      "parent_page_sha256": "A78632059F99A689424C1B1D0EFF25C5CFBE35D5A60F40C494318163C597AB9E"
+    }
+  ],
+  "proof": "Exact Capstone5.0.7 RIP-relative LEA and stack exchange thunk; live-reset-entry-audit-20261007.json",
+  "payload_bytes": 8192,
+  "maximum_read_calls": 4,
+  "maximum_read_bytes": 16384,
+  "pristine": false,
+  "patch_ready": false
+}

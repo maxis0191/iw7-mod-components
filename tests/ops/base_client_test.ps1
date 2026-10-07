@@ -30,6 +30,15 @@ try {
         Assert-Test ($matches.Count -eq 1 -and $matches[0].Groups[1].Value -eq $setting.Value) ('Startup setting absent/ambiguous: '+$setting.Key)
     }
     Assert-Test ($launch -notmatch '\+exec\s' -and $launch -notmatch '-paris-debugger') 'Launch still depends on client exec or unreserved debugger.'
+    Assert-Test ($launch -notmatch 'cl_yawspeed|cl_pitchspeed') 'Ordinary profile changed keyboard look speeds.'
+    $combatYaw=New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -GraphicsProfile Reduced -KeyboardYawDegreesPerSecond 35
+    $yawLaunch=Get-IW7BaseClientArguments $combatYaw $fixturePassword
+    Assert-Test ($combatYaw.KeyboardYawDegreesPerSecond -eq 35 -and [regex]::Matches($yawLaunch,'\+set cl_yawspeed 35(?:\s|$)').Count -eq 1 -and $yawLaunch -notmatch 'cl_pitchspeed') 'Combat yaw was not explicit or changed pitch.'
+    foreach($badYaw in @('35',$true,19,141,-1,[double]::NaN,[double]::PositiveInfinity)){
+        Assert-Refused { New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -KeyboardYawDegreesPerSecond $badYaw } 'Invalid keyboard yaw accepted.'
+    }
+    $nullYaw=New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -KeyboardYawDegreesPerSecond $null
+    Assert-Test ((Get-IW7BaseClientArguments $nullYaw $fixturePassword) -notmatch 'cl_yawspeed') 'Null yaw unexpectedly overrode owner profile.'
     $fullLaunch=Get-IW7BaseClientArguments $debug $fixturePassword
     Assert-Test ($fullLaunch -match '\+set r_picmip 0(?:\s|$)' -and $fullLaunch -match '-paris-debugger(?:\s|$)') 'Full/debug reserved profile changed.'
     Assert-Refused { Get-IW7BaseClientArguments $plan 'unsafe" +set sv_cheats 1' } 'Startup password injection accepted.'
@@ -62,7 +71,10 @@ try {
     Assert-Refused { Assert-IW7BaseLease $lease $plan $wrongServer } 'Main/base dedicated identity accepted.'
     $wrongServer=[pscustomobject]@{PID=123;Image=$server.Image;CreatedUtc=([datetime]::UtcNow.AddDays(-1)).ToString('o')}
     Assert-Refused { Assert-IW7BaseLease $lease $plan $wrongServer } 'Stale registered server identity accepted.'
-    $transaction=Save-IW7BaseTransaction $plan $backup
+    $ownerYawCfg="set cl_yawspeed 140`nset cl_pitchspeed 91`n"
+    [IO.File]::WriteAllText("$game/iw7-mod/agent-base-client.cfg",$ownerYawCfg)
+    $transaction=Save-IW7BaseTransaction $combatYaw $backup
+    [IO.File]::WriteAllText("$game/iw7-mod/agent-base-client.cfg","set cl_yawspeed 35`n")
     [IO.File]::WriteAllText("$game/iw7-mod/players2/config.cfg",'test modified profile')
     [IO.File]::WriteAllText("$game/iw7-mod/players2/config_mp.cfg",'temporary windowed dimensions')
     [IO.File]::WriteAllText("$game/iw7-mod/players2/new.dat",'test generated profile')
@@ -76,6 +88,7 @@ try {
     Assert-Test ([IO.File]::ReadAllText("$game/iw7-mod/players2/config.cfg") -eq 'test modified profile') 'Partial restore occurred before backup preflight.'
     [IO.File]::WriteAllText("$backup/iw7-mod/paris-server-client.request",'owner mailbox')
     Restore-IW7BaseTransaction $transaction
+    Assert-Test ([IO.File]::ReadAllText("$game/iw7-mod/agent-base-client.cfg") -ceq $ownerYawCfg) 'Explicit combat yaw did not restore owner yaw/pitch config bytes.'
     Assert-Test ([IO.File]::ReadAllText("$game/iw7-mod/players2/config.cfg") -eq 'owner profile') 'Profile bytes not restored.'
     Assert-Test ([IO.File]::ReadAllText("$game/iw7-mod/players2/config_mp.cfg") -eq $ownerWindowProfile) 'Owner window dimensions/borderless profile not restored byte-for-byte.'
     Assert-Test ([IO.File]::ReadAllText("$game/iw7-mod/paris-server-client.request") -eq 'owner mailbox') 'Existing mailbox not restored.'

@@ -1,0 +1,4 @@
+# Exact reset CALL sites inside complete pdata owners; reachable CFG/arguments unknown.
+# Entries transfer outside retained text; no semantic G_InitGame names or pool publication claimed.
+reset_callsite_owner_488520,140488520
+reset_callsite_owner_B20760,140B20760
