@@ -1,6 +1,7 @@
 """Compile the exact pure Java range resolver without loading or running Ghidra."""
 import argparse
 import subprocess
+import time
 import uuid
 from pathlib import Path
 
@@ -79,7 +80,14 @@ def main():
     command = [str(args.java), '-Xmx512m', '--source', '21', str(test)]
     if args.reference_root:
         command.extend(str(args.reference_root / name) for name in ('unpacked-pdata.bin', 'unpacked-rdata.bin'))
-    subprocess.run(command, check=True, timeout=30)
+    # Java source-file mode includes compiler/JVM cold start. The shared CI
+    # runner exceeded 30s despite printing PASS; bound the complete invocation
+    # at 90s and retain elapsed time, rather than accepting stdout as exit proof.
+    started = time.monotonic()
+    try:
+        subprocess.run(command, check=True, timeout=90)
+    finally:
+        print(f'Java owner resolver elapsed={time.monotonic() - started:.3f}s; limit=90s', flush=True)
 
 
 if __name__ == '__main__':
