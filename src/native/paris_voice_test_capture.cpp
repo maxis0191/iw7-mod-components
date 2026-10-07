@@ -89,7 +89,7 @@ bool read_request(voice_test_binding::arm_request& request,bool is_cancel=false)
 }
 HRESULT WINAPI factory(LPCGUID guid,LPDIRECTSOUNDCAPTURE* output,LPUNKNOWN outer) {
     try {
-    std::lock_guard lock(lifecycle);
+    std::lock_guard lifecycle_guard(lifecycle);
     if(!state || !installed || cancelled || guid || outer || output!=expected_output || *output || control)return DSERR_INVALIDPARAM;
     voice_test_capture::environment env;env.owner=state;env.opaque=state.get();env.now=now;env.fresh=fresh;
     const auto hr=voice_test_capture::prepare(state->scope,env,state->wav,output,&control);
@@ -99,7 +99,7 @@ HRESULT WINAPI factory(LPCGUID guid,LPDIRECTSOUNDCAPTURE* output,LPUNKNOWN outer
 }
 void volume_init() noexcept {
     try {
-    std::lock_guard lock(lifecycle);
+    std::lock_guard lifecycle_guard(lifecycle);
     // Hook exists only for this admitted opt-in. Refuse any owner appearing
     // after admission instead of invoking an endpoint API or modifying it.
     if(!state || !installed || cancelled || *reinterpret_cast<void**>(0x1477A0190) || *reinterpret_cast<const int*>(0x1477A0188)) {
@@ -111,14 +111,14 @@ void volume_init() noexcept {
 }
 void cancel() noexcept {
     try {
-    std::lock_guard lock(lifecycle);
+    std::lock_guard lifecycle_guard(lifecycle);
     cancelled=true;if(control)control->cancel();
     if(state){std::lock_guard lock(state->mutex);state->cached={};}
     }catch(...){}
 }
 bool talk_admitted() noexcept {
     try {
-        std::lock_guard lock(lifecycle);
+        std::lock_guard lifecycle_guard(lifecycle);
         if(GetCurrentThreadId()!=main_tid || !installed || cancelled || !armed || !state || !control)return false;
         const auto m=control->snapshot();
         return m.armed && !m.failed && fresh(state.get(),state->scope,GetTickCount64());
@@ -126,7 +126,7 @@ bool talk_admitted() noexcept {
 }
 void relay_main_tick() noexcept {
     try {
-        std::lock_guard lock(lifecycle);
+        std::lock_guard lifecycle_guard(lifecycle);
         if(!installed || !state)return;
         main_tid=GetCurrentThreadId();
         voice_test_binding::arm_request cancel_request;
