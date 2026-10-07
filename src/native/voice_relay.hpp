@@ -21,5 +21,18 @@ namespace voice_relay
 
     // Read-only counters for the private harness; the component itself has no
     // dependency on test protection, fixtures or server-specific configuration.
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+    struct test_readiness_snapshot
+    {
+        bool ready{}, loopback{}, both_roles_ready{};
+        unsigned slot{}, server_port{};
+        std::uint64_t user{}, speaker_generation_low{}, speaker_generation_high{}, observed_tick{};
+        std::string game_challenge;
+    };
+    // Copies transport state under its mutex. No COM call, game mutation, or
+    // protection claim. Call from main only; other threads use cached evidence.
+    test_readiness_snapshot test_readiness();
+#endif
+
     std::uint64_t encoded_frames();
 }

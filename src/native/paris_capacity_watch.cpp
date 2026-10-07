@@ -10,13 +10,14 @@
 
 namespace paris_capacity_watch {
 namespace {
-constexpr DWORD arm_exception=0xE0574801, close_exception=0xE0574802, verify_exception=0xE0574803;
+
 struct capture { observation event{}; CONTEXT context{}; };
 struct thread_record {
     std::atomic<DWORD> tid{0}; std::atomic<unsigned> roles{0};
     std::atomic<phase> state{phase::empty}; std::atomic<bool> canary_pass{false};
     alignas(8) volatile LONG64 canary{};
     DWORD64 saved_dr[6]{}; write_history history{};
+    std::atomic<unsigned> ticket{0},operation{0};std::atomic<std::uint64_t> checkpoint_expires{0};HANDLE checkpoint_done{};
     std::atomic<HANDLE> handle{nullptr}; std::atomic<std::uint64_t> creation{0};
 };
 thread_record records[2];
@@ -25,6 +26,7 @@ fixed_ring<capture> events;
 std::atomic<bool> requested{false}, stopping{false}, confirmed{true}, handler_removed{true};
 std::atomic<std::uint64_t> start_ms{0}, vacant_since{0}, vacancy_checked{0};
 PVOID handler=nullptr;
+HANDLE helper_signal{},helper_handle{};std::atomic<bool> helper_stop{false},helper_inflight{false};
 std::mutex output_mutex, registry_mutex;
 std::ofstream output;
 std::string nonce;
@@ -78,8 +80,8 @@ void restore_registers(CONTEXT& c, thread_record& t) noexcept {
 }
 bool owned_registers(const CONTEXT& c,const thread_record& t,phase state) noexcept {
     if(c.Dr2!=t.saved_dr[2] || c.Dr3!=t.saved_dr[3])return false;
-    if(state==phase::canary)return c.Dr0==reinterpret_cast<DWORD64>(&t.canary) && c.Dr1==0 && c.Dr7==(t.saved_dr[5]|canary_dr7);
-    if(state==phase::data)return c.Dr0==field_b8 && c.Dr1==field_c0 && c.Dr7==(t.saved_dr[5]|data_dr7);
+    if(state==phase::canary)return c.Dr0==reinterpret_cast<DWORD64>(&t.canary) && c.Dr1==0 && same_dr7(c.Dr7,t.saved_dr[5]|canary_dr7);
+    if(state==phase::data)return c.Dr0==field_b8 && c.Dr1==field_c0 && same_dr7(c.Dr7,t.saved_dr[5]|data_dr7);
     return false;
 }
 bool restored(const CONTEXT& c,const thread_record& t) noexcept {
@@ -89,7 +91,7 @@ bool restored(const CONTEXT& c,const thread_record& t) noexcept {
 }
 void record_event(kind type, thread_record& t, const CONTEXT& c, unsigned bits=0) noexcept {
     capture e{}; e.context=c;
-    e.event.tid=GetCurrentThreadId(); e.event.roles=t.roles.load(std::memory_order_relaxed);
+    e.event.tid=t.tid.load(); e.event.roles=t.roles.load(std::memory_order_relaxed);
     e.event.type=type; e.event.slot_bits=bits; e.event.tick_ms=GetTickCount64();
     LARGE_INTEGER clock{}; QueryPerformanceCounter(&clock); e.event.qpc=clock.QuadPart;
     e.event.rip=c.Rip; e.event.previous_b8=t.history.b8; e.event.previous_c0=t.history.c0;
@@ -105,37 +107,8 @@ LONG WINAPI observe_exception(EXCEPTION_POINTERS* p) noexcept {
     auto* t=local_record;
     if (!p || !p->ContextRecord || !p->ExceptionRecord || !t || t->tid.load()!=GetCurrentThreadId()) return EXCEPTION_CONTINUE_SEARCH;
     auto& c=*p->ContextRecord; const auto code=p->ExceptionRecord->ExceptionCode;
-    if (code==arm_exception || code==close_exception || code==verify_exception) {
-        if (p->ExceptionRecord->NumberParameters!=1 || p->ExceptionRecord->ExceptionInformation[0]!=reinterpret_cast<ULONG_PTR>(t)) return EXCEPTION_CONTINUE_SEARCH;
-        if ((c.ContextFlags&CONTEXT_DEBUG_REGISTERS)!=CONTEXT_DEBUG_REGISTERS) {
-            ++failure_count; stopping.store(true);record_event(kind::failure,*t,c);
-            t->state.store(code==arm_exception && t->state.load()==phase::empty ? phase::closed : phase::failed);
-            return EXCEPTION_CONTINUE_EXECUTION;
-        }
-        if (code==arm_exception) {
-            // Do not replace any existing breakpoint/TF, active or inactive.
-            if (t->state.load()!=phase::empty || !clear_debug_state(c.Dr0,c.Dr1,c.Dr2,c.Dr3,c.Dr6,c.Dr7,c.EFlags)) {
-                ++failure_count; stopping.store(true); record_event(kind::failure,*t,c);t->state.store(phase::closed);
-                return EXCEPTION_CONTINUE_EXECUTION;
-            }
-            t->saved_dr[0]=c.Dr0;t->saved_dr[1]=c.Dr1;t->saved_dr[2]=c.Dr2;
-            t->saved_dr[3]=c.Dr3;t->saved_dr[4]=c.Dr6;t->saved_dr[5]=c.Dr7;
-            c.Dr0=reinterpret_cast<DWORD64>(&t->canary);c.Dr1=0;c.Dr6=0;
-            c.Dr7=t->saved_dr[5]|canary_dr7;t->state.store(phase::canary);
-        } else if (code==close_exception) {
-            const auto phase_now=t->state.load();
-            if (phase_now==phase::canary || phase_now==phase::data || phase_now==phase::disarming) {
-                if(owned_registers(c,*t,phase_now) || (phase_now==phase::disarming && restored(c,*t))) {
-                    restore_registers(c,*t);t->state.store(phase::disarming);
-                } else {++failure_count;stopping.store(true);record_event(kind::failure,*t,c);t->state.store(phase::failed);}
-            }
-        } else if (t->state.load()==phase::disarming) {
-            if (restored(c,*t)) {record_event(kind::disarmed,*t,c);t->state.store(phase::closed);}
-            else {++failure_count;stopping.store(true);record_event(kind::failure,*t,c);}
-        }
-        return EXCEPTION_CONTINUE_EXECUTION;
-    }
-    if (code!=EXCEPTION_SINGLE_STEP || !((c.Dr6&3)!=0)) return EXCEPTION_CONTINUE_SEARCH;
+    constexpr DWORD required=CONTEXT_CONTROL|CONTEXT_DEBUG_REGISTERS;
+    if(code!=EXCEPTION_SINGLE_STEP || (c.ContextFlags&required)!=required || !(c.Dr6&3))return EXCEPTION_CONTINUE_SEARCH;
     const auto phase_now=t->state.load();
     if (phase_now!=phase::canary && phase_now!=phase::data) return EXCEPTION_CONTINUE_SEARCH;
     if(!owned_registers(c,*t,phase_now)) {
@@ -161,7 +134,7 @@ LONG WINAPI observe_exception(EXCEPTION_POINTERS* p) noexcept {
             c.Dr0=field_b8;c.Dr1=field_c0;c.Dr6=0;c.Dr7=t->saved_dr[5]|data_dr7;t->state.store(phase::data);
         }
     } else {
-        if (c.Dr0!=field_b8 || c.Dr1!=field_c0 || c.Dr7!=(t->saved_dr[5]|data_dr7)) {
+        if (c.Dr0!=field_b8 || c.Dr1!=field_c0 || !same_dr7(c.Dr7,t->saved_dr[5]|data_dr7)) {
             ++failure_count;stopping.store(true);record_event(kind::failure,*t,c);
         } else record_event(kind::write,*t,c,bits);
         c.Dr6&=~3ull;
@@ -171,8 +144,106 @@ LONG WINAPI observe_exception(EXCEPTION_POINTERS* p) noexcept {
     }
     return EXCEPTION_CONTINUE_EXECUTION;
 }
-void raise_owned(DWORD code,thread_record& t) {
-    const ULONG_PTR arg=reinterpret_cast<ULONG_PTR>(&t);RaiseException(code,0,1,&arg);
+// Helper owns no engine locks and calls no game APIs. A checkpoint ticket is
+// claimed before suspension, so the target cannot leave its wait meanwhile.
+struct scoped_suspend {
+    HANDLE handle{};bool active{};thread_record& target;
+    explicit scoped_suspend(thread_record& t):handle(t.handle.load()),target(t) {
+        FILETIME created{},exit{},kernel{},user{};DWORD code{};
+        const auto identity=t.creation.load();
+        if(!handle || GetThreadId(handle)!=t.tid.load() || GetThreadId(handle)==GetCurrentThreadId() ||
+            !GetThreadTimes(handle,&created,&exit,&kernel,&user) ||
+            (((std::uint64_t(created.dwHighDateTime)<<32)|created.dwLowDateTime)!=identity) ||
+            !GetExitCodeThread(handle,&code) || code!=STILL_ACTIVE)throw std::runtime_error("helper original handle identity");
+        const auto previous=SuspendThread(handle);
+        if(previous==DWORD(-1))throw std::runtime_error("helper SuspendThread");
+        active=true;
+        if(previous){const auto resumed=ResumeThread(handle);active=false;
+            if(resumed!=previous+1){++failure_count;target.state.store(phase::failed);}
+            throw std::runtime_error("helper preexisting suspension refused");}
+    }
+    bool resume() noexcept {if(!active)return true;active=false;
+        if(ResumeThread(handle)!=1){++failure_count;target.state.store(phase::failed);return false;}return true;}
+    ~scoped_suspend(){resume();}
+};
+CONTEXT helper_context(thread_record& t) {
+    constexpr DWORD required=CONTEXT_CONTROL|CONTEXT_DEBUG_REGISTERS;
+    CONTEXT c{};c.ContextFlags=required;
+    if(!GetThreadContext(t.handle.load(),&c) || (c.ContextFlags&required)!=required)
+        throw std::runtime_error("helper actual CONTROL/DR context missing");
+    return c;
+}
+bool exact_baseline(const CONTEXT& c,const thread_record& t) noexcept {
+    return c.Dr0==t.saved_dr[0] && c.Dr1==t.saved_dr[1] && c.Dr2==t.saved_dr[2] &&
+        c.Dr3==t.saved_dr[3] && c.Dr6==t.saved_dr[4] && c.Dr7==t.saved_dr[5];
+}
+bool helper_set(thread_record& t,const CONTEXT& supplied) noexcept {
+    // Select a valid retrieved subset. No forged flag and no alternate import.
+    auto c=supplied;c.ContextFlags=CONTEXT_DEBUG_REGISTERS;
+    return SetThreadContext(t.handle.load(),&c)!=FALSE;
+}
+void service_checkpoint(thread_record& t,unsigned operation) noexcept {
+    bool changed=false;CONTEXT baseline{};
+    try {
+        scoped_suspend suspended(t);
+        try {
+            auto c=helper_context(t);const auto state=t.state.load();
+            if(operation==1) {
+                const auto now=GetTickCount64(),checked=vacancy_checked.load(),vacant=vacant_since.load();
+                if(stopping.load() || now>=t.checkpoint_expires.load() || state!=phase::empty || !vacant ||
+                    !elapsed(now,vacant,30000) || !checked || now<checked || now-checked>500 ||
+                    elapsed(now,start_ms.load(),duration_ms) ||
+                    !clear_debug_state(c.Dr0,c.Dr1,c.Dr2,c.Dr3,c.Dr6,c.Dr7,c.EFlags))throw std::runtime_error("helper arm admission");
+                t.saved_dr[0]=c.Dr0;t.saved_dr[1]=c.Dr1;t.saved_dr[2]=c.Dr2;t.saved_dr[3]=c.Dr3;t.saved_dr[4]=c.Dr6;t.saved_dr[5]=c.Dr7;
+                baseline=c;
+                record_event(kind::baseline,t,c);
+                c.Dr0=reinterpret_cast<DWORD64>(&t.canary);c.Dr1=0;c.Dr6=0;c.Dr7=t.saved_dr[5]|canary_dr7;
+                // A game interception may report success yet not change DRs:
+                // readback rejects it before the canary is ever triggered.
+                changed=true;
+                if(!helper_set(t,c))throw std::runtime_error("helper arm SetThreadContext");
+                const auto actual=helper_context(t);
+                if(actual.Dr0!=c.Dr0 || actual.Dr1!=c.Dr1 || actual.Dr2!=c.Dr2 || actual.Dr3!=c.Dr3 ||
+                    actual.Dr6!=c.Dr6 || actual.Dr7!=c.Dr7)throw std::runtime_error("helper arm exact readback");
+                if(GetTickCount64()>=t.checkpoint_expires.load())throw std::runtime_error("helper arm deadline expired");
+                t.state.store(phase::canary);
+            } else {
+                if(state==phase::empty || state==phase::closed){t.state.store(phase::closed);return;}
+                if(!owned_registers(c,t,state) && !(state==phase::disarming && restored(c,t)))throw std::runtime_error("helper foreign DR owner");
+                restore_registers(c,t);
+                if(!helper_set(t,c) || !exact_baseline(helper_context(t),t))throw std::runtime_error("helper restore exact readback");
+                record_event(kind::disarmed,t,helper_context(t));t.state.store(phase::closed);
+            }
+        } catch(...) {
+            if(changed) {
+                const auto actual=helper_context(t);
+                const bool unchanged=exact_baseline(actual,t);
+                const bool ours=actual.Dr0==reinterpret_cast<DWORD64>(&t.canary) && actual.Dr1==0 &&
+                    actual.Dr2==t.saved_dr[2] && actual.Dr3==t.saved_dr[3] && same_dr7(actual.Dr7,t.saved_dr[5]|canary_dr7);
+                if(unchanged)t.state.store(phase::closed);
+                else if(ours && helper_set(t,baseline) && exact_baseline(helper_context(t),t))t.state.store(phase::closed);
+                else t.state.store(phase::failed); // Unknown state never overwritten.
+            } else if(t.state.load()==phase::empty)t.state.store(phase::closed);
+            else if(t.state.load()!=phase::closed)t.state.store(phase::failed);
+            throw;
+        }
+        if(!suspended.resume())throw std::runtime_error("helper ResumeThread");
+    } catch(...) {++failure_count;stopping.store(true);}
+}
+DWORD WINAPI helper_loop(void*) noexcept {
+    while(!helper_stop.load()) {
+        WaitForSingleObject(helper_signal,20);
+        for(auto& t:records) {
+            unsigned expected=1;
+            if(!t.ticket.compare_exchange_strong(expected,2))continue;
+            helper_inflight.store(true);
+            service_checkpoint(t,t.operation.load());
+            publish_checkpoint_completion(t.ticket,helper_inflight,[&t] {
+                if(!SetEvent(t.checkpoint_done)){++failure_count;stopping.store(true);}
+            });
+        }
+    }
+    return 0;
 }
 thread_record* current_record(unsigned role) {
     const auto tid=GetCurrentThreadId();
@@ -180,7 +251,7 @@ thread_record* current_record(unsigned role) {
     for (auto& t:records) {
         DWORD unused=0;
         if (!t.tid.compare_exchange_strong(unused,tid)) continue;
-        t.roles.store(role);t.handle.store(OpenThread(THREAD_QUERY_LIMITED_INFORMATION|SYNCHRONIZE,FALSE,tid));
+        t.roles.store(role);t.handle.store(OpenThread(THREAD_QUERY_LIMITED_INFORMATION|THREAD_GET_CONTEXT|THREAD_SET_CONTEXT|THREAD_SUSPEND_RESUME|SYNCHRONIZE,FALSE,tid));
         FILETIME created{},exit{},kernel{},user{};
         if (!t.handle.load() || !GetThreadTimes(t.handle.load(),&created,&exit,&kernel,&user)) {
             ++failure_count;t.state.store(phase::closed);stopping.store(true);return &t;
@@ -196,29 +267,48 @@ void thread_tick(unsigned role) {
         if (!private_vacant()) {vacant_since.store(0);if(requested.load())stopping.store(true);}
         else if (!vacant_since.load()) vacant_since.store(now);
     }
-    // Serialize callback registration/handle publication with async removal.
-    // The VEH does not acquire this mutex; no target thread is suspended.
+    // Callback collects gates/identity only. It never waits or suspends.
     std::lock_guard<std::mutex> registry_lock(registry_mutex);
-    if (!requested.load() || handler_removed.load()) return;
-    if (elapsed(now,start_ms.load(),duration_ms) || !private_flags()) stopping.store(true);
-    auto* t=current_record(role);if (!t)return;
-    local_record=t;
-    if (stopping.load()) {
-        if(t->state.load()==phase::canary || t->state.load()==phase::data || t->state.load()==phase::disarming) {
-            raise_owned(close_exception,*t);raise_owned(verify_exception,*t);
-        } else if(t->state.load()==phase::empty)t->state.store(phase::closed);
-        return;
-    }
-    if (t->state.load()!=phase::empty) return;
-    if (!valid_fields() || !read_pair(t->history.b8,t->history.c0)) {
-        ++failure_count;stopping.store(true);t->state.store(phase::closed);return;
-    }
-    raise_owned(arm_exception,*t);
-    if(t->state.load()==phase::canary) {
-        InterlockedExchange64(&t->canary,t->canary+1);
-        if(!t->canary_pass.load()) {++failure_count;stopping.store(true);raise_owned(close_exception,*t);raise_owned(verify_exception,*t);}
+    if(!requested.load() || handler_removed.load())return;
+    if(elapsed(now,start_ms.load(),duration_ms) || !private_flags())stopping.store(true);
+    auto* t=current_record(role);if(!t)return;local_record=t;
+    if(t->state.load()==phase::empty && (!valid_fields() || !read_pair(t->history.b8,t->history.c0))) {
+        ++failure_count;stopping.store(true);t->state.store(phase::closed);
     }
 }
+void checkpoint_unlocked(unsigned role) noexcept {
+    thread_record* t{};unsigned operation{};
+    {
+        // Same closure barrier as flush. Release before any wait/suspension.
+        std::lock_guard<std::mutex> registry_lock(registry_mutex);
+        t=local_record;
+        if(!requested.load() || handler_removed.load() || !t || t->tid.load()!=GetCurrentThreadId() || !(t->roles.load()&role))return;
+        const auto state=t->state.load();
+        operation=stopping.load() ? 2u : (state==phase::empty ? 1u : 0u);
+        if(!operation || !t->checkpoint_done || !helper_signal || !helper_handle)return;
+        ResetEvent(t->checkpoint_done);t->operation.store(operation);t->checkpoint_expires.store(GetTickCount64()+200);
+        t->ticket.store(1,std::memory_order_release);SetEvent(helper_signal);
+    }
+    for(;;) {
+        const auto ticket=t->ticket.load(std::memory_order_acquire);
+        if(ticket==3)break;
+        if(ticket==1 && GetTickCount64()>=t->checkpoint_expires.load()) {
+            unsigned waiting=1;if(t->ticket.compare_exchange_strong(waiting,0)) {
+                ++failure_count;stopping.store(true);return; // Not claimed: no future suspension allowed.
+            }
+        }
+        // A claimed ticket cannot return until the helper has resumed it.
+        // Win32 failure/hang cannot have a hard deadline guarantee; preserve
+        // handler/lease and exact-process recovery rather than exit this wait.
+        WaitForSingleObject(t->checkpoint_done,20);
+    }
+    t->ticket.store(0);
+    if(operation==1 && t->state.load()==phase::canary) {
+        InterlockedExchange64(&t->canary,t->canary+1);
+        if(!t->canary_pass.load()){++failure_count;stopping.store(true);}
+    }
+}
+
 void write_context_hex(const CONTEXT& c) {
     constexpr char alphabet[]="0123456789abcdef";
     const auto* bytes=reinterpret_cast<const unsigned char*>(&c);
@@ -242,7 +332,7 @@ void flush() {
     for(auto& t:records) {
         if(!t.tid.load())continue;
         if(t.state.load()!=phase::closed && t.handle.load() && WaitForSingleObject(t.handle.load(),0)==WAIT_OBJECT_0)t.state.store(phase::closed);
-        if(t.state.load()!=phase::closed)all_closed=false;
+        if(t.state.load()!=phase::closed || t.ticket.load()!=0)all_closed=false;
         if(t.canary_pass.load())covered|=t.roles.load();
     }
     if(!stopping.load() && covered==3 && !failure_count.load() && !armed_written) {
@@ -258,14 +348,23 @@ void flush() {
             output<<"],\"all_init_threads_covered\":false}\n";armed_written=true;
         }
     }
-    if(stopping.load() && all_closed && !complete_written) {
+    if(stopping.load() && all_closed && !helper_inflight.load() && !complete_written) {
+        helper_stop.store(true);SetEvent(helper_signal);
+        if(helper_handle && WaitForSingleObject(helper_handle,0)!=WAIT_OBJECT_0){output.flush();return;}
+
         if(handler && RemoveVectoredExceptionHandler(handler)) {handler=nullptr;handler_removed.store(true);}
         bool handles_closed=true;
         if(handler_removed.load())for(auto& t:records) {
             const auto h=t.handle.load();
             if(h) {if(CloseHandle(h))t.handle.store(nullptr);else handles_closed=false;}
         }
+        if(handler_removed.load()) {
+            if(helper_handle){if(CloseHandle(helper_handle))helper_handle=nullptr;else handles_closed=false;}
+            if(helper_signal){if(CloseHandle(helper_signal))helper_signal=nullptr;else handles_closed=false;}
+            for(auto& t:records)if(t.checkpoint_done){if(CloseHandle(t.checkpoint_done))t.checkpoint_done=nullptr;else handles_closed=false;}
+        }
         if(handler_removed.load() && handles_closed) {
+
             confirmed.store(true);complete_written=true;
             output<<"{\"type\":\"complete\",\"cleanup_confirmed\":true,\"covered_roles\":"<<covered
                 <<",\"failures\":"<<failure_count.load()<<",\"canary_prerequisite_satisfied\":"
@@ -298,6 +397,14 @@ void arm(const command::params& args) {
     output.flush();confirmed.store(false);handler_removed.store(false);
     handler=AddVectoredExceptionHandler(1,observe_exception);
     if(!handler){handler_removed.store(true);confirmed.store(true);output<<"{\"type\":\"failed\",\"reason\":\"handler_install\",\"no_evidence\":true,\"cleanup_confirmed\":true}\n";output.flush();return;}
+    helper_signal=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+    for(auto& t:records)t.checkpoint_done=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    if(!helper_signal || !records[0].checkpoint_done || !records[1].checkpoint_done) {
+        stopping.store(true);for(auto& t:records)t.state.store(phase::closed);
+        requested.store(true);return; // Async flush removes inert handler/handles.
+    }
+    helper_handle=CreateThread(nullptr,0,helper_loop,nullptr,0,nullptr);
+    if(!helper_handle){stopping.store(true);for(auto& t:records)t.state.store(phase::closed);requested.store(true);return;}
     start_ms.store(now);requested.store(true);
 }
 class component final:public component_interface {
@@ -318,6 +425,7 @@ class component final:public component_interface {
     }
 };
 }
+void checkpoint(unsigned role) noexcept {checkpoint_unlocked(role);}
 bool cleanup_confirmed() noexcept { return confirmed.load(std::memory_order_acquire); }
 void request_stop() noexcept { stopping.store(true,std::memory_order_release); }
 }

@@ -42,6 +42,34 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\capacity_watch
 if errorlevel 1 exit /b 1
 "$runtime\capacity-watch-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\capacity_checkpoint_publication_test.cpp" /Fe:"$runtime\capacity-checkpoint-publication-test.exe" /Fo:"$runtime\capacity-checkpoint-publication-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\capacity-checkpoint-publication-test.exe"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\capacity_checkpoint_overlay_test.ps1"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /c "$repo\tests\native\voice_test_capture_test.cpp" /Fo:"$runtime\fake-capture-test.obj"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /c "$repo\src\native\voice_test_capture.cpp" /Fo:"$runtime\fake-capture-impl.obj"
+if errorlevel 1 exit /b 1
+cl /nologo "$runtime\fake-capture-test.obj" "$runtime\fake-capture-impl.obj" /Fe:"$runtime\voice-test-capture.exe" /link bcrypt.lib dxguid.lib
+if errorlevel 1 exit /b 1
+"$runtime\voice-test-capture.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_test_binding_test.cpp" /Fe:"$runtime\voice-test-binding.exe" /Fo:"$runtime\voice-test-binding.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-test-binding.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_capture_wire_test.cpp" /Fe:"$runtime\voice-capture-wire.exe" /Fo:"$runtime\voice-capture-wire.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-capture-wire.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_ptt_protocol_test.cpp" /Fe:"$runtime\voice-ptt-protocol.exe" /Fo:"$runtime\voice-ptt-protocol.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-ptt-protocol.exe"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\ops\voice-agent\test_fake_build_copy.ps1" -RepoRoot "$repo"
+if errorlevel 1 exit /b 1
 pwsh -NoProfile -File "$repo\ops\agent-capacity\test_build_copy.ps1"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\agent_scenario_test.cpp" /Fe:"$runtime\agent-scenario-test.exe" /Fo:"$runtime\agent-scenario-test.obj"
@@ -91,6 +119,20 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_probe_worker_test.cpp" /Fe:"$runtime\audio-probe-worker-test.exe" /Fo:"$runtime\audio-probe-worker-test.obj"
 if errorlevel 1 exit /b 1
 pwsh -NoProfile -File "$repo\tests\ops\voice_agent_recorder_test.ps1" -WorkerPath "$runtime\audio-probe-worker-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_pair_recorder_worker_test.cpp" /Fe:"$runtime\voice-pair-recorder-worker-test.exe" /Fo:"$runtime\voice-pair-recorder-worker-test.obj"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\voice_fake_source_test.ps1"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\voice_pair_provider_test.ps1"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\voice_pair_witness_test.ps1"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\voice_pair_source_options_test.ps1"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\voice_pair_envelope_test.ps1"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\voice_pair_recorder_test.ps1" -WorkerPath "$runtime\voice-pair-recorder-worker-test.exe"
 if errorlevel 1 exit /b 1
 "@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
@@ -181,19 +223,29 @@ else {
 # Main/nondebugger profiles contain no capacity watcher translation unit.
 $capacityWatchBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]($IsolatedLab -and $Debugger))
 if ($capacityWatchBuild.Compiled) { $nativeSources += $capacityWatchBuild.Files }
-Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
+. "$PSScriptRoot/voice-agent/Fake-BuildCopy.Core.ps1"
+$fakeCaptureBuild=Set-IW7FakeCaptureBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]$IsolatedLab)
+if($fakeCaptureBuild.Compiled){$nativeSources+=$fakeCaptureBuild.Files}
+Copy-Item -LiteralPath @($nativeSources | Where-Object { $_ -cnotin $fakeCaptureBuild.Files } | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
 $copiedVoice=Join-Path $root 'src/client/component/paris_voice.cpp'
 if ($IsolatedLab) {
     . "$PSScriptRoot/voice-agent/Build-Copy.Core.ps1"
     $voiceSource=[IO.File]::ReadAllText($copiedVoice)
     [IO.File]::WriteAllText($copiedVoice,(Convert-IW7IsolatedVoiceSource $voiceSource),[Text.UTF8Encoding]::new($false))
+    foreach($name in @('voice_relay.cpp','paris_test_fixture.cpp')){
+        $path=Join-Path $root ('src/client/component/'+$name)
+        [IO.File]::WriteAllText($path,(Convert-IW7IsolatedVoiceSource ([IO.File]::ReadAllText($path))),[Text.UTF8Encoding]::new($false))
+    }
 }
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 $downloadCacheOverlay = $null
 if ($commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
     $downloadCacheOverlay = & "$PSScriptRoot/Apply-DownloadCacheOverlay.ps1" -NativeRoot $root -Commit $commit
 }
+$capacityCheckpointEnabled=[bool]($IsolatedLab -and $Debugger)
+$null = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -NativeRoot $root -Commit $commit -Phase BeforeDebugger -Enabled:$capacityCheckpointEnabled
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
+$capacityCheckpointBuild = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -NativeRoot $root -Commit $commit -Phase AfterDebugger -Enabled:$capacityCheckpointEnabled
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
 # Preserve the engine's metadata API while serializing its cache and keeping it
 # alive during CRT shutdown. Accept only the pinned file or this exact overlay.
@@ -389,7 +441,15 @@ Copy-Item -LiteralPath "$output/iw7-paris-voice.exe" -Destination (Join-Path $sy
 Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.pdb" -Destination (Join-Path $symbols 'iw7-mod.pdb') -Force
 $manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
 $manifest.Debugger = [bool]$Debugger
+$manifest.FakeCaptureBuild=$fakeCaptureBuild
+$manifest.FakeCaptureBuildHelperSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/voice-agent/Fake-BuildCopy.Core.ps1").Hash
+$manifest.FakeCaptureTransformedSourceHashes=@(@('paris_voice.cpp','voice_relay.cpp','paris_test_fixture.cpp')|ForEach-Object{
+    @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$_))).Hash}
+})
 $manifest.CapacityWatchBuild = $capacityWatchBuild
+$manifest.CapacityCheckpointBuild = $capacityCheckpointBuild
+$manifest.CapacityCheckpointOverlayHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1").Hash
+$manifest.CapacityCheckpointOverlayCoreSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Checkpoint-Overlay.Core.ps1").Hash
 $manifest.CapacityWatchBuildHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1").Hash
 if ((Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')).Hash -ne $manifest.SHA256) { throw 'Archived diagnostic executable mismatch.' }
 $manifest.ServerModules = [bool]$ServerModules
