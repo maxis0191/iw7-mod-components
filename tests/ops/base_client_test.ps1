@@ -39,6 +39,14 @@ try {
     }
     $nullYaw=New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -KeyboardYawDegreesPerSecond $null
     Assert-Test ((Get-IW7BaseClientArguments $nullYaw $fixturePassword) -notmatch 'cl_yawspeed') 'Null yaw unexpectedly overrode owner profile.'
+    $combatLook=New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -GraphicsProfile Reduced -KeyboardYawDegreesPerSecond 35 -KeyboardPitchDegreesPerSecond 35
+    $lookLaunch=Get-IW7BaseClientArguments $combatLook $fixturePassword
+    Assert-Test ($combatLook.KeyboardPitchDegreesPerSecond -eq 35 -and [regex]::Matches($lookLaunch,'\+set cl_pitchspeed 35(?:\s|$)').Count -eq 1 -and [regex]::Matches($lookLaunch,'\+set cl_yawspeed 35(?:\s|$)').Count -eq 1) 'Combat yaw/pitch not explicit exactly once.'
+    foreach($badPitch in @('35',$true,19,141,-1,[double]::NaN,[double]::PositiveInfinity)){
+        Assert-Refused { New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -KeyboardPitchDegreesPerSecond $badPitch } 'Invalid keyboard pitch accepted.'
+    }
+    $nullPitch=New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -KeyboardPitchDegreesPerSecond $null
+    Assert-Test ((Get-IW7BaseClientArguments $nullPitch $fixturePassword) -notmatch 'cl_pitchspeed') 'Null pitch unexpectedly overrode owner profile.'
     $fullLaunch=Get-IW7BaseClientArguments $debug $fixturePassword
     Assert-Test ($fullLaunch -match '\+set r_picmip 0(?:\s|$)' -and $fullLaunch -match '-paris-debugger(?:\s|$)') 'Full/debug reserved profile changed.'
     Assert-Refused { Get-IW7BaseClientArguments $plan 'unsafe" +set sv_cheats 1' } 'Startup password injection accepted.'
@@ -73,8 +81,8 @@ try {
     Assert-Refused { Assert-IW7BaseLease $lease $plan $wrongServer } 'Stale registered server identity accepted.'
     $ownerYawCfg="set cl_yawspeed 140`nset cl_pitchspeed 91`n"
     [IO.File]::WriteAllText("$game/iw7-mod/agent-base-client.cfg",$ownerYawCfg)
-    $transaction=Save-IW7BaseTransaction $combatYaw $backup
-    [IO.File]::WriteAllText("$game/iw7-mod/agent-base-client.cfg","set cl_yawspeed 35`n")
+    $transaction=Save-IW7BaseTransaction $combatLook $backup
+    [IO.File]::WriteAllText("$game/iw7-mod/agent-base-client.cfg","set cl_yawspeed 35`nset cl_pitchspeed 35`n")
     [IO.File]::WriteAllText("$game/iw7-mod/players2/config.cfg",'test modified profile')
     [IO.File]::WriteAllText("$game/iw7-mod/players2/config_mp.cfg",'temporary windowed dimensions')
     [IO.File]::WriteAllText("$game/iw7-mod/players2/new.dat",'test generated profile')
