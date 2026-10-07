@@ -1,5 +1,11 @@
 # Capacité native : préparer un port cohérent vers 48 agents
 
+The complete isolated native build from1bcb19c now compiles and links, executable
+A29488DF and matching PDB verified with all32 source hashes. This includes the
+reviewed actual-context checkpoint TU and scheduler overlay. The next vacant
+retail dedicated run must still prove real hardware canaries, observed writers
+and cleanup; no48-agent capacity patch follows from compilation alone.
+
 ## Actual debug-register checkpoint candidate - 2026-10-07
 
 The next isolated candidate obtains CONTROL|DEBUG context on two exact owned

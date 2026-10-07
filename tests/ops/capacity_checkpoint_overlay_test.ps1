@@ -19,6 +19,7 @@ void main() {
     return utils::hook::invoke<void*>(0x140B8E2D0);
 }
 '@+"`n"
+$source=$source.Replace("`r`n","`n")
 $clean=$encoding.GetBytes($source)
 $o=New-IW7CapacityCheckpointOverlays $clean
 Assert (Same $o.Clean $clean) 'Clean bytes changed.'
