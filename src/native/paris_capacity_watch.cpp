@@ -50,7 +50,7 @@ bool private_vacant() {
     if (!password || password->type!=game::DVAR_TYPE_STRING || !password->current.string ||
         !*password->current.string || !clients || count<1 || count>4) return false;
     // Include connecting clients; vacant must never mean merely no active player.
-    for (int i=0;i<count;++i) if (clients[i].header.state!=game::CS_FREE) return false;
+    for (unsigned i=0;i<count;++i) if (clients[i].header.state!=game::CS_FREE) return false;
     return true;
 }
 bool read_pair(std::uint64_t& a, std::uint64_t& b) noexcept {

@@ -216,10 +216,10 @@ function Get-IW7BaseClientArguments($Plan,[string]$Password) {
     $arguments="-noupdate -nosteam -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_ip 127.0.0.1 +set net_port $($Plan.ClientPort) +set paris_lab_server_port $($Plan.ServerPort) +set password `"$Password`" +set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 1280 +set vid_height 720 +set r_mode 1280x720 +set r_vsync 1 +set com_maxfps 30 +set r_picmip $picmip +set r_picmip_bump $picmip +set r_picmip_spec $picmip"
     $yaw=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardYawDegreesPerSecond
     if ($yaw -gt 0) { $arguments+=' +set cl_yawspeed '+$yaw.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture) }
-    $arguments
     $pitch=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardPitchDegreesPerSecond
     if ($pitch -gt 0) { $arguments+=' +set cl_pitchspeed '+$pitch.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture) }
     if ($Plan.RunPlan.Debugger) { $arguments+=' -paris-debugger' }
+    $arguments
 }
 
 function Start-IW7BaseClient {
@@ -267,13 +267,13 @@ function Start-IW7BaseClient {
         }
         $picmip=$Plan.RunPlan.Picmip
         $cfg="set password `"$Password`"`nset r_fullscreen 0`nset r_fullscreenWindow 0`nset vid_width 1280`nset vid_height 720`nset r_mode 1280x720`nset com_maxfps 30`nset r_vsync 1`nset r_picmip $picmip`nset r_picmip_bump $picmip`nset r_picmip_spec $picmip`n"
-        [IO.File]::WriteAllText((Resolve-IW7BasePath $Plan.GameRoot 'iw7-mod/agent-base-client.cfg'),$cfg,[Text.UTF8Encoding]::new($false))
-        if (!('IW7LabProcess' -as [type])) { Add-Type -Path "$PSScriptRoot/native/LabProcess.cs" }
-        $args=Get-IW7BaseClientArguments $Plan $Password
         $yaw=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardYawDegreesPerSecond
         if($yaw -gt 0){$cfg+='set cl_yawspeed '+$yaw.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture)+"`n"}
         $pitch=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardPitchDegreesPerSecond
         if($pitch -gt 0){$cfg+='set cl_pitchspeed '+$pitch.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture)+"`n"}
+        [IO.File]::WriteAllText((Resolve-IW7BasePath $Plan.GameRoot 'iw7-mod/agent-base-client.cfg'),$cfg,[Text.UTF8Encoding]::new($false))
+        if (!('IW7LabProcess' -as [type])) { Add-Type -Path "$PSScriptRoot/native/LabProcess.cs" }
+        $args=Get-IW7BaseClientArguments $Plan $Password
         [ordered]@{Image=$Plan.Image;SHA256=$Plan.SHA256;DesktopName=$context.DesktopName;PlannedUtc=[datetime]::UtcNow.ToString('o')} |
             ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'client.launch.local.json')
         $context.Handle=[IW7LabProcess]::StartOwned($Plan.Image,$args,$Plan.GameRoot,(Join-Path $output 'client.stdout.log'),(Join-Path $output 'client.stderr.log'),$context.DesktopName)
