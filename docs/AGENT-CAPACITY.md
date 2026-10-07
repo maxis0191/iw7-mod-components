@@ -1,5 +1,20 @@
 # Capacité native : préparer un port cohérent vers 48 agents
 
+## First native observer attempt - 2026-10-07
+
+The vacant server-only case `watch-server-20261007-014746-895-0993d99e0f0c41b7aae572461176a6aa`
+ran native `3B9F0311`. Its private exception CONTEXT flags were `0x10004F`,
+which excludes `CONTEXT_DEBUG_REGISTERS`. The observer refused before saving or
+programming debug registers: no canary was attempted and no map restart was
+authorized. Zero fields in that unavailable register group prove nothing about
+existing hardware breakpoints. Pool count24 was observed; its writer was not.
+
+The journal confirms cooperative cleanup; the owned server then exited with
+ordinary quit0 after real vacancy, restoration passed, and the lease was released.
+Base client and Main were untouched. The next diagnostic must obtain a valid
+debug-register context through a reviewed mechanism; merely adding a context
+flag does not make absent registers valid. No capacity patch is justified yet.
+
 État du 6 octobre 2026 : recherche uniquement, capacité normale conservée à
 24 agents. Aucun patch de capacité, nouvelle capture, build de capacité,
 déploiement ou test en jeu n’a été effectué. Les passes statiques admises sont
