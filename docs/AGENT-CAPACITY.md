@@ -922,3 +922,59 @@ deux sens sans mutation partielle. AST Build-Voice validé. Aucun rebuild natif
 complet ni mutation du checkout d'outils n'a été lancé par cette intégration.
 Le parent doit encore compiler le TU complet et coordonner un dédié privé vacant
 pour vérifier canary, contexte, journal et fermeture.
+
+### TU complet mesuré et runner dédié seul — 2026-10-07
+
+Le premier build complet a réellement échoué C4018/C2220 (comparaison signed/
+unsigned du nombre de clients). Son journal reste
+`runtime/capacity-watch-full-build-20261007.log`, avec la copie source échouée
+dans `runtime/capacity-watch-first-TU-failure-20261007/`. Le seul correctif est
+l'index unsigned de cette boucle. Le retry a compilé et lié avec exit0 ; journal
+`runtime/capacity-watch-full-build-retry-20261007.log`, BuiltUtc
+`2026-10-07T01:00:22.3364787Z`, manifeste `runtime/voice-package/build-manifest.json`.
+Binary SHA256 `3B9F0311F3840697EB798ACBD29616D8D77FEFDD44B46E70EE67AD401CE4C660`,
+PDB `81342B2E5D8B470E90768C532A39C6F5712CD575073D5E5844EA54C7A2400163`,
+CPP `D8BD87C44680676FB376AF4AC5DA879BC0A3BED440774D20221E5327B5B9DC8C`.
+La réservation build était vide à `01:00:42.5967965Z`. Ce résultat compile le
+prototype ; il ne prouve toujours ni canary Windows ni producteur B8/C0.
+
+`ops/agent-capacity/Watch-Server.ps1` prépare un dédié stock existant marqué,
+sans client, avec une réservation Runtime 6/7GiB, port privé 27100..27999 et
+password/RCON éphémères. Exemple après coordination du créneau :
+
+```powershell
+pwsh -NoProfile -File ops/agent-capacity/Watch-Server.ps1 -CandidateRoot '<existing-complete-candidate>' -ServerPort 27116 -DryRun
+# Même commande sans -DryRun seulement après revue/admission coordonnée.
+```
+
+Le parser réutilise le contrôle JSON strict des scénarios : doublons/casse,
+champs inconnus, types, identité PID/creation/nonce, séquence 64 événements,
+CONTEXT borné, canary de chaque TID avant armed et lignes terminées. Une unique
+commande map_restart suit l'ack canary et une nouvelle lecture UDP vacant.
+La sortie distingue CanaryOnly, événements write et cleanup natif ; WriterProven,
+GlobalInitCoverage et PatchReady restent false. SV_Loaded/map transitoires pendant
+map_restart peuvent arrêter le watcher avant publication : zéro événement write
+ne prouve donc jamais absence de producteur.
+
+La fermeture refuse de transformer une erreur de vacance/RCON en kill : quit
+exige 30s vacant puis une lecture immédiate ; fallback terminé uniquement après
+une seconde preuve 30s et identité retenue. UDP absent conserve processus et
+réservation pour diagnostic. Le journal est retenu après sortie du process avec
+hash pré/post ; restauration snapshot/vacance précède ExitLease. Échec de
+restauration conserve la lease. La sortie exacte du processus détruit ses DR/VEH
+mais reste distincte d'un ack cleanup natif. Tests purs exécutables :
+`pwsh -NoProfile -File ops/agent-capacity/test_watch_runtime.ps1` ; aucune socket,
+aucun jeu ni processus lancé par ces fixtures. Runtime watcher reste à faire.
+
+La revue croisée a trouvé un statut trompeur si ExitLease échoue après une
+restauration réussie : Restored=true ne signifie pas réservation libérée.
+LeaseReleased n'est désormais posé qu'après le retour réussi du helper ;
+LeaseRetained reste true sur son exception. Injection pure de cette exception,
+cas absent/libéré et suites parser/stop ont passé localement.
+
+CI PR106 head4041d0d a dépassé l'ancien timeout Java 30s même après sa ligne
+PASS : cette ligne ne remplace pas un exit0. Le test pur
+`test_decompile_owner_ranges.py` borne maintenant toute invocation source-file
+Java (compilation/JVM inclus) à 90s et imprime le temps réel. Aucun timeout ni
+code d'échec n'est ignoré. Test local JDK21 épinglé : exit0, 0.734s ; la nouvelle
+CI reste le témoin de validation sur son propre runner.
