@@ -72,7 +72,8 @@ function Test-IW7BaseClientActive($Context) {
     !$Context.Handle.HasExited
 }
 
-function Assert-IW7BaseVacant([string]$GameRoot,[int]$OwnedPid=0) {
+function Assert-IW7BaseVacant([string]$GameRoot,[int]$OwnedPid=0,$PairOwnership=$null,$CurrentContext=$null) {
+    if ($PairOwnership) { Assert-IW7AgentPairVacant $PairOwnership $CurrentContext; return }
     # Preserve an occupied owner client, including one launched from another install.
     foreach ($p in @(Get-CimInstance Win32_Process | Where-Object Name -Match '^iw7.*\.exe$')) {
         if ($p.ProcessId -eq $OwnedPid) { continue }
@@ -224,24 +225,25 @@ function Get-IW7BaseClientArguments($Plan,[string]$Password) {
 
 function Start-IW7BaseClient {
     param([Parameter(Mandatory)]$Plan,[Parameter(Mandatory)]$ServerIdentity,[Parameter(Mandatory)][string]$LeaseToken,
-        [Parameter(Mandatory)][string]$Password,[Parameter(Mandatory)][string]$OutputRoot)
+        [Parameter(Mandatory)][string]$Password,[Parameter(Mandatory)][string]$OutputRoot,$PairOwnership=$null,[ValidateSet('A','B')][string]$PairRole='A')
     if ($Password -notmatch '^[a-zA-Z0-9_-]{1,64}$') { throw 'Use a generated private test password.' }
     . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
     . "$PSScriptRoot/Lab-Lifecycle.ps1"
     Assert-IW7BaseIdentity $ServerIdentity
-    Assert-IW7BaseVacant $Plan.GameRoot
+    if ($PairOwnership) { Assert-IW7AgentPairInvocation $PairOwnership $ServerIdentity $LeaseToken; Assert-IW7AgentPairStart $PairOwnership $Plan $PairRole } else { Assert-IW7BaseVacant $Plan.GameRoot }
     if ((Get-FileHash -LiteralPath $Plan.Image).Hash -ne $Plan.SHA256) { throw 'Client bytes changed since plan.' }
     $status=Get-IW7ResourceStatus
     $leases=@($status.Leases | Where-Object { $_.Token -eq $LeaseToken -and $_.Kind -eq 'Runtime' })
     if ($leases.Count -ne 1) { throw 'Unique complete reservation required.' }
-    Assert-IW7BaseLease $leases[0] $Plan $ServerIdentity
+    if ($PairOwnership) { Assert-IW7AgentPairLease $PairOwnership.Plan $leases[0] } else { Assert-IW7BaseLease $leases[0] $Plan $ServerIdentity }
     $serverProcess=Get-CimInstance Win32_Process -Filter "ProcessId=$($ServerIdentity.PID)"
     if (!$serverProcess.CommandLine -or $serverProcess.CommandLine -notmatch '(?:^|\s)-dedicated(?:\s|$)' -or
         $serverProcess.CommandLine -notmatch '(?:^|\s)-paris-server-test(?:\s|$)' -or
         $serverProcess.CommandLine -notmatch '(?:^|\s)-paris-isolated-lab(?:\s|$)' -or
         $serverProcess.CommandLine -notmatch ('\+set\s+net_port\s+'+$Plan.ServerPort+'(?:\s|$)')) { throw 'Explicit protected test dedicated on the expected test port required.' }
     $info=& "$PSScriptRoot/Get-ServerInfo.ps1" -Port $Plan.ServerPort
-    if ($info.clients -ne '0' -or $info.isPrivate -ne '1' -or $info.sv_running -ne '1') { throw 'Expected empty private test dedicated.' }
+    $expectedClients=if ($PairOwnership -and $PairRole -ceq 'B') {'1'} else {'0'}
+    if ($info.clients -ne $expectedClients -or $info.isPrivate -ne '1' -or $info.sv_running -ne '1') { throw 'Expected empty private test dedicated.' }
     if (Get-NetUDPEndpoint -LocalPort $Plan.ClientPort -ErrorAction SilentlyContinue) { throw 'Client port occupied.' }
     $output=[IO.Path]::GetFullPath($OutputRoot)
     if (Test-Path -LiteralPath $output) { throw 'Fresh output directory required.' }
@@ -251,12 +253,13 @@ function Start-IW7BaseClient {
     $context=[pscustomobject]@{Plan=$Plan;Server=$ServerIdentity;LeaseToken=$LeaseToken;OutputRoot=$output;Transaction=$null;Handle=$null;Client=$null;Identity=$null;
         LogLength=(Read-IW7BaseLog $ServerIdentity.Stdout).Length;PendingLog='';LastHeartbeatUtc=$null;LastHeartbeatTick=0L;StartedTick=[Environment]::TickCount64;StartedUtc=[datetime]::UtcNow;Protected=$false;Failed=$false;Lock=$null;
         DesktopName=('IW7ParisLab_'+[guid]::NewGuid().ToString('N'))}
+    if ($PairOwnership) { $context|Add-Member PairOwnership $PairOwnership; $context|Add-Member PairRole $PairRole }
     $lockRoot=Join-Path $env:LOCALAPPDATA 'IW7Paris/BaseClient'
     [IO.Directory]::CreateDirectory($lockRoot) | Out-Null
     $key=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Plan.GameRoot.ToLowerInvariant())))
     $context.Lock=[IO.File]::Open((Join-Path $lockRoot ($key+'.lock')),'OpenOrCreate','ReadWrite','None')
     try {
-        Assert-IW7BaseVacant $Plan.GameRoot
+        if ($PairOwnership) { Assert-IW7AgentPairInvocation $PairOwnership $ServerIdentity $LeaseToken; Assert-IW7AgentPairStart $PairOwnership $Plan $PairRole } else { Assert-IW7BaseVacant $Plan.GameRoot }
         $context.Transaction=Save-IW7BaseTransaction $Plan (Join-Path $output 'backup')
         [IO.File]::WriteAllText((Resolve-IW7BasePath $Plan.GameRoot 'iw7-mod/paris-isolated-lab.marker'),'iw7-paris-isolated-lab-v1',[Text.UTF8Encoding]::new($false))
         # Legacy requests validate PID but have no startup nonce. A reused OS PID
@@ -282,6 +285,7 @@ function Start-IW7BaseClient {
         try { $context.Identity=[pscustomobject]@{PID=$context.Handle.Id;Image=$Plan.Image;CreatedUtc=$process.StartTime.ToUniversalTime().ToString('o');SHA256=$Plan.SHA256;Stdout=(Join-Path $output 'client.stdout.log');Stderr=(Join-Path $output 'client.stderr.log');DesktopName=$context.DesktopName} } finally { $process.Dispose() }
         $context.Identity | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'client.identity.local.json')
         Add-IW7ResourceProcess -Token $LeaseToken -ProcessId $context.Handle.Id
+        if ($PairOwnership) { $PairOwnership.Sessions[$PairRole]=$context }
         $null=Send-IW7BaseRequest $context 'connect' -AllowUnprotected
         $context
     } catch {
@@ -311,6 +315,7 @@ function Update-IW7BaseProtection($Context,[string]$FreshLog,[long]$NowTick=[Env
 }
 
 function Update-IW7BaseClient($Context,[ValidateRange(1,180)][int]$ProtectionTimeoutSeconds=180) {
+    if ($Context.PairOwnership) { return Update-IW7AgentPairClient $Context }
     if ($Context.Failed) { throw 'Session previously failed; no more gameplay actions.' }
     try {
         if (!(Test-IW7BaseClientActive $Context)) { throw 'Owned client exited.' }
@@ -343,7 +348,7 @@ function Send-IW7BaseRequest($Context,[string]$Action,[switch]$AllowUnprotected)
 function Stop-IW7BaseClient($Context) {
     . "$PSScriptRoot/Lab-Lifecycle.ps1"
     if (Test-IW7BaseClientActive $Context) {
-        Assert-IW7BaseVacant $Context.Plan.GameRoot $Context.Identity.PID
+        Assert-IW7BaseVacant $Context.Plan.GameRoot $Context.Identity.PID $Context.PairOwnership $Context
         # Native abort is safe even after protection loss. Use its session identity,
         # advancing the acknowledged sequence so held player keys are released.
         $sessionPath=Resolve-IW7BasePath $Context.Plan.GameRoot 'iw7-mod/paris-agent.session'
@@ -366,7 +371,7 @@ function Stop-IW7BaseClient($Context) {
         $null=Invoke-IW7OwnedStop -Handle $Context.Handle -TimeoutMs 10000 -StopAction { $null=Send-IW7BaseRequest $Context 'stop' -AllowUnprotected }
     }
     if ($Context.Handle -and !$Context.Handle.HasExited) { throw 'Client closure unconfirmed; retain transaction and reservation.' }
-    Assert-IW7BaseVacant $Context.Plan.GameRoot
+    Assert-IW7BaseVacant $Context.Plan.GameRoot -PairOwnership $Context.PairOwnership -CurrentContext $Context
     if ($Context.Transaction) { Restore-IW7BaseTransaction $Context.Transaction }
     if ($Context.Handle) { $Context.Handle.Dispose();$Context.Handle=$null;$Context.Client=$null }
     if ($Context.Lock) { $Context.Lock.Dispose();$Context.Lock=$null }
