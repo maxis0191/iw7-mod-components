@@ -526,3 +526,399 @@ La sélection Ghidra ultérieure dépendra des véritables writers/LEA révélé
 avec maximum32 propriétaires complets et64 KiB chacun. Aucune liste de callees
 non liés n’est ajoutée pour remplir un quota. Si seuls des lecteurs persistent,
 la racine manque encore et la proposition de patch reste refusée.
+
+
+## Reset exact, fausse ancre rejetée et prochain appelant — 2026-10-07
+
+La passe indirecte a été exécutée. Les deux rapports historiques
+`xref-indirect-anchors-20261007.json` et `indirect-producer-selection-20261007.json`
+sont conservés ; leur ancienne candidature143C98650 comme base de level est
+réfutée. Cette adresse reçoit une registration de dvar. La base effectivement
+mise à zéro est143C98660, sur0x8F90octets, ce qui efface B0/B8/C0. Cet effacement
+ne prouve aucune allocation ni publication ultérieure de ces trois champs.
+
+La lecture Capstone de3FCC10..3FCD30, exactement288octets, retrouve le SHA256
+`e838927623400e8dd269bc7ec1bd2fccc498e7845c18728608c0d5d446045f68` du propriétaire
+retenu. Le C Ghidra signale PIC et développe memset comme branche, puis retire
+les instructions réellement présentes après3FCC52. Son retour depuis le memset
+est donc une représentation incomplète ; ce C ne démontre pas l'absence de suite.
+Les instructions effectives rétablissent ensuite143C98670=143F1E610,
+143C98678=143D22610,143C98668=le dword146B229E0,143C98660=143CA2060.
+La boucle associe chaque entité de stride0x3F8 à son joueur de stride0x7218 par
+store à entité+0x170. Aucun store non nul de B8/C0 n'est présent dans cet owner.
+
+Le tailcall final3FCD2B vise434AD0. Aucune entrée pdata ne couvre cette cible,
+mais l'entrée est démontrée par le tailcall. Sa séquence de24octets, jusqu'au
+jmp terminal434AE3, charge le pointeur143F9B350, ajoute8, met EDX=0 et R8D=0x11EE,
+puis saute au memset12BFC90. C'est un helper leaf à transfert terminal, sans
+appel ni modification de pile locale ; ce n'est ni un nouveau propriétaire pdata
+ni un producteur B8/C0. Son contrat reste une remise à zéro de ce référent.
+Aucun CSV n'invente un owner à cette adresse.
+
+La lecture légère autorisée a contrôlé huit owners déjà retenus,6241octets au
+total :3FCC10,486550,486D10,48A870,B35190,C71C80,AFA2E0,0BA830. Les autres LEA660
+accèdent à flags/bitsets/tables à offsets2480,525C,52F2,5B60,7E60,8660 et8F0C,
+sans publier B8/C0. AFA2E0 contient un movabs/jmp de hook hors image capturée ;
+sa présence ne certifie pas un owner retail intact. L'audit exact est retenu dans
+`runtime/agent-capacity/reset-capstone-audit-20261007.json` ; aucune extraction,
+Ghidra supplémentaire ou partie n'a été lancée par cette lecture.
+
+Les32 owners sélectionnés n'ont aucun direct_calls vers3FCC10, mais les owners
+exclus des280 candidats ne contiennent pas cette métadonnée. Cette absence locale
+ne prouve donc pas l'absence d'appelant. Le SDK épinglé ne donne pas de G_InitGame
+retail vérifié ; son hook SV_InitGameVM à14BA3428D est hors texte capturé.
+
+La prochaine passe admise doit ajouter l'appel direct vers3FCC10 comme cible,
+puis suivre ses véritables appelants jusqu'à une publication effective B8/C0.
+Les ancres660/668/670 peuvent relier reset, joueurs et entités ;650 doit quitter
+la priorité producteur puisqu'elle est une dvar. Aucun nouveau CSV de fonctions
+Ghidra n'est justifié tant qu'un appelant/store réel n'est pas identifié. Ne pas
+remplir un quota avec des consommateurs de frame. Patch48 reste refusé, avec
+allocation, compte, stride, durée de vie, corps et codecs encore à relier.
+
+
+### Recette du prochain xref préparée, provenance limitée
+
+Le helper connaît désormais CALL3FCC10 et les ancres exactes660/668/670 ;650
+est exclue des cibles et de la priorité. L'appelant du reset passe avant les LEA
+et autres writers pour éviter leur saturation du quota32. Les12 tests passent,
+dont une régression synthétique avec74LEA et un fauxwriter650. Aucune analyse
+xref n'a été exécutée pendant cette préparation. Après admissionAnalysis4/6,
+utiliser la commande `next_reset_caller_xrefs.output_command` de recipe.json,
+avec sortie neuve `xref-reset-callers-20261007.json`. Ne pas fournir RetainedReport :
+la sélection280 passée ne couvre pas nécessairement les appelants du reset.
+
+Aucun manifest/provenance de capture n'est présent parmi les fichiers existants
+de tools/references. Les hashes certifient les références déjà retenues, pas leur
+phase de capture ni le binaire source. Des hooks avec transfert hors capture
+sont visibles dans les bytes ; une absence de store dans ce texte n'est pas une
+absence globale au runtime. Aucune nouvelle copie/capture n'a été faite.
+
+Une éventuelle future capture pré-modifications doit être planifiée séparément.
+Au pin77e6d4d, main::set_thread_affinity_mask appelle component_loader::post_unpack,
+puis MH_ApplyQueued. Un hook de capture placé avant ces deux opérations serait
+plus tôt que les callbacks post_unpack et que leurs detours, contrairement à
+un composant ordinaire : le loader trie ses composants par priorité décroissante.
+Cela ne suffit pas à certifier pristine : post_start, chargement et post_load ont
+déjà eu lieu, avec notamment un callback arxan et d'autres mutations possibles.
+Il faudra vérifier décryption/écritures antérieures, comparer les sites de hooks,
+et enregistrer sourcepin/overlay, binaire/shipSHA, identitéprocess et base/taille/hash
+des sections. D'abord nommer ce résultat pré-component-post_unpack ; ne pas
+l'appeler retail intact sans cette preuve. Ce n'est qu'une proposition, sans
+édition native, build ou launch. La priorité reste le producteurB8 et son compte.
+
+
+## Appelants du reset trouvés, CFG externe encore manquant — 2026-10-07
+
+La passe parent `xref-reset-callers-20261007.json` a terminé :32sélections sur281
+owners correspondants, zéro unwind non résolu et4239records à décodage incomplet.
+Elle apporte deux callsites exacts vers3FCC10 :48855C dans488520..488AFD
+(1501octets, SHA256ff35c0636165fbd46a791426589bc706dad87fafb10d6ab484d666e84db79416)
+etB20797 dansB20760..B20D91 (1585octets,
+SHA256c4e496ce55aba46727572cb5c94d49d09226313a7a5019268e076d9823b5dd3e).
+Les deux owners unwind sont complets et leurs hashes ont été revérifiés par
+lecture directe, mais ce n'est pas une certification du CFG réellement capturé.
+
+488520 commence par jmp14BF22C47 hors capture et transfère après son callsite
+vers14B3785FF ; le décodage linéaire s'arrête488567. B20760 commence par
+jmp14BA00414 hors capture, transfère après son callsite vers14BA8E3FF et le
+décodage s'arrêteB207B8. Les octets CALL sont certains ; leur accessibilité depuis
+l'entrée, leurs arguments et les stores ultérieurs B8/C0 restent inconnus.
+Aucun nom G_InitGame n'est attribué. Une adresse14B... peut appartenir à des
+régions protégées/Arxan ou transformations ; elle n'est pas automatiquement un
+hook mod. Le pin contient effectivement des interventions Arxan post_load et
+post_unpack, mais aucun manifest de ces anciennes captures n'en donne la phase.
+
+`reset-caller-selection-20261007.json` conserve ce diagnostic et le CSV
+`reset-caller-functions.csv` prépare exactement ces deux owners,3086octets.
+La question Ghidra est bornée : peut-on récupérer des arguments/stores capturés
+sans transformer les sorties vers régions absentes en absence de producteur ?
+Le résultat doit garder les edges externes et le caractère inconnu de
+l'accessibilité ; si Ghidra ne voit que le saut externe d'entrée, ne pas répéter
+une décompilation pour prétendre résoudre le pool. Il faudra d'abord capturer ou
+restituer les régions de code réellement suivies avec provenance et limites de
+phase. Aucun nouveau Ghidra/capture/build/jeu n'a été lancé par cette préparation.
+Patch48 reste refusé tant que publication, compte et durée de vie B8/C0 ne sont
+pas reconstruits.
+
+
+### Acquisition ciblée réelle, sans interruption du processus
+
+La première intégration Python/Observer sous LabAssetProcess a été refusée dans
+la case `20261007-001508-216-60e42105`, avant le client :
+`Runtime child is outside its reserved lab.` Le résultat conserve
+`Restored=true`, `CleanupError=null`. Le scheduler n'a pas été élargi.
+Cette voie runtime est remplacée par `CodePages.cs`, lecteur **in-process** du
+parent réservé, avec handle conservé et accès
+`QUERY_INFORMATION|VM_READ|SYNCHRONIZE`. Le Python reste un support offline/test.
+
+Le parent a exécuté la lecture le 2026-10-07 à 00:20:48 UTC dans la case
+`20261007-001859-322-c7dcac46`, dossier
+`capacity-pages-ba1b5da84cb042ad847c0d86c8bcba9d`. Les huit pages de 4096 octets
+ont été conservées, avec double lecture stable : 16 appels, 64 KiB lus,
+32 KiB de payload, aucun processus enfant. Le handle fermé est confirmé avant
+restauration par le contrat CleanupState. La lecture ne fait ni attach debugger,
+ni suspension, ni écriture cible. Elle réutilise la lease 14 GiB/15 GiB du parent
+et n'en crée/libère aucune.
+
+Identité retenue : PID8224, création `2026-10-07T00:19:06.9017925Z`, binaire
+natif SHA256 `72C38CEBD73AA336E973CDCAE6515B3B9BAD8DCEDBE13D6B15F47D08A9208494`.
+Les pages sont MEM_COMMIT/MEM_IMAGE, exécutables PAGE_EXECUTE_READWRITE,
+allocation base `0x140000000`, mapping `iw7_ship.exe` du candidat. Ce mapping
+ne certifie pas une image retail pristine ni une origine Arxan particulière.
+La stabilité de chaque page ne garantit pas un snapshot global cohérent.
+
+Les huit SHA256 ont été revérifiés avant analyse avec Capstone5.0.7.
+Le manifeste SHA256 est
+`cb580b02e07914df1a75b8ed646dc5ca319ffcc2942f0c41ecfeb25f20417960` ;
+l'admission sidecar SHA256 est
+`f2f7c8a95d8e3be67c34b89c02aec06447a8b9e739b507ea84d1919b26f0e3f4`.
+Le rapport dérivé est
+`runtime/agent-capacity/live-reset-entry-audit-20261007.json` ; les bytes restent
+ignorés par Git. Quatre tests légers du lecteur passent, ainsi que les12 tests
+xref. Aucun test pur ne remplace cette preuve live.
+
+### Les deux entrées révèlent le prochain manque exact
+
+Les entrées live des deux propriétaires confirment leurs branches :
+
+| Propriétaire | Destination capturée | Successeur résolu | Prochaine page absente |
+|---|---|---|---|
+| `0x140488520` | `0x14BF22C47` | `0x14B8E6A6B` | `0x14B8E6000` |
+| `0x140B20760` | `0x14BA00414` | `0x14B4B225D` | `0x14B4B2000` |
+
+Chaque destination est un thunk dont les bytes établissent le contrat : sauver
+RBP sous RSP, charger la cible par LEA RIP-relative, échanger avec le RBP sauvé,
+restaurer RSP, puis JMP vers la cible conservée sur la pile. RBP/RSP sont
+restaurés ; cette séquence ne publie ni B8 ni C0. Les deux calculs RIP-relative
+sont vérifiés sur les bytes exacts, sans nom de fonction supposé.
+
+Les quatre autres destinations capturées montrent encore des branches sortantes
+ou conditionnelles : `14BCE8A4C → 14130D681 / 14BC1567C`,
+`14B3785FF → 14C0CF8B7`, `14B7E7350 → 14BAFE22C`,
+`14BA8E3FF → 14B431B46 / 140B207DD`, puis ce dernier vers `14C175961`.
+Ces chemins ne démontrent pas une allocation ou la publication B8/C0.
+La présence des CALLreset dans les propriétaires ne prouve toujours pas leur
+atteignabilité depuis l'entrée.
+
+Prochaine demande ciblée : seulement les deux pages des successeurs d'entrée,
+8192 octets conservés /16384 octets double lecture, sous une future case détenue
+par le parent. Aucun élargissement du graphe, nouveau propriétaire ou patch48
+n'est exécuté automatiquement. Il faut d'abord suivre ces deux entrées réelles ;
+publication, compte et durée de vie B8/C0 restent inconnus.
+
+Le parent a autorisé ce seul complément. `-PagePlan reset-entry-targets` sélectionne
+une seconde allowlist fixe par handle : deux pages, quatre lectures maximum,
+16 KiB lus et8 KiB conservés. Le défaut `reset-callers` garde les huit pages.
+Aucune adresse arbitraire ne peut être fournie. `reset-entry-plan.json` conserve
+les deux thunks et les SHA256 du manifeste/pages parents ; le helper revérifie
+ces fichiers avant toute lecture. L'admission et CleanupState restent identiques.
+Les tests purs vérifient également le refus d'un nom de plan inconnu, d'une
+adresse de l'autre plan, la copie immuable et les bornes du complément.
+Le complément est préparé et gelé, sans acquisition par cet agent.
+
+### Complément live : deux appels synthétiques, pas encore le producteur
+
+Le parent a exécuté `reset-entry-targets` dans la case
+`20261007-002921-240-e99aee04`, dossier
+`capacity-pages-e92179d30b5d4ad48364dab0d1f97212`. Le manifeste complet conserve
+2pages,4lectures/16384octets, PID20864 créé à
+`2026-10-07T00:29:29.2278549Z`, même natif72C38… que la première capture.
+Les deux SHA de pages ont été vérifiés avant Capstone5.0.7 :
+`EE80191080BF5FB5C410F77369955F49D39CE2C89ACCF68BAF4A9B5F26F11AFA` et
+`4C0372BF38C67B77E2465E2BAC1A294AAC54A5ACE8A32187DFFA1694D4807DB9`.
+Le manifeste SHA256 est
+`8067a5cb861408f1c1dd98a920a2f29341c0cfb6e5f560f6461eb75fe00f27ba`.
+
+| Chaîne issue de l'entrée | Retour synthétique | Destination d'appel | Prochaine page |
+|---|---|---|---|
+|488520 →14BF22C47 →14B8E6A6B|1409583B4|140BADAF6|140BADA000|
+|B20760 →14BA00414 →14B4B225D|1402A33C8|14B8003D0|14B800000|
+
+Les34octets de chaque bloc sont entièrement décodés. Le premier LEA charge
+l'adresse de retour, échangée avec RBP sauvé sous RSP. Un PUSH de RBP puis le
+second LEA/XCHG placent la destination sur la pile. RET la dépile : RBP est
+restauré et le callee voit RSPoriginal−8, avec le retour synthétique au sommet.
+C'est l'effet de pile d'un CALL, sans instruction CALL ordinaire. Les deux cibles
+et retours sont calculés sur les déplacements RIP-relative exacts et les formes
+d'instructions sont vérifiées. Aucun store B8/C0 ni allocation n'est présent.
+
+Une comparaison limitée à10octets de l'ancien unpacked-text montre à140BADAF6
+un MOV sauvegardant RBP puis JMP14BE67544. Cette comparaison historique ne prouve
+pas les bytes live actuels : la prochaine demande conserve140BADA000 pour les
+vérifier avant de poursuivre. Le second callee14B8003D0 manque entièrement des
+captures retenues. Les prochaines deux pages proposées totalisent8KiB conservés
+et16KiB de double lecture ; aucune acquisition n'est lancée par cet agent.
+
+Rapport exact : `runtime/agent-capacity/live-reset-entry-targets-audit-20261007.json`.
+Le graphe des propriétaires reste incomplet, l'atteignabilité des CALLreset ainsi
+que les paramètres d'initialisation et la publication B8/C0 restent inconnus.
+Le résultat ne certifie pas une capture pristine ni un patch48 prêt.
+
+### Recul : observer le producteur plutôt que dérouler tous les dispatchers
+
+La poursuite CFG reste utile mais peut exiger beaucoup de pages successives de
+code protégé. Elle ne privilégie pas les writes réels des champs. Une stratégie
+plus directe consiste à observer **les écritures**, puis récupérer le petit
+contexte du site effectivement exécuté. Le contrat proposé est retenu dans
+`ops/agent-capacity/producer-diagnostic-plan.json` ; aucun nouveau capteur ni
+lancement n'est réalisé par cette revue.
+
+| Option | Gain | Limite actuelle |
+|---|---|---|
+|Deux pages callees exactes|Lecture sûre,8KiB, même contrat existant|Encore des dispatchers ; B8/C0 producer peut rester lointain|
+|Watchpoints natifs opt-in|Identifie thread et RIP du premier write nonzero|Nouveau prototype nécessaire, canary et couverture threads à prouver|
+|CDB live attach|Registres/watchpoints sans modifier contenu retail|Pas de wrapper live validé ; attach perturbe, child horsScope, detach à sécuriser|
+
+`Debug-Server.ps1` propose CDB pour dumps offline, pas les watchpoints live.
+Son réemploi de lease est lié à l'ancien runtime/isolated-lab, pas au candidat
+réutilisé Agent-Lab. `Invoke-DebugTool` tue l'outil au timeout : ce contrat ne
+suffit pas pour garantir qu'un debuggee attaché survit. Le CDB AppX épinglé est
+horsScope ; le refus du Python ne doit pas être contourné. Une variante CDB
+nécessiterait staging de dépendances épinglées dans le candidat, registration
+exacte et nouveau contrat de detach, sans élargir le scheduler.
+
+Le capteur natif actuel paris_debugger ne mesure que timings/cadence, pas les
+writers. Le pin arxan retire les debug registers lors de post_load/post_unpack,
+et son load_import remplace SetThreadContext : la branche exacte
+CONTEXT_DEBUG_REGISTERS retourne TRUE sans appliquer. Ces faits interdisent de
+supposer qu'une commande hardware watchpoint fonctionne. Ils ne prouvent pas
+que toute méthode post_unpack est impossible.
+
+Proposition prioritaire pour le parent/native worker : flag séparé opt-in,
+prototype canary privée validé après post_unpack sur les threads server etmain,
+puis deux watchpoints8B alignés sur143C986B8/C0 pendant un unique restart du
+même dédié vacant vérifié.10s/64events maximum, ring fixe préalloué, aucun IO ni
+allocation dans le handler. Chaque événement conserve TID, RIP **après** write,
+CONTEXT brut, bitsDR6, valeurs précédentes/nouvelles et phase arm/zero/nonzero.
+Les widths/semantics des champs restent inconnus ; observer8B n'en fait pas un
+compteur64bits certifié. Toute technique de modification du contexte/VEH doit
+réussir la canary avant de lire un résultat moteur.
+
+Il faut30s de réponses UDP0clients, identité exacte, arm acknowledgement puis
+un seul restart envoyé par le parent. Les threads réellement armés sont retenus ;
+l'absence de write n'est pas concluante si l'initialisation se déroule ailleurs.
+Désarmement de tous les threads et retrait du handler possédé doivent être
+confirmés avant restauration/release. Un event cap ou timeout conserve le
+résultat partiel, sans certification de capacité.
+
+Un RIP de watchpoint désigne le point après l'instruction : retrouver le writer
+exige des bytes/CFG bornés, pas une désassemblage arrière aveugle. La suite doit
+prouver le champ adressé, le nonzero publié et le contexte allocation/callers.
+En parallèle ou fallback, les seules prochaines pages CFG justifiées restent
+140BADA000 et14B800000. Le saut historique vers14BE67544 doit être revalidé live
+avant d'ajouter sa page. Cette stratégie vise la preuve du producteur ; elle
+n'autorise ni patch48 ni annonce de48zombies concurrents.
+
+### Prototype SOURCE ONLY : canary du contexte d'exception
+
+Nouveaux fichiers `src/native/paris_capacity_watch.cpp/.hpp`, sans modification
+au manifeste natif72 ni à Build-Voice/fixture existants. Le component se register
+normalement mais son post_unpack ne fait rien sans **tous** les flags dédiés
+`-paris-capacity-watch -paris-isolated-lab -paris-server-test -paris-debugger`.
+L'arm exige en plus CP, password nonvide, tableau clients valide(1..4) et tous
+les états CS_FREE pendant30s, contrôlés sur le pipeline server. Aucun client,
+maprestart, suspension de thread/process ou commande de jeu automatique.
+
+Interface proposée, à intégrer/compiler puis relire avant runtime :
+
+```text
+paris_capacity_arm <nonce16..64 ASCII letters/digits/_>
+paris_capacity_stop
+```
+
+Une seule acquisition par processus. La sortie fresh est
+`iw7-capacity-watch-<PID>-<nonce>.jsonl` dans CWD candidat. Header PID/création
+FILETIME, fréquenceQPC, nonce et adresses exactes ; le parent lie le SHA binaire
+au manifeste de build, sans certification autoproclamée par le capteur.
+Un événement `armed` n'est émis qu'après canary réussie et datawatch installée
+sur les deux rôles server/main ; il retient TID/creation/roles. Les rôles peuvent
+partager un seul TID : ce n'est pas une fausse couverture de deux threads.
+Le parent doit attendre ce record frais, puis envoyer son restart lui-même.
+
+Le prototype n'appelle **pas** SetThreadContext, NtSetContextThread, SuspendThread
+ou DebugActiveProcess. Une RaiseException privée sur le thread courant livre son
+CONTEXT au VEH ; le handler essaie d'y installer un DR0 sur une canary native8B
+privée, puis un InterlockedExchange réel doit produire le single-step attendu.
+Cette technique est expérimentale : on ne suppose pas que Windows conserve les
+DR modifiés. Sans trap exacte(adresse/DR7/slot) la canary échoue et les champs
+moteur ne sont pas armés sur ce thread. Aucun contournement de l'import Arxan
+n'est appelé. Tout DR antérieur, même slot inactif, ou TF actif refuse l'arm.
+
+Après cette preuve locale, DR0/DR1 surveillent143C986B8/C0 sur8B. Le ring fixe
+64slots conserve CONTEXT complet hex, TID/roles, QPC/tick, slotsDR6, RIP après
+write et valeurs brutes previous/current. Aucun IO, allocation, mutex ou stack
+walk dans le VEH. Le flush async écrit hors handler. Kind0=canarypass,1=write,
+2=failure,3=disarmed. Zéro/nonzero est suivi **par thread** ; si le reset et la
+publication ont lieu sur deuxTID, l'analyse doit corréler les événements bruts
+et ne pas considérer les flags locaux comme preuve globale d'absence.
+
+Le watchdog10s et le cap64 demandent l'arrêt ; aucun write n'est crédité après
+le délai. La fermeture est coopérative, sans suspendre un thread occupé. Chaque
+callback possédé restaure ses DR par une seconde exception privée, puis une
+**troisième exception** vérifie les registres réellement retournés par Windows.
+Un thread original terminé est reconnu uniquement par son handle retenu.
+RemoveVectoredExceptionHandler n'est appelé qu'après tous les DR possédés fermés ;
+les handles doivent être fermés aussi avant cleanup_confirmedtrue. Un thread
+bloqué sans callback peut empêcher cette clôture : le prototype ne l'interrompt
+pas et garde le handler/cleanupfalse. Le parent conserve alors la lease et les
+transactions, ou établit séparément la fin du dédié exact qu'il possède.
+
+`paris_capacity_watch::cleanup_confirmed()` fournit le predicate C++ au parent ;
+`request_stop()` demande seulement un arrêt. Le record final conserve failures,
+canary_prerequisite_satisfied, covered_roles et all_init_threads_coveredfalse.
+Même des canaries des deux rôles ne certifient pas tous les threads d'init.
+Pas de certificat48, pas de capacité modifiée, et canaryfailure=no evidence.
+
+`tests/native/capacity_watch_test.cpp` couvre les invariants purs : nonce,
+délai/clockbackward, refus DR/TF antérieurs, canary exacte, suivi zéro/nonzero
+par slot et saturation/concurrence du ring sans overwrite. Source de test
+préparée seulement ; cet agent n'a lancé ni compilation ni runtime. Le peer
+et le parent feront la compilation légère et la revue de la livraison du
+CONTEXT, des états d'exception et de la fermeture avant toute activation.
+
+La revue peer a identifié et corrigé deux risques avant compilation : admission
+native désormais SV_Loaded +mapname exactcp_zmb +net_port INT27100..27999,
+et barrière de registry horsVEH couvrant publication des handles, callbacks
+arm/close et décision async de retirer le handler. Un callback retardé ne peut
+plus publier un handle après cleanupconfirmé. Le VEH n'acquiert pas ce mutex.
+Avant toute restauration DR, le CONTEXT doit encore porter **nos** registres
+exacts de la phase courante, ou la baseline déjà restaurée. Une collision avec
+un état étranger conserve cleanupfalse et ne l'écrase pas. La vérification par
+exception suivante reste obligatoire avant closure.
+
+Les champs previous_b8/c0 désignent la précédente **observation** du même TID,
+pas une lecture atomique avant l'instruction. Le read_pair dans le VEH survient
+après le trap et peut voir une écriture concurrente d'un autre thread. Le site
+watchpoint est une preuve d'accès au champ ; attribuer la valeur nonzero à cette
+instruction exige encore opcode/registreCONTEXT exacts. first_nonzero local ne
+remplace pas cette validation et ne prouve pas une publication cohérente globale.
+
+### Intégration build et validation pure après revue
+
+Le peer a relu le CPP SHA256
+`A3F35AC064B3C743E41D5D464B22FD602AB312C8EEC781C72DFAAC046116C379`
+après correctifs et ne relève plus de blocker concret. Le test pur a réellement
+compilé et exécuté(exit0) via `runtime/capacity-watch-peer-pure.cmd`, MSVC
+`/std:c++17 /EHsc /W4 /WX /Od /RTC1`. Exe mesuré SHA256
+`7D9ED11FFC605FAA1DDD875FB4CA2EEDF06BA6E9F24A1BE339B1B01830000B9B`.
+La passe peer n'a pas conservé stdout/log séparé : aucun hash de log n'est inventé.
+Cette validation remplace le statut antérieur source-de-test-noncompilée ; elle
+ne compile pas le CPP Windows/SDK complet ni ne démontre la livraison des DR.
+
+Build-Voice inclut le CPP/HPP seulement avec **IsolatedLab ET Debugger**.
+Debugger exige déjà ServerModules, donc le pin77 et son SDK CP. Main et les
+profils nondebugger n'incluent aucun TU watcher. Le helper Build-Copy.Core refuse
+les sources/cibles redirigées et prévalide les deux hashes avant copy/remove :
+un fichier inconnu refuse le changement de profil sans effacer l'autre.
+Le profil ordinaire retire seulement la paire exacte précédemment copiée.
+Le manifeste réussi conserve CapacityWatchBuild, hashes CPP/HPP et helper ;
+compilé ne veut pas dire armé. Le flag opt-in runtime reste absent par défaut.
+
+TestsOnly intègre le test C++ pur et le test PS des copies de profil. Le test PS
+a réellement passé dans un dossier synthétique distinct de tools/iw7-mod-native :
+copies exactes, retrait au profil ordinaire, refus d'édition inconnue dans les
+deux sens sans mutation partielle. AST Build-Voice validé. Aucun rebuild natif
+complet ni mutation du checkout d'outils n'a été lancé par cette intégration.
+Le parent doit encore compiler le TU complet et coordonner un dédié privé vacant
+pour vérifier canary, contexte, journal et fermeture.

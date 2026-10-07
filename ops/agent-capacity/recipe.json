@@ -309,7 +309,7 @@
     "completed_output": "runtime/agent-capacity/pool-lifecycle-selected-20261007.c"
   },
   "next_indirect_producer_xrefs": {
-    "status": "prepared-not-executed",
+    "status": "executed-analysis-not-patch-ready",
     "helper": "ops/agent-capacity/Invoke-XrefAnalysis.ps1",
     "exact_rip_anchors": [
       "0x143c98650",
@@ -317,7 +317,7 @@
       "0x143c98668",
       "0x143f25a88"
     ],
-    "candidate_block_anchor": "143C98650 is neighbouring-block candidate, not certified SDK game::level base",
+    "candidate_block_anchor": "143C98650 hypothesis rejected: actual dvar slot; reset base143C98660 machine-verified",
     "verified_context": "143F25A88 receives449E90 constructor result;143C98660/668 are player pointer/count consumers inB213F0",
     "selection": "WRITE/LEA exact anchors join pool producers before allocator caller, then readers; max32 complete owners,64KiB each",
     "retained_reuse_limit": "Previous167 roots do not establish coverage for new anchor-only owners; next admitted full pdata pass required to seek those roots.",
@@ -332,5 +332,400 @@
     "requires_separate_admission": true,
     "output_command": "pwsh -NoProfile -File ./ops/agent-capacity/Invoke-XrefAnalysis.ps1 -ReferenceRoot $ReferenceRoot -OutputPath ./runtime/agent-capacity/xref-indirect-anchors-20261007.json",
     "patch_ready": false
+  },
+  "reset_capstone_followup": {
+    "status": "reset-verified-producer-still-unresolved",
+    "audit": "runtime/agent-capacity/reset-capstone-audit-20261007.json",
+    "audit_sha256": "9d2a3733b386ae423bae9e5696032b16e3a7415c0d2c47b870f404dd40cbd3ec",
+    "owners_read": 8,
+    "owner_bytes": 6241,
+    "reset_complete_owner": "0x1403fcc10..0x1403fcd30",
+    "reset_span_sha256": "e838927623400e8dd269bc7ec1bd2fccc498e7845c18728608c0d5d446045f68",
+    "reset_base": "0x143c98660",
+    "reset_zero_bytes": "0x8f90",
+    "rejected_base": "0x143c98650 (dvar slot)",
+    "decompiler_limit": "Ghidra inlinedmemset/PIC drops actual postzero instructions. Its C output is not complete semantic proof.",
+    "tail_leaf": {
+      "start": "0x140434ad0",
+      "end_exclusive": "0x140434ae8",
+      "bytes": 24,
+      "sha256": "51b29e0b0ecb43f93540d8e72d25970d5f53389b07ef2b67a855cf5706d3a84f",
+      "pdata": "none-containing-entry",
+      "contract": "loads143F9B350;zeroesreferent+8length0x11EE via tail-jump1412BFC90; no B8/C0 store"
+    },
+    "historical_reports": [
+      "runtime/agent-capacity/xref-indirect-anchors-20261007.json",
+      "runtime/agent-capacity/indirect-producer-selection-20261007.json"
+    ],
+    "historical_limit": "Preserve files; initial candidate650 interpretation rejected, not a level base. Selection resetproof verified by exact machine bytes; not pool allocation proof.",
+    "caller_limit": "Only32 selected owners carry direct_calls metadata;280matching candidates do not cover all calls. No global caller absence proven.",
+    "next_admitted_targets": {
+      "direct_calls": [
+        "0x1403fcc10"
+      ],
+      "rip_addresses": [
+        "0x143c98660",
+        "0x143c98668",
+        "0x143c98670"
+      ],
+      "exclude_false_anchor": "0x143c98650"
+    },
+    "new_function_csv": null,
+    "reason_no_csv": "No new complete producer owner/caller demonstrated. Leaf434AD0 only resets unrelated referent143F9B350+8; do not add generic readers.",
+    "patch_ready": false
+  },
+  "next_reset_caller_xrefs": {
+    "status": "parent-executed-candidates-not-CFG-certified",
+    "helper": "ops/agent-capacity/Invoke-XrefAnalysis.ps1",
+    "implementation_sha256": "628757f5533ae7d00c2359efea615921c3feba4525c9205ff166eac78fc1e369",
+    "direct_calls": [
+      "0x1403fcc10",
+      "0x140c1a190"
+    ],
+    "exact_rip_anchors": [
+      "0x143c98660",
+      "0x143c98668",
+      "0x143c98670",
+      "0x143f25a88"
+    ],
+    "false_anchor_excluded": "0x143c98650",
+    "priority": "Exact reset caller first, then genuine pool/anchor producers, allocatorcaller and readers",
+    "scope": "all captured pdata; no retained_report because new reset callers may be outside280previousmatchingowners",
+    "bounds": "32completeowners/64KiB each; incomplete decodes/outsidecapture/indirectcalls remain open",
+    "requires_separate_admission": true,
+    "output_command": "pwsh -NoProfile -File ./ops/agent-capacity/Invoke-XrefAnalysis.ps1 -ReferenceRoot C:/Users/ezvalo/Documents/IW7-Paris-Server/tools/references -OutputPath ./runtime/agent-capacity/xref-reset-callers-20261007.json",
+    "tests": "12synthetic owner/ranking/reuse tests pass; resetcaller cannot be starved by74 anchorLEAs; false650writer excludedfrompriority",
+    "patch_ready": false,
+    "completed_report": "runtime/agent-capacity/xref-reset-callers-20261007.json"
+  },
+  "capture_provenance_limit": {
+    "reference_manifest": "No manifest/provenance file present among existing tools/references files; do not infer capturetimestamp/phase/sourcebinarySHA",
+    "observed_mutations": "AFA2E0 has movabs0x6C994C0;jmprax; retained other owner hasmodhook. Captured text demonstrably includesnonretailtransfers outsidecapture",
+    "negative_limit": "No decodedstore/caller in capturedowners is not absence acrossruntime/transformedcode/indirectpaths",
+    "source_pin": "77e6d4d24e918ee363b3feee3735c3b889dff7d7",
+    "proposal_only": "Future opt-in capture in main::set_thread_affinity_mask before component_loader::post_unpack and MH_ApplyQueued. Must recordsectionbase/size/hashes/sourcepin/overlay/binary/shipSHA/PIDcreation and compareknownhooks. No nativeedit/build/launch authorized by this note.",
+    "phase_limits": "post_start, load_binary, post_load alreadyoccurred; arxan/exception/systemcheck/etc havepost_load callbacks. Highestcomponentpriority alone is not pristine and laterdecryptwrites mayremain. Call it pre-component-post_unpack capture untilearlierwrites/decryptionprovenanceverified; preserveexistingcapture."
+  },
+  "reset_caller_followup": {
+    "selection": {
+      "schema": "iw7.agent-capacity-reset-caller-selection/1",
+      "report": "runtime/agent-capacity/xref-reset-callers-20261007.json",
+      "report_sha256": "de9abad4dada89c3e15c10c84d8ed4cb52602934729ca868c96d0ee501070509",
+      "selected": 32,
+      "matching": 281,
+      "incomplete_records": 4239,
+      "unresolved_unwind": 0,
+      "owners": [
+        {
+          "root": "0x140488520",
+          "unwind_owner_complete": true,
+          "bytes": 1501,
+          "spans": [
+            {
+              "start": "0x140488520",
+              "end": "0x140488afd",
+              "sha256": "ff35c0636165fbd46a791426589bc706dad87fafb10d6ab484d666e84db79416"
+            }
+          ],
+          "callsite": {
+            "address": "0x14048855c",
+            "target": "0x1403fcc10",
+            "access": "call",
+            "mnemonic": "call",
+            "instruction_sha256": "942530ac0df2ab243de81718d44a1432ad912b592061950c42c1060a5ff96e84",
+            "record_start": "0x140488520",
+            "record_end": "0x140488afd"
+          },
+          "linear_decode_stop": "0x140488567",
+          "linear_decode_complete": false,
+          "branches": [
+            {
+              "site": "0x140488520",
+              "target": "0x14bf22c47"
+            },
+            {
+              "site": "0x140488557",
+              "target": "0x14bce8a4c"
+            },
+            {
+              "site": "0x140488562",
+              "target": "0x14b3785ff"
+            }
+          ],
+          "entry_flow_leaves_capture": true,
+          "callsite_reachability": "unknown",
+          "nonzero_B8_C0_publication": "unknown-not-absence",
+          "classification": "ExactCALLbytes insidecompletepdataowner; external entry/postcall flows preventcompleteCFG",
+          "question": "Recover trueentry controlflow/arguments and B8/C0 publication; cannot infer from missing captured external branches"
+        },
+        {
+          "root": "0x140b20760",
+          "unwind_owner_complete": true,
+          "bytes": 1585,
+          "spans": [
+            {
+              "start": "0x140b20760",
+              "end": "0x140b20d91",
+              "sha256": "c4e496ce55aba46727572cb5c94d49d09226313a7a5019268e076d9823b5dd3e"
+            }
+          ],
+          "callsite": {
+            "address": "0x140b20797",
+            "target": "0x1403fcc10",
+            "access": "call",
+            "mnemonic": "call",
+            "instruction_sha256": "fc653f9b1096c32d913e62d7fe86d833f858a2b1ca78a26282a586d85e92edbd",
+            "record_start": "0x140b20760",
+            "record_end": "0x140b20d91"
+          },
+          "linear_decode_stop": "0x140b207b8",
+          "linear_decode_complete": false,
+          "branches": [
+            {
+              "site": "0x140b20760",
+              "target": "0x14ba00414"
+            },
+            {
+              "site": "0x140b20773",
+              "target": "0x14b7e7350"
+            },
+            {
+              "site": "0x140b20792",
+              "target": "0x141305910"
+            },
+            {
+              "site": "0x140b2079d",
+              "target": "0x14ba8e3ff"
+            }
+          ],
+          "entry_flow_leaves_capture": true,
+          "callsite_reachability": "unknown",
+          "nonzero_B8_C0_publication": "unknown-not-absence",
+          "classification": "ExactCALLbytes insidecompletepdataowner; external entry/postcall flows preventcompleteCFG",
+          "question": "Recover trueentry controlflow/arguments and B8/C0 publication; cannot infer from missing captured external branches"
+        }
+      ],
+      "owner_bytes": 3086,
+      "next_function_csv": "ops/agent-capacity/reset-caller-functions.csv",
+      "ghidra_gate": "Twoexactcompleteowners only,3086bytes; useful only ifexternaledges/unreachablecallsite explicitlypreserved. No producer claim or guessed G_InitGame names.",
+      "capture_gap": "Branches14B... may be protected-game/Arxan or transformations; no existingmanifest provesorigin. Do not automaticallylabelallbranchesmodhooks.",
+      "patch_ready": false
+    },
+    "status": "CSV-prepared-no-decompile-executed",
+    "requires_separate_admission": true,
+    "maximum_functions": 2,
+    "maximum_bytes_per_function": 65536,
+    "claim_limits": [
+      "Exactcallsitebytes notproofreachable",
+      "Fullunwindowner notfullcapturedCFG",
+      "Branchesbeyondcapture notautomaticallymodhook",
+      "NoB8/C0producerknown",
+      "NoG_InitGame symbolcertified"
+    ]
+  },
+  "targeted_live_code_capture": {
+    "status": "live-inprocess-read-pass-entry-successors-missing",
+    "helper": "ops/agent-capacity/Capture-CodePages.ps1",
+    "reader": "ops/agent-capacity/CodePages.cs",
+    "fixed_owners": [
+      "0x140488520",
+      "0x140b20760"
+    ],
+    "fixed_destinations": [
+      "0x14bf22c47",
+      "0x14bce8a4c",
+      "0x14b3785ff",
+      "0x14ba00414",
+      "0x14b7e7350",
+      "0x14ba8e3ff"
+    ],
+    "maximum_pages_per_owner": 4,
+    "total_payload_pages": 8,
+    "payload_bytes": 32768,
+    "memory_read_bytes": 65536,
+    "double_read_stability_required": true,
+    "permissions": "Committed readable-executable PAGE_EXECUTE_READ/READWRITE/WRITECOPY; no guard/noaccess; full VirtualQueryEx regioncoverspage; image/private/mapped type recorded",
+    "provenance": "Exact retained in-process handle PID/creation/image/SHA, QUERY_INFORMATION|VM_READ|SYNCHRONIZE. Each page MEM_IMAGE executable mapping/region pre/post retained; source hash and plan/lease sidecar. Mapping does not prove pristine retail.",
+    "runtime_gate": "Exact AgentLab planDebuggertrue, reserved14/15 Runtime samecandidateScope+registeredPIDcreationimage anddedicated/test/debuggerflags; baseclient/Mainexcluded as target",
+    "deadline_seconds": null,
+    "process_supervision": "In-process parent retained handle; zero child processes; Dispose/Closed confirmed before shared cleanup allows restoration. No lease expansion.",
+    "partial_failure": "Freshdirectory+manifestcompletefalse retained; mutating/protectionchanged/partialread refused; noquiescence/suspendused",
+    "caller_contract": "Await synchronously whileparentleaseactive; ifsharedCleanupStatefalse refuse restoration/release. Do not runstandalone concurrently with parentteardown",
+    "tests": "4 light tests: C# pure region/allowlist and own test process identity query; PS admission and fake reader mutation/partial failures. 12 xref tests.",
+    "pristine": false,
+    "patch_ready": false,
+    "reader_core": "ops/agent-capacity/CodePages.Core.ps1",
+    "runtime_history": [
+      {
+        "case": "20261007-001508-216-60e42105",
+        "result": "Failed-before-client",
+        "reason": "Runtime child is outside its reserved lab.",
+        "restored": true,
+        "cleanup_error": null,
+        "correction": "Python runtime child removed; no scheduler scope bypass."
+      },
+      {
+        "case": "20261007-001859-322-c7dcac46",
+        "result": "LiveReadPassed",
+        "captured_utc": "2026-10-07T00:20:48Z",
+        "pages": 8,
+        "read_calls": 16,
+        "read_bytes": 65536,
+        "child_processes": 0,
+        "reader_closed": true
+      }
+    ],
+    "analysis": {
+      "report": "runtime/agent-capacity/live-reset-entry-audit-20261007.json",
+      "manifest_sha256": "cb580b02e07914df1a75b8ed646dc5ca319ffcc2942f0c41ecfeb25f20417960",
+      "admission_sha256": "f2f7c8a95d8e3be67c34b89c02aec06447a8b9e739b507ea84d1919b26f0e3f4",
+      "capstone": "5.0.7",
+      "verified_pages": 8,
+      "resolved_entry_thunks": [
+        {
+          "owner": "0x140488520",
+          "entry": "0x14bf22c47",
+          "resolved_target": "0x14b8e6a6b",
+          "next_page": "0x14b8e6000",
+          "proof": "save original rbp below rsp; LEA rbp RIP-relative target; XCHG target with saved rbp; restore rsp; JMP saved target. Original rbp/rsp restored, no target write other than stack.",
+          "next_page_captured": false
+        },
+        {
+          "owner": "0x140b20760",
+          "entry": "0x14ba00414",
+          "resolved_target": "0x14b4b225d",
+          "next_page": "0x14b4b2000",
+          "proof": "save original rbp below rsp; LEA rbp RIP-relative target; XCHG target with saved rbp; restore rsp; JMP saved target. Original rbp/rsp restored, no target write other than stack.",
+          "next_page_captured": false
+        }
+      ],
+      "next_requested_pages": [
+        "0x14b8e6000",
+        "0x14b4b2000"
+      ],
+      "next_request_bytes": 8192,
+      "B8_C0_producer": "unknown",
+      "requires_parent_authorization_before_capture": true
+    },
+    "next_plan": {
+      "status": "parent-executed-live-read-pass",
+      "parameter": "-PagePlan reset-entry-targets",
+      "fixture": "ops/agent-capacity/reset-entry-plan.json",
+      "reader_instance_allowlist": [
+        "0x14B8E6000",
+        "0x14B4B2000"
+      ],
+      "maximum_payload_bytes": 8192,
+      "maximum_read_calls": 4,
+      "maximum_read_bytes": 16384,
+      "parent_capture_hash_preflight": "passed",
+      "arbitrary_address_argument": false,
+      "default_plan": "reset-callers (original8pages unchanged)",
+      "pristine": false,
+      "patch_ready": false
+    }
+  },
+  "live_reset_entry_targets_followup": {
+    "schema": "iw7.capacity-live-reset-entry-targets/1",
+    "capture_directory": "runtime/agent-lab/20261007-002921-240-e99aee04/capacity-pages-e92179d30b5d4ad48364dab0d1f97212",
+    "manifest_sha256": "8067a5cb861408f1c1dd98a920a2f29341c0cfb6e5f560f6461eb75fe00f27ba",
+    "admission_sha256": "15f7d6bc6ff6fd0cda55a8f13348bec7b73fa3ff98fc931855b41fdb210bd70e",
+    "capstone": "5.0.7",
+    "page_hashes_verified": 2,
+    "read_calls": 4,
+    "read_bytes": 16384,
+    "next_requested_pages": [
+      "0x140bad000",
+      "0x14b800000"
+    ],
+    "next_request_payload_bytes": 8192,
+    "next_request_read_bytes": 16384,
+    "B8_C0_publication": "unknown",
+    "allocation_chain": "unknown",
+    "reset_callsite_reachability": "unknown",
+    "pristine": false,
+    "patch_ready": false,
+    "historical_comparison": {
+      "entry": "0x140badaf6",
+      "bytes": 10,
+      "sha256": "40c42932a0fdc490ca4d50982aa02f9c465cb18045e1d671b394b0c1f69360cc",
+      "jump": "0x14be67544",
+      "evidence": "retained old unpacked-text, not live; re-read callee page before following this branch",
+      "pristine": false
+    },
+    "report": "runtime/agent-capacity/live-reset-entry-targets-audit-20261007.json",
+    "identity": {
+      "PID": 20864,
+      "Image": "C:\\Users\\ezvalo\\.codex\\worktrees\\agent-debugger\\IW7-Paris-Server\\runtime\\isolated-lab\\server\\iw7-paris-agent-lab.exe",
+      "CreatedUtc": "2026-10-07T00:29:29.2278549Z",
+      "SHA256": "72C38CEBD73AA336E973CDCAE6515B3B9BAD8DCEDBE13D6B15F47D08A9208494",
+      "Stdout": "C:\\Users\\ezvalo\\.codex\\worktrees\\modular-agent-platform\\IW7-Paris-Server\\runtime\\agent-lab\\20261007-002921-240-e99aee04\\server.stdout.log",
+      "DesktopName": "IW7ParisLab_f7a6af90138a4dc68bcf336e30fd2a01"
+    },
+    "chain": [
+      {
+        "owner": "140488520",
+        "entry": "0x14b8e6a6b",
+        "bytes": 34,
+        "sha256": "d23130fc155189b445e4f3e142ecc185f9455aeea1c17547822058a01a79fba0",
+        "page_sha256": "EE80191080BF5FB5C410F77369955F49D39CE2C89ACCF68BAF4A9B5F26F11AFA",
+        "synthetic_call_target": "0x140badaf6",
+        "synthetic_return_address": "0x1409583b4",
+        "stack_contract": "RBP restored; RET pops callee target. Callee entry RSP=original RSP-8 with synthetic return address at top, matching CALL stack effect. No allocation or B8/C0 store.",
+        "next_page": "0x140bad000",
+        "complete_owner_cfg": false
+      },
+      {
+        "owner": "140B20760",
+        "entry": "0x14b4b225d",
+        "bytes": 34,
+        "sha256": "6fbb6b399a68779a6c1db5dba0d249e4d8d74b1acb83e8808388a0baf3691011",
+        "page_sha256": "4C0372BF38C67B77E2465E2BAC1A294AAC54A5ACE8A32187DFFA1694D4807DB9",
+        "synthetic_call_target": "0x14b8003d0",
+        "synthetic_return_address": "0x1402a33c8",
+        "stack_contract": "RBP restored; RET pops callee target. Callee entry RSP=original RSP-8 with synthetic return address at top, matching CALL stack effect. No allocation or B8/C0 store.",
+        "next_page": "0x14b800000",
+        "complete_owner_cfg": false
+      }
+    ],
+    "next_capture_status": "proposed-await-parent-authorization-no-autonomous-acquisition"
+  },
+  "producer_strategy_review": {
+    "status": "proposal-only-await-parent-instrumentation-coordination",
+    "plan": "ops/agent-capacity/producer-diagnostic-plan.json",
+    "preferred": "Bounded dynamic first-nonzero writer observation after validated canary",
+    "fallback": "Two exact live callees pages140BADA000/14B800000",
+    "existing_live_watch_supported": false,
+    "native_source_changed": false,
+    "runtime_launched": false,
+    "patch_ready": false,
+    "prototype": {
+      "status": "integrated-isolated-debugger-only-peer-reviewed-pure-test-pass-fullTU-pending",
+      "sources": [
+        "src/native/paris_capacity_watch.cpp",
+        "src/native/paris_capacity_watch.hpp"
+      ],
+      "pure_test": "tests/native/capacity_watch_test.cpp",
+      "build_manifest_changed_by_this_worker": false,
+      "runtime_launched": false,
+      "delivery_technique": "Private current-thread RaiseException VEH CONTEXT DR change; hardware canary must demonstrate delivery beforedata. No SetThreadContext/NtSetContext/suspension.",
+      "admission": "Dedicated flags+CP/password+SVLoaded/cp_zmb/net_port27100..27999+allCS_FREE30s",
+      "cleanup": "Cooperative disarm+nextcontext verifiesDRbaseline+allownedthreadsclosed+RemoveVEH+Closehandles; registry gate outsideVEH preventslatehandlepublication.",
+      "timeout_limit": "10s no credited writes afterdeadline; stalledthreads can preventcooperativecleanup, which staysfalse.",
+      "patch_ready": false,
+      "build_helper": "ops/agent-capacity/Build-Copy.Core.ps1",
+      "tests_only_integrated": true,
+      "pure_validation": {
+        "peer_cpp_compile_execute": "PASS-exit0",
+        "flags": "MSVC/std:c++17/EHsc/W4/WX/Od/RTC1",
+        "exe_sha256": "7D9ED11FFC605FAA1DDD875FB4CA2EEDF06BA6E9F24A1BE339B1B01830000B9B",
+        "peer_log_saved": false,
+        "profile_copy_test": "PASS ops/agent-capacity/test_build_copy.ps1 synthetic-only",
+        "BuildVoice_AST": "PASS",
+        "fullTU_compiled": false,
+        "hardware_canary_passed": false
+      },
+      "build_manifest_generator_integrated": true
+    }
   }
 }

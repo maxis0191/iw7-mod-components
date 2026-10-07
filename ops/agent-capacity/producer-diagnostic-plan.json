@@ -1,0 +1,94 @@
+{
+  "schema": "iw7.capacity-producer-diagnostic-plan/1",
+  "status": "proposal-no-instrumentation-no-launch",
+  "objective": "Identify first nonzero publication writer at exact reset-block B8/C0, without changing capacity.",
+  "facts": {
+    "reset_base": "0x143C98660",
+    "watched_addresses": [
+      "0x143C986B8",
+      "0x143C986C0"
+    ],
+    "field_widths_semantics": "Unknown until live value/code proof; watch8bytes records exact raw qwords, not certified pointer/count labels.",
+    "reset_callsite_reachability": "Still unknown",
+    "existing_debugger": "Native timing scopes only; CDB offline crash analysis; no validated live writer sensor.",
+    "arxan_constraints": [
+      "Clears hardware debug registers in post_load and post_unpack",
+      "load_import replaces SetThreadContext when importing into mapped game; equality CONTEXT_DEBUG_REGISTERS path returns true without applying",
+      "No verified canary/DR delivery on server or main thread in this pin"
+    ]
+  },
+  "preferred_dynamic_proposal": {
+    "native_ownership": "Parent/native worker only; no edits by capacity worker",
+    "flag": "Separate opt-in paris-capacity-watch plus dedicated/isolated/test/debugger flags; default untouched",
+    "stage": "After post_unpack; before restart; do not claim G_InitGame symbol exists",
+    "arming": "Implementation must prove native private canary write trap and exact thread DR state; Windows context/VEH technique requires prototype validation, not assumed functional",
+    "threads": [
+      "scheduler server pipeline thread",
+      "scheduler main pipeline thread"
+    ],
+    "coverage_limit": "Do not infer absence if other init/writer thread unobserved; retain armed TIDs and canary results perTID.",
+    "watch_slots": 2,
+    "watch_bytes_each": 8,
+    "addresses": [
+      "0x143C986B8",
+      "0x143C986C0"
+    ],
+    "maximum_seconds": 10,
+    "maximum_events": 64,
+    "buffer": "Preallocated fixed ring; no IO/allocation/stack walk in exception handler. Record context and data; flush outside handler.",
+    "event_fields": [
+      "PID/sourcehash/case nonce",
+      "TID",
+      "monotonic sequence/time",
+      "triggered DR6 slot bits",
+      "raw CONTEXT registers and RIP after write",
+      "raw watched qwords and previous observed values",
+      "arm/reset-zero/first-nonzero phase"
+    ],
+    "interpretation": "Hardware watchpoint RIP is after writer instruction. Raw RIP+registers identifies candidate writer; predecessor instruction must be proven by bounded byte/CFG decode, not blind backwards disassembly.",
+    "code_followup": "Retained small page reads around exact observed RIP with mapping/protection/hash, at most4pages per observedowner; raw stack/return candidates not certified callers.",
+    "restart_gate": "Same owned dedicated identity, no baseclient launch, zero clients via UDP for30s; arm acknowledgement before parent sends one restart. No direct client/test invocation here.",
+    "cleanup": "Disarm all observed threads; remove owned handler; confirm closure before candidate file restoration and lease release. Timeout/event cap disarms; partial evidence retained.",
+    "acceptance": [
+      "canary traps on each claimed thread",
+      "zero-reset observed within restart",
+      "nonzero writer event with exact address/value/sequence/thread",
+      "bounded bytes prove writer instruction and actual field address",
+      "follow actual caller/register allocation context to publication/allocator proof"
+    ],
+    "negative_result": "No events/canary fail/coverage incomplete is inconclusive, not no writer."
+  },
+  "cdb_alternative": {
+    "status": "Not supported by current live wrapper",
+    "binary_pin": "WinDbg1.2606.22001.0 CDBSHA5F54ABAFCA3AE5638BBF807D402FABB350A64575C1DFA9FBFC7F5732DF5BEE67",
+    "resource_obstacle": "CDB AppX executable outside candidate Scope is not reserved runtime child. Existing old isolated-lab lease adapter does not fit reused AgentLab candidate.",
+    "possible_solution": "Separate reviewed pinned dependency subset staged inside candidate scope, exact child registration, complete preadmission, bounded attach/detach watchdog; never widen scheduler or launch unregistered child.",
+    "risks": [
+      "Attach stops threads and changes timing",
+      "Data breakpoint delivery/canary not yet validated with arxan pin",
+      "Debuggee kill-on-debugger-exit semantics require explicit successful detach, not Kill(child) assumed safe",
+      "Default old Invoke-DebugTool timeout kills tool; unsuitable for live attached server without new cleanup contract"
+    ]
+  },
+  "bounded_cfg_alternative": {
+    "next_pages": [
+      "0x140BADA000",
+      "0x14B800000"
+    ],
+    "payload_bytes": 8192,
+    "double_read_bytes": 16384,
+    "reason": "Exact live synthetic CALL targets140BADAF6/14B8003D0.",
+    "parent_proof": "runtime/agent-capacity/live-reset-entry-targets-audit-20261007.json",
+    "parent_manifest_sha256": "8067a5cb861408f1c1dd98a920a2f29341c0cfb6e5f560f6461eb75fe00f27ba",
+    "historical_successor": "140BADAF6→14BE67544 retained10bytes only; must verify live before addingpage14BE67000.",
+    "returns": [
+      "0x1409583B4",
+      "0x1402A33C8"
+    ],
+    "limits": "Two roots only; no wholetextscan. Block ends at direct/indirect control transfer; missing successors proposed explicitly.",
+    "comparison": "Read-only and fast to implement; protected dispatch can require many serial pages and does not prioritize actual field writers."
+  },
+  "recommendation": "Prototype dynamic canary+two watchpoints under parent/native ownership; retain two-page CFG read as fallback or code context for observed writer.",
+  "pristine": false,
+  "patch48_ready": false
+}

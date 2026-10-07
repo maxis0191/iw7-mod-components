@@ -57,7 +57,7 @@ class OwnershipTests(unittest.TestCase):
 class SelectionTests(unittest.TestCase):
     def test_exact_indirect_anchors_prioritize_producers_not_readers(self):
         rows = {i: [{'target': '0x143c986b8', 'access': 'read'}] for i in range(74)}
-        rows[100] = [{'target': '0x143c98650', 'access': 'address'}]
+        rows[100] = [{'target': '0x143c98670', 'access': 'address'}]
         rows[101] = [{'target': '0x143c98660', 'access': 'write'}]
         rows[102] = [{'target': '0x143c98668', 'access': 'write'}]
         rows[103] = [{'target': '0x143f25a88', 'access': 'write'}]
@@ -66,6 +66,13 @@ class SelectionTests(unittest.TestCase):
         ranked = ranked_roots(rows)
         self.assertEqual(ranked[:5], [101, 102, 103, 100, 104])
         self.assertNotIn(105, ranked[:32])
+
+    def test_reset_caller_precedes_producers_and_false_dvar_anchor(self):
+        rows = {i: [{'target': '0x143c98660', 'access': 'address'}] for i in range(74)}
+        rows[100] = [{'target': '0x1403fcc10', 'access': 'call'}]
+        rows[101] = [{'target': '0x143c98650', 'access': 'write'}]
+        self.assertEqual(ranked_roots(rows)[0], 100)
+        self.assertNotIn(101, ranked_roots(rows)[:32])
 
     def test_pool_and_exact_caller_precede_32_owner_quota(self):
         rows = {i: [{'target': '0x143f9b358', 'access': 'write'}] for i in range(40)}

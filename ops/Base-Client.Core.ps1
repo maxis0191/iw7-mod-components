@@ -13,10 +13,19 @@ function Resolve-IW7BasePath([string]$Root, [string]$Relative) {
     $target
 }
 
+function ConvertTo-IW7BaseKeyboardYaw($Value) {
+    if($null -eq $Value){return 0.0}
+    if($Value -isnot [int] -and $Value -isnot [long] -and $Value -isnot [double] -and $Value -isnot [float] -and $Value -isnot [decimal]){throw 'Keyboard yaw requires an explicit numeric value.'}
+    $yaw=[double]$Value
+    if([double]::IsNaN($yaw) -or [double]::IsInfinity($yaw) -or ($yaw -ne 0 -and ($yaw -lt 20 -or $yaw -gt 140))){throw 'Keyboard yaw must be unset (0) or 20..140 degrees/second.'}
+    $yaw
+}
 function New-IW7BaseClientPlan {
     param([Parameter(Mandatory)][string]$GameRoot,[Parameter(Mandatory)][string]$ClientImage,
         [ValidateRange(27100,27999)][int]$ServerPort,[ValidateRange(27100,27999)][int]$ClientPort,
-        [ValidateSet('Full','Reduced')][string]$GraphicsProfile='Full',[switch]$Debugger)
+        [ValidateSet('Full','Reduced')][string]$GraphicsProfile='Full',[switch]$Debugger,$KeyboardYawDegreesPerSecond=0,$KeyboardPitchDegreesPerSecond=0)
+    $keyboardYaw=ConvertTo-IW7BaseKeyboardYaw $KeyboardYawDegreesPerSecond
+    $keyboardPitch=ConvertTo-IW7BaseKeyboardYaw $KeyboardPitchDegreesPerSecond
     $root=(Resolve-Path -LiteralPath $GameRoot).Path.TrimEnd('\','/')
     $image=[IO.Path]::GetFullPath($ClientImage)
     if (!$image.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetExtension($image) -ne '.exe') { throw 'Client executable must already exist inside the base installation.' }
@@ -25,7 +34,7 @@ function New-IW7BaseClientPlan {
     . "$PSScriptRoot/Lab-RunPlan.ps1"
     $budget=Get-IW7LabRunPlan -PlannedClients 1 -GraphicsProfile $GraphicsProfile -Debugger:$Debugger
     [pscustomobject]@{Schema='iw7.base-client/1';GameRoot=$root;Image=$image;SHA256=(Get-FileHash -LiteralPath $image).Hash;
-        ServerPort=$ServerPort;ClientPort=$ClientPort;GraphicsProfile=$GraphicsProfile;RunPlan=$budget;
+        ServerPort=$ServerPort;ClientPort=$ClientPort;GraphicsProfile=$GraphicsProfile;RunPlan=$budget;KeyboardYawDegreesPerSecond=$keyboardYaw;KeyboardPitchDegreesPerSecond=$keyboardPitch;
         MutableFiles=@('iw7-mod/agent-base-client.cfg','iw7-mod/paris-server-client.request','iw7-mod/paris-server-client.response','iw7-mod/screenshots/server-modules-fixture.bmp',
             'iw7-mod/paris-agent.session','iw7-mod/paris-agent.request','iw7-mod/paris-agent.response','iw7-mod/paris-agent.safety','iw7-mod/paris-isolated-lab.marker');
         ProfileDirectory='iw7-mod/players2';ProfileDirectories=@('iw7-mod/players2','iw7-mod/lab-appdata')}
@@ -205,6 +214,10 @@ function Get-IW7BaseClientArguments($Plan,[string]$Password) {
     # This string contains the private password; never write it to evidence.
     $picmip=$Plan.RunPlan.Picmip
     $arguments="-noupdate -nosteam -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_ip 127.0.0.1 +set net_port $($Plan.ClientPort) +set paris_lab_server_port $($Plan.ServerPort) +set password `"$Password`" +set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 1280 +set vid_height 720 +set r_mode 1280x720 +set r_vsync 1 +set com_maxfps 30 +set r_picmip $picmip +set r_picmip_bump $picmip +set r_picmip_spec $picmip"
+    $yaw=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardYawDegreesPerSecond
+    if ($yaw -gt 0) { $arguments+=' +set cl_yawspeed '+$yaw.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture) }
+    $pitch=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardPitchDegreesPerSecond
+    if ($pitch -gt 0) { $arguments+=' +set cl_pitchspeed '+$pitch.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture) }
     if ($Plan.RunPlan.Debugger) { $arguments+=' -paris-debugger' }
     $arguments
 }
@@ -254,6 +267,10 @@ function Start-IW7BaseClient {
         }
         $picmip=$Plan.RunPlan.Picmip
         $cfg="set password `"$Password`"`nset r_fullscreen 0`nset r_fullscreenWindow 0`nset vid_width 1280`nset vid_height 720`nset r_mode 1280x720`nset com_maxfps 30`nset r_vsync 1`nset r_picmip $picmip`nset r_picmip_bump $picmip`nset r_picmip_spec $picmip`n"
+        $yaw=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardYawDegreesPerSecond
+        if($yaw -gt 0){$cfg+='set cl_yawspeed '+$yaw.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture)+"`n"}
+        $pitch=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardPitchDegreesPerSecond
+        if($pitch -gt 0){$cfg+='set cl_pitchspeed '+$pitch.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture)+"`n"}
         [IO.File]::WriteAllText((Resolve-IW7BasePath $Plan.GameRoot 'iw7-mod/agent-base-client.cfg'),$cfg,[Text.UTF8Encoding]::new($false))
         if (!('IW7LabProcess' -as [type])) { Add-Type -Path "$PSScriptRoot/native/LabProcess.cs" }
         $args=Get-IW7BaseClientArguments $Plan $Password

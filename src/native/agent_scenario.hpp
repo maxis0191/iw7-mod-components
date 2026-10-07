@@ -9,6 +9,8 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <type_traits>
+#include <limits>
 
 namespace iw7::agent
 {
@@ -97,6 +99,17 @@ namespace iw7::agent
         result = candidate; return true;
     }
     struct safety { bool connected{}, protected_now{}; std::string map; std::uint64_t received{}; };
+    inline bool revive_role_enabled(std::string_view value) { return value == "1"; }
+    inline int unique_slot(const std::array<bool, 4>& matches)
+    {
+        int selected = -1;
+        for (unsigned slot = 0; slot < matches.size(); ++slot)
+            if (matches[slot]) { if (selected != -1) return -1; selected = static_cast<int>(slot); }
+        return selected;
+    }
+    inline bool observation_valid(std::string_view nonce, std::string_view generation,
+        unsigned slot, std::uint64_t probe, std::uint64_t now, bool bound, bool protected_now, bool revive_probe = false)
+    { return (slot == 0 || (slot == 1 && revive_probe)) && bound && protected_now && nonce_valid(nonce) && nonce_valid(generation) && probe && now >= probe && now - probe <= 500; }
     // Pure bounded state machine. The adapter supplies native binding dispatch,
     // trusted server protection heartbeats and a monotonic clock.
     class scenario
@@ -110,6 +123,7 @@ namespace iw7::agent
         bool pending() const { return std::any_of(held_.begin(), held_.end(), [](bool value) { return value; }); }
         std::uint64_t sequence() const { return sequence_; }
         std::uint64_t step() const { return step_; }
+        std::uint64_t due(button key) const { const auto i = static_cast<unsigned>(key); return i < until_.size() ? until_[i] : 0; }
         static bool safe(const safety& s, std::uint64_t now)
         {
             const bool known_map = s.map == "cp_zmb" || s.map == "cp_rave" || s.map == "cp_disco" || s.map == "cp_town" || s.map == "cp_final";
@@ -134,6 +148,8 @@ namespace iw7::agent
             return completed ? "step_complete" : nullptr;
         }
         template<typename Dispatch> const char* accept(const request& r, std::uint64_t now, const safety& s, Dispatch dispatch)
+        { return accept(r, now, s, dispatch, [now]() { return now; }); }
+        template<typename Dispatch, typename Clock> const char* accept(const request& r, std::uint64_t now, const safety& s, Dispatch dispatch, Clock clock)
         {
             if (r.pid != pid_ || r.nonce != nonce_) return "identity_rejected";
             if (r.sequence <= sequence_ || r.step <= step_) return "replay_rejected";
@@ -151,12 +167,25 @@ namespace iw7::agent
             if (!armed_) return "not_armed";
             const auto i = static_cast<unsigned>(r.key);
             if (i >= held_.size()) return "binding_rejected";
-            if (r.operation == action::hold && aiming(r.key) && (r.duration < 1 || r.duration > 250)) return "duration_rejected";
+            if (r.operation == action::hold && (r.duration < 1 || r.duration > 5000 || (aiming(r.key) && r.duration > 250))) return "duration_rejected";
             if (r.operation == action::release)
             { dispatch(r.key, false); held_[i] = false; until_[i] = 0; return "released"; }
             if (held_[i]) dispatch(r.key, false);
-            dispatch(r.key, true); held_[i] = true;
-            until_[i] = now + (r.operation == action::press ? 200 : r.duration);
+            // A native adapter returns the timestamp directly after the retail
+            // call. Pure/legacy void adapters inject a monotonic clock instead.
+            std::uint64_t actual{};
+            if constexpr (std::is_void_v<std::invoke_result_t<Dispatch, button, bool>>) { dispatch(r.key, true); actual = clock(); }
+            else actual = dispatch(r.key, true);
+            held_[i] = true;
+            const auto duration = r.operation == action::press ? 200 : r.duration;
+            if (actual < now || actual < clock_)
+            { stop(dispatch); return "clock_reversed"; }
+            if (actual > std::numeric_limits<std::uint64_t>::max() - duration)
+            { stop(dispatch); return "clock_overflow"; }
+            until_[i] = actual + duration;
+            // Dispatch may stall: it cannot extend stale protection or the arm
+            // lifetime. Release immediately on return if either has expired.
+            if (tick(actual, s, dispatch) && !armed_) return "aborted";
             return "dispatched";
         }
     };
