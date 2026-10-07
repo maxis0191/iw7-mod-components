@@ -11,7 +11,7 @@ constexpr std::uint64_t canary_dr7 = 0x90001, data_dr7 = 0x990005;
 constexpr unsigned max_events = 64;
 constexpr std::uint64_t duration_ms = 10000;
 enum class phase : unsigned { empty, canary, data, failed, disarming, closed };
-enum class kind : unsigned { canary_pass, write, failure, disarmed };
+enum class kind : unsigned { canary_pass, write, failure, disarmed, baseline };
 struct observation {
     std::uint32_t tid{}, roles{}, slot_bits{};
     kind type{};
@@ -31,9 +31,11 @@ inline bool clear_debug_state(std::uint64_t dr0, std::uint64_t dr1, std::uint64_
     std::uint64_t dr3, std::uint64_t dr6, std::uint64_t dr7, std::uint64_t flags) noexcept {
     return !dr0 && !dr1 && !dr2 && !dr3 && !(dr6 & 15) && !(dr7 & ~0x400ull) && !(flags & 0x100);
 }
+// Only the hardware-fixed DR7 bit10 is normalized; all ownership bits stay exact.
+inline bool same_dr7(std::uint64_t actual,std::uint64_t expected) noexcept {return (actual&~0x400ull)==(expected&~0x400ull);}
 inline bool matching_canary(unsigned bits, std::uint64_t dr0, std::uint64_t dr7,
     std::uint64_t address, std::uint64_t original_dr7) noexcept {
-    return bits == 1 && dr0 == address && dr7 == (original_dr7 | canary_dr7);
+    return bits == 1 && dr0 == address && same_dr7(dr7,original_dr7 | canary_dr7);
 }
 struct write_history {
     std::uint64_t b8{}, c0{};
@@ -44,6 +46,14 @@ struct write_history {
         b8 = a; c0 = b;
     }
 };
+// One helper publishes completion. The target may acknowledge ticket=0 before
+// notification returns; closure must still see the helper as inflight then.
+template<class Notify> inline void publish_checkpoint_completion(
+    std::atomic<unsigned>& ticket,std::atomic<bool>& inflight,Notify&& notify) noexcept {
+    ticket.store(3,std::memory_order_release);
+    notify();
+    inflight.store(false,std::memory_order_release);
+}
 // Each slot is published once, never overwritten. The VEH producer does no IO,
 // allocation, waiting, mutex acquisition or stack walking.
 template<class T> class fixed_ring {
@@ -64,6 +74,7 @@ public:
 };
 // Runner must observe this before file restoration / resource lease release.
 // Default true only because an unrequested component owns no handler/registers.
+void checkpoint(unsigned role) noexcept;
 bool cleanup_confirmed() noexcept;
 void request_stop() noexcept;
 }

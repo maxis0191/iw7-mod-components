@@ -15,7 +15,7 @@
 namespace iw7::agent
 {
     enum class button : unsigned { forward, back, left, right, jump, melee, use, reload, ads, fire,
-        aim_left, aim_right, aim_up, aim_down, none };
+        aim_left, aim_right, aim_up, aim_down, talk, none };
     inline bool aiming(button key) { return key >= button::aim_left && key <= button::aim_down; }
     // Read-only adapter layout proven by retail KeyDown/KeyUp and movement
     // binding cases. This is kbutton state, not a usercmd or gameplay outcome.
@@ -35,12 +35,12 @@ namespace iw7::agent
         if (index >= movement_key_offsets.size()) return false;
         offset = movement_key_offsets[index]; return true;
     }
-    inline constexpr std::array<const char*, 14> bindings{
+    inline constexpr std::array<const char*, 15> bindings{
         "+forward", "+back", "+moveleft", "+moveright", "+gostand", "+melee", "+activate", "+reload", "+speed_throw", "+attack",
-        "+left", "+right", "+lookup", "+lookdown"};
-    inline constexpr std::array<std::string_view, 15> names{
+        "+left", "+right", "+lookup", "+lookdown", "+talk"};
+    inline constexpr std::array<std::string_view, 16> names{
         "forward", "back", "left", "right", "jump", "melee", "use", "reload", "ads", "fire",
-        "aim_left", "aim_right", "aim_up", "aim_down", "none"};
+        "aim_left", "aim_right", "aim_up", "aim_down", "talk", "none"};
     struct key_probe { std::uintptr_t code{}, address{}; std::int32_t displacement{}; bool lea_rdi{}; };
     inline bool key_probe_for(button key, key_probe& result)
     {
@@ -98,7 +98,7 @@ namespace iw7::agent
         if (aiming(candidate.key) && candidate.duration > 250) return false;
         result = candidate; return true;
     }
-    struct safety { bool connected{}, protected_now{}; std::string map; std::uint64_t received{}; };
+    struct safety { bool connected{}, protected_now{}; std::string map; std::uint64_t received{}; bool talk_enabled{}; };
     inline bool revive_role_enabled(std::string_view value) { return value == "1"; }
     inline int unique_slot(const std::array<bool, 4>& matches)
     {
@@ -139,7 +139,7 @@ namespace iw7::agent
         {
             const bool reversed = now < clock_; clock_ = now;
             if (!armed_) return nullptr;
-            const char* reason = reversed ? "clock_reversed" : !safe(s, now) ? "protection_lost" :
+            const char* reason = reversed ? "clock_reversed" : !safe(s, now) ? "protection_lost" : held_[static_cast<unsigned>(button::talk)] && !s.talk_enabled ? "privacy_lost" :
                 s.map != map_ ? "map_changed" : now - began_ >= 30000 ? "deadline" : nullptr;
             if (reason) { release_all(dispatch); armed_ = false; return reason; }
             bool completed{};
@@ -157,6 +157,10 @@ namespace iw7::agent
             sequence_ = r.sequence; step_ = r.step;
             if (r.operation == action::abort || r.operation == action::release_all)
             { release_all(dispatch); armed_ = false; return r.operation == action::abort ? "aborted" : "released"; }
+            // Talk release cannot be blocked by lost audio/protection gates.
+            if (r.key == button::talk && r.operation == action::release)
+            { const auto i=static_cast<unsigned>(button::talk); if(held_[i])dispatch(r.key,false); held_[i]=false;until_[i]=0;return "released"; }
+            if (r.key == button::talk && !s.talk_enabled) return "talk_rejected";
             if (tick(now, s, dispatch) && !armed_) return "aborted";
             if (!safe(s, now)) return "safety_rejected";
             if (r.operation == action::arm)

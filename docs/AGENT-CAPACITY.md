@@ -1,5 +1,36 @@
 # Capacité native : préparer un port cohérent vers 48 agents
 
+The complete isolated native build from1bcb19c now compiles and links, executable
+A29488DF and matching PDB verified with all32 source hashes. This includes the
+reviewed actual-context checkpoint TU and scheduler overlay. The next vacant
+retail dedicated run must still prove real hardware canaries, observed writers
+and cleanup; no48-agent capacity patch follows from compilation alone.
+
+## Actual debug-register checkpoint candidate - 2026-10-07
+
+The next isolated candidate obtains CONTROL|DEBUG context on two exact owned
+threads through a helper checkpoint outside the scheduler callback mutex.
+It requires the returned flags before reading Rip/EFlags/DR, rejects foreign
+debug registers or a pre-existing suspension, performs hardware canaries and
+requires exact readback/restoration of all six registers. Only its own suspend
+increment may be resumed. No alternate import or SetThreadContext bypass is used.
+
+Review found a publication race: a target could acknowledge ticket0 before the
+helper's final SetEvent while helper_inflight was already false. The shared
+completion function now retains inflight through ticket3 and that notification,
+then releases it. A deterministic stalled-notification test proves closure stays
+refused. Small Win32 tests pass normal/expired/after-set/pre-suspended cases with
+getter flags100011, real canary flags10005F, exact restoration and zero resume
+errors. These tests do not establish retail behavior or thread coverage.
+
+Persistent scheduler transforms surround Apply-DebuggerOverlay: Before removes
+only exact known watcher bytes; After requires the pinned profiler baseline and
+adds the isolated macro after the PCH. Unknown edits are preserved/refused.
+Normal profiles remove the watcher overlay. Build receipts bind pin/helper/source
+hashes and keep Ready=false. A Win32 API hang cannot promise a hard200ms bound;
+pending claimed checkpoints retain handler/handles and prohibit confirmed cleanup.
+Full TU, real lab canaries, vacant restart and writer attribution remain required.
+
 ## First native observer attempt - 2026-10-07
 
 The vacant server-only case `watch-server-20261007-014746-895-0993d99e0f0c41b7aae572461176a6aa`

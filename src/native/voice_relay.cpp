@@ -12,6 +12,10 @@
 #include <utils/hook.hpp>
 #include <charconv>
 #include "voice_relay.hpp"
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+#include "paris_voice_test_capture.hpp"
+#include "voice_test_binding.hpp"
+#endif
 #include "voice_transport.hpp"
 #include "voice_inbox.hpp"
 
@@ -369,7 +373,7 @@ namespace voice_relay
                 game::clientUIActives[0].connectionState != game::CA_ACTIVE) return "game_loading";
             return "no_session";
         }
-        void client_tick()
+        void client_tick_locked()
         {
             std::lock_guard lock(state_mutex);
             game::netadr_s target{};
@@ -481,6 +485,12 @@ namespace voice_relay
             }
             client_gate = client && client->ready() ? "ready" : "negotiating";
         }
+        void client_tick() {
+            client_tick_locked(); // All early returns release state_mutex.
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            paris_voice_test_capture::relay_main_tick();
+#endif
+        }
         int queue_encoded(int length, const char* bytes)
         {
             game::netadr_s target{};
@@ -539,6 +549,29 @@ namespace voice_relay
                 server_running, eligible_mask, server ? server->ready_mask() : 0);
         }
     }
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+    test_readiness_snapshot test_readiness()
+    {
+        std::lock_guard lock(state_mutex);
+        test_readiness_snapshot result{};
+        if (!installed || !client || !client->ready() || local_slot < 0 ||
+            local_slot >= static_cast<int>(voice::state::max_speakers) ||
+            client->own_slot() != static_cast<unsigned>(local_slot)) return result;
+        const auto& member=client->roster().speakers[local_slot];
+        if (!member.present || member.user!=local_user || member.generation.empty()) return result;
+        result.ready=true;
+        const auto& peer0=client->roster().speakers[0];const auto& peer1=client->roster().speakers[1];
+        if(session)result.both_roles_ready=voice_test_binding::both_roles(session->dyn.sessionHandle!=0,
+            {peer0.present,!peer0.generation.empty(),static_cast<bool>(session->dyn.users[0].registered),static_cast<bool>(session->dyn.users[0].voiceRegistered),peer0.user,session->dyn.users[0].xuid},
+            {peer1.present,!peer1.generation.empty(),static_cast<bool>(session->dyn.users[1].registered),static_cast<bool>(session->dyn.users[1].voiceRegistered),peer1.user,session->dyn.users[1].xuid});
+        result.loopback=host.type==game::NA_IP && host.ip[0]==127 && host.ip[1]==0 && host.ip[2]==0 && host.ip[3]==1;
+        result.slot=static_cast<unsigned>(local_slot);result.server_port=ntohs(host.port);
+        result.user=local_user;result.speaker_generation_low=member.generation.low;
+        result.speaker_generation_high=member.generation.high;
+        result.game_challenge=game_challenge;result.observed_tick=GetTickCount64();
+        return result;
+    }
+#endif
     std::uint64_t encoded_frames()
     {
         return encoded.load();

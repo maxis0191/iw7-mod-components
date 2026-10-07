@@ -19,6 +19,7 @@
 #include "voice_relay.hpp"
 #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
 #include "voice_capture_adapter.hpp"
+#include "paris_voice_test_capture.hpp"
 #include <utils/io.hpp>
 #include <shellapi.h>
 #include <sstream>
@@ -1023,6 +1024,7 @@ namespace paris_voice
         void post_unpack() override
         {
 #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            paris_voice_test_capture::install();
             install_capture_selector();
 #endif
             native_trace = utils::flags::has_flag("paris-voice-native-trace");

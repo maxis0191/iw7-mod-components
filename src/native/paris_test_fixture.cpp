@@ -14,6 +14,10 @@
 #include "command.hpp"
 #include "party.hpp"
 #include "paris_test_safety.hpp"
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+#include "voice_capture_wire.hpp"
+#include "paris_voice_test_capture.hpp"
+#endif
 #include "agent_scenario.hpp"
 #include "paris_model_diagnostics.hpp"
 
@@ -132,12 +136,15 @@ namespace paris_test_fixture
         // Never call the upstream PRNG from a global initializer: its state is
         // constructed in another translation unit and CRT order is unspecified.
         iw7::agent::lab_session agent_runtime;
-        struct agent_packet { game::netadr_s address{}; std::string nonce, generation, map; std::uint64_t probe{}; bool safe{}; };
+        struct agent_packet { game::netadr_s address{}; std::string nonce, generation, map; std::uint64_t probe{}; bool safe{}, capture_version{}; unsigned capture_slot{4}; };
         std::mutex agent_packet_mutex;
         std::array<agent_packet, 4> agent_queries{};
         agent_packet agent_reply{};
         iw7::agent::safety agent_safety{};
         std::string agent_generation;
+        DWORD capture_main_tid{};
+        unsigned capture_protected_slot=4;
+        bool capture_slot_correlated{};
         std::string agent_connection_challenge;
         std::uint64_t agent_last_probe{}, agent_last_ack{};
         bool agent_binding_failed{};
@@ -159,6 +166,26 @@ namespace paris_test_fixture
             std::memcpy(&state, reinterpret_cast<const void*>(probe.address), sizeof(state));
             return true;
         }
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+        bool agent_read_talk(iw7::agent::movement_key_snapshot& state) {
+            if(std::memcmp(reinterpret_cast<const void*>(0x14032A3B0),"\x48\x89\x6c\x24\x10\x48\x89\x74\x24\x18\x57\x48\x83\xec\x20\x41\x8b\xe9\x41\x8b\xf8\x8b\xf2\x83\xfa\x51\x75\x6a\x44\x8b\x0d\xed\xaf\xcd\x05\x48\x63\xc1\x48\x69\xc8\x60\x04\x00\x00\x48\x8d\x05\x68\xb7\xcb\x01\x48\x03\xc8\x8b\x11\x44\x3b\xc2\x0f\x84\x16\x11\x00\x00\x8b\x41\x04\x44\x3b\xc0\x0f\x84\x0a\x11\x00\x00\x85\xd2\x75\x05\x44\x89\x01\xeb\x0b\x85\xc0\x0f\x85\xf9\x10\x00\x00\x89\x79\x04\x80\x79\x10\x00\x0f\x85\xec\x10\x00\x00\x44\x89\x49\x08\x66\xc7\x41\x10\x01\x01\x48\x8b\x6c\x24\x38\x48\x8b\x74\x24\x40\x48\x83\xc4\x20\x5f\xc3\x83\xfe\x52\x0f\x85\x8b\x00\x00\x00\x8b\x15\x7b\xaf\xcd\x05\x48\x63\xc1\x48\x69\xc8\x60\x04\x00\x00\x48\x8d\x05\xf6\xb6\xcb\x01\x48\x03\xc8\x8b\x01\x3b\xc7\x75\x08\xc7\x01\x00\x00\x00\x00\xeb\x18\x39\x79\x04\x0f\x85\x98\x10\x00\x00\xc7\x41\x04\x00\x00\x00\x00\x85\xc0\x0f\x85\x89\x10\x00\x00\x83\x79\x04\x00\x0f\x85\x7f\x10\x00\x00\xc6\x41\x10\x00\x85\xd2\x74\x1a\x2b\x51\x08\x01\x51\x0c\xc6\x41\x10\x00\x48\x8b\x6c\x24\x38\x48\x8b\x74\x24\x40\x48\x83\xc4\x20\x5f\xc3\x8b\x05\x8f\xb8\xcb\x01\xd1\xe8\x01\x41\x0c\xc6\x41\x10\x00\x48\x8b\x6c\x24\x38\x48\x8b\x74\x24\x40\x48\x83\xc4\x20\x5f\xc3",282) ||
+                std::memcmp(reinterpret_cast<const void*>(0x14036FE40),"\x48\x63\xc1\x48\x69\xc8\x60\x04\x00\x00\x48\x8d\x05\x0b\x5d\xc7\x01\x0f\xb6\x04\x01\xc3",22))return false;
+            constexpr std::uintptr_t address=0x141FE5B4C;
+            MEMORY_BASIC_INFORMATION region{};
+            if(VirtualQuery(reinterpret_cast<const void*>(address),&region,sizeof(region))!=sizeof(region) ||
+                region.State!=MEM_COMMIT || (region.Protect&(PAGE_GUARD|PAGE_NOACCESS)) ||
+                !(region.Protect&(PAGE_READONLY|PAGE_READWRITE|PAGE_WRITECOPY|PAGE_EXECUTE_READ|PAGE_EXECUTE_READWRITE|PAGE_EXECUTE_WRITECOPY)) ||
+                address<reinterpret_cast<std::uintptr_t>(region.BaseAddress) ||
+                address+sizeof(state)>reinterpret_cast<std::uintptr_t>(region.BaseAddress)+region.RegionSize)return false;
+            std::memcpy(&state,reinterpret_cast<const void*>(address),sizeof(state));
+            const auto active=utils::hook::invoke<unsigned char>(0x14036FE40,0);
+            return active==state.active;
+        }
+        bool agent_voice_ui_ready() {
+            const auto& ui=game::clientUIActives[0];
+            return !ui.frontEndSceneState[0] && ui.cgameInitialized && !ui.keyCatchers && ui.connectionState==game::CA_ACTIVE;
+        }
+#endif
         struct agent_input_sample
         {
             game::clientUIActive_t ui{};
@@ -179,6 +206,10 @@ namespace paris_test_fixture
         {
             agent_input_sample sample; sample.ui = game::clientUIActives[0]; sample.tick = GetTickCount64();
             iw7::agent::key_probe probe{};
+            #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            if(key==iw7::agent::button::talk)sample.key_valid=agent_read_talk(sample.key);
+            else
+#endif
             sample.key_valid = iw7::agent::key_probe_for(key, probe) && agent_read_key(probe, sample.key);
             sample.strafe_valid = agent_read_key(iw7::agent::strafe_probe, sample.strafe);
             return sample;
@@ -220,6 +251,13 @@ namespace paris_test_fixture
                 if (!agent_read_key(iw7::agent::strafe_probe, strafe) || strafe.active || strafe.down[0] || strafe.down[1])
                 { agent_binding_failed = true; return GetTickCount64(); }
             }
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            if(key==iw7::agent::button::talk) {
+                iw7::agent::movement_key_snapshot talk{};
+                if(!agent_read_talk(talk) || (down && (!agent_safety.talk_enabled || !agent_voice_ui_ready() ||
+                    talk.down[0] || talk.down[1] || talk.active))) {agent_binding_failed=true;return GetTickCount64();}
+            }
+#endif
             const auto* name = iw7::agent::bindings[index];
             const std::string binding_name = down ? name : "-" + std::string(name + 1);
             for (int binding = 0; binding < 118; ++binding)
@@ -245,6 +283,7 @@ namespace paris_test_fixture
             for (const auto* name : iw7::agent::bindings)
                 for (const bool down : {false, true})
                 {
+                    if(std::strcmp(name,"+talk")==0 && !utils::flags::has_flag("paris-voice-fake-capture"))continue;
                     const std::string desired = down ? name : "-" + std::string(name + 1);
                     bool found{};
                     for (int binding = 0; binding < 118; ++binding)
@@ -262,6 +301,22 @@ namespace paris_test_fixture
         }
         // Network callbacks only parse and replace a bounded mailbox. Engine
         // entities/dvars and binding dispatch are read on their scheduler thread.
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+        void agent_receive_query(const game::netadr_s& from,std::string_view wire) {
+            if(!loopback(from))return;voice_capture_wire::query parsed;
+            if(!voice_capture_wire::parse_query(wire,utils::flags::has_flag("paris-voice-fake-capture-server"),parsed))return;
+            agent_packet packet;packet.nonce=parsed.nonce;packet.probe=parsed.probe;packet.capture_version=parsed.capture_version;packet.address=from;
+            std::lock_guard lock(agent_packet_mutex);
+            for(auto& pending:agent_queries)if(pending.nonce.empty() || network::are_addresses_equal(pending.address,from)){pending=packet;return;}
+        }
+        void agent_receive_reply(const game::netadr_s& from,std::string_view wire) {
+            if(!loopback(from))return;voice_capture_wire::reply parsed;
+            if(!voice_capture_wire::parse_reply(wire,utils::flags::has_flag("paris-voice-fake-capture"),agent_runtime.client_nonce,parsed))return;
+            agent_packet packet;packet.nonce=parsed.nonce;packet.probe=parsed.probe;packet.capture_version=parsed.capture_version;
+            packet.generation=parsed.generation;packet.map=parsed.map;packet.safe=parsed.safe;packet.capture_slot=parsed.slot;packet.address=from;
+            std::lock_guard lock(agent_packet_mutex);agent_reply=packet;
+        }
+#else
         void agent_receive_query(const game::netadr_s& from, std::string_view wire)
         {
             if (!loopback(from) || wire.size() > 64) return;
@@ -285,6 +340,7 @@ namespace paris_test_fixture
             packet.safe = safe == "1"; packet.address = from;
             std::lock_guard lock(agent_packet_mutex); agent_reply = packet;
         }
+#endif
         void agent_server_tick()
         {
             if (agent_runtime.server_generation.empty() || !private_fixture() || !utils::flags::has_flag("paris-isolated-lab") || !game::SV_Loaded()) return;
@@ -296,7 +352,7 @@ namespace paris_test_fixture
             for (const auto& query : queries)
             {
                 if (query.nonce.empty()) continue;
-                bool safe{};
+                bool safe{};unsigned protected_slot=4;
                 { std::lock_guard lock(safety_mutex);
                     std::array<bool, 4> matches{};
                     for (unsigned slot = 0; clients && slot < protected_players.size() && slot < *game::svs_numclients; ++slot)
@@ -309,11 +365,16 @@ namespace paris_test_fixture
                             const auto now = GetTickCount64(); auto& player = protected_players[static_cast<unsigned>(selected)];
                             if (now >= query.probe && now - query.probe <= 500 && query.probe > player.agent_probe &&
                                 (player.agent_nonce.empty() || player.agent_nonce == query.nonce))
-                            { player.agent_nonce = query.nonce; player.agent_probe = query.probe; safe = true; }
+                            { player.agent_nonce = query.nonce; player.agent_probe = query.probe; safe = true; protected_slot=static_cast<unsigned>(selected); }
                         }
                 }
-                network::send(query.address, "parisAgentSafe", std::format("{} {} {} {} {}", query.nonce, query.probe,
-                    agent_runtime.server_generation, static_cast<int>(safe), map_name));
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+                network::send(query.address,"parisAgentSafe",voice_capture_wire::response(
+                    {query.nonce,query.probe,query.capture_version},agent_runtime.server_generation,safe,map_name,protected_slot));
+#else
+                network::send(query.address,"parisAgentSafe",std::format("{} {} {} {} {}",query.nonce,query.probe,
+                    agent_runtime.server_generation,static_cast<int>(safe),map_name));
+#endif
             }
         }
         std::string agent_observation_stamp(game::scr_entref_t ent)
@@ -321,8 +382,14 @@ namespace paris_test_fixture
             if (!private_fixture() || !utils::flags::has_flag("paris-isolated-lab") || !game::SV_Loaded() ||
                 ent.classnum || ent.entnum >= protected_players.size() || agent_runtime.server_generation.empty()) return "unavailable";
             const auto* revive = game::Dvar_FindVar("paris_agent_revive_probe");
-            const bool revive_probe = revive && revive->type == game::DVAR_TYPE_STRING && revive->current.string &&
+            bool revive_probe = revive && revive->type == game::DVAR_TYPE_STRING && revive->current.string &&
                 iw7::agent::revive_role_enabled(revive->current.string);
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            const auto* voice_probe=game::Dvar_FindVar("paris_agent_voice_probe");
+            revive_probe=revive_probe || (utils::flags::has_flag("paris-voice-fake-capture-server") &&
+                voice_probe && voice_probe->type==game::DVAR_TYPE_STRING && voice_probe->current.string &&
+                std::strcmp(voice_probe->current.string,"1")==0);
+#endif
             const auto* port = game::Dvar_FindVar("net_port");
             if (!port || port->type != game::DVAR_TYPE_INT || port->current.integer < 27100 || port->current.integer > 27999) return "unavailable";
             std::lock_guard lock(safety_mutex);
@@ -340,6 +407,7 @@ namespace paris_test_fixture
         {
             if (!agent_runtime.client || !utils::flags::has_flag("paris-isolated-lab")) return;
             const auto now = GetTickCount64();
+            capture_main_tid=GetCurrentThreadId();
             const auto* connection = party::get_server_connection_state();
             const auto* port = game::Dvar_FindVar("paris_lab_server_port");
             const int expected_port = port && port->type == game::DVAR_TYPE_STRING && port->current.string ? std::atoi(port->current.string) :
@@ -354,6 +422,7 @@ namespace paris_test_fixture
                 if (agent_runtime.client->active()) { agent_runtime.client->stop(agent_binding); frame_status = "connection_changed"; }
                 agent_connection_challenge = connection->challenge; agent_last_ack = agent_last_probe;
                 agent_safety.protected_now = false; agent_safety.received = 0;
+                capture_slot_correlated=false;capture_protected_slot=4;
             }
             if (const auto* failure = agent_runtime.client->tick(now, agent_safety, agent_binding)) frame_status = failure;
             if (agent_binding_failed) { agent_runtime.client->stop(agent_binding); agent_safety.protected_now = false; frame_status = "binding_rejected"; }
@@ -374,6 +443,8 @@ namespace paris_test_fixture
                         agent_runtime.client->stop(agent_binding); agent_result("server_changed");
                     }
                     agent_generation = reply.generation; agent_last_ack = reply.probe;
+                    capture_slot_correlated=reply.capture_version && reply.safe && reply.capture_slot<4;
+                    capture_protected_slot=reply.capture_slot;
                     // Age from the local query time: network latency must not
                     // extend how long an old server safety sample can authorize input.
                     agent_safety.protected_now = reply.safe; agent_safety.map = reply.map; agent_safety.received = reply.probe;
@@ -384,8 +455,16 @@ namespace paris_test_fixture
             if (agent_safety.connected)
             {
                 agent_last_probe = GetTickCount64();
-                network::send(connection->host, "parisAgentQuery", std::format("{} {}", agent_runtime.client_nonce, agent_last_probe));
+                #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+                network::send(connection->host,"parisAgentQuery",voice_capture_wire::request(agent_runtime.client_nonce,agent_last_probe,utils::flags::has_flag("paris-voice-fake-capture")));
+#else
+                network::send(connection->host,"parisAgentQuery",std::format("{} {}",agent_runtime.client_nonce,agent_last_probe));
+#endif
             }
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            agent_safety.talk_enabled=utils::flags::has_flag("paris-voice-fake-capture") &&
+                utils::flags::has_flag("paris-voice-audio-lab") && agent_voice_ui_ready() && paris_voice_test_capture::talk_admitted();
+#endif
             const auto safety_now = GetTickCount64();
             if (const auto* failure = agent_runtime.client->tick(safety_now, agent_safety, agent_binding)) agent_result(failure);
             agent_flush_dispatch();
@@ -396,6 +475,12 @@ namespace paris_test_fixture
             if (wire.empty() || wire == previous) return;
             previous = wire; iw7::agent::request request;
             if (!iw7::agent::parse(wire, request)) { agent_result("parse_rejected"); return; }
+            if(request.key==iw7::agent::button::talk) {
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+                if(!utils::flags::has_flag("paris-voice-fake-capture") || !utils::flags::has_flag("paris-voice-audio-lab"))
+#endif
+                {agent_result("parse_rejected");return;}
+            }
             if (vote_witness_running && request.operation != iw7::agent::action::abort && request.operation != iw7::agent::action::release_all)
             { agent_result("vote_busy", &request); return; }
             if (request.operation == iw7::agent::action::arm && !agent_bindings_available())
@@ -602,6 +687,23 @@ namespace paris_test_fixture
             console::info("[Paris module client] Request %s dispatched and returned.\n", action.c_str());
         }
     }
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+    client_capture_protection capture_protection() {
+        client_capture_protection result{};
+        if (!capture_main_tid || GetCurrentThreadId()!=capture_main_tid || !agent_runtime.client ||
+            !utils::flags::has_flag("paris-voice-fake-capture") || !utils::flags::has_flag("paris-isolated-lab") ||
+            !iw7::agent::scenario::safe(agent_safety,GetTickCount64()))return result;
+        const auto* connection=party::get_server_connection_state();
+        if (!connection || !connection->hostDefined || !loopback(connection->host))return result;
+        result.protected_now=true;result.slot_correlated=capture_slot_correlated;
+        result.ui_ready=agent_voice_ui_ready();iw7::agent::movement_key_snapshot talk{};
+        result.talk_valid=agent_read_talk(talk);
+        if(result.talk_valid){result.talk_key0=talk.down[0];result.talk_key1=talk.down[1];result.talk_active=talk.active;}
+        result.pid=GetCurrentProcessId();result.port=ntohs(connection->host.port);result.slot=capture_protected_slot;
+        result.query_tick=agent_safety.received;result.nonce=agent_runtime.client_nonce;result.generation=agent_generation;
+        return result;
+    }
+#endif
     bool is_protected_player(int client_num)
     {
         if (!private_fixture() ||

@@ -17,3 +17,19 @@ namespace paris_test_fixture
     bool suppress_inactivity_kick(int client_num, const char* reason);
     bool is_protected_player(int client_num);
 }
+
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+#include <cstdint>
+#include <string>
+namespace paris_test_fixture {
+struct client_capture_protection {
+    bool protected_now{}, slot_correlated{}, ui_ready{}, talk_valid{};
+    int talk_key0{},talk_key1{}; unsigned talk_active{};
+    unsigned pid{}, port{}, slot{};
+    std::uint64_t query_tick{};
+    std::string nonce, generation;
+};
+// Read on scheduler main only. The integration copies this to its own mutex.
+client_capture_protection capture_protection();
+}
+#endif

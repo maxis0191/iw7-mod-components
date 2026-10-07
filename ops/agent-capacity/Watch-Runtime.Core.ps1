@@ -95,7 +95,7 @@ function Read-IW7CapacityJournal([string]$Text,$Identity,[string]$Nonce) {
                 }
                 if($row.slots -gt 3 -or $row.zero_seen -gt 3 -or $row.first_nonzero -gt 3){throw 'Invalid event bitmask.'}
                 if($events.Count -ge 64 -or $row.seq -is [bool] -or $row.seq -ne $events.Count -or
-                   $row.kind -is [bool] -or $row.kind -notin @(0,1,2,3) -or $row.tid -le 0 -or $row.roles -notin @(1,2,3) -or
+                   $row.kind -is [bool] -or $row.kind -notin @(0,1,2,3,4) -or $row.tid -le 0 -or $row.roles -notin @(1,2,3) -or
                    $row.tick_ms -le 0 -or $row.qpc -le 0 -or $row.context_hex -cnotmatch '^(?:[0-9a-f]{2}){512,4096}$'){throw 'Invalid bounded event/sequence/context.'}
                 $events+=$row
             }
