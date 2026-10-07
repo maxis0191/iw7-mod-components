@@ -1,4 +1,5 @@
 #include "../../src/native/agent_scenario.hpp"
+#include "../../src/native/paris_model_diagnostics.hpp"
 #include <cassert>
 #include <iostream>
 #include <vector>
@@ -39,6 +40,30 @@ int main()
     assert(!observation_valid(nonce, nonce, 0, 1000, 1000, false, true));
     assert(!observation_valid(nonce, nonce, 0, 1000, 1000, true, false));
     assert(!observation_valid("", nonce, 0, 1000, 1000, true, true));
+    assert(observation_valid(nonce, nonce, 0, 1000, 1500, true, true, true));
+    assert(observation_valid(nonce, nonce, 1, 1000, 1500, true, true, true));
+    assert(!observation_valid(nonce, nonce, 2, 1000, 1000, true, true, true));
+    assert(!observation_valid(nonce, nonce, 1, 1000, 1501, true, true, true));
+    assert(!observation_valid(nonce, nonce, 1, 1000, 999, true, true, true));
+    assert(!observation_valid(nonce, "", 1, 1000, 1000, true, true, true));
+    assert(!observation_valid(nonce, nonce, 1, 1000, 1000, false, true, true));
+    assert(!observation_valid(nonce, nonce, 1, 1000, 1000, true, false, true));
+    assert(revive_role_enabled("1"));
+    for (const auto value : {"", "0", "01", "true", "1 ", " 1"}) assert(!revive_role_enabled(value));
+    assert(unique_slot({false, false, false, false}) == -1);
+    assert(unique_slot({true, false, false, false}) == 0);
+    assert(unique_slot({false, true, false, false}) == 1);
+    assert(unique_slot({true, true, false, false}) == -1);
+    assert(unique_slot({false, true, true, false}) == -1);
+    using paris_model_diagnostics::span_within;
+    assert(span_within(4096, 4096, 4096, 4096));
+    assert(span_within(8191, 1, 4096, 4096));
+    assert(!span_within(8191, 2, 4096, 4096));
+    assert(!span_within(4095, 1, 4096, 4096));
+    assert(!span_within(4096, 4097, 4096, 8192));
+    assert(!span_within(0, 1, 0, 4096));
+    assert(!span_within(4096, 0, 4096, 4096));
+    assert(!span_within(std::numeric_limits<std::uintptr_t>::max(), 1, 4096, 4096));
     // Inject dispatch latency: deadline starts after actual down, not mailbox
     // parsing. A frame check releases independently of the 50ms IO poll.
     scenario actual_run(42, nonce); safety actual_safety{true, true, "cp_zmb", 1000};

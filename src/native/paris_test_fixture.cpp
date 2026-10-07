@@ -15,6 +15,7 @@
 #include "party.hpp"
 #include "paris_test_safety.hpp"
 #include "agent_scenario.hpp"
+#include "paris_model_diagnostics.hpp"
 
 namespace paris_test_fixture
 {
@@ -297,11 +298,15 @@ namespace paris_test_fixture
                 if (query.nonce.empty()) continue;
                 bool safe{};
                 { std::lock_guard lock(safety_mutex);
+                    std::array<bool, 4> matches{};
                     for (unsigned slot = 0; clients && slot < protected_players.size() && slot < *game::svs_numclients; ++slot)
                         if (clients[slot].header.state == game::CS_ACTIVE &&
-                            network::are_addresses_equal(query.address, clients[slot].remoteAddress) && refresh_protection(slot))
+                            network::are_addresses_equal(query.address, clients[slot].remoteAddress) && bound_player(slot) &&
+                            !protected_players[slot].safety_failed) matches[slot] = true;
+                    const auto selected = iw7::agent::unique_slot(matches);
+                    if (selected >= 0 && refresh_protection(static_cast<unsigned>(selected)))
                         {
-                            const auto now = GetTickCount64(); auto& player = protected_players[slot];
+                            const auto now = GetTickCount64(); auto& player = protected_players[static_cast<unsigned>(selected)];
                             if (now >= query.probe && now - query.probe <= 500 && query.probe > player.agent_probe &&
                                 (player.agent_nonce.empty() || player.agent_nonce == query.nonce))
                             { player.agent_nonce = query.nonce; player.agent_probe = query.probe; safe = true; }
@@ -314,7 +319,10 @@ namespace paris_test_fixture
         std::string agent_observation_stamp(game::scr_entref_t ent)
         {
             if (!private_fixture() || !utils::flags::has_flag("paris-isolated-lab") || !game::SV_Loaded() ||
-                ent.classnum || ent.entnum != 0 || agent_runtime.server_generation.empty()) return "unavailable";
+                ent.classnum || ent.entnum >= protected_players.size() || agent_runtime.server_generation.empty()) return "unavailable";
+            const auto* revive = game::Dvar_FindVar("paris_agent_revive_probe");
+            const bool revive_probe = revive && revive->type == game::DVAR_TYPE_STRING && revive->current.string &&
+                iw7::agent::revive_role_enabled(revive->current.string);
             const auto* port = game::Dvar_FindVar("net_port");
             if (!port || port->type != game::DVAR_TYPE_INT || port->current.integer < 27100 || port->current.integer > 27999) return "unavailable";
             std::lock_guard lock(safety_mutex);
@@ -322,7 +330,7 @@ namespace paris_test_fixture
             const auto* cheats = game::Dvar_FindVar("sv_cheats"); const auto* inactivity = engine_inactivity();
             const auto* clients = *game::svs_clients;
             if (!bound_player(ent.entnum) || player.safety_failed || !clients || clients[ent.entnum].header.state != game::CS_ACTIVE ||
-                !iw7::agent::observation_valid(player.agent_nonce, agent_runtime.server_generation, ent.entnum, player.agent_probe, now, true, true) ||
+                !iw7::agent::observation_valid(player.agent_nonce, agent_runtime.server_generation, ent.entnum, player.agent_probe, now, true, true, revive_probe) ||
                 !(game::g_entities[ent.entnum].flags & 1) || !inactivity || inactivity->type != game::DVAR_TYPE_INT || inactivity->current.integer != 0 ||
                 !cheats || cheats->type != game::DVAR_TYPE_BOOL || cheats->current.enabled) return "unavailable";
             return std::format("server_pid={}; client_nonce={}; server_generation={}; slot={}; native_tick_ms={}; protected=1",
@@ -396,6 +404,21 @@ namespace paris_test_fixture
             const auto* status = agent_runtime.client->accept(request, GetTickCount64(), agent_safety, agent_binding);
             if (std::strcmp(status, "armed") == 0)
             {
+                // Model READY and the pre-action frame precede runner arm.
+                // Sample after the scene has been referenced, not on its first
+                // protection heartbeat (GPU upload may otherwise be lazy).
+                paris_model_diagnostics::observe_client(iw7::agent::scenario::safe(agent_safety, GetTickCount64()), agent_safety.received,
+                    agent_runtime.client_nonce, agent_generation, agent_connection_challenge);
+                for (const auto* name : {"cl_yawspeed", "cl_pitchspeed"})
+                {
+                    const auto* rate = game::Dvar_FindVar(name);
+                    if (!rate) console::info("[Paris agent turn rate] name=%s present=0\n", name);
+                    else if (rate->type == game::DVAR_TYPE_FLOAT)
+                        console::info("[Paris agent turn rate] name=%s type=%d flags=%u value=%g tick_ms=%llu\n",
+                            name, static_cast<int>(rate->type), rate->flags, static_cast<double>(rate->current.value), GetTickCount64());
+                    else console::info("[Paris agent turn rate] name=%s type=%d flags=%u value=unmeasured tick_ms=%llu\n",
+                        name, static_cast<int>(rate->type), rate->flags, GetTickCount64());
+                }
                 // A prior legacy voteholdnext uses different synthetic keys.
                 // Clear those keys before the scenario owns Fire/ADS.
                 vote_binding("+attack", false); vote_binding("+speed_throw", false);

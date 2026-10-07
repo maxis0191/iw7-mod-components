@@ -99,9 +99,17 @@ namespace iw7::agent
         result = candidate; return true;
     }
     struct safety { bool connected{}, protected_now{}; std::string map; std::uint64_t received{}; };
+    inline bool revive_role_enabled(std::string_view value) { return value == "1"; }
+    inline int unique_slot(const std::array<bool, 4>& matches)
+    {
+        int selected = -1;
+        for (unsigned slot = 0; slot < matches.size(); ++slot)
+            if (matches[slot]) { if (selected != -1) return -1; selected = static_cast<int>(slot); }
+        return selected;
+    }
     inline bool observation_valid(std::string_view nonce, std::string_view generation,
-        unsigned slot, std::uint64_t probe, std::uint64_t now, bool bound, bool protected_now)
-    { return slot == 0 && bound && protected_now && nonce_valid(nonce) && nonce_valid(generation) && probe && now >= probe && now - probe <= 500; }
+        unsigned slot, std::uint64_t probe, std::uint64_t now, bool bound, bool protected_now, bool revive_probe = false)
+    { return (slot == 0 || (slot == 1 && revive_probe)) && bound && protected_now && nonce_valid(nonce) && nonce_valid(generation) && probe && now >= probe && now - probe <= 500; }
     // Pure bounded state machine. The adapter supplies native binding dispatch,
     // trusted server protection heartbeats and a monotonic clock.
     class scenario
