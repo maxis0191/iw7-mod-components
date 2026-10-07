@@ -886,3 +886,39 @@ Avant toute restauration DR, le CONTEXT doit encore porter **nos** registres
 exacts de la phase courante, ou la baseline déjà restaurée. Une collision avec
 un état étranger conserve cleanupfalse et ne l'écrase pas. La vérification par
 exception suivante reste obligatoire avant closure.
+
+Les champs previous_b8/c0 désignent la précédente **observation** du même TID,
+pas une lecture atomique avant l'instruction. Le read_pair dans le VEH survient
+après le trap et peut voir une écriture concurrente d'un autre thread. Le site
+watchpoint est une preuve d'accès au champ ; attribuer la valeur nonzero à cette
+instruction exige encore opcode/registreCONTEXT exacts. first_nonzero local ne
+remplace pas cette validation et ne prouve pas une publication cohérente globale.
+
+### Intégration build et validation pure après revue
+
+Le peer a relu le CPP SHA256
+`A3F35AC064B3C743E41D5D464B22FD602AB312C8EEC781C72DFAAC046116C379`
+après correctifs et ne relève plus de blocker concret. Le test pur a réellement
+compilé et exécuté(exit0) via `runtime/capacity-watch-peer-pure.cmd`, MSVC
+`/std:c++17 /EHsc /W4 /WX /Od /RTC1`. Exe mesuré SHA256
+`7D9ED11FFC605FAA1DDD875FB4CA2EEDF06BA6E9F24A1BE339B1B01830000B9B`.
+La passe peer n'a pas conservé stdout/log séparé : aucun hash de log n'est inventé.
+Cette validation remplace le statut antérieur source-de-test-noncompilée ; elle
+ne compile pas le CPP Windows/SDK complet ni ne démontre la livraison des DR.
+
+Build-Voice inclut le CPP/HPP seulement avec **IsolatedLab ET Debugger**.
+Debugger exige déjà ServerModules, donc le pin77 et son SDK CP. Main et les
+profils nondebugger n'incluent aucun TU watcher. Le helper Build-Copy.Core refuse
+les sources/cibles redirigées et prévalide les deux hashes avant copy/remove :
+un fichier inconnu refuse le changement de profil sans effacer l'autre.
+Le profil ordinaire retire seulement la paire exacte précédemment copiée.
+Le manifeste réussi conserve CapacityWatchBuild, hashes CPP/HPP et helper ;
+compilé ne veut pas dire armé. Le flag opt-in runtime reste absent par défaut.
+
+TestsOnly intègre le test C++ pur et le test PS des copies de profil. Le test PS
+a réellement passé dans un dossier synthétique distinct de tools/iw7-mod-native :
+copies exactes, retrait au profil ordinaire, refus d'édition inconnue dans les
+deux sens sans mutation partielle. AST Build-Voice validé. Aucun rebuild natif
+complet ni mutation du checkout d'outils n'a été lancé par cette intégration.
+Le parent doit encore compiler le TU complet et coordonner un dédié privé vacant
+pour vérifier canary, contexte, journal et fermeture.

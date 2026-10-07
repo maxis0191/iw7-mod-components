@@ -38,6 +38,12 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\debugger_stats
 if errorlevel 1 exit /b 1
 "$runtime\debugger-stats-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\capacity_watch_test.cpp" /Fe:"$runtime\capacity-watch-test.exe" /Fo:"$runtime\capacity-watch-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\capacity-watch-test.exe"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\ops\agent-capacity\test_build_copy.ps1"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\agent_scenario_test.cpp" /Fe:"$runtime\agent-scenario-test.exe" /Fo:"$runtime\agent-scenario-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\agent-scenario-test.exe"
@@ -170,6 +176,11 @@ else {
         }
     }
 }
+. "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1"
+# Debugger already requires IsolatedLab+ServerModules (pinned CP SDK).
+# Main/nondebugger profiles contain no capacity watcher translation unit.
+$capacityWatchBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]($IsolatedLab -and $Debugger))
+if ($capacityWatchBuild.Compiled) { $nativeSources += $capacityWatchBuild.Files }
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
 $copiedVoice=Join-Path $root 'src/client/component/paris_voice.cpp'
 if ($IsolatedLab) {
@@ -378,6 +389,8 @@ Copy-Item -LiteralPath "$output/iw7-paris-voice.exe" -Destination (Join-Path $sy
 Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.pdb" -Destination (Join-Path $symbols 'iw7-mod.pdb') -Force
 $manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
 $manifest.Debugger = [bool]$Debugger
+$manifest.CapacityWatchBuild = $capacityWatchBuild
+$manifest.CapacityWatchBuildHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1").Hash
 if ((Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')).Hash -ne $manifest.SHA256) { throw 'Archived diagnostic executable mismatch.' }
 $manifest.ServerModules = [bool]$ServerModules
 $manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }

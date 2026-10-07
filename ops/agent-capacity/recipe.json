@@ -700,7 +700,7 @@
     "runtime_launched": false,
     "patch_ready": false,
     "prototype": {
-      "status": "new-source-only-frozen-peer-review-and-purecompile-pending",
+      "status": "integrated-isolated-debugger-only-peer-reviewed-pure-test-pass-fullTU-pending",
       "sources": [
         "src/native/paris_capacity_watch.cpp",
         "src/native/paris_capacity_watch.hpp"
@@ -712,7 +712,20 @@
       "admission": "Dedicated flags+CP/password+SVLoaded/cp_zmb/net_port27100..27999+allCS_FREE30s",
       "cleanup": "Cooperative disarm+nextcontext verifiesDRbaseline+allownedthreadsclosed+RemoveVEH+Closehandles; registry gate outsideVEH preventslatehandlepublication.",
       "timeout_limit": "10s no credited writes afterdeadline; stalledthreads can preventcooperativecleanup, which staysfalse.",
-      "patch_ready": false
+      "patch_ready": false,
+      "build_helper": "ops/agent-capacity/Build-Copy.Core.ps1",
+      "tests_only_integrated": true,
+      "pure_validation": {
+        "peer_cpp_compile_execute": "PASS-exit0",
+        "flags": "MSVC/std:c++17/EHsc/W4/WX/Od/RTC1",
+        "exe_sha256": "7D9ED11FFC605FAA1DDD875FB4CA2EEDF06BA6E9F24A1BE339B1B01830000B9B",
+        "peer_log_saved": false,
+        "profile_copy_test": "PASS ops/agent-capacity/test_build_copy.ps1 synthetic-only",
+        "BuildVoice_AST": "PASS",
+        "fullTU_compiled": false,
+        "hardware_canary_passed": false
+      },
+      "build_manifest_generator_integrated": true
     }
   }
 }
