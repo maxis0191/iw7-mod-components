@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $repo=(Resolve-Path "$PSScriptRoot/../..").Path
 . "$repo/ops/Agent-Pair.Core.ps1"
 . "$repo/ops/voice-agent/Providers.Core.ps1"
-Add-Type -Path "$repo/ops/native/LabProcess.cs"
+if(!('IW7LabProcess' -as [type])){Add-Type -Path "$repo/ops/native/LabProcess.cs"}
 Initialize-IW7AgentPairNtfs
 function Check($value,$message){if(!$value){throw $message}}
 function Refuses($body){$failed=$false;try{& $body|Out-Null}catch{$failed=$true};Check $failed 'Changed ARM ownership accepted.'}
@@ -19,10 +19,10 @@ try {
     $foreign=$record.PSObject.Copy();$foreign.SHA256='0'*64
     Refuses{New-IW7VoiceArmProcessPin $foreign $handle}
     $start=[Diagnostics.ProcessStartInfo]::new($record.Image);$start.UseShellExecute=$false;$start.CreateNoWindow=$true
-    foreach($arg in @('-NoProfile','-Command','Start-Sleep -Milliseconds 250')){$start.ArgumentList.Add($arg)}
+    foreach($arg in @('-NoProfile','-Command','Start-Sleep -Seconds 30')){$start.ArgumentList.Add($arg)}
     $child=[Diagnostics.Process]::Start($start)
     $childHandle=[IW7LabProcess]::OpenOwned($child.Id,$record.Image,$child.StartTime.ToUniversalTime().ToFileTimeUtc())
-    $null=$childHandle.ReadIdentity();Check ($childHandle.WaitForExit(5000)) 'Test child did not exit.'
+    $null=$childHandle.ReadIdentity();$childHandle.Terminate(0);Check ($childHandle.WaitForExit(5000)) 'Test child did not exit.'
     Refuses{$childHandle.ReadIdentity()}
     $pin.Image.Dispose();Refuses{Assert-IW7VoiceArmProcessPin $pin}
 

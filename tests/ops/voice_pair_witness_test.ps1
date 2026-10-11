@@ -35,6 +35,10 @@ try{
     Check ([IO.File]::ReadAllText($armPath) -ceq $record.Wire) 'ARM publication changed bytes.'
     $expired=$record.PSObject.Copy();$expired.Tick=$realTick-1000
     Refuses{Write-IW7VoiceCaptureArmRecord $armPath $expired ($expired.Tick+500)}
+    Refuses{Write-IW7VoiceCaptureArmRecord $armPath $record ($realTick+500) -NotAfterTick ($realTick-1)}
+    $snapshot=Snapshot $realTick;$snapshot.FixtureTicks[1]=$realTick-400
+    $bounded=@(New-IW7VoicePairArmRecord $snapshot $expected $realReady $realTick ('f'*32))[0]
+    Check ($bounded.FreshDeadline -eq $realTick+100 -and $bounded.RecorderReadyTick -eq $realReady.Tick) 'ARM deadline renewed an original fixture/recorder timestamp.'
     Check ([IO.File]::ReadAllText($armPath) -ceq $record.Wire -and @(Get-ChildItem $root -Filter '*.tmp').Count -eq 0) 'Expired ARM replaced original record or leaked temp.'
     # Real PCM file validation; counters never substitute for output bytes.
     $wav=Join-Path $root 'synthetic-receiver.wav';$header=[byte[]]::new(44)
