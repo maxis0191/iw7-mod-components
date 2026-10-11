@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$IncludeVAD)
 $ErrorActionPreference='Stop'
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 . "$repo/ops/Resource-Scheduler.Core.ps1"
@@ -39,7 +39,16 @@ Invoke-IW7ResourceJob -Scope $root -Kind Extract -PhysicalBytes 1GB -CommitBytes
     $modelHash='A03779C86DF3323075F5E796CB2CE5029F00EC8869EEE3FDFB897AFE36C6D002'
     if(!(Test-Path -LiteralPath $model)){Invoke-WebRequest 'https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en.bin' -OutFile $model -TimeoutSec 180}
     if((Get-Item -LiteralPath $model).Length -ne 147964211 -or (Get-FileHash -LiteralPath $model).Hash -cne $modelHash){throw 'Pinned official English base model differs.'}
+    $vad=$null
+    if($IncludeVAD){
+        $vadPath=Join-Path $root 'ggml-silero-v6.2.0.bin'
+        $vadHash='2AA269B785EEB53A82983A20501DDF7C1D9C48E33AB63A41391AC6C9F7FB6987'
+        $vadRevision='9ffd54a1e1ee413ddf265af9913beaf518d1639b'
+        if(!(Test-Path -LiteralPath $vadPath)){Invoke-WebRequest ('https://huggingface.co/ggml-org/whisper-vad/resolve/'+$vadRevision+'/ggml-silero-v6.2.0.bin') -OutFile $vadPath -TimeoutSec 60}
+        if((Get-Item -LiteralPath $vadPath).Length -ne 885098 -or (Get-FileHash -LiteralPath $vadPath).Hash -cne $vadHash){throw 'Pinned official Silero VAD model differs.'}
+        $vad=[pscustomobject]@{Revision=$vadRevision;SHA256=$vadHash;Bytes=885098;Path=$vadPath;Threshold=0.5;OtherOptions='Official CLI defaults'}
+    }
     $files=@(Get-ChildItem -LiteralPath $binaryRoot -Recurse -File | ForEach-Object {[pscustomobject]@{Relative=$_.FullName.Substring($root.Length+1);SHA256=(Get-FileHash -LiteralPath $_.FullName).Hash}})
-    [pscustomobject]@{Release='b5454';UpstreamCommit='d1be6fde11ac6e0407606b4e42fe72d34add8037';ArchiveSHA256=$archiveHash;ModelRevision='5359861c739e955e79d9a303bcbc70fb988958b1';ModelSHA256=$modelHash;Files=$files;CPUOnly=$true}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $root 'provenance.local.json')
+    [pscustomobject]@{Release='b5454';UpstreamCommit='d1be6fde11ac6e0407606b4e42fe72d34add8037';ArchiveSHA256=$archiveHash;ModelRevision='5359861c739e955e79d9a303bcbc70fb988958b1';ModelSHA256=$modelHash;VAD=$vad;Files=$files;CPUOnly=$true}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $root 'provenance.local.json')
     [pscustomobject]@{Root=$root;Release='b5454';ModelSHA256=$modelHash}
 }

@@ -49,6 +49,9 @@ std::unique_ptr<voice_pcm_witness::buffer> received_pcm;
 voice_pcm_witness::scope received_scope;
 voice_test_binding::observation received_binding;
 unsigned received_rate{},frequency_min{},frequency_max{};
+unsigned surface_samples{},playing_samples{},volume_samples{},pan_samples{},cursor_samples{},surface_failures{};
+LONG volume_min{},volume_max{},pan_min{},pan_max{};
+DWORD first_play_cursor{},last_play_cursor{},last_write_cursor{},hardware_bytes{};
 struct received_frame_context {
     voice_pcm_witness::frame frame;
     const short* decoded_pointer{};
@@ -198,6 +201,30 @@ int received_enqueue(void* buffer,const short* pcm,int bytes) {
     }
     return result;
 }
+void observe_received_surface(void* buffer) noexcept {
+    try {
+        if(!buffer){++surface_failures;return;}
+        auto* device=*reinterpret_cast<IDirectSoundBuffer**>(static_cast<char*>(buffer)+8);
+        if(!device){++surface_failures;return;}
+        ++surface_samples;
+        DWORD status{};LONG volume{},pan{};
+        if(SUCCEEDED(device->GetStatus(&status))){if(status&DSBSTATUS_PLAYING)++playing_samples;}else ++surface_failures;
+        if(SUCCEEDED(device->GetVolume(&volume))){
+            if(!volume_samples){volume_min=volume_max=volume;}else{volume_min=(std::min)(volume_min,volume);volume_max=(std::max)(volume_max,volume);}
+            ++volume_samples;
+        }
+        if(SUCCEEDED(device->GetPan(&pan))){
+            if(!pan_samples){pan_min=pan_max=pan;}else{pan_min=(std::min)(pan_min,pan);pan_max=(std::max)(pan_max,pan);}
+            ++pan_samples;
+        }
+        DSBCAPS caps{};caps.dwSize=sizeof(caps);DWORD play{},write{};
+        if(SUCCEEDED(device->GetCaps(&caps)) && SUCCEEDED(device->GetCurrentPosition(&play,&write)) &&
+            caps.dwBufferBytes && play<caps.dwBufferBytes && write<caps.dwBufferBytes){
+            if(!cursor_samples)first_play_cursor=play;last_play_cursor=play;last_write_cursor=write;
+            hardware_bytes=caps.dwBufferBytes;++cursor_samples;
+        }else ++surface_failures;
+    }catch(...){++surface_failures;}
+}
 void write_received_file(const std::wstring& path,const void* data,DWORD bytes) {
     const auto absolute=std::filesystem::path(path);
     if(!absolute.is_absolute())throw std::runtime_error("Received PCM absolute path required");
@@ -237,6 +264,11 @@ void finish_received() noexcept {
             ",\"DecodedBytes\":"+std::to_string(received_pcm->decoded_bytes())+",\"EnqueuedBytes\":"+std::to_string(received_pcm->enqueued_bytes())+
             ",\"TruncatedFrames\":"+std::to_string(received_pcm->truncated_frames())+",\"FormatRate\":"+std::to_string(received_rate)+
             ",\"FrequencyMin\":"+std::to_string(frequency_min)+",\"FrequencyMax\":"+std::to_string(frequency_max)+
+            ",\"SurfaceSamples\":"+std::to_string(surface_samples)+",\"PlayingSamples\":"+std::to_string(playing_samples)+
+            ",\"VolumeSamples\":"+std::to_string(volume_samples)+",\"VolumeMin\":"+std::to_string(volume_min)+",\"VolumeMax\":"+std::to_string(volume_max)+
+            ",\"PanSamples\":"+std::to_string(pan_samples)+",\"PanMin\":"+std::to_string(pan_min)+",\"PanMax\":"+std::to_string(pan_max)+
+            ",\"CursorSamples\":"+std::to_string(cursor_samples)+",\"FirstPlayCursor\":"+std::to_string(first_play_cursor)+",\"LastPlayCursor\":"+std::to_string(last_play_cursor)+
+            ",\"LastWriteCursor\":"+std::to_string(last_write_cursor)+",\"HardwareBytes\":"+std::to_string(hardware_bytes)+",\"SurfaceFailures\":"+std::to_string(surface_failures)+
             ",\"SpeakerUser\":"+std::to_string(member?member->user:0)+",\"SpeakerEpochLow\":"+std::to_string(member?member->epoch_low:0)+
             ",\"SpeakerEpochHigh\":"+std::to_string(member?member->epoch_high:0)+",\"InputSourceRead\":false,\"OriginalCallsForwarded\":true}\n";
         write_received_file(received_path+L".json",json.data(),static_cast<DWORD>(json.size()));
@@ -300,6 +332,7 @@ void received_playback(void* session,unsigned slot,const char* data,int bytes,
     struct restore {received_frame_context* prior;~restore(){received_context=prior;}} restore_context{previous};
     utils::hook::invoke<void>(0x140D59620,session,static_cast<int>(slot),data,bytes,0);
     if(collect){
+        observe_received_surface(context.playback_buffer);
         // Invalid/missing callbacks make the in-memory witness fail without
         // changing native playback. The transport has already validated frames.
         if(context.invalid || !context.decoded || !context.enqueued)context.frame.samples=0;
