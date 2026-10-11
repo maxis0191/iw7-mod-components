@@ -311,7 +311,10 @@ namespace paris_test_fixture
                 if (dvar->current.value != 0.0f) quiet = false;
             }
             bool movie_present{},movie_muted{};
-            if(!movie_quiet_measurement(movie_present,movie_muted)){movie_restore();quiet=false;}
+            // An admission needs one worker iteration before its publication
+            // can become quiet. Do not cancel that fresh admission while it
+            // is pending; query/UI/protection loss above clears it explicitly.
+            if(!movie_quiet_measurement(movie_present,movie_muted))quiet=false;
             std::lock_guard movie_lock(movie_mutex);
             console::info("[paris-voice-pair] AUDIO; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; quiet=%d; movie_present=%u; movie_muted=%u; movie_owner_tid=%lu; movie_main_tid=%lu; movie_epoch=%llu; movie_guarded=%u.\n",
                 GetCurrentProcessId(), agent_runtime.client_nonce.c_str(), agent_generation.c_str(), GetTickCount64(), static_cast<int>(quiet),
