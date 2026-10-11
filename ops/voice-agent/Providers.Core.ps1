@@ -101,8 +101,16 @@ function Read-IW7VoicePairNativeSnapshot($Wire,$Lease) {
         $name=@('A','B')[$index];$context=$Wire.Pair.Sessions[$name]
         $f=Get-IW7VoiceStateFields $Wire.Logs[$name] $context ([Environment]::TickCount64)
         if(!$f -or $f.gen -cne $Wire.Expected.Generation -or [int]$f.slot -ne $index){throw 'Owned current STATE binding changed.'}
+        $roleTick=[long]$f.query_tick
+        if($context.Plan.VoicePairSource.PSObject.Properties['QuietGameAudio'] -and $context.Plan.VoicePairSource.QuietGameAudio){
+            $audio=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $Wire.Logs[$name]) '[paris-voice-pair] AUDIO; '
+            $now=[Environment]::TickCount64
+            if(!$audio -or $audio.pid -cne [string]$context.Identity.PID -or $audio.nonce -cne $context.PairNonce -or $audio.gen -cne $Wire.Expected.Generation -or
+                $audio.quiet -cne '1' -or $audio.tick_ms -cnotmatch '^(0|[1-9][0-9]*)$' -or [long]$audio.tick_ms -gt $now -or $now-[long]$audio.tick_ms -gt 500){throw 'Actual fresh quiet game mix not verified.'}
+            $roleTick=[math]::Min($roleTick,[long]$audio.tick_ms)
+        }
         $roles+=[pscustomobject]@{PID=$context.Identity.PID;Nonce=$f.nonce;Generation=$f.gen;Slot=$index;RelayGeneration=(Convert-IW7VoiceRelayGeneration $f);
-            Protected=($f.both_ready -ceq '1');V2Ready=($f.both_ready -ceq '1');UIReady=($f.ui_ready -ceq '1');Tick=[long]$f.query_tick}
+            Protected=($f.both_ready -ceq '1');V2Ready=($f.both_ready -ceq '1');UIReady=($f.ui_ready -ceq '1');Tick=$roleTick}
     }
     $text=Read-IW7VoiceOwnedLog $Wire.ServerLog
     if($text -match '\[Paris agent voice pair\] FAIL'){throw 'VoicePair fixture failed.'}

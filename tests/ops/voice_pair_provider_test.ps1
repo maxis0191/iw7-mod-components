@@ -121,6 +121,16 @@ try{
     & $reverse.IO.PublishCaptureArm $records[1] ($tick+500)
     Check ((Test-Path "$root/B/iw7-mod/paris-voice-capture.arm") -and !(Test-Path "$root/A/iw7-mod/paris-voice-capture.arm")) 'Reverse ARM published to the silent receiver.'
     Refuses{& $reverse.IO.PublishCaptureArm $records[0] ($tick+500)}
+    $pair.Sessions.A.Plan.VoicePairSource|Add-Member QuietGameAudio $true
+    Refuses{& $reverse.IO.ArmSnapshot}
+    $path=$pair.Sessions.A.Identity.Stdout;$prior=[IO.File]::ReadAllText($path);$tick=[Environment]::TickCount64
+    $mix="[paris-voice-pair] AUDIO; pid=11; nonce=$('a'*32); gen=$generation; tick_ms=$tick; quiet=1.`n"
+    [IO.File]::WriteAllText($path,$prior+$mix)
+    $null=& $reverse.IO.ArmSnapshot
+    foreach($bad in @($mix.Replace('quiet=1','quiet=0'),$mix.Replace('pid=11','pid=22'),$mix.Replace('tick_ms='+$tick,'tick_ms=1'))){
+        [IO.File]::WriteAllText($path,$prior+$bad);Refuses{& $reverse.IO.ArmSnapshot}
+    }
+    [IO.File]::WriteAllText($path,$prior);$pair.Sessions.A.Plan.VoicePairSource.QuietGameAudio=$false
     [IO.File]::WriteAllText($pair.Sessions.A.Identity.Stdout,[IO.File]::ReadAllText($pair.Sessions.A.Identity.Stdout).Replace('playback_calls=0','playback_calls=29'))
     [IO.File]::WriteAllText($pair.Sessions.B.Identity.Stdout,[IO.File]::ReadAllText($pair.Sessions.B.Identity.Stdout).Replace('encoded=0','encoded=19').Replace('sent=0','sent=17').Replace('lock_nonzero_bytes=0','lock_nonzero_bytes=44'))
     $counter=& $reverse.IO.Counters

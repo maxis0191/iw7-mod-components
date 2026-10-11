@@ -49,7 +49,7 @@ function Get-IW7VoicePairExtraArguments {
         $Plan.RunPlan.PhysicalBytes -ne 20GB -or $Plan.RunPlan.CommitBytes -ne 20GB -or !$voice -or
         $voice.Slot -notin @(0,1) -or $voice.SHA256 -cnotmatch '^[a-f0-9]{64}$' -or $Plan.SHA256 -cnotmatch '^[a-fA-F0-9]{64}$' -or
         ![IO.Path]::IsPathFullyQualified($voice.Path) -or $voice.Path -match '["\r\n]'){throw 'Explicit pinned isolated VoicePair options required.'}
-    $background=if($voice.PSObject.Properties['QuietGameAudio'] -and $voice.QuietGameAudio){' +set snd_dialogue_volume 0 +set snd_music_volume 0 +set snd_licensed_content_volume 0'}else{''}
+    $background=if($voice.PSObject.Properties['QuietGameAudio'] -and $voice.QuietGameAudio){' -paris-voice-pair-quiet'}else{''}
     ' +set snd_enable 1 '+$background+' '+(Get-IW7LabVoiceArguments Player)+' -paris-voice-fake-capture -paris-fake-capture-wav="'+$voice.Path+'"'+
         ' -paris-fake-capture-sha256='+$voice.SHA256+' -paris-fake-capture-image-sha256='+$Plan.SHA256.ToLowerInvariant()+
         ' -paris-fake-capture-port='+$Plan.ServerPort+' -paris-fake-capture-slot='+$voice.Slot

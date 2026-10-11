@@ -184,6 +184,24 @@ namespace paris_test_fixture
             const auto& ui=game::clientUIActives[0];
             return !ui.frontEndSceneState[0] && ui.cgameInitialized && !ui.keyCatchers && ui.connectionState==game::CA_ACTIVE;
         }
+        void agent_voice_quiet_measurement() {
+            if (!utils::flags::has_flag("paris-voice-pair-quiet") ||
+                !utils::flags::has_flag("paris-voice-fake-capture") ||
+                !utils::flags::has_flag("paris-voice-audio-lab") || !agent_voice_ui_ready() ||
+                !iw7::agent::scenario::safe(agent_safety, GetTickCount64())) return;
+            bool quiet = true;
+            // Startup +set can be overwritten by the later player profile.
+            // Apply only these test mix categories on the engine main thread,
+            // after actual join/protection, and publish the observed values.
+            for (const auto* name : {"snd_dialogue_volume", "snd_music_volume", "snd_licensed_content_volume"}) {
+                auto* dvar = game::Dvar_FindVar(name);
+                if (!dvar || dvar->type != game::DVAR_TYPE_FLOAT) { quiet = false; continue; }
+                if (dvar->current.value != 0.0f) game::Dvar_SetFromStringByName(name, "0", game::DVAR_SOURCE_INTERNAL);
+                if (dvar->current.value != 0.0f) quiet = false;
+            }
+            console::info("[paris-voice-pair] AUDIO; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; quiet=%d.\n",
+                GetCurrentProcessId(), agent_runtime.client_nonce.c_str(), agent_generation.c_str(), GetTickCount64(), static_cast<int>(quiet));
+        }
 #endif
         struct agent_input_sample
         {
@@ -466,6 +484,7 @@ namespace paris_test_fixture
 #endif
             }
 #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            agent_voice_quiet_measurement();
             agent_safety.talk_enabled=utils::flags::has_flag("paris-voice-fake-capture") &&
                 utils::flags::has_flag("paris-voice-audio-lab") && agent_voice_ui_ready() && paris_voice_test_capture::talk_admitted();
 #endif

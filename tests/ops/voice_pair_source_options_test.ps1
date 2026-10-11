@@ -36,8 +36,7 @@ try{
     Check (!(Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan).Contains('+set snd_dialogue_volume')) 'Default witness silently changes game mix.'
     $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 0 -QuietGameAudio
     $quiet=Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan
-    Check ($quiet.Contains('+set snd_dialogue_volume 0') -and $quiet.Contains('+set snd_music_volume 0') -and
-        $quiet.Contains('+set snd_licensed_content_volume 0') -and !$quiet.Contains('+set snd_volume') -and
+    Check ($quiet.Contains('-paris-voice-pair-quiet') -and !$quiet.Contains('+set snd_volume') -and
         !$quiet.Contains('+set snd_effects_volume') -and !$quiet.Contains('winvoice_')) 'Quiet fixture changes master/effects/microphone instead of only background categories.'
     $plan.Roles[0].Plan.VoicePairSource.Path='C:\voice"unsafe.wav';Refuses{Get-IW7VoicePairExtraArguments $plan.Roles[0].Plan}
     'PASS draft speech/silence RIFF/categories/options20/20/audio/slot/arm restitution, no probe flags. No SAPI/audio/game.'
