@@ -304,7 +304,7 @@ namespace paris_test_fixture
             // DirectSound buffer. Apply this admitted lab mix on main after
             // actual join/protection and verify the live values. The owned
             // process closes and original player profile restores after test.
-            for (const auto* name : {"snd_volume", "snd_dialogue_volume", "snd_music_volume", "snd_licensed_content_volume"}) {
+            for (const auto* name : {"snd_volume", "snd_effects_volume", "snd_dialogue_volume", "snd_music_volume", "snd_licensed_content_volume"}) {
                 auto* dvar = game::Dvar_FindVar(name);
                 if (!dvar || dvar->type != game::DVAR_TYPE_FLOAT) { quiet = false; continue; }
                 if (dvar->current.value != 0.0f) game::Dvar_SetFromStringByName(name, "0", game::DVAR_SOURCE_INTERNAL);
