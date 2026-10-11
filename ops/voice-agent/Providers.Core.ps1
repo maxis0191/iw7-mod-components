@@ -95,16 +95,23 @@ function New-IW7VoicePairProviders {
             Sleep={param($ms)Start-Sleep -Milliseconds $ms}
             Snapshot={
                 Assert-IW7BaseIdentity $wire.Pair.Server;$null=Get-IW7AgentPairLease $wire.Pair
-                $roles=@();$text=Read-IW7VoiceOwnedLog $wire.ServerLog
-                if($text -match '\[Paris agent voice pair\] FAIL'){throw 'VoicePair fixture failed.'}
-                foreach($index in @(0,1)){
-                    $name=@('A','B')[$index];$context=$wire.Pair.Sessions[$name];$proof=Update-IW7BaseClient $context
+                # Ownership/CIM/UDP/resource checks can consume the 500ms native
+                # publication window. Complete both before reading STATE/SAMPLE;
+                # validating an earlier cached transcript creates false staleness.
+                foreach($name in @('A','B')){
+                    $proof=Update-IW7BaseClient $wire.Pair.Sessions[$name]
                     if(!$proof.Protected){throw 'Pair lost actual protection.'}
+                }
+                $roles=@()
+                foreach($index in @(0,1)){
+                    $name=@('A','B')[$index];$context=$wire.Pair.Sessions[$name]
                     $f=Get-IW7VoiceStateFields $wire.Logs[$name] $context ([Environment]::TickCount64)
                     if(!$f -or $f.gen -cne $wire.Expected.Generation -or [int]$f.slot -ne $index){throw 'Owned current STATE binding changed.'}
                     $roles+=[pscustomobject]@{PID=$context.Identity.PID;Nonce=$f.nonce;Generation=$f.gen;Slot=$index;RelayGeneration=(Convert-IW7VoiceRelayGeneration $f);
                         Protected=$true;V2Ready=($f.both_ready -ceq '1');UIReady=($f.ui_ready -ceq '1');Tick=[long]$f.query_tick}
                 }
+                $text=Read-IW7VoiceOwnedLog $wire.ServerLog
+                if($text -match '\[Paris agent voice pair\] FAIL'){throw 'VoicePair fixture failed.'}
                 $fixtureReady=$true
                 foreach($index in @(0,1)){
                     $pattern='(?m)^\[Paris agent voice pair\] SAMPLE; server_pid='+$wire.Pair.Server.PID+'; client_nonce='+$wire.Expected.Roles[$index].Nonce+'; server_generation='+$wire.Expected.Generation+'; slot='+$index+'; native_tick_ms=(\d+); protected=1; sample_id=\d+; down_fixture=0; ready=1\.[ \t]*\r?$'

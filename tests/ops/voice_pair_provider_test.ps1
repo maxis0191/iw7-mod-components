@@ -14,7 +14,17 @@ try{
     # ownership/protection helpers alone are mocked: no native/audio/game calls.
     function Assert-IW7BaseIdentity {}
     function Get-IW7AgentPairLease {[pscustomobject]@{PhysicalBytes=20GB;CommitBytes=20GB}}
-    function Update-IW7BaseClient {[pscustomobject]@{Protected=$true}}
+    function Update-IW7BaseClient($Context){
+        if($Context.PSObject.Properties['TestOwnershipDelayMs']){
+            Start-Sleep -Milliseconds $Context.TestOwnershipDelayMs
+            foreach($path in $Context.TestPublishingLogs){
+                $updated=[regex]::Replace([IO.File]::ReadAllText($path),'\b(query_tick|native_tick_ms|tick_ms)=\d+',
+                    {param($match)$match.Groups[1].Value+'='+[Environment]::TickCount64})
+                [IO.File]::WriteAllText($path,$updated)
+            }
+        }
+        [pscustomobject]@{Protected=$true}
+    }
     function Read-IW7AgentPairRoleSafety {}
     function Save-IW7AgentPreActionFrame {[pscustomobject]@{ReducedProfileValidated=$true;SyntheticTestOnly=$true}}
     function Read-IW7AgentResponse {$null}
@@ -69,5 +79,17 @@ try{
     Refuses{Read-IW7VoiceFields "[paris-voice-pair] STATE; pid=11; pid=12.`n" '[paris-voice-pair] STATE; '}
     # Log handle denies ordinary unlink/replacement; preserve evidence identity.
     Refuses{[IO.File]::Delete($pair.Sessions.A.Identity.Stdout)}
+    # Reproduce actual blocking ownership audits while native main continues
+    # publishing. The provider must reread both roles and the server afterward,
+    # never relax freshness or reuse the transcript captured before the audits.
+    foreach($name in @('A','B')){
+        $pair.Sessions[$name]|Add-Member TestOwnershipDelayMs 300
+        $pair.Sessions[$name]|Add-Member TestPublishingLogs @($pair.Server.Stdout,$pair.Sessions.A.Identity.Stdout,$pair.Sessions.B.Identity.Stdout)
+    }
+    $watch=[Diagnostics.Stopwatch]::StartNew()
+    $snapshot=& $providers.IO.Snapshot
+    Check ($watch.ElapsedMilliseconds -ge 600 -and $snapshot.FixtureReady -and $snapshot.Roles.Count -eq 2) 'Fresh STATE/SAMPLE publication after blocking ownership audits rejected.'
+    . "$repo/ops/voice-agent/Voice-Pair.Core.ps1"
+    Assert-IW7VoicePairSnapshot $snapshot ([Environment]::TickCount64) $providers.Expected
     'PASS real retained native stdout parsers and closures: two-role ready, Prepared descriptor, PTT validity, stale/foreign binding and control-packet distinction. No game/audio.'
 }finally{if($providers){& $providers.Dispose};Remove-Item -LiteralPath $root -Recurse -Force}
