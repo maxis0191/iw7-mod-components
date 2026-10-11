@@ -35,6 +35,12 @@ foreach($current in @($o.Clean,$o.Profiler)) {
 }
 Assert (Same (Get-IW7CapacityCheckpointTransition $o.Profiler $o AfterDebugger $true) $o.Enabled) 'Enabled phase differs.'
 Assert (Same (Get-IW7CapacityCheckpointTransition $o.Clean $o AfterDebugger $false) $o.Clean) 'Ordinary build changed.'
+foreach($text in @($source.Replace("`n","`r`n"),$source.Substring(0,$source.Length-1),$source.Replace("`n","`r`n").TrimEnd("`r","`n"))) {
+    Assert (Same (Get-IW7CapacityCheckpointTransition ($encoding.GetBytes($text)) $o BeforeDebugger $true) $o.Clean) 'Exact Windows baseline newline form refused.'
+}
+foreach($text in @($source+"`n",$source.Replace('void main()', 'void  main()'),$source.Replace("`n","`r"))) {
+    Refuses {Get-IW7CapacityCheckpointTransition ($encoding.GetBytes($text)) $o BeforeDebugger $true} 'Unknown whitespace/source/newline edit accepted.'
+}
 Assert (!$encoding.GetString((Get-IW7CapacityCheckpointTransition $o.Clean $o AfterDebugger $false)).Contains('IW7_PARIS_CAPACITY_CHECKPOINT_DRAFT')) 'Ordinary build kept a watch macro.'
 Refuses {Get-IW7CapacityCheckpointTransition $o.Profiler $o AfterDebugger $false} 'Disabled phase accepted debugger bytes.'
 Refuses {Get-IW7CapacityCheckpointTransition $o.Clean $o AfterDebugger $true} 'Enabled phase accepted clean bytes.'

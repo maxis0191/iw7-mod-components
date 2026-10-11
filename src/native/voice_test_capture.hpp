@@ -31,6 +31,8 @@ struct environment
 struct statistics
 {
     bool prepared{}, armed{}, failed{}, buffer_created{}, buffer_started{}, buffer_locked{};
+    bool source_started{};
+    std::uint64_t source_start_tick{};
     unsigned descriptor_bytes{}, descriptor_flags{}, rate{}, channels{}, bits{}, block_align{}, buffer_bytes{};
     std::uint64_t source_frames{}, published_frames{}, published_source_frames{}, published_nonzero_frames{};
     std::uint64_t lock_calls{}, lock_bytes{}, lock_nonzero_bytes{}, prepared_lock_bytes{}, unlock_calls{}, unlock_bytes{};
@@ -40,6 +42,9 @@ class control
 public:
     virtual ~control() = default;
     virtual HRESULT arm(const admission&) noexcept = 0;
+    // Prepared sources remain silent after ARM until the caller has observed
+    // actual ordinary native PTT down. Does not reset the running COM cursor.
+    virtual HRESULT begin_source(std::uint64_t native_talk_tick) noexcept = 0;
     virtual void cancel() noexcept = 0;
     // Copies observations under the shared buffer mutex. Does not sample the
     // clock, refresh protection, advance a cursor or alter the state machine.

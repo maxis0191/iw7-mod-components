@@ -26,17 +26,24 @@ function Read-IW7VoiceFixtureWAV {
     [pscustomobject]@{Kind=$Kind;PCMBytes=$pcmBytes;PCMOffset=$pcmOffset;Seconds=$pcmBytes/32000.0;SourceIsSynthetic=$true;HumanAcceptance=$false}
 }
 function Set-IW7VoicePairPlanOptions {
-    param($PairPlan,$Speech,$Silence)
+    param($PairPlan,$Speech,$Silence,[ValidateRange(0,1)][int]$SenderSlot=0,[switch]$QuietGameAudio,[string]$ReceivedPCMOutputStem,
+        [ValidateSet(0,10)][int]$NativeCodecQuality=0)
+    if($ReceivedPCMOutputStem -and (![IO.Path]::IsPathFullyQualified($ReceivedPCMOutputStem) -or $ReceivedPCMOutputStem -match '["\r\n]')){throw 'Absolute unquoted native received-PCM output required.'}
     if($PairPlan.RunPlan.Debugger){throw 'This minimal VoicePair proposal requires explicit no-debugger20/20.'}
     $run=Get-IW7LabRunPlan Reduced -PlannedClients 2 -EnableAudio
     foreach($role in $PairPlan.Roles){
-        $source=if($role.Name -ceq 'A'){$Speech}else{$Silence}
-        $proof=Read-IW7VoiceFixtureWAV $source.Bytes $(if($role.Name -ceq 'A'){'speech'}else{'silence'})
-        if($role.Name -ceq 'A' -and $proof.Seconds -gt 4){throw 'Speech source must fit one <=5s ordinary PTT hold; prepare a shorter original phrase.'}
+        if($role.Slot -notin @(0,1) -or $role.Name -cne @('A','B')[$role.Slot]){throw 'Voice source role/slot identity differs.'}
+        $speaking=$role.Slot -eq $SenderSlot
+        $source=if($speaking){$Speech}else{$Silence}
+        $proof=Read-IW7VoiceFixtureWAV $source.Bytes $(if($speaking){'speech'}else{'silence'})
+        if($speaking -and $proof.Seconds -gt 4){throw 'Speech source must fit one <=5s ordinary PTT hold; prepare a shorter original phrase.'}
         if($source.Sha256 -cnotmatch '^[a-f0-9]{64}$' -or ![IO.Path]::IsPathFullyQualified($source.Path) -or $source.Path -match '["\r\n]'){throw 'Pinned absolute WAV source identity required.'}
         $role.Plan.RunPlan=$run
         $role.Plan.MutableFiles=@(@($role.Plan.MutableFiles)+@('iw7-mod/paris-voice-capture.arm')|Select-Object -Unique)
-        $role.Plan|Add-Member VoicePairSource ([pscustomobject]@{Path=$source.Path;SHA256=$source.Sha256;Kind=$proof.Kind;Slot=$role.Slot}) -Force
+        if($ReceivedPCMOutputStem -and !$speaking){$role.Plan.MutableFiles=@(@($role.Plan.MutableFiles)+@('iw7-mod/paris-voice-output.arm')|Select-Object -Unique)}
+        $options=[pscustomobject]@{Path=$source.Path;SHA256=$source.Sha256;Kind=$proof.Kind;Slot=$role.Slot;QuietGameAudio=[bool]$QuietGameAudio;ReceivedPCMOutputStem=$(if(!$speaking){$ReceivedPCMOutputStem}else{''})}
+        if($speaking){$options|Add-Member NativeCodecQuality $NativeCodecQuality}
+        $role.Plan|Add-Member VoicePairSource $options -Force
     }
     $PairPlan.RunPlan=$run;$PairPlan
 }
@@ -47,7 +54,18 @@ function Get-IW7VoicePairExtraArguments {
         $Plan.RunPlan.PhysicalBytes -ne 20GB -or $Plan.RunPlan.CommitBytes -ne 20GB -or !$voice -or
         $voice.Slot -notin @(0,1) -or $voice.SHA256 -cnotmatch '^[a-f0-9]{64}$' -or $Plan.SHA256 -cnotmatch '^[a-fA-F0-9]{64}$' -or
         ![IO.Path]::IsPathFullyQualified($voice.Path) -or $voice.Path -match '["\r\n]'){throw 'Explicit pinned isolated VoicePair options required.'}
-    ' +set snd_enable 1 '+(Get-IW7LabVoiceArguments Player)+' -paris-voice-fake-capture -paris-fake-capture-wav="'+$voice.Path+'"'+
+    $background=if($voice.PSObject.Properties['QuietGameAudio'] -and $voice.QuietGameAudio){' -paris-voice-pair-quiet'}else{''}
+    $quality=''
+    if($voice.PSObject.Properties['NativeCodecQuality']){
+        if($voice.Kind -cne 'speech' -or $voice.NativeCodecQuality -isnot [int] -or $voice.NativeCodecQuality -notin @(0,10)){throw 'Native codec quality requires sender speech and explicit integer0/10.'}
+        if($voice.NativeCodecQuality -eq 10){$quality=' -paris-voice-pair-quality=10'}
+    }
+    $received=''
+    if($voice.PSObject.Properties['ReceivedPCMOutputStem'] -and $voice.ReceivedPCMOutputStem){
+        if($voice.Kind -cne 'silence' -or ![IO.Path]::IsPathFullyQualified($voice.ReceivedPCMOutputStem) -or $voice.ReceivedPCMOutputStem -match '["\r\n]'){throw 'Native PCM tap requires receiver silence and an absolute output stem.'}
+        $received=' -paris-voice-received-pcm -paris-voice-received-output="'+$voice.ReceivedPCMOutputStem+'"'
+    }
+    ' +set snd_enable 1 '+$background+$received+$quality+' '+(Get-IW7LabVoiceArguments Player)+' -paris-voice-fake-capture -paris-fake-capture-wav="'+$voice.Path+'"'+
         ' -paris-fake-capture-sha256='+$voice.SHA256+' -paris-fake-capture-image-sha256='+$Plan.SHA256.ToLowerInvariant()+
         ' -paris-fake-capture-port='+$Plan.ServerPort+' -paris-fake-capture-slot='+$voice.Slot
 }

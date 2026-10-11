@@ -18,9 +18,12 @@ function Read-IW7VoiceOwnedLog {
 }
 function Read-IW7VoiceFields {
     param([string]$Text,[string]$Prefix)
-    $lines=@($Text.Split("`n")|Where-Object {$_.StartsWith($Prefix,[StringComparison]::Ordinal)})
-    if(!$lines.Count){return $null}
-    $row=$lines[-1].Substring($Prefix.Length).TrimEnd([char[]]"`r`t .");$fields=@{}
+    # Native STATE logs grow throughout map loading. Avoid a PowerShell pipeline
+    # over every historical line on each poll; retain exact line-start matching.
+    $start=$Text.LastIndexOf("`n"+$Prefix,[StringComparison]::Ordinal)
+    if($start -ge 0){$start++}elseif($Text.StartsWith($Prefix,[StringComparison]::Ordinal)){$start=0}else{return $null}
+    $end=$Text.IndexOf("`n",$start);if($end -lt 0){$end=$Text.Length}
+    $row=$Text.Substring($start+$Prefix.Length,$end-$start-$Prefix.Length).TrimEnd([char[]]"`r`t .");$fields=@{}
     foreach($token in @($row -split '[; ]+'|Where-Object {$_})){if($token -cnotmatch '^([a-z_][a-z0-9_]*)=([a-zA-Z0-9_-]+)$' -or $fields.ContainsKey($Matches[1])){throw 'Malformed complete native voice field record.'};$fields[$Matches[1]]=$Matches[2]}
     $fields
 }
@@ -47,13 +50,130 @@ function Get-IW7VoiceStateFields {
     $fields
 }
 function Convert-IW7VoiceRelayGeneration($Fields){([uint64]$Fields.relay_gen_high).ToString('x16')+([uint64]$Fields.relay_gen_low).ToString('x16')}
+function New-IW7VoiceArmProcessPin($Record,$Handle) {
+    if(!$Handle -or $Handle -isnot [IW7LabProcess+OwnedProcess]){throw 'Original lab process handle required before recorder resume.'}
+    $original=$Handle.ReadIdentity()
+    $expectedTime=([datetimeoffset]$Record.CreatedUtc).UtcDateTime.ToFileTimeUtc()
+    if($original.PID -ne $Record.PID -or $original.Image -ine $Record.Image -or
+        [math]::Abs($original.CreationFileTime-$expectedTime) -gt 10){throw 'Original ARM process tuple differs.'}
+    $image=[IO.FileStream]::new($Record.Image,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try {
+        if($image.Length -gt 256MB){throw 'ARM executable guard exceeds bound.'}
+        $hash=[Security.Cryptography.SHA256]::Create()
+        try{$actual=[Convert]::ToHexString($hash.ComputeHash($image))}finally{$hash.Dispose()}
+        if($actual -cne $Record.SHA256){throw 'ARM immutable executable hash differs.'}
+        $pin=[pscustomobject]@{Record=$Record;Handle=$Handle;Original=$original;Image=$image;FileId=[IW7AgentPairNtfs]::Identity($image.SafeFileHandle)}
+        Assert-IW7VoiceArmProcessPin $pin
+        $pin
+    }catch{$image.Dispose();throw}
+}
+function Assert-IW7VoiceArmProcessPin($Pin) {
+    if(!$Pin -or !$Pin.Image.CanRead -or $Pin.Handle.Id -ne $Pin.Record.PID){throw 'Original ARM process/image guard lost.'}
+    $current=$Pin.Handle.ReadIdentity()
+    if($current.PID -ne $Pin.Original.PID -or $current.CreationFileTime -ne $Pin.Original.CreationFileTime -or
+        $current.Image -ine $Pin.Original.Image -or $current.Image -ine $Pin.Record.Image){throw 'Original ARM kernel identity changed.'}
+    $image=[IO.File]::Open($Pin.Record.Image,'Open','Read','Read')
+    try {
+        if([IW7AgentPairNtfs]::Identity($Pin.Image.SafeFileHandle) -cne $Pin.FileId -or
+            [IW7AgentPairNtfs]::Identity($image.SafeFileHandle) -cne $Pin.FileId){throw 'ARM executable physical identity changed.'}
+    }finally{$image.Dispose()}
+}
+function Get-IW7VoiceArmLease($Pair) {
+    if($Pair.Schema -cne 'iw7.agent-pair-owned/1' -or $Pair.Closed){throw 'Active ARM pair ownership required.'}
+    # Read the current account-wide registry under its normal lock. Memory/CIM
+    # admission is completed before recorder resume; this does not renew a lease.
+    $leases=@(Invoke-IW7ResourceLock { (Read-IW7ResourceState).Leases } | Where-Object Token -CEQ $Pair.LeaseToken)
+    if($leases.Count -ne 1){throw 'Unique current ARM pair lease required.'}
+    $lease=$leases[0];Assert-IW7AgentPairLease $Pair.Plan $lease
+    Assert-IW7BaseLease $lease $Pair.Plan.Roles[0].Plan $Pair.Server
+    if($lease.Phase -cne 'Running' -or $lease.PhysicalBytes -ne 20GB -or $lease.CommitBytes -ne 20GB){throw 'Exact running audio 20/20 ARM lease required.'}
+    foreach($name in @('A','B')){
+        $context=$Pair.Sessions[$name];$registered=@($lease.Processes | Where-Object PID -EQ $context.Identity.PID)
+        if($context.PairOwnership -ne $Pair -or $context.LeaseToken -cne $Pair.LeaseToken -or $registered.Count -ne 1 -or
+            $registered[0].Image -ine $context.Identity.Image -or
+            [math]::Abs((([datetimeoffset]$registered[0].CreatedUtc)-([datetimeoffset]$context.Identity.CreatedUtc)).Ticks) -gt 10){throw 'Original ARM role registration changed.'}
+    }
+    $lease
+}
+function Read-IW7VoicePairNativeSnapshot($Wire,$Lease) {
+    $roles=@()
+    foreach($index in @(0,1)){
+        $name=@('A','B')[$index];$context=$Wire.Pair.Sessions[$name]
+        $f=Get-IW7VoiceStateFields $Wire.Logs[$name] $context ([Environment]::TickCount64)
+        if(!$f -or $f.gen -cne $Wire.Expected.Generation -or [int]$f.slot -ne $index){throw 'Owned current STATE binding changed.'}
+        $roleTick=[long]$f.query_tick
+        if($context.Plan.VoicePairSource.PSObject.Properties['QuietGameAudio'] -and $context.Plan.VoicePairSource.QuietGameAudio){
+            $audio=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $Wire.Logs[$name]) '[paris-voice-pair] AUDIO; '
+            $now=[Environment]::TickCount64
+            if(!$audio -or $audio.pid -cne [string]$context.Identity.PID -or $audio.nonce -cne $context.PairNonce -or $audio.gen -cne $Wire.Expected.Generation -or
+                $audio.quiet -cne '1' -or $audio.tick_ms -cnotmatch '^(0|[1-9][0-9]*)$' -or [long]$audio.tick_ms -gt $now -or $now-[long]$audio.tick_ms -gt 500){throw 'Actual fresh quiet game mix not verified.'}
+            $roleTick=[math]::Min($roleTick,[long]$audio.tick_ms)
+        }
+        $roles+=[pscustomobject]@{PID=$context.Identity.PID;Nonce=$f.nonce;Generation=$f.gen;Slot=$index;RelayGeneration=(Convert-IW7VoiceRelayGeneration $f);
+            Protected=($f.both_ready -ceq '1');V2Ready=($f.both_ready -ceq '1');UIReady=($f.ui_ready -ceq '1');Tick=$roleTick}
+    }
+    $text=Read-IW7VoiceOwnedLog $Wire.ServerLog
+    if($text -match '\[Paris agent voice pair\] FAIL'){throw 'VoicePair fixture failed.'}
+    $fixtureReady=$true;$sampleTicks=@()
+    foreach($index in @(0,1)){
+        $pattern='(?m)^\[Paris agent voice pair\] SAMPLE; server_pid='+$Wire.Pair.Server.PID+'; client_nonce='+$Wire.Expected.Roles[$index].Nonce+'; server_generation='+$Wire.Expected.Generation+'; slot='+$index+'; native_tick_ms=(\d+); protected=1; sample_id=\d+; down_fixture=0; ready=1\.[ \t]*\r?$'
+        $samples=[regex]::Matches($text,$pattern)
+        if(!$samples.Count){$fixtureReady=$false;$sampleTicks+=0L;continue}
+        $tick=[long]$samples[-1].Groups[1].Value;$now=[Environment]::TickCount64
+        if($tick -gt $now -or $now-$tick -gt 500){throw 'Voice fixture SAMPLE stale.'}
+        $sampleTicks+=$tick
+    }
+    [pscustomobject]@{OwnershipValidated=$true;ServerId=$Wire.Pair.Server.PID;Generation=$Wire.Expected.Generation;FixtureReady=$fixtureReady;FixtureTicks=$sampleTicks;Roles=$roles;
+        EnableAudio=$Wire.Pair.Plan.RunPlan.EnableAudio;PhysicalBytes=$Lease.PhysicalBytes;CommitBytes=$Lease.CommitBytes}
+}
+function Complete-IW7VoiceReceivedPCM($Wire) {
+    $stem=$Wire.Receiver.Plan.VoicePairSource.ReceivedPCMOutputStem
+    if(![IO.Path]::GetFullPath($stem).StartsWith($Wire.CaseRoot+'\voice-witness\',[StringComparison]::OrdinalIgnoreCase)){throw 'Native PCM output escaped the original witness.'}
+    $guards=[Collections.Generic.List[IO.FileStream]]::new()
+    try{
+        $receiptPath=$stem+'.json';$guard=[IO.FileStream]::new($receiptPath,'Open','Read','Read');$guards.Add($guard)
+        if($guard.Length -gt 8192){throw 'Native PCM receipt bound exceeded.'}
+        $receipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
+        $arm=$Wire.ReceivedArmRecord
+        if($receipt.Schema -cne 'iw7.received-native-pcm/1' -or $receipt.PID -ne $arm.PID -or $receipt.Nonce -cne $arm.Nonce -or
+            $receipt.Generation -cne $arm.Generation -or $receipt.RecorderChallenge -cne $arm.RecorderChallenge -or
+            $receipt.ReceiverSlot -ne $Wire.ReceiverSlot -or $receipt.SenderSlot -ne $Wire.SenderSlot -or
+            $receipt.AdmittedTick -lt $arm.Tick -or $receipt.AdmittedTick -gt $arm.FreshDeadline -or
+            $receipt.DeadlineTick-$receipt.AdmittedTick -ne 15000 -or $receipt.Failed -isnot [bool] -or $receipt.Failed -or
+            $receipt.Frames -le 0 -or $receipt.DecodedBytes -le 0 -or $receipt.DecodedBytes -gt 256KB -or $receipt.DecodedBytes%2 -or
+            $receipt.EnqueuedBytes -lt 0 -or $receipt.EnqueuedBytes -gt $receipt.DecodedBytes -or $receipt.EnqueuedBytes%2 -or
+            $receipt.FormatRate -lt 8000 -or $receipt.FormatRate -gt 48000 -or $receipt.FrequencyMin -lt 4000 -or $receipt.FrequencyMax -gt 96000 -or
+            $receipt.FrequencyMin -gt $receipt.FrequencyMax -or !$receipt.SpeakerUser -or (!$receipt.SpeakerEpochLow -and !$receipt.SpeakerEpochHigh) -or
+            $receipt.InputSourceRead -isnot [bool] -or $receipt.InputSourceRead -or $receipt.OriginalCallsForwarded -isnot [bool] -or !$receipt.OriginalCallsForwarded){throw 'Actual native PCM closure/binding/format is invalid.'}
+        $waves=@()
+        foreach($kind in @('decoded','submitted')){
+            $path=$stem+'-'+$kind+'.wav';$wave=[IO.FileStream]::new($path,'Open','Read','Read');$guards.Add($wave)
+            $count=if($kind -ceq 'decoded'){$receipt.DecodedBytes}else{$receipt.EnqueuedBytes}
+            if($wave.Length -ne 44+$count){throw 'Actual native PCM file length differs from closure.'}
+            $header=[byte[]]::new(44);if($wave.Read($header,0,44) -ne 44){throw 'Native PCM header truncated.'}
+            if([Text.Encoding]::ASCII.GetString($header,0,4) -cne 'RIFF' -or [BitConverter]::ToUInt32($header,4) -ne 36+$count -or
+                [Text.Encoding]::ASCII.GetString($header,8,8) -cne 'WAVEfmt ' -or [BitConverter]::ToUInt32($header,16) -ne 16 -or
+                [BitConverter]::ToUInt16($header,20) -ne 1 -or [BitConverter]::ToUInt16($header,22) -ne 1 -or
+                [BitConverter]::ToUInt32($header,24) -ne $receipt.FormatRate -or [BitConverter]::ToUInt32($header,28) -ne $receipt.FormatRate*2 -or
+                [BitConverter]::ToUInt16($header,32) -ne 2 -or [BitConverter]::ToUInt16($header,34) -ne 16 -or
+                [Text.Encoding]::ASCII.GetString($header,36,4) -cne 'data' -or [BitConverter]::ToUInt32($header,40) -ne $count){throw 'Native PCM WAV descriptor differs from actual DirectSound format.'}
+            $waves+=[pscustomobject]@{Kind=$kind;Path=$path;SHA256=(Get-FileHash -LiteralPath $path).Hash;Bytes=$wave.Length;FileIdentity=[IW7AgentPairNtfs]::Identity($wave.SafeFileHandle)}
+        }
+        $proof=[pscustomobject]@{Schema='iw7.received-native-pcm-proof/1';OriginalReceiver=$Wire.Expected.Roles[$Wire.ReceiverSlot];Arm=$arm;
+            NativeReceipt=[pscustomobject]@{Path=$receiptPath;SHA256=(Get-FileHash -LiteralPath $receiptPath).Hash};Waves=$waves;IntelligibilityAccepted=$false;HumanConversationAccepted=$false}
+        $proof|ConvertTo-Json -Depth 9|Set-Content -LiteralPath ($stem+'-proof.local.json')
+    }finally{foreach($stream in $guards){$stream.Dispose()}}
+}
 function New-IW7VoicePairProviders {
-    param($Pair,[string]$CaseRoot,[string]$ProbePath,[string]$ProbeSHA256,[string]$RecorderSourceSHA256)
+    param($Pair,[string]$CaseRoot,[string]$ProbePath,[string]$ProbeSHA256,[string]$RecorderSourceSHA256,[ValidateRange(0,1)][int]$SenderSlot=0,$ServerHandle=$null)
     $ErrorActionPreference='Stop'
     if($RecorderSourceSHA256 -cnotmatch '^[A-F0-9]{64}$'){throw 'Explicit reviewed recorder source pin required for voice providers.'}
     if($Pair.Closed -or $Pair.Sessions.Count -ne 2){throw 'Two started Pair sessions required.'}
     Initialize-IW7AgentPairNtfs
-    $a=$Pair.Sessions.A;$b=$Pair.Sessions.B;$logs=@{};$response=Resolve-IW7BasePath $a.Plan.GameRoot 'iw7-mod/paris-agent.response'
+    $senderName=@('A','B')[$SenderSlot];$receiverName=@('A','B')[1-$SenderSlot]
+    $sender=$Pair.Sessions[$senderName];$receiver=$Pair.Sessions[$receiverName];$logs=@{};$armPins=@{}
+    if($sender.Plan.VoicePairSource.Kind -cne 'speech' -or $receiver.Plan.VoicePairSource.Kind -cne 'silence'){throw 'Sender speech and receiver silence must match the original role slots.'}
+    $response=Resolve-IW7BasePath $sender.Plan.GameRoot 'iw7-mod/paris-agent.response'
     $lease=Get-IW7AgentPairLease $Pair
     if($lease.PhysicalBytes -lt 20GB -or $lease.CommitBytes -lt 20GB){throw 'Whole audio pair reservation missing.'}
     $expected=$null
@@ -64,6 +184,8 @@ function New-IW7VoicePairProviders {
             $logs[$role]=Open-IW7VoiceOwnedLog $context.Identity.Stdout
         }
         $logs.Server=Open-IW7VoiceOwnedLog $Pair.Server.Stdout
+        foreach($name in @('A','B')){$armPins[$name]=New-IW7VoiceArmProcessPin $Pair.Sessions[$name].Identity $Pair.Sessions[$name].Handle}
+        $armPins.Server=New-IW7VoiceArmProcessPin $Pair.Server $ServerHandle
         $until=[Environment]::TickCount64+90000L
         do{
             $states=@();$ready=$true
@@ -86,35 +208,28 @@ function New-IW7VoicePairProviders {
                 RelayGeneration=(Convert-IW7VoiceRelayGeneration $states[$index]);SourceSHA256=$context.Plan.VoicePairSource.SHA256;
                 Image=$context.Identity.Image;ImageSHA256=$context.Identity.SHA256;CreationFileTime=[uint64]([datetimeoffset]$context.Identity.CreatedUtc).UtcDateTime.ToFileTimeUtc()}
         }
-        $expected=[pscustomobject]@{ServerId=$Pair.Server.PID;Generation=$Pair.Generation;Roles=$roles;ReceiverCreationFileTime=$roles[1].CreationFileTime}
-        $wire=@{ProposalRoot=$PSScriptRoot;Sequence=0UL;Step=0UL;LastRead=$null;ArmRecord=$null;ServerLog=$logs.Server;Logs=$logs;Pair=$Pair;Expected=$expected;A=$a;B=$b;Response=$response;CaseRoot=$CaseRoot;ProbePath=$ProbePath;ProbeSHA256=$ProbeSHA256;RecorderSourceSHA256=$RecorderSourceSHA256}
-        $previous=Read-IW7AgentResponse (Read-IW7AgentWire $response -RequireTerminator) $a.Identity.PID $a.PairNonce
+        $expected=[pscustomobject]@{ServerId=$Pair.Server.PID;Generation=$Pair.Generation;Roles=$roles;SenderSlot=$SenderSlot;ReceiverCreationFileTime=$roles[1-$SenderSlot].CreationFileTime}
+        $wire=@{ProposalRoot=$PSScriptRoot;Sequence=0UL;Step=0UL;LastRead=$null;ArmRecord=$null;ReceivedArmRecord=$null;ServerLog=$logs.Server;Logs=$logs;Pair=$Pair;Expected=$expected;Sender=$sender;Receiver=$receiver;SenderName=$senderName;ReceiverName=$receiverName;SenderSlot=$SenderSlot;ReceiverSlot=(1-$SenderSlot);Response=$response;CaseRoot=$CaseRoot;ProbePath=$ProbePath;ProbeSHA256=$ProbeSHA256;RecorderSourceSHA256=$RecorderSourceSHA256;ArmPins=$armPins}
+        $previous=Read-IW7AgentResponse (Read-IW7AgentWire $response -RequireTerminator) $sender.Identity.PID $sender.PairNonce
         if($previous){$wire.Sequence=$previous.Sequence;$wire.Step=$previous.Step}
         $io=@{
             Now={[Environment]::TickCount64}
             Sleep={param($ms)Start-Sleep -Milliseconds $ms}
             Snapshot={
-                Assert-IW7BaseIdentity $wire.Pair.Server;$null=Get-IW7AgentPairLease $wire.Pair
-                $roles=@();$text=Read-IW7VoiceOwnedLog $wire.ServerLog
-                if($text -match '\[Paris agent voice pair\] FAIL'){throw 'VoicePair fixture failed.'}
-                foreach($index in @(0,1)){
-                    $name=@('A','B')[$index];$context=$wire.Pair.Sessions[$name];$proof=Update-IW7BaseClient $context
+                Assert-IW7BaseIdentity $wire.Pair.Server;$lease=Get-IW7AgentPairLease $wire.Pair
+                # Ownership/CIM/UDP/resource checks can consume the 500ms native
+                # publication window. Complete both before reading STATE/SAMPLE;
+                # validating an earlier cached transcript creates false staleness.
+                foreach($name in @('A','B')){
+                    $proof=Update-IW7BaseClient $wire.Pair.Sessions[$name]
                     if(!$proof.Protected){throw 'Pair lost actual protection.'}
-                    $f=Get-IW7VoiceStateFields $wire.Logs[$name] $context ([Environment]::TickCount64)
-                    if(!$f -or $f.gen -cne $wire.Expected.Generation -or [int]$f.slot -ne $index){throw 'Owned current STATE binding changed.'}
-                    $roles+=[pscustomobject]@{PID=$context.Identity.PID;Nonce=$f.nonce;Generation=$f.gen;Slot=$index;RelayGeneration=(Convert-IW7VoiceRelayGeneration $f);
-                        Protected=$true;V2Ready=($f.both_ready -ceq '1');UIReady=($f.ui_ready -ceq '1');Tick=[long]$f.query_tick}
                 }
-                $fixtureReady=$true
-                foreach($index in @(0,1)){
-                    $pattern='(?m)^\[Paris agent voice pair\] SAMPLE; server_pid='+$wire.Pair.Server.PID+'; client_nonce='+$wire.Expected.Roles[$index].Nonce+'; server_generation='+$wire.Expected.Generation+'; slot='+$index+'; native_tick_ms=(\d+); protected=1; sample_id=\d+; down_fixture=0; ready=1\.[ \t]*\r?$'
-                    $samples=[regex]::Matches($text,$pattern)
-                    if(!$samples.Count){$fixtureReady=$false;continue}
-                    $tick=[long]$samples[-1].Groups[1].Value;$now=[Environment]::TickCount64
-                    if($tick -gt $now -or $now-$tick -gt 500){throw 'Voice fixture SAMPLE stale.'}
-                }
-                [pscustomobject]@{OwnershipValidated=$true;ServerId=$wire.Pair.Server.PID;Generation=$wire.Expected.Generation;FixtureReady=$fixtureReady;Roles=$roles;
-                    EnableAudio=$wire.Pair.Plan.RunPlan.EnableAudio;PhysicalBytes=$wire.Pair.Plan.RunPlan.PhysicalBytes;CommitBytes=$wire.Pair.Plan.RunPlan.CommitBytes}
+                Read-IW7VoicePairNativeSnapshot $wire $lease
+            }
+            ArmSnapshot={
+                foreach($name in @('A','B','Server')){Assert-IW7VoiceArmProcessPin $wire.ArmPins[$name]}
+                $lease=Get-IW7VoiceArmLease $wire.Pair
+                Read-IW7VoicePairNativeSnapshot $wire $lease
             }
             StartRecorder={param($receiver,$output,$seconds)Start-IW7VoicePairRecorder $receiver $wire.ProbePath $wire.ProbeSHA256 $output $seconds $wire.Pair.LeaseToken $wire.Pair.Plan.ServerRoot $wire.RecorderSourceSHA256}
             RecorderState={param($recorder)Get-IW7VoicePairRecorderState $recorder}
@@ -122,66 +237,115 @@ function New-IW7VoicePairProviders {
             AnalyzeWAV={param($path)
                 $output=Join-Path (Split-Path $path) 'envelope.local.json'
                 if(!('IW7.VoicePairDraft.WaveAnalysis' -as [type])){Add-Type -Path (Join-Path $wire.ProposalRoot 'Analyze-WAV.cs')}
-                $result=[IW7.VoicePairDraft.WaveAnalysis]::Analyze($wire.A.Plan.VoicePairSource.Path,$path,$wire.A.Plan.VoicePairSource.SHA256)
+                $result=[IW7.VoicePairDraft.WaveAnalysis]::Analyze($wire.Sender.Plan.VoicePairSource.Path,$path,$wire.Sender.Plan.VoicePairSource.SHA256)
                 $file=[IO.File]::Open($output,'CreateNew','Write','Read')
                 try{$bytes=[Text.Encoding]::UTF8.GetBytes(($result|ConvertTo-Json -Depth 8));$file.Write($bytes,0,$bytes.Length)}finally{$file.Dispose()}
                 $result
             }
             PublishCaptureArm={param($record,$Deadline)
-                Assert-IW7BaseIdentity $wire.A.Identity $wire.A.Handle
-                Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.A.Plan.GameRoot 'iw7-mod/paris-voice-capture.arm') $record $Deadline
+                foreach($name in @('A','B','Server')){Assert-IW7VoiceArmProcessPin $wire.ArmPins[$name]}
+                $null=Get-IW7VoiceArmLease $wire.Pair
+                if($record.PID -ne $wire.Sender.Identity.PID -or $record.Nonce -cne $wire.Sender.PairNonce -or $record.Slot -ne $wire.SenderSlot){throw 'Capture ARM does not own the selected sender.'}
+                if($record.RecorderReadyTick -gt [Environment]::TickCount64 -or [Environment]::TickCount64-$record.RecorderReadyTick -gt 500){throw 'Original recorder readiness expired before ARM publication.'}
+                if($wire.Receiver.Plan.VoicePairSource.PSObject.Properties['ReceivedPCMOutputStem'] -and $wire.Receiver.Plan.VoicePairSource.ReceivedPCMOutputStem){
+                    $owned=$wire.Expected.Roles[$wire.ReceiverSlot]
+                    $outputArm=$record.PSObject.Copy();$outputArm.PID=$owned.PID;$outputArm.Nonce=$owned.Nonce;$outputArm.Slot=$wire.ReceiverSlot
+                    $outputArm.Wire="capturearm1 $($owned.PID) $($owned.Nonce) $($record.Generation) $($wire.ReceiverSlot) $($owned.SourceSHA256) $($record.RecorderChallenge) $($record.Tick)`n"
+                    $wire.ReceivedArmRecord=$outputArm
+                    Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.Receiver.Plan.GameRoot 'iw7-mod/paris-voice-output.arm') $outputArm $Deadline -NotAfterTick $record.FreshDeadline
+                }
+                Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.Sender.Plan.GameRoot 'iw7-mod/paris-voice-capture.arm') $record $Deadline -NotAfterTick $record.FreshDeadline
                 $wire.ArmRecord=$record
             }
             CaptureState={
                 $reports=@();foreach($role in @('A','B')){$f=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs[$role]) '[paris-fake-capture] Observed ';if(!$f -or [int]$f.pid -ne $wire.Pair.Sessions[$role].Identity.PID){throw 'Missing owned COM descriptor.'};$reports+=,$f}
                 $descriptor=$true;foreach($f in $reports){if($f.bits -ne '16' -or [int]$f.rate -lt 8000 -or [int]$f.rate -gt 48000 -or [int]$f.channels -notin @(1,2) -or [int]$f.buffer_bytes -lt 4096 -or [int]$f.buffer_bytes -gt 131072 -or $f.failed -ne '0' -or $f.buffer_started -ne '1'){$descriptor=$false}}
-                $armed=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs.A) '[paris-fake-capture] Armed relayv2 '
-                $bound=$armed -and [int]$armed.pid -eq $wire.A.Identity.PID -and $armed.nonce -ceq $wire.A.PairNonce -and $armed.gen -ceq $wire.Expected.Generation -and $armed.slot -ceq '0' -and [int]$armed.port -eq $wire.A.Plan.ServerPort
+                $armed=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs[$wire.SenderName]) '[paris-fake-capture] Armed relayv2 '
+                $bound=$armed -and [int]$armed.pid -eq $wire.Sender.Identity.PID -and $armed.nonce -ceq $wire.Sender.PairNonce -and $armed.gen -ceq $wire.Expected.Generation -and $armed.slot -ceq [string]$wire.SenderSlot -and [int]$armed.port -eq $wire.Sender.Plan.ServerPort
+                if($wire.ReceivedArmRecord){
+                    $pcm=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs[$wire.ReceiverName]) '[paris-voice-pair] PCM_READY; '
+                    $tapReady=$pcm -and $pcm.pid -ceq [string]$wire.Receiver.Identity.PID -and $pcm.nonce -ceq $wire.Receiver.PairNonce -and
+                        $pcm.gen -ceq $wire.Expected.Generation -and $pcm.challenge -ceq $wire.ReceivedArmRecord.RecorderChallenge -and $pcm.failed -ceq '0' -and
+                        [long]$pcm.tick_ms -ge $wire.ReceivedArmRecord.Tick -and [long]$pcm.tick_ms -le $wire.ReceivedArmRecord.FreshDeadline
+                    $bound=$bound -and $tapReady
+                }
                 [pscustomobject]@{BothPrepared=($reports[0].prepared -ceq '1' -and $reports[1].prepared -ceq '1');DescriptorsValidated=$descriptor;
-                    SourceLockNonzeroBytes=[long]$reports[0].lock_nonzero_bytes;SenderArmed=[bool]$bound;ReceiverPrepared=($reports[1].prepared -ceq '1');Failed=(!$descriptor);
-                    BindingValidated=[bool]$bound;Tick=$(if($armed){[long]$armed.tick_ms}else{0});RecorderChallenge=$(if($armed){$armed.recorder_challenge});SourceA='speech';SourceB='silence'}
+                    SourceLockNonzeroBytes=[long]$reports[$wire.SenderSlot].lock_nonzero_bytes;SenderArmed=[bool]$bound;ReceiverPrepared=($reports[$wire.ReceiverSlot].prepared -ceq '1');Failed=(!$descriptor);
+                    BindingValidated=[bool]$bound;Tick=$(if($armed){[long]$armed.tick_ms}else{0});RecorderChallenge=$(if($armed){$armed.recorder_challenge});SourceA=$wire.Pair.Sessions.A.Plan.VoicePairSource.Kind;SourceB=$wire.Pair.Sessions.B.Plan.VoicePairSource.Kind}
             }
             PTTState={
-                $f=Get-IW7VoiceStateFields $wire.Logs.A $wire.A ([Environment]::TickCount64)
+                $f=Get-IW7VoiceStateFields $wire.Logs[$wire.SenderName] $wire.Sender ([Environment]::TickCount64)
                 if(!$f -or $f.talk_valid -cne '1'){throw 'Native talk getter unavailable.'}
                 [pscustomobject]@{PID=[int]$f.pid;Nonce=$f.nonce;Tick=[long]$f.tick_ms;Active=($f.talk_active -ceq '1');Key0=[int]$f.talk_key0;Key1=[int]$f.talk_key1}
             }
             SendInput={param($action,$button,$duration,$deadline)
-                Assert-IW7BaseIdentity $wire.A.Identity $wire.A.Handle;$wire.Sequence++;$wire.Step++;$sent=[Environment]::TickCount64
-                Write-IW7AgentRequest $wire.A $wire.A.PairNonce $wire.Sequence $wire.Step $action $button $duration -NotAfterTick $deadline
-                [pscustomobject]@{PID=$wire.A.Identity.PID;Nonce=$wire.A.PairNonce;Sequence=$wire.Sequence;Step=$wire.Step;SentTick=$sent}
+                Assert-IW7BaseIdentity $wire.Sender.Identity $wire.Sender.Handle;$wire.Sequence++;$wire.Step++;$sent=[Environment]::TickCount64
+                Write-IW7AgentRequest $wire.Sender $wire.Sender.PairNonce $wire.Sequence $wire.Step $action $button $duration -NotAfterTick $deadline
+                [pscustomobject]@{PID=$wire.Sender.Identity.PID;Nonce=$wire.Sender.PairNonce;Sequence=$wire.Sequence;Step=$wire.Step;SentTick=$sent}
             }
             InputReply={param($receipt)
-                $r=Read-IW7AgentResponse (Read-IW7AgentWire $wire.Response -RequireTerminator) $wire.A.Identity.PID $wire.A.PairNonce
+                $r=Read-IW7AgentResponse (Read-IW7AgentWire $wire.Response -RequireTerminator) $wire.Sender.Identity.PID $wire.Sender.PairNonce
                 if($r -and $r.Sequence -gt $receipt.Sequence){throw 'Concurrent voice mailbox writer.'}
-                if($r -and $r.Sequence -eq $receipt.Sequence){[pscustomobject]@{PID=$wire.A.Identity.PID;Nonce=$wire.A.PairNonce;Sequence=$r.Sequence;Step=$r.Step;Tick=$r.Tick;Status=$r.Status}}
+                if($r -and $r.Sequence -eq $receipt.Sequence){[pscustomobject]@{PID=$wire.Sender.Identity.PID;Nonce=$wire.Sender.PairNonce;Sequence=$r.Sequence;Step=$r.Step;Tick=$r.Tick;Status=$r.Status}}
             }
             Counters={
                 $relay=@{};foreach($role in @('A','B','Server')){$f=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs[$role]) '[voice-relay] ';if(!$f -or $f.version -ne '2'){throw 'Native v2 counters missing.'};$relay[$role]=$f}
-                $capture=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs.A) '[paris-fake-capture] Observed '
-                @{SourceLockNonzeroBytes=[uint64]$capture.lock_nonzero_bytes;EncodedFrames=[uint64]$relay.A.encoded;SentAudioFrames=[uint64]$relay.A.sent;
-                    ServerRelayedFrames=[uint64]$relay.Server.relayed;AcceptedNativePlaybackCalls=[uint64]$relay.B.playback_calls;DiagnosticPacketsReceived=[uint64]$relay.B.packets_received}
+                $capture=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs[$wire.SenderName]) '[paris-fake-capture] Observed '
+                @{SourceLockNonzeroBytes=[uint64]$capture.lock_nonzero_bytes;EncodedFrames=[uint64]$relay[$wire.SenderName].encoded;SentAudioFrames=[uint64]$relay[$wire.SenderName].sent;
+                    ServerRelayedFrames=[uint64]$relay.Server.relayed;AcceptedNativePlaybackCalls=[uint64]$relay[$wire.ReceiverName].playback_calls;DiagnosticPacketsReceived=[uint64]$relay[$wire.ReceiverName].packets_received}
             }
             AbortInput={
                 $wire.Sequence++;$wire.Step++;$sent=[Environment]::TickCount64
-                Write-IW7AgentRequest $wire.A $wire.A.PairNonce $wire.Sequence $wire.Step 'abort'
-                $receipt=[pscustomobject]@{PID=$wire.A.Identity.PID;Nonce=$wire.A.PairNonce;Sequence=$wire.Sequence;Step=$wire.Step;SentTick=$sent};$reply=$null
-                do{$r=Read-IW7AgentResponse (Read-IW7AgentWire $wire.Response -RequireTerminator) $wire.A.Identity.PID $wire.A.PairNonce
+                Write-IW7AgentRequest $wire.Sender $wire.Sender.PairNonce $wire.Sequence $wire.Step 'abort'
+                $receipt=[pscustomobject]@{PID=$wire.Sender.Identity.PID;Nonce=$wire.Sender.PairNonce;Sequence=$wire.Sequence;Step=$wire.Step;SentTick=$sent};$reply=$null
+                do{$r=Read-IW7AgentResponse (Read-IW7AgentWire $wire.Response -RequireTerminator) $wire.Sender.Identity.PID $wire.Sender.PairNonce
                     if($r -and $r.Sequence -gt $wire.Sequence){throw 'Concurrent voice abort writer.'}
-                    if($r -and $r.Sequence -eq $wire.Sequence){$reply=[pscustomobject]@{PID=$wire.A.Identity.PID;Nonce=$wire.A.PairNonce;Sequence=$r.Sequence;Step=$r.Step;Tick=$r.Tick;Status=$r.Status};if($reply.Status -ceq 'aborted'){break}}
+                    if($r -and $r.Sequence -eq $wire.Sequence){$reply=[pscustomobject]@{PID=$wire.Sender.Identity.PID;Nonce=$wire.Sender.PairNonce;Sequence=$r.Sequence;Step=$r.Step;Tick=$r.Tick;Status=$r.Status};if($reply.Status -ceq 'aborted'){break}}
                     Start-Sleep -Milliseconds 10
                 }while([Environment]::TickCount64-$sent -lt 1000)
                 [pscustomobject]@{Receipt=$receipt;Reply=$reply}
             }
             CancelCapture={
-                if(!$wire.ArmRecord){return}
-                Assert-IW7BaseIdentity $wire.A.Identity $wire.A.Handle
+                if(!$wire.ArmRecord -and !$wire.ReceivedArmRecord){return}
+                $receiverFailure=$null
+                try{if($wire.ReceivedArmRecord){
+                    foreach($name in @('A','B','Server')){Assert-IW7VoiceArmProcessPin $wire.ArmPins[$name]}
+                    $null=Get-IW7VoiceArmLease $wire.Pair
+                    $sent=[Environment]::TickCount64;$original=$wire.ReceivedArmRecord
+                    $record=[pscustomobject]@{Tick=$sent;Wire="capturecancel1 $($original.PID) $($original.Nonce) $($original.Generation) $($wire.ReceiverSlot) $($wire.Expected.Roles[$wire.ReceiverSlot].SourceSHA256) $($original.RecorderChallenge) $sent`n"}
+                    Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.Receiver.Plan.GameRoot 'iw7-mod/paris-voice-output.arm') $record ($sent+500)
+                    $closed=$false
+                    do{
+                        $f=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs[$wire.ReceiverName]) '[paris-voice-pair] PCM_CLOSED; '
+                        if($f -and $f.pid -ceq [string]$wire.Receiver.Identity.PID -and $f.nonce -ceq $wire.Receiver.PairNonce -and $f.gen -ceq $wire.Expected.Generation -and
+                            $f.challenge -ceq $original.RecorderChallenge -and $f.failed -ceq '0' -and [long]$f.tick_ms -ge $sent -and [long]$f.tick_ms -le [Environment]::TickCount64){$closed=$true;break}
+                        Start-Sleep -Milliseconds 10
+                    }while([Environment]::TickCount64-$sent -lt 1000)
+                    if(!$closed){throw 'Exact native received PCM closure unavailable.'}
+                    Complete-IW7VoiceReceivedPCM $wire
+                }}catch{$receiverFailure=$_}
+                if(!$wire.ArmRecord){if($receiverFailure){throw $receiverFailure};return}
+                Assert-IW7BaseIdentity $wire.Sender.Identity $wire.Sender.Handle
                 $sent=[Environment]::TickCount64;$original=$wire.ArmRecord
-                $record=[pscustomobject]@{Tick=$sent;Wire="capturecancel1 $($original.PID) $($original.Nonce) $($original.Generation) 0 $($wire.Expected.Roles[0].SourceSHA256) $($original.RecorderChallenge) $sent`n"}
-                Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.A.Plan.GameRoot 'iw7-mod/paris-voice-capture.arm') $record ($sent+500)
+                $record=[pscustomobject]@{Tick=$sent;Wire="capturecancel1 $($original.PID) $($original.Nonce) $($original.Generation) $($wire.SenderSlot) $($wire.Expected.Roles[$wire.SenderSlot].SourceSHA256) $($original.RecorderChallenge) $sent`n"}
+                Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.Sender.Plan.GameRoot 'iw7-mod/paris-voice-capture.arm') $record ($sent+500)
                 do{
-                    $f=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs.A) '[paris-fake-capture] Cancelled request '
-                    if($f -and [int]$f.pid -eq $wire.A.Identity.PID -and $f.nonce -ceq $wire.A.PairNonce -and $f.gen -ceq $wire.Expected.Generation -and $f.slot -ceq '0' -and $f.recorder_challenge -ceq $original.RecorderChallenge -and [long]$f.tick_ms -ge $sent -and [long]$f.tick_ms -le [Environment]::TickCount64){return [pscustomobject]@{Cancelled=$true;Tick=[long]$f.tick_ms}}
+                    $f=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs[$wire.SenderName]) '[paris-fake-capture] Cancelled request '
+                    if($f -and [int]$f.pid -eq $wire.Sender.Identity.PID -and $f.nonce -ceq $wire.Sender.PairNonce -and $f.gen -ceq $wire.Expected.Generation -and $f.slot -ceq [string]$wire.SenderSlot -and $f.recorder_challenge -ceq $original.RecorderChallenge -and [long]$f.tick_ms -ge $sent -and [long]$f.tick_ms -le [Environment]::TickCount64){
+                        if($wire.Sender.Plan.VoicePairSource.PSObject.Properties['NativeCodecQuality'] -and $wire.Sender.Plan.VoicePairSource.NativeCodecQuality -eq 10){
+                            $text=Read-IW7VoiceOwnedLog $wire.Logs[$wire.SenderName]
+                            $applied=Read-IW7VoiceFields $text '[paris-voice-pair] CODEC_QUALITY; '
+                            $restored=Read-IW7VoiceFields $text '[paris-voice-pair] CODEC_RESTORED; '
+                            foreach($record in @($applied,$restored)){
+                                if(!$record -or $record.pid -cne [string]$wire.Sender.Identity.PID -or $record.nonce -cne $wire.Sender.PairNonce -or
+                                    $record.gen -cne $wire.Expected.Generation -or $record.requested_quality -cne '10' -or
+                                    [long]$record.tick_ms -lt $original.Tick -or [long]$record.tick_ms -gt [Environment]::TickCount64){throw 'Exact owned native codec quality proof missing.'}
+                            }
+                            if($applied.applied -cne '1' -or $applied.after_mode -cne '7' -or $applied.flags_unchanged -cne '1' -or
+                                $restored.restored -cne '1' -or $restored.configured_mode -cne $applied.before_mode -or [long]$restored.tick_ms -lt $sent){throw 'Native codec quality application/restoration unconfirmed.'}
+                        }
+                        if($receiverFailure){throw $receiverFailure};return [pscustomobject]@{Cancelled=$true;Tick=[long]$f.tick_ms}
+                    }
                     Start-Sleep -Milliseconds 10
                 }while([Environment]::TickCount64-$sent -lt 1000)
                 throw 'Exact native capturecancel ACK unavailable; retain cleanup diagnostics.'
@@ -200,6 +364,6 @@ function New-IW7VoicePairProviders {
             $frameRoot=Join-Path $CaseRoot ('voice-pre-action-'+$name);$null=New-Item -ItemType Directory -Path $frameRoot
             $frames+=Save-IW7AgentPreActionFrame $Pair.Sessions[$name] $frameRoot
         }
-        [pscustomobject]@{Expected=$expected;IO=$io;Logs=$logs;Frames=$frames;Dispose={foreach($log in $logs.Values){$log.Stream.Dispose()}}.GetNewClosure()}
-    }catch{foreach($log in $logs.Values){$log.Stream.Dispose()};throw}
+        [pscustomobject]@{Expected=$expected;IO=$io;Logs=$logs;Frames=$frames;Dispose={foreach($log in $logs.Values){$log.Stream.Dispose()};foreach($pin in $armPins.Values){$pin.Image.Dispose()}}.GetNewClosure()}
+    }catch{foreach($log in $logs.Values){$log.Stream.Dispose()};foreach($pin in $armPins.Values){$pin.Image.Dispose()};throw}
 }

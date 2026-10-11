@@ -114,6 +114,15 @@ struct state final : control
             gate=active;gate.admitted_tick=now;current=phase::armed;return S_OK;
         }catch(...){failed=true;return E_FAIL;}
     }
+    HRESULT begin_source(std::uint64_t tick) noexcept override
+    {
+        try {
+            std::lock_guard<std::mutex> guard(mutex);std::uint64_t now{};
+            if(current!=phase::armed || !check(now) || stats.source_started || !buffer_started || buffer_locked)return DSERR_INVALIDCALL;
+            if(tick<gate.admitted_tick || tick>now || now-tick>500){failed=true;current=phase::failed;return DSERR_NODRIVER;}
+            stats.source_started=true;stats.source_start_tick=tick;return S_OK;
+        }catch(...){failed=true;return E_FAIL;}
+    }
     void cancel() noexcept override
     {
         try{std::lock_guard<std::mutex> guard(mutex);failed=true;current=phase::failed;}catch(...){}
@@ -160,7 +169,10 @@ public:
                 if(now-last>500 || next<frames || (next-consumed)*format.nBlockAlign>=ring.size()) {shared->failed=true;running=false;return DSERR_NODRIVER;}
                 for(auto f=frames;f<next;++f)
                 {
-                    const double pos=static_cast<double>(f)*16000/format.nSamplesPerSec;
+                    const auto origin=shared->stats.source_started ?
+                        (shared->stats.source_start_tick-shared->gate.admitted_tick)*format.nSamplesPerSec/1000 : UINT64_MAX;
+                    const double pos=f>=origin ? static_cast<double>(f-origin)*16000/format.nSamplesPerSec :
+                        static_cast<double>(shared->pcm.size());
                     const auto index=static_cast<std::size_t>(pos);short value{};
                     if(index<shared->pcm.size())
                     {
@@ -268,6 +280,7 @@ HRESULT create(const admission& gate,const environment& env,const std::vector<un
     {
         if(!env.now || !env.fresh || !permitted(gate,env.now(env.opaque)) || wav.size()<44 || wav.size()>480102 || !digest(wav,gate.source_sha256))return DSERR_INVALIDPARAM;
         auto value=std::make_shared<state>();value->gate=gate;value->env=env;value->pcm=parse(wav);
+        value->stats.source_started=true;value->stats.source_start_tick=gate.admitted_tick;
         std::uint64_t now{};if(!value->check(now))return DSERR_NODRIVER;*output=new device(std::move(value));return S_OK;
     }catch(...){return E_FAIL;}
 }

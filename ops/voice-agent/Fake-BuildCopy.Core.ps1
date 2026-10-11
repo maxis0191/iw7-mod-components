@@ -1,6 +1,6 @@
  . "$PSScriptRoot/../Base-Client.Core.ps1"
 function Set-IW7FakeCaptureBuildCopy([string]$RepoRoot,[string]$NativeRoot,[bool]$Enabled) {
-    $names=@('voice_test_capture.cpp','voice_test_capture.hpp','paris_voice_test_capture.cpp','paris_voice_test_capture.hpp','voice_test_binding.hpp','voice_capture_wire.hpp')
+    $names=@('voice_test_capture.cpp','voice_test_capture.hpp','paris_voice_test_capture.cpp','paris_voice_test_capture.hpp','voice_test_binding.hpp','voice_capture_wire.hpp','voice_pcm_witness.hpp')
     $prepared=@()
     foreach($name in $names){
         $source=Resolve-IW7BasePath $RepoRoot ('src/native/'+$name)

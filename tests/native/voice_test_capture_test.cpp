@@ -66,6 +66,7 @@ int main()
     metrics=controller->snapshot();assert(metrics.buffer_created && metrics.descriptor_bytes==sizeof(pd) && !metrics.descriptor_flags &&
         metrics.rate==16000 && metrics.channels==1 && metrics.bits==16 && metrics.block_align==2 && metrics.buffer_bytes==8192);
     assert(SUCCEEDED(b->Start(DSCBSTART_LOOPING)));
+    assert(FAILED(controller->begin_source(1000)));
     provider->tick=6000;assert(SUCCEEDED(b->GetCurrentPosition(&capture,&read)) && capture==0 && read==0);
     assert(SUCCEEDED(b->Lock(0,3200,&p1,&n1,&p2,&n2,0)));
     metrics=controller->snapshot();assert(metrics.prepared && metrics.buffer_locked && metrics.lock_calls==1 && metrics.lock_bytes==3200 &&
@@ -79,16 +80,31 @@ int main()
     assert(SUCCEEDED(b->Unlock(p1,n1,p2,n2)));
     assert(SUCCEEDED(controller->arm(active)));assert(FAILED(controller->arm(active)));
     metrics=controller->snapshot();assert(metrics.armed && !metrics.prepared && !metrics.failed && !metrics.buffer_locked && metrics.unlock_calls==1 && metrics.unlock_bytes==3200);
-    provider->tick=6100;assert(SUCCEEDED(b->GetCurrentPosition(&capture,&read)) && read==3200);
-    assert(SUCCEEDED(b->Lock(0,3200,&p1,&n1,&p2,&n2,0)) && static_cast<short*>(p1)[0]==1000);
-    metrics=controller->snapshot();assert(metrics.published_frames==1600 && metrics.published_source_frames==1600 && metrics.published_nonzero_frames==1600 &&
-        metrics.lock_calls==2 && metrics.lock_bytes==6400 && metrics.lock_nonzero_bytes==3200 && metrics.prepared_lock_bytes==3200);
+    // Native capture continues polling/draining while ordinary PTT is still
+    // released. A 1.5s input delay must consume silence, never the phrase prefix.
+    DWORD source_offset=0;
+    for(unsigned step=1;step<=15;++step){
+        provider->tick=6000+step*100;
+        assert(SUCCEEDED(b->GetCurrentPosition(&capture,&read)));
+        assert(SUCCEEDED(b->Lock(source_offset,3200,&p1,&n1,&p2,&n2,0)));
+        for(DWORD i=0;i<n1;++i)assert(static_cast<unsigned char*>(p1)[i]==0);
+        for(DWORD i=0;i<n2;++i)assert(static_cast<unsigned char*>(p2)[i]==0);
+        assert(SUCCEEDED(b->Unlock(p1,n1,p2,n2)));
+        source_offset=(source_offset+3200)%8192;
+    }
+    metrics=controller->snapshot();assert(metrics.armed && !metrics.source_started && !metrics.published_source_frames && !metrics.lock_nonzero_bytes);
+    assert(SUCCEEDED(controller->begin_source(7500)));assert(FAILED(controller->begin_source(7500)));
+    metrics=controller->snapshot();assert(metrics.source_started && metrics.source_start_tick==7500);
+    provider->tick=7600;assert(SUCCEEDED(b->GetCurrentPosition(&capture,&read)));
+    assert(SUCCEEDED(b->Lock(source_offset,3200,&p1,&n1,&p2,&n2,0)) && static_cast<short*>(p1)[0]==1000 && static_cast<short*>(p2)[0]==1000);
+    metrics=controller->snapshot();assert(metrics.published_frames==25600 && metrics.published_source_frames==1600 && metrics.published_nonzero_frames==1600 &&
+        metrics.lock_calls==17 && metrics.lock_bytes==54400 && metrics.lock_nonzero_bytes==3200 && metrics.prepared_lock_bytes==3200);
     // Cancellation cannot free or mutate an outstanding span; Unlock remains legal.
     std::thread cancelled([&]{controller->cancel();});cancelled.join();
     statistics concurrent_metrics;std::thread observer([&]{concurrent_metrics=controller->snapshot();});observer.join();
-    assert(concurrent_metrics.failed && concurrent_metrics.buffer_locked && concurrent_metrics.published_frames==1600);
+    assert(concurrent_metrics.failed && concurrent_metrics.buffer_locked && concurrent_metrics.published_frames==25600);
     assert(static_cast<short*>(p1)[0]==1000);assert(SUCCEEDED(b->Unlock(p1,n1,p2,n2)));
-    metrics=controller->snapshot();assert(metrics.failed && !metrics.buffer_locked && metrics.unlock_calls==2 && metrics.unlock_bytes==6400);
+    metrics=controller->snapshot();assert(metrics.failed && !metrics.buffer_locked && metrics.unlock_calls==17 && metrics.unlock_bytes==54400);
     assert(FAILED(b->GetCurrentPosition(&capture,&read)) && !capture && !read);
     owned.owner.reset();provider.reset();controller.reset();dev->Release();
     assert(!weak.expired());assert(SUCCEEDED(b->Stop()));b->Release();assert(weak.expired());
@@ -133,6 +149,16 @@ int main()
         provider->tick=1100;provider->protected_now=true;
         assert(FAILED(b->GetCurrentPosition(&capture,&read)));
         assert(FAILED(controller->arm(active)));assert(SUCCEEDED(b->Stop()));
+        b->Release();dev->Release();controller.reset();
+    }
+    for(int failure=0;failure<2;++failure){
+        provider->tick=1000;provider->protected_now=true;
+        assert(SUCCEEDED(prepare(prep,owned,wave(),&dev,&controller)));
+        assert(SUCCEEDED(dev->CreateCaptureBuffer(&pd,&b,nullptr)));assert(SUCCEEDED(b->Start(DSCBSTART_LOOPING)));
+        active=gate();assert(SUCCEEDED(controller->arm(active)));
+        provider->tick=1600;
+        assert(FAILED(controller->begin_source(failure==0 ? 1601 : 1000)));
+        assert(controller->snapshot().failed && !controller->snapshot().source_started);
         b->Release();dev->Release();controller.reset();
     }
     // Prepared timeout and armed deadline are independent, both fail irreversibly.

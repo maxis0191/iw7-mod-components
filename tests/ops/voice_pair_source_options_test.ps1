@@ -27,6 +27,49 @@ try{
         $args=Get-IW7VoicePairExtraArguments $role.Plan
         Check ($args.Contains('+set snd_enable 1') -and $args.Contains('-paris-fake-capture-slot='+$role.Slot) -and !$args.Contains('native-trace') -and !$args.Contains('probe') -and 'iw7-mod/paris-voice-capture.arm' -in $role.Plan.MutableFiles) 'Voice options omit exact slot/audio/restore or add private probe.'
     }
+    $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 1
+    Check ($plan.Roles[0].Plan.VoicePairSource.Kind -ceq 'silence' -and $plan.Roles[0].Plan.VoicePairSource.Slot -eq 0 -and
+        $plan.Roles[1].Plan.VoicePairSource.Kind -ceq 'speech' -and $plan.Roles[1].Plan.VoicePairSource.Slot -eq 1 -and
+        $plan.Roles[1].Plan.VoicePairSource.Path -ceq $srcA.Path) 'Reverse source selection changed physical role/slot identity.'
+    Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 2}
+    $plan.Roles[1].Slot=0;Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 1};$plan.Roles[1].Slot=1
+    Check (!(Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan).Contains('+set snd_dialogue_volume')) 'Default witness silently changes game mix.'
+    $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 0 -QuietGameAudio
+    $quiet=Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan
+    Check ($quiet.Contains('-paris-voice-pair-quiet') -and !$quiet.Contains('+set snd_volume') -and
+        !$quiet.Contains('+set snd_effects_volume') -and !$quiet.Contains('winvoice_')) 'Quiet fixture changes master/effects/microphone instead of only background categories.'
+    $stem=Join-Path $root 'native-receiver'
+    $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 1 -ReceivedPCMOutputStem $stem
+    Check ((Get-IW7VoicePairExtraArguments $plan.Roles[0].Plan).Contains('-paris-voice-received-output="'+$stem+'"') -and
+        !(Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan).Contains('-paris-voice-received-pcm') -and
+        'iw7-mod/paris-voice-output.arm' -in $plan.Roles[0].Plan.MutableFiles) 'PCM tap must follow the actual silent receiver and restore its mailbox.'
+    Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -ReceivedPCMOutputStem 'relative-stem'}
+    Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -ReceivedPCMOutputStem 'C:\unsafe"stem'}
+    $plan.Roles[1].Plan.VoicePairSource.ReceivedPCMOutputStem=$stem
+    Refuses{Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan}
+    $plan.Roles[1].Plan.VoicePairSource.ReceivedPCMOutputStem=''
+    foreach($senderSlot in @(0,1)){
+        $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot $senderSlot -NativeCodecQuality 10
+        $sender=$plan.Roles[$senderSlot].Plan;$receiver=$plan.Roles[1-$senderSlot].Plan
+        Check ($sender.VoicePairSource.Kind -ceq 'speech' -and $sender.VoicePairSource.NativeCodecQuality -eq 10 -and
+            (Get-IW7VoicePairExtraArguments $sender).Contains('-paris-voice-pair-quality=10')) 'Explicit quality10 must follow actual speech sender.'
+        Check (!$receiver.VoicePairSource.PSObject.Properties['NativeCodecQuality'] -and
+            !(Get-IW7VoicePairExtraArguments $receiver).Contains('-paris-voice-pair-quality')) 'Receiver silently receives codec override.'
+        $receiver.VoicePairSource|Add-Member NativeCodecQuality 10
+        Refuses{Get-IW7VoicePairExtraArguments $receiver}
+        $receiver.VoicePairSource.NativeCodecQuality=0
+        Refuses{Get-IW7VoicePairExtraArguments $receiver}
+        $receiver.VoicePairSource.PSObject.Properties.Remove('NativeCodecQuality')
+        foreach($invalid in @(1,9,11,-1,'10')){
+            $sender.VoicePairSource.NativeCodecQuality=$invalid
+            Refuses{Get-IW7VoicePairExtraArguments $sender}
+        }
+        $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot $senderSlot
+        Check ($plan.Roles[$senderSlot].Plan.VoicePairSource.NativeCodecQuality -eq 0 -and
+            !(Get-IW7VoicePairExtraArguments $plan.Roles[$senderSlot].Plan).Contains('-paris-voice-pair-quality') -and
+            !$plan.Roles[1-$senderSlot].Plan.VoicePairSource.PSObject.Properties['NativeCodecQuality']) 'Default must remove prior quality10 on either direction.'
+    }
+    foreach($invalidQuality in @(1,9,11,-1)){Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -NativeCodecQuality $invalidQuality}}
     $plan.Roles[0].Plan.VoicePairSource.Path='C:\voice"unsafe.wav';Refuses{Get-IW7VoicePairExtraArguments $plan.Roles[0].Plan}
     'PASS draft speech/silence RIFF/categories/options20/20/audio/slot/arm restitution, no probe flags. No SAPI/audio/game.'
 }finally{Remove-Item -LiteralPath $root -Recurse -Force}

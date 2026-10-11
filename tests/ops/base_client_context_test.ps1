@@ -24,6 +24,7 @@ Assert-Test ($script:VacancyCalls -eq 1 -and !$ordinary.Handle) 'Prelaunch ordin
 $ownership=[pscustomobject]@{Marker='synthetic-pair'}
 $paired=New-IW7BaseClientContext $plan $server 'fixture-pair-lease' 'synthetic-pair-evidence' 23 $ownership 'B'
 Assert-Test ([object]::ReferenceEquals($paired.PairOwnership,$ownership) -and $paired.PairRole -ceq 'B') 'Pair ownership reference or second-client role was lost.'
+Assert-Test ($null -eq $paired.PairNonce) 'Fresh paired context lacks explicit unset startup nonce under StrictMode.'
 $script:PairCalls=0
 function Update-IW7AgentPairClient($Context) {
     Assert-Test ([object]::ReferenceEquals($Context.PairOwnership,$ownership) -and $Context.PairRole -ceq 'B') 'Pair update receives a changed ownership contract.'
@@ -35,4 +36,4 @@ Assert-Test ($sample.PairWitness -ceq 'delegated' -and $script:PairCalls -eq 1 -
 $invalidRoleRefused=$false
 try { New-IW7BaseClientContext $plan $server 'fixture-lease' 'synthetic-evidence' 0 $ownership 'C' | Out-Null } catch { $invalidRoleRefused=$true }
 Assert-Test $invalidRoleRefused 'Unknown pair role accepted.'
-Write-Output 'Base client context tests passed: 8 (StrictMode ordinary update/prelaunch cleanup and pair dispatch).'
+Write-Output 'Base client context tests passed: 9 (StrictMode ordinary update/prelaunch cleanup, unset pair nonce and pair dispatch).'

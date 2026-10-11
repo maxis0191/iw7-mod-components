@@ -66,6 +66,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\
 if errorlevel 1 exit /b 1
 "$runtime\voice-test-binding.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_pcm_witness_test.cpp" /Fe:"$runtime\voice-pcm-witness.exe" /Fo:"$runtime\voice-pcm-witness.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-pcm-witness.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_capture_wire_test.cpp" /Fe:"$runtime\voice-capture-wire.exe" /Fo:"$runtime\voice-capture-wire.obj"
 if errorlevel 1 exit /b 1
 "$runtime\voice-capture-wire.exe"

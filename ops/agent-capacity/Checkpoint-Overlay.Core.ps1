@@ -25,6 +25,21 @@ function New-IW7CapacityCheckpointOverlays([byte[]]$CleanBytes) {
     [pscustomobject]@{Clean=$CleanBytes;Profiler=$encoding.GetBytes($profile);Watch=$encoding.GetBytes($watch);Enabled=$encoding.GetBytes($enabled)}
 }
 function Get-IW7CapacityCheckpointTransition([byte[]]$Current,$Overlays,[string]$Phase,[bool]$Enabled) {
+    # A fresh Windows checkout may use CRLF and omit the final LF. Compare
+    # only those newline forms against complete known source hashes; never
+    # trim spaces/tabs or accept an unknown source body.
+    $known=@($Overlays.Clean,$Overlays.Profiler,$Overlays.Watch,$Overlays.Enabled)
+    $physicalHash=Get-IW7CapacityCheckpointHash $Current
+    if($physicalHash -cnotin @($known|ForEach-Object{Get-IW7CapacityCheckpointHash $_})) {
+        $text=[Text.UTF8Encoding]::new($false,$true).GetString($Current).Replace("`r`n","`n")
+        if($text.Contains("`r")){throw 'Unknown scheduler newline shape; preserve source.'}
+        if(!$text.EndsWith("`n")){$text+="`n"}
+        $canonical=[Text.UTF8Encoding]::new($false).GetBytes($text)
+        if((Get-IW7CapacityCheckpointHash $canonical) -cnotin @($known|ForEach-Object{Get-IW7CapacityCheckpointHash $_})) {
+            throw 'Unowned scheduler edit; preserve source.'
+        }
+        $Current=$canonical
+    }
     if($Phase -cnotin @('BeforeDebugger','AfterDebugger')){throw 'Unknown checkpoint overlay phase.'}
     $hash=Get-IW7CapacityCheckpointHash $Current
     $cleanHash=Get-IW7CapacityCheckpointHash $Overlays.Clean

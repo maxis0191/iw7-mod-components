@@ -7,10 +7,10 @@ foreach($dir in @('source/src/native','source/ops/voice-agent','native/src/clien
 Copy-Item -LiteralPath (Join-Path $repo 'ops/Base-Client.Core.ps1') -Destination (Join-Path $source 'ops/Base-Client.Core.ps1')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Fake-BuildCopy.Core.ps1') -Destination (Join-Path $source 'ops/voice-agent/Fake-BuildCopy.Core.ps1')
 . (Join-Path $source 'ops/voice-agent/Fake-BuildCopy.Core.ps1')
-$names=@('voice_test_capture.cpp','voice_test_capture.hpp','paris_voice_test_capture.cpp','paris_voice_test_capture.hpp','voice_test_binding.hpp','voice_capture_wire.hpp')
+$names=@('voice_test_capture.cpp','voice_test_capture.hpp','paris_voice_test_capture.cpp','paris_voice_test_capture.hpp','voice_test_binding.hpp','voice_capture_wire.hpp','voice_pcm_witness.hpp')
 foreach($name in $names){$text=if($name -ceq 'voice_test_capture.cpp'){'#include "voice_test_capture.hpp"' + "`n"+'// synthetic fixture'}else{'// synthetic fixture '+$name};[IO.File]::WriteAllText((Join-Path $source ('src/native/'+$name)),$text)}
 $enabled=Set-IW7FakeCaptureBuildCopy $source $native $true
-if(!$enabled.Compiled -or $enabled.Files.Count -ne 6){throw 'Isolated six-file copy differs.'}
+if(!$enabled.Compiled -or $enabled.Files.Count -ne 7){throw 'Isolated seven-file copy differs.'}
 $copied=Join-Path $native 'src/client/component/voice_test_capture.cpp'
 if([IO.File]::ReadAllText($copied) -notmatch '#pragma comment\(lib, "bcrypt.lib"\)'){throw 'Explicit isolated link dependency missing.'}
 Set-IW7FakeCaptureBuildCopy $source $native $false|Out-Null

@@ -228,7 +228,7 @@ function New-IW7BaseClientContext($Plan,$ServerIdentity,[string]$LeaseToken,[str
     # must explicitly carry null pair ownership, including launch-failure cleanup.
     [pscustomobject]@{Plan=$Plan;Server=$ServerIdentity;LeaseToken=$LeaseToken;OutputRoot=$OutputRoot;Transaction=$null;Handle=$null;Client=$null;Identity=$null;
         LogLength=$LogLength;PendingLog='';LastHeartbeatUtc=$null;LastHeartbeatTick=0L;StartedTick=[Environment]::TickCount64;StartedUtc=[datetime]::UtcNow;Protected=$false;Failed=$false;Lock=$null;
-        DesktopName=('IW7ParisLab_'+[guid]::NewGuid().ToString('N'));PairOwnership=$PairOwnership;PairRole=$PairRole}
+        DesktopName=('IW7ParisLab_'+[guid]::NewGuid().ToString('N'));PairOwnership=$PairOwnership;PairRole=$PairRole;PairNonce=$null}
 }
 
 function Start-IW7BaseClient {

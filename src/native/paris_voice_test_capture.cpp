@@ -3,6 +3,7 @@
 #include "paris_voice_test_capture.hpp"
 #include "voice_test_capture.hpp"
 #include "voice_test_binding.hpp"
+#include "voice_pcm_witness.hpp"
 #include "voice_relay.hpp"
 #include "paris_test_safety.hpp"
 #include "game/game.hpp"
@@ -32,10 +33,32 @@ std::shared_ptr<provider> state;
 std::shared_ptr<voice_test_capture::control> control;
 utils::hook::detour volume_hook;
 bool installed{},armed{},cancelled{},cancel_acknowledged{};
+bool codec_observed{};
+int requested_quality{};
+struct saved_codec_state {
+    void* encoder{};int mode{},cached{},vad{},dtx{},vbr{},abr{};bool changed{};
+} saved_codec;
 bool protection_seen{},startup_shutdown_preserved{};
 std::recursive_mutex lifecycle;
 std::uint64_t last_report{},last_state_report{};
 DWORD main_tid{};
+utils::hook::detour received_decode_hook,received_enqueue_hook;
+bool received_enabled{},received_finished{};
+std::wstring received_path;
+std::unique_ptr<voice_pcm_witness::buffer> received_pcm;
+voice_pcm_witness::scope received_scope;
+voice_test_binding::observation received_binding;
+unsigned received_rate{},frequency_min{},frequency_max{};
+unsigned surface_samples{},playing_samples{},volume_samples{},pan_samples{},cursor_samples{},surface_failures{};
+LONG volume_min{},volume_max{},pan_min{},pan_max{};
+DWORD first_play_cursor{},last_play_cursor{},last_write_cursor{},hardware_bytes{};
+struct received_frame_context {
+    voice_pcm_witness::frame frame;
+    const short* decoded_pointer{};
+    void* playback_buffer{};
+    bool decoded{},enqueued{},invalid{};
+};
+thread_local received_frame_context* received_context{};
 LPDIRECTSOUNDCAPTURE* const expected_output=reinterpret_cast<LPDIRECTSOUNDCAPTURE*>(0x145D5DC48);
 std::wstring argument(const wchar_t* prefix) {
     int count{};auto** args=CommandLineToArgvW(GetCommandLineW(),&count);
@@ -75,11 +98,12 @@ bool fresh(void* opaque,const voice_test_capture::admission& a,std::uint64_t tic
             p.cached.nonce==a.client_nonce && p.cached.protection_generation==a.server_generation;
     }catch(...){return false;}
 }
-bool read_request(voice_test_binding::arm_request& request,bool is_cancel=false) noexcept {
+bool read_request(voice_test_binding::arm_request& request,bool is_cancel=false,
+    const wchar_t* mailbox=L"iw7-mod/paris-voice-capture.arm") noexcept {
     try {
         std::vector<unsigned char> bytes;
         struct closer {void operator()(void* h)const noexcept{if(h && h!=INVALID_HANDLE_VALUE)CloseHandle(h);}};
-        std::unique_ptr<void,closer> file(retain(std::filesystem::absolute(L"iw7-mod/paris-voice-capture.arm").wstring(),256,bytes));
+        std::unique_ptr<void,closer> file(retain(std::filesystem::absolute(mailbox).wstring(),256,bytes));
         BY_HANDLE_FILE_INFORMATION info{};
         if(!GetFileInformationByHandle(file.get(),&info) || info.nNumberOfLinks!=1 ||
             (info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY)) ||
@@ -87,6 +111,186 @@ bool read_request(voice_test_binding::arm_request& request,bool is_cancel=false)
         const std::string wire(bytes.begin(),bytes.end());
         return is_cancel?voice_test_binding::parse_cancel(wire,request):voice_test_binding::parse_arm(wire,request);
     }catch(...){return false;}
+}
+bool received_fresh(std::uint64_t tick) {
+    if(!state || cancelled || received_finished || !received_pcm)return false;
+    std::lock_guard lock(state->mutex);
+    return voice_test_binding::current(state->cached,tick) && voice_test_binding::same(received_binding,state->cached);
+}
+bool codec_get(void* encoder,int request,int& value) {
+    return utils::hook::invoke<int>(0x1405E9520,encoder,request,&value)==0;
+}
+bool codec_flags_same() {
+    int vad{},dtx{},vbr{},abr{};
+    return codec_get(saved_codec.encoder,31,vad) && codec_get(saved_codec.encoder,35,dtx) &&
+        codec_get(saved_codec.encoder,13,vbr) && codec_get(saved_codec.encoder,33,abr) &&
+        vad==saved_codec.vad && dtx==saved_codec.dtx && vbr==saved_codec.vbr && abr==saved_codec.abr;
+}
+bool restore_codec_quality() noexcept {
+    if(!saved_codec.changed)return true;
+    try {
+        // A recreated encoder belongs to a different lifetime; never dereference
+        // the saved pointer after that ownership changes.
+        if(*reinterpret_cast<void**>(0x145D5C6E8)!=saved_codec.encoder)return false;
+        int mode=saved_codec.mode,observed{};
+        const bool restored=utils::hook::invoke<int>(0x1405E9520,saved_codec.encoder,6,&mode)==0 &&
+            codec_get(saved_codec.encoder,7,observed) && observed==saved_codec.mode &&
+            *reinterpret_cast<const int*>(static_cast<const char*>(saved_codec.encoder)+0x174)==saved_codec.mode &&
+            *reinterpret_cast<const int*>(0x141BB2C7C)==saved_codec.cached && codec_flags_same();
+        console::info("[paris-voice-pair] CODEC_RESTORED; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; requested_quality=%d; restored=%u; configured_mode=%d; cached_quality=%d.\n",
+            GetCurrentProcessId(),state->scope.client_nonce.c_str(),state->scope.server_generation.c_str(),GetTickCount64(),requested_quality,
+            static_cast<unsigned>(restored),observed,*reinterpret_cast<const int*>(0x141BB2C7C));
+        if(restored)saved_codec.changed=false;
+        return restored;
+    }catch(...){return false;}
+}
+bool apply_codec_quality() {
+    if(!requested_quality)return true;
+    if(saved_codec.changed || requested_quality!=10)return false;
+    saved_codec.encoder=*reinterpret_cast<void**>(0x145D5C6E8);
+    if(!saved_codec.encoder || !codec_get(saved_codec.encoder,7,saved_codec.mode))return false;
+    const int configured=*reinterpret_cast<const int*>(static_cast<const char*>(saved_codec.encoder)+0x174);
+    saved_codec.cached=*reinterpret_cast<const int*>(0x141BB2C7C);
+    // Require a quiescent unchanged retail configuration so restoring SET_MODE
+    // recovers both original current/configured modes without raw memory writes.
+    if(saved_codec.mode<1 || saved_codec.mode>8 || configured!=saved_codec.mode ||
+        saved_codec.cached<0 || saved_codec.cached>10 || saved_codec.cached!=*reinterpret_cast<const int*>(0x1415062D8) ||
+        !codec_get(saved_codec.encoder,31,saved_codec.vad) || !codec_get(saved_codec.encoder,35,saved_codec.dtx) ||
+        !codec_get(saved_codec.encoder,13,saved_codec.vbr) || !codec_get(saved_codec.encoder,33,saved_codec.abr))return false;
+    saved_codec.changed=true;int quality=requested_quality,mode{};
+    const bool applied=utils::hook::invoke<int>(0x1405E9520,saved_codec.encoder,4,&quality)==0 &&
+        codec_get(saved_codec.encoder,7,mode) && mode==7 &&
+        *reinterpret_cast<const int*>(static_cast<const char*>(saved_codec.encoder)+0x174)==7 &&
+        *reinterpret_cast<const int*>(0x141BB2C7C)==saved_codec.cached && codec_flags_same();
+    console::info("[paris-voice-pair] CODEC_QUALITY; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; requested_quality=%d; before_mode=%d; after_mode=%d; applied=%u; capture_rate_unchanged=1; flags_unchanged=%u.\n",
+        GetCurrentProcessId(),state->scope.client_nonce.c_str(),state->scope.server_generation.c_str(),GetTickCount64(),requested_quality,
+        saved_codec.mode,mode,static_cast<unsigned>(applied),static_cast<unsigned>(codec_flags_same()));
+    if(!applied){restore_codec_quality();return false;}
+    return true;
+}
+int received_decode(const char* data,int length,short* pcm,int samples) {
+    const auto result=received_decode_hook.invoke<int>(data,length,pcm,samples);
+    if(auto* c=received_context){
+        try {
+            if(c->decoded || !pcm || samples<=0 || samples>4096 || result!=samples*2){c->invalid=true;return result;}
+            c->decoded=true;c->decoded_pointer=pcm;c->frame.samples=samples;
+            c->frame.decoded.assign(pcm,pcm+samples);
+        }catch(...){c->invalid=true;}
+    }
+    return result;
+}
+int received_enqueue(void* buffer,const short* pcm,int bytes) {
+    const auto result=received_enqueue_hook.invoke<int>(buffer,pcm,bytes);
+    if(auto* c=received_context){
+        try {
+            if(c->enqueued || !c->decoded || buffer!=c->playback_buffer || pcm!=c->decoded_pointer ||
+                bytes!=c->frame.samples*2 || result<0 || result>bytes || result%2){c->invalid=true;return result;}
+            auto* device=*reinterpret_cast<IDirectSoundBuffer**>(static_cast<char*>(buffer)+8);
+            WAVEFORMATEX format{};DWORD written{},frequency{};
+            if(!device || FAILED(device->GetFormat(&format,sizeof(format),&written)) || (written!=16 && written!=sizeof(format)) ||
+                format.wFormatTag!=WAVE_FORMAT_PCM || format.nChannels!=1 || format.wBitsPerSample!=16 ||
+                format.nBlockAlign!=2 || format.nSamplesPerSec<8000 || format.nSamplesPerSec>48000 ||
+                format.nAvgBytesPerSec!=format.nSamplesPerSec*2 || format.cbSize || FAILED(device->GetFrequency(&frequency)) ||
+                frequency<4000 || frequency>96000 || (received_rate && received_rate!=format.nSamplesPerSec)){c->invalid=true;return result;}
+            received_rate=format.nSamplesPerSec;
+            const auto observed_frequency=static_cast<unsigned>(frequency);
+            frequency_min=frequency_min?(std::min)(frequency_min,observed_frequency):observed_frequency;
+            frequency_max=(std::max)(frequency_max,observed_frequency);
+            c->enqueued=true;c->frame.enqueued_bytes=result;
+        }catch(...){c->invalid=true;}
+    }
+    return result;
+}
+void observe_received_surface(void* buffer) noexcept {
+    try {
+        if(!buffer){++surface_failures;return;}
+        auto* device=*reinterpret_cast<IDirectSoundBuffer**>(static_cast<char*>(buffer)+8);
+        if(!device){++surface_failures;return;}
+        ++surface_samples;
+        DWORD status{};LONG volume{},pan{};
+        if(SUCCEEDED(device->GetStatus(&status))){if(status&DSBSTATUS_PLAYING)++playing_samples;}else ++surface_failures;
+        if(SUCCEEDED(device->GetVolume(&volume))){
+            if(!volume_samples){volume_min=volume_max=volume;}else{volume_min=(std::min)(volume_min,volume);volume_max=(std::max)(volume_max,volume);}
+            ++volume_samples;
+        }
+        if(SUCCEEDED(device->GetPan(&pan))){
+            if(!pan_samples){pan_min=pan_max=pan;}else{pan_min=(std::min)(pan_min,pan);pan_max=(std::max)(pan_max,pan);}
+            ++pan_samples;
+        }
+        DSBCAPS caps{};caps.dwSize=sizeof(caps);DWORD play{},write{};
+        if(SUCCEEDED(device->GetCaps(&caps)) && SUCCEEDED(device->GetCurrentPosition(&play,&write)) &&
+            caps.dwBufferBytes && play<caps.dwBufferBytes && write<caps.dwBufferBytes){
+            if(!cursor_samples)first_play_cursor=play;last_play_cursor=play;last_write_cursor=write;
+            hardware_bytes=caps.dwBufferBytes;++cursor_samples;
+        }else ++surface_failures;
+    }catch(...){++surface_failures;}
+}
+void write_received_file(const std::wstring& path,const void* data,DWORD bytes) {
+    const auto absolute=std::filesystem::path(path);
+    if(!absolute.is_absolute())throw std::runtime_error("Received PCM absolute path required");
+    for(auto part=absolute.parent_path();!part.empty();part=part.parent_path()){
+        const auto attributes=GetFileAttributesW(part.c_str());
+        if(attributes==INVALID_FILE_ATTRIBUTES || (attributes&FILE_ATTRIBUTE_REPARSE_POINT))throw std::runtime_error("Received PCM parent redirected/missing");
+        if(part==part.parent_path())break;
+    }
+    HANDLE file=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    if(file==INVALID_HANDLE_VALUE)throw std::runtime_error("Fresh received PCM output required");
+    DWORD count{};const bool okay=WriteFile(file,data,bytes,&count,nullptr) && count==bytes && FlushFileBuffers(file);
+    CloseHandle(file);if(!okay)throw std::runtime_error("Received PCM write failed");
+}
+void write_received_wave(const std::wstring& path,const std::vector<std::int16_t>& pcm) {
+    const auto bytes=static_cast<std::uint32_t>(pcm.size()*2);
+    std::vector<unsigned char> wav(44+bytes);auto put=[&](unsigned offset,std::uint32_t value,unsigned count){for(unsigned i=0;i<count;++i)wav[offset+i]=static_cast<unsigned char>(value>>(8*i));};
+    std::memcpy(wav.data(),"RIFF",4);put(4,36+bytes,4);std::memcpy(wav.data()+8,"WAVEfmt ",8);
+    put(16,16,4);put(20,1,2);put(22,1,2);put(24,received_rate,4);put(28,received_rate*2,4);
+    put(32,2,2);put(34,16,2);std::memcpy(wav.data()+36,"data",4);put(40,bytes,4);
+    if(bytes)std::memcpy(wav.data()+44,pcm.data(),bytes);
+    write_received_file(path,wav.data(),static_cast<DWORD>(wav.size()));
+}
+void finish_received() noexcept {
+    if(received_finished || !received_pcm)return;
+    received_finished=true;
+    try {
+        if(received_rate && !received_pcm->decoded().empty()){
+            write_received_wave(received_path+L"-decoded.wav",received_pcm->decoded());
+            write_received_wave(received_path+L"-submitted.wav",received_pcm->submitted());
+        }
+        const auto* member=received_pcm->speaker_identity();
+        const auto json=std::string("{\"Schema\":\"iw7.received-native-pcm/1\",\"PID\":")+std::to_string(received_scope.pid)+
+            ",\"Nonce\":\""+received_scope.nonce+"\",\"Generation\":\""+received_scope.generation+"\",\"RecorderChallenge\":\""+received_scope.challenge+
+            "\",\"ReceiverSlot\":"+std::to_string(received_scope.receiver_slot)+",\"SenderSlot\":"+std::to_string(received_scope.sender_slot)+
+            ",\"AdmittedTick\":"+std::to_string(received_scope.admitted_tick)+",\"DeadlineTick\":"+std::to_string(received_scope.deadline_tick)+
+            ",\"Failed\":"+(received_pcm->failed()?"true":"false")+",\"Frames\":"+std::to_string(received_pcm->frames())+
+            ",\"DecodedBytes\":"+std::to_string(received_pcm->decoded_bytes())+",\"EnqueuedBytes\":"+std::to_string(received_pcm->enqueued_bytes())+
+            ",\"TruncatedFrames\":"+std::to_string(received_pcm->truncated_frames())+",\"FormatRate\":"+std::to_string(received_rate)+
+            ",\"FrequencyMin\":"+std::to_string(frequency_min)+",\"FrequencyMax\":"+std::to_string(frequency_max)+
+            ",\"SurfaceSamples\":"+std::to_string(surface_samples)+",\"PlayingSamples\":"+std::to_string(playing_samples)+
+            ",\"VolumeSamples\":"+std::to_string(volume_samples)+",\"VolumeMin\":"+std::to_string(volume_min)+",\"VolumeMax\":"+std::to_string(volume_max)+
+            ",\"PanSamples\":"+std::to_string(pan_samples)+",\"PanMin\":"+std::to_string(pan_min)+",\"PanMax\":"+std::to_string(pan_max)+
+            ",\"CursorSamples\":"+std::to_string(cursor_samples)+",\"FirstPlayCursor\":"+std::to_string(first_play_cursor)+",\"LastPlayCursor\":"+std::to_string(last_play_cursor)+
+            ",\"LastWriteCursor\":"+std::to_string(last_write_cursor)+",\"HardwareBytes\":"+std::to_string(hardware_bytes)+",\"SurfaceFailures\":"+std::to_string(surface_failures)+
+            ",\"SpeakerUser\":"+std::to_string(member?member->user:0)+",\"SpeakerEpochLow\":"+std::to_string(member?member->epoch_low:0)+
+            ",\"SpeakerEpochHigh\":"+std::to_string(member?member->epoch_high:0)+",\"InputSourceRead\":false,\"OriginalCallsForwarded\":true}\n";
+        write_received_file(received_path+L".json",json.data(),static_cast<DWORD>(json.size()));
+        console::info("[paris-voice-pair] PCM_CLOSED; pid=%lu; nonce=%s; gen=%s; challenge=%s; tick_ms=%llu; failed=%u; frames=%llu.\n",
+            GetCurrentProcessId(),received_scope.nonce.c_str(),received_scope.generation.c_str(),received_scope.challenge.c_str(),GetTickCount64(),
+            static_cast<unsigned>(received_pcm->failed()),received_pcm->frames());
+    }catch(...){console::error("[paris-voice-pair] Received PCM closure failed pid=%lu; retain diagnostics.\n",GetCurrentProcessId());}
+}
+void received_tick(const voice_test_binding::observation& o,std::uint64_t tick) {
+    if(!received_enabled || received_finished)return;
+    voice_test_binding::arm_request request;
+    if(received_pcm){
+        if(read_request(request,true,L"iw7-mod/paris-voice-output.arm") &&
+            voice_test_binding::admit_cancel(request,received_binding,state->scope.source_sha256,received_scope.challenge,tick))finish_received();
+        return;
+    }
+    if(!read_request(request,false,L"iw7-mod/paris-voice-output.arm") ||
+        !voice_test_binding::admit_arm(request,o,state->scope.source_sha256,tick))return;
+    received_scope={GetCurrentProcessId(),o.relay_slot,1-o.relay_slot,o.nonce,o.protection_generation,request.recorder_challenge,tick,tick+15000};
+    received_binding=o;received_pcm=std::make_unique<voice_pcm_witness::buffer>(received_scope);
+    console::info("[paris-voice-pair] PCM_READY; pid=%lu; nonce=%s; gen=%s; challenge=%s; tick_ms=%llu; failed=%u.\n",
+        GetCurrentProcessId(),o.nonce.c_str(),o.protection_generation.c_str(),received_scope.challenge.c_str(),tick,static_cast<unsigned>(received_pcm->failed()));
 }
 HRESULT WINAPI factory(LPCGUID guid,LPDIRECTSOUNDCAPTURE* output,LPUNKNOWN outer) {
     try {
@@ -113,9 +317,29 @@ void volume_init() noexcept {
 void cancel() noexcept {
     try {
     std::lock_guard lifecycle_guard(lifecycle);
-    cancelled=true;if(control)control->cancel();
+    finish_received();cancelled=true;if(control)control->cancel();
+    if(!restore_codec_quality())console::error("[paris-voice-pair] Codec restoration failed pid=%lu; retain diagnostics.\n",GetCurrentProcessId());
     if(state){std::lock_guard lock(state->mutex);state->cached={};}
     }catch(...){}
+}
+void received_playback(void* session,unsigned slot,const char* data,int bytes,
+    std::uint64_t user,std::uint64_t epoch_low,std::uint64_t epoch_high,std::uint32_t sequence,unsigned frame_index) {
+    std::lock_guard lifecycle_guard(lifecycle);
+    received_frame_context context;
+    const bool collect=received_enabled && received_pcm && !received_finished;
+    const auto previous=received_context;
+    if(collect){context.playback_buffer=*reinterpret_cast<void**>(0x1477A01C0+slot*sizeof(void*));context.invalid=previous!=nullptr;received_context=&context;}
+    struct restore {received_frame_context* prior;~restore(){received_context=prior;}} restore_context{previous};
+    utils::hook::invoke<void>(0x140D59620,session,static_cast<int>(slot),data,bytes,0);
+    if(collect){
+        observe_received_surface(context.playback_buffer);
+        // Invalid/missing callbacks make the in-memory witness fail without
+        // changing native playback. The transport has already validated frames.
+        if(context.invalid || !context.decoded || !context.enqueued)context.frame.samples=0;
+        const auto finished_tick=GetTickCount64();
+        received_pcm->append({slot,user,epoch_low,epoch_high,sequence,frame_index},context.frame,finished_tick,
+            GetCurrentThreadId()==main_tid && received_fresh(finished_tick));
+    }
 }
 bool talk_admitted() noexcept {
     try {
@@ -124,6 +348,39 @@ bool talk_admitted() noexcept {
         const auto m=control->snapshot();
         return m.armed && !m.failed && fresh(state.get(),state->scope,GetTickCount64());
     }catch(...){return false;}
+}
+bool begin_source_after_native_talk(std::uint64_t tick) noexcept {
+    try {
+        std::lock_guard lifecycle_guard(lifecycle);
+        if(GetCurrentThreadId()!=main_tid || !installed || cancelled || !armed || !state || !control)return false;
+        const auto proof=paris_test_fixture::capture_protection();
+        if(!proof.protected_now || !proof.ui_ready || !proof.talk_valid || !proof.talk_active ||
+            proof.talk_key0!=224 || proof.talk_key1 || !fresh(state.get(),state->scope,GetTickCount64()) ||
+            !apply_codec_quality() ||
+            FAILED(control->begin_source(tick))){cancel();return false;}
+        console::info("[paris-fake-capture] Source started after native PTT pid=%lu nonce=%s gen=%s slot=%u source_tick_ms=%llu tick_ms=%llu\n",
+            GetCurrentProcessId(),state->scope.client_nonce.c_str(),state->scope.server_generation.c_str(),state->scope.slot,tick,GetTickCount64());
+        return true;
+    }catch(...){cancel();return false;}
+}
+void observe_native_encoder() noexcept {
+    try {
+        std::lock_guard lifecycle_guard(lifecycle);
+        if(codec_observed || !installed || cancelled || !armed || !state || !control || GetCurrentThreadId()!=main_tid ||
+            !control->snapshot().source_started || !fresh(state.get(),state->scope,GetTickCount64()))return;
+        auto* encoder=*reinterpret_cast<void**>(0x145D5C6E8);if(!encoder)return;
+        const int quality=*reinterpret_cast<const int*>(0x1415062D8),cached=*reinterpret_cast<const int*>(0x141BB2C7C);
+        const int mode=*reinterpret_cast<const int*>(static_cast<const char*>(encoder)+0x174);
+        int vad{},dtx{},vbr{},abr{};
+        for(const auto request:{31,35,13,33}){
+            int* output=request==31?&vad:request==35?&dtx:request==13?&vbr:&abr;
+            if(utils::hook::invoke<int>(0x1405E9520,encoder,request,output))return;
+        }
+        if(quality<0 || quality>10 || cached<0 || cached>10 || mode<0 || mode>8)return;
+        codec_observed=true;
+        console::info("[paris-voice-pair] CODEC; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; quality=%d; cached_quality=%d; configured_mode=%d; vad=%d; dtx=%d; vbr=%d; abr=%d; controls_written=0.\n",
+            GetCurrentProcessId(),state->scope.client_nonce.c_str(),state->scope.server_generation.c_str(),GetTickCount64(),quality,cached,mode,vad,dtx,vbr,abr);
+    }catch(...){}
 }
 void relay_main_tick() noexcept {
     try {
@@ -145,9 +402,9 @@ void relay_main_tick() noexcept {
         const auto report_tick=GetTickCount64();
         if(control && (!last_report || report_tick-last_report>=1000)) {
             last_report=report_tick;const auto m=control->snapshot();
-            console::info("[paris-fake-capture] Observed pid=%lu tick_ms=%llu prepared=%u armed=%u failed=%u buffer_started=%u locked=%u rate=%u channels=%u bits=%u align=%u buffer_bytes=%u source_frames=%llu published_frames=%llu source_output_frames=%llu nonzero_frames=%llu lock_calls=%llu lock_bytes=%llu lock_nonzero_bytes=%llu prepared_lock_bytes=%llu unlock_calls=%llu unlock_bytes=%llu\n",
+            console::info("[paris-fake-capture] Observed pid=%lu tick_ms=%llu prepared=%u armed=%u failed=%u buffer_started=%u locked=%u source_started=%u source_tick_ms=%llu rate=%u channels=%u bits=%u align=%u buffer_bytes=%u source_frames=%llu published_frames=%llu source_output_frames=%llu nonzero_frames=%llu lock_calls=%llu lock_bytes=%llu lock_nonzero_bytes=%llu prepared_lock_bytes=%llu unlock_calls=%llu unlock_bytes=%llu\n",
                 GetCurrentProcessId(),report_tick,static_cast<unsigned>(m.prepared),static_cast<unsigned>(m.armed),static_cast<unsigned>(m.failed),static_cast<unsigned>(m.buffer_started),static_cast<unsigned>(m.buffer_locked),
-                m.rate,m.channels,m.bits,m.block_align,m.buffer_bytes,m.source_frames,m.published_frames,m.published_source_frames,m.published_nonzero_frames,
+                static_cast<unsigned>(m.source_started),m.source_start_tick,m.rate,m.channels,m.bits,m.block_align,m.buffer_bytes,m.source_frames,m.published_frames,m.published_source_frames,m.published_nonzero_frames,
                 m.lock_calls,m.lock_bytes,m.lock_nonzero_bytes,m.prepared_lock_bytes,m.unlock_calls,m.unlock_bytes);
         }
         const auto relay=voice_relay::test_readiness(); // v2 mutex already released.
@@ -160,6 +417,10 @@ void relay_main_tick() noexcept {
         o.observed_tick=GetTickCount64();o.nonce=protected_client.nonce;o.protection_generation=protected_client.generation;
         o.challenge=relay.game_challenge;o.relay_generation_low=relay.speaker_generation_low;o.relay_generation_high=relay.speaker_generation_high;
         const auto tick=GetTickCount64();
+        if(received_pcm && !received_finished && (received_pcm->failed() || tick<received_scope.admitted_tick ||
+            tick>=received_scope.deadline_tick || !voice_test_binding::current(o,tick) || !voice_test_binding::same(received_binding,o))){
+            received_pcm->invalidate();finish_received();
+        }
         if(!last_state_report || tick-last_state_report>=100) {
             last_state_report=tick;
             console::info("[paris-voice-pair] STATE; pid=%lu; nonce=%s; gen=%s; slot=%u; query_tick=%llu; tick_ms=%llu; relay_gen_low=%llu; relay_gen_high=%llu; both_ready=%u; ui_ready=%u; talk_valid=%u; talk_key0=%d; talk_key1=%d; talk_active=%u.\n",
@@ -174,6 +435,7 @@ void relay_main_tick() noexcept {
         }
         {std::lock_guard lock(state->mutex);if(armed && !voice_test_binding::same(state->bound,o)){state->cached={};}
             else{state->cached=o;if(!armed)state->bound=o;}}
+        received_tick(o,tick);
         if(armed){if(!fresh(state.get(),state->scope,tick))cancel();return;}
         if(!control || !relay.both_roles_ready || !protected_client.ui_ready || !protected_client.talk_valid ||
             protected_client.talk_key0 || protected_client.talk_key1 || protected_client.talk_active)return; // Receiver may remain Prepared silence.
@@ -191,7 +453,8 @@ void relay_main_tick() noexcept {
 }
 void install() {
     if(!utils::flags::has_flag("paris-voice-fake-capture")){
-        if(std::wcsstr(GetCommandLineW(),L"-paris-fake-capture-"))throw std::runtime_error("Orphan fake capture selectors refused");
+        if(std::wcsstr(GetCommandLineW(),L"-paris-fake-capture-") || utils::flags::has_flag("paris-voice-received-pcm") ||
+            std::wcsstr(GetCommandLineW(),L"-paris-voice-received-output=") || std::wcsstr(GetCommandLineW(),L"-paris-voice-pair-quality="))throw std::runtime_error("Orphan fake/received capture selectors refused");
         return;
     }
     if(std::wcsstr(GetCommandLineW(),L"-paris-lab-capture-"))throw std::runtime_error("Fake and endpoint selectors are mutually exclusive");
@@ -217,6 +480,13 @@ void install() {
     auto wav_hash=utils::cryptography::sha256::compute(std::string(p->wav.begin(),p->wav.end()),true);
     for(auto& c:wav_hash)if(c>='A' && c<='F')c=static_cast<char>(c-'A'+'a');
     if(wav_hash!=a.source_sha256)throw std::runtime_error("Retained fake WAV hash differs");
+    if(std::wcsstr(GetCommandLineW(),L"-paris-voice-pair-quality=")){
+        const int expected_modes[]{1,8,2,3,3,4,4,5,5,6,7};
+        if(argument(L"-paris-voice-pair-quality=")!=L"10" ||
+            std::memcmp(reinterpret_cast<const void*>(0x1415DD74C),expected_modes,sizeof(expected_modes)) ||
+            !std::any_of(p->wav.begin()+44,p->wav.end(),[](unsigned char sample){return sample!=0;}))throw std::runtime_error("Exact speech-only lab quality10 required");
+        requested_quality=10;
+    }
     const auto port=argument(L"-paris-fake-capture-port=");
     if(port.size()!=5 || port.find_first_not_of(L"0123456789")!=std::wstring::npos)throw std::runtime_error("Fake port format");
     a.server_port=static_cast<unsigned>(std::stoul(port));
@@ -228,10 +498,25 @@ void install() {
     const bool signature=std::memcmp(reinterpret_cast<const void*>(0x140B7A082),"\x45\x33\xc0\x48\x89\x05\xcc\x3b\x1e\x05\x48\x8d\x15\xb5\x3b\x1e\x05\x33\xc9\xe8\x74\x3e\x64\x00",24)==0 &&
         std::memcmp(reinterpret_cast<const void*>(0x140D5A2E0),"\x48\x83\xec\x38\x83\x3d\x9d\x5e\xa4\x06\x01",11)==0;
     if(!signature)throw std::runtime_error("Fake retail signatures differ");
+    if(std::memcmp(reinterpret_cast<const void*>(0x1405E9520),"\x48\x8b\x01\x48\xff\x60\x50",7))throw std::runtime_error("Native codec getter signature differs");
     a.requested=a.isolated_build=a.isolated_flag=a.client_test_flag=a.voice_test_flag=true;
     a.marker_verified=a.owned_identity=a.signatures_verified=a.capture_owner_absent=a.volume_owner_absent=true;
     a.process_id=GetCurrentProcessId();a.admitted_tick=GetTickCount64();a.deadline_tick=a.admitted_tick+120000;
     state=p;installed=true;
+    received_enabled=utils::flags::has_flag("paris-voice-received-pcm");
+    if(received_enabled){
+        if(utils::flags::has_flag("paris-voice-native-trace") ||
+            std::memcmp(reinterpret_cast<const void*>(0x140B79310),"\x48\x89\x5c\x24\x20\x57\xb8\x30\x40\x00\x00",11) ||
+            std::memcmp(reinterpret_cast<const void*>(0x140B79B60),"\x48\x89\x5c\x24\x10\x56\x48\x83\xec\x60",10) ||
+            std::memcmp(reinterpret_cast<const void*>(0x140D59620),"\x40\x55\x57\x41\x54\x41\x56\x41\x57\xb8\x40\x20\x00\x00",14) ||
+            std::memcmp(reinterpret_cast<const void*>(0x140D596F0),"\x44\x8b\x0d\xe5\x2f\x00\x05\x4c\x8d\x44\x24\x20\x8b\xfd\x48\x63\xcb\x2b\xfb\x41\x3b\xf9\x41\x0f\x4d\xf9\x49\x03\xcf\x8b\xd7\xe8\xfc\xfb\xe1\xff\x8b\xf0\x85\xc0\x7e\x15\x4b\x8b\x8c\xf4\xc0\x01\x7a\x07\x48\x8d\x54\x24\x20\x44\x8b\xc0\xe8\xa1\xff\xe1\xff",63) ||
+            std::memcmp(reinterpret_cast<const void*>(0x140B796D0),"\xe9\x8b\x04\x00\x00",5) ||
+            std::memcmp(reinterpret_cast<const void*>(0x140B79B99),"\x8b\x41\x10\x2b\x41\x2c\x44\x3b\xc0\x44\x0f\x4d\xc0\x45\x85\xc0\x74\xe1\x48\x8b\x49\x08",22))
+            throw std::runtime_error("Received PCM forwarding signatures/owner differ");
+        received_path=argument(L"-paris-voice-received-output=");
+        if(!std::filesystem::path(received_path).is_absolute())throw std::runtime_error("Received PCM absolute output required");
+        received_decode_hook.create(0x140B79310,received_decode);received_enqueue_hook.create(0x140B79B60,received_enqueue);
+    }
     utils::hook::call(0x140B7A095,reinterpret_cast<void*>(factory));volume_hook.create(0x140D5A2E0,volume_init);
     scripting::on_shutdown([](bool full_clear,bool post){
         if(post)return;

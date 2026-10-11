@@ -1,5 +1,9 @@
 # Speech receiver test recovery - 2026-10-11
 
+Historical PR126 checkpoint while the owner was playing. The later authorized
+full build and actual two-client recordings are recorded in
+[the speech witness continuation](VOICE-SPEECH-WITNESS-2026-10-11.md).
+
 Issue [4](https://github.com/maxis0191/iw7-paris-server/issues/4) remains open.
 The owner asks for a working voice path and actual received speech evidence.
 They are still playing and explicitly ask us to continue corrections meanwhile.
