@@ -316,9 +316,15 @@ namespace paris_test_fixture
             // is pending; query/UI/protection loss above clears it explicitly.
             if(!movie_quiet_measurement(movie_present,movie_muted))quiet=false;
             std::lock_guard movie_lock(movie_mutex);
+            const auto movie_sample_tick=GetTickCount64();
+            // The worker can update between the measurement and this lock.
+            // Log the current quiet state and its original clock together.
+            quiet=quiet && movie.quiet && movie.observed && movie_sample_tick>=movie.observed &&
+                movie_sample_tick-movie.observed<500;
+            movie_present=movie.present;movie_muted=movie.muted;
             console::info("[paris-voice-pair] AUDIO; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; quiet=%d; movie_present=%u; movie_muted=%u; movie_owner_tid=%lu; movie_main_tid=%lu; movie_epoch=%llu; movie_guarded=%u.\n",
                 GetCurrentProcessId(), agent_runtime.client_nonce.c_str(), agent_generation.c_str(),
-                std::min(GetTickCount64(),movie.observed), static_cast<int>(quiet),
+                std::min(movie_sample_tick,movie.observed), static_cast<int>(quiet),
                 static_cast<unsigned>(movie_present),static_cast<unsigned>(movie_muted),movie.thread,capture_main_tid,movie.epoch,
                 static_cast<unsigned>(movie_guarded));
         }
