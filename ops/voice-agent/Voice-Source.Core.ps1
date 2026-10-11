@@ -26,13 +26,15 @@ function Read-IW7VoiceFixtureWAV {
     [pscustomobject]@{Kind=$Kind;PCMBytes=$pcmBytes;PCMOffset=$pcmOffset;Seconds=$pcmBytes/32000.0;SourceIsSynthetic=$true;HumanAcceptance=$false}
 }
 function Set-IW7VoicePairPlanOptions {
-    param($PairPlan,$Speech,$Silence)
+    param($PairPlan,$Speech,$Silence,[ValidateRange(0,1)][int]$SenderSlot=0)
     if($PairPlan.RunPlan.Debugger){throw 'This minimal VoicePair proposal requires explicit no-debugger20/20.'}
     $run=Get-IW7LabRunPlan Reduced -PlannedClients 2 -EnableAudio
     foreach($role in $PairPlan.Roles){
-        $source=if($role.Name -ceq 'A'){$Speech}else{$Silence}
-        $proof=Read-IW7VoiceFixtureWAV $source.Bytes $(if($role.Name -ceq 'A'){'speech'}else{'silence'})
-        if($role.Name -ceq 'A' -and $proof.Seconds -gt 4){throw 'Speech source must fit one <=5s ordinary PTT hold; prepare a shorter original phrase.'}
+        if($role.Slot -notin @(0,1) -or $role.Name -cne @('A','B')[$role.Slot]){throw 'Voice source role/slot identity differs.'}
+        $speaking=$role.Slot -eq $SenderSlot
+        $source=if($speaking){$Speech}else{$Silence}
+        $proof=Read-IW7VoiceFixtureWAV $source.Bytes $(if($speaking){'speech'}else{'silence'})
+        if($speaking -and $proof.Seconds -gt 4){throw 'Speech source must fit one <=5s ordinary PTT hold; prepare a shorter original phrase.'}
         if($source.Sha256 -cnotmatch '^[a-f0-9]{64}$' -or ![IO.Path]::IsPathFullyQualified($source.Path) -or $source.Path -match '["\r\n]'){throw 'Pinned absolute WAV source identity required.'}
         $role.Plan.RunPlan=$run
         $role.Plan.MutableFiles=@(@($role.Plan.MutableFiles)+@('iw7-mod/paris-voice-capture.arm')|Select-Object -Unique)

@@ -27,6 +27,12 @@ try{
         $args=Get-IW7VoicePairExtraArguments $role.Plan
         Check ($args.Contains('+set snd_enable 1') -and $args.Contains('-paris-fake-capture-slot='+$role.Slot) -and !$args.Contains('native-trace') -and !$args.Contains('probe') -and 'iw7-mod/paris-voice-capture.arm' -in $role.Plan.MutableFiles) 'Voice options omit exact slot/audio/restore or add private probe.'
     }
+    $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 1
+    Check ($plan.Roles[0].Plan.VoicePairSource.Kind -ceq 'silence' -and $plan.Roles[0].Plan.VoicePairSource.Slot -eq 0 -and
+        $plan.Roles[1].Plan.VoicePairSource.Kind -ceq 'speech' -and $plan.Roles[1].Plan.VoicePairSource.Slot -eq 1 -and
+        $plan.Roles[1].Plan.VoicePairSource.Path -ceq $srcA.Path) 'Reverse source selection changed physical role/slot identity.'
+    Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 2}
+    $plan.Roles[1].Slot=0;Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 1};$plan.Roles[1].Slot=1
     $plan.Roles[0].Plan.VoicePairSource.Path='C:\voice"unsafe.wav';Refuses{Get-IW7VoicePairExtraArguments $plan.Roles[0].Plan}
     'PASS draft speech/silence RIFF/categories/options20/20/audio/slot/arm restitution, no probe flags. No SAPI/audio/game.'
 }finally{Remove-Item -LiteralPath $root -Recurse -Force}

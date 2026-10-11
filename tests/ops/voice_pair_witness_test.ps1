@@ -8,7 +8,7 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('iw7-voice-pair-test-'+[guid]::NewGu
 [IO.Directory]::CreateDirectory($root)|Out-Null
 try{
     $expected=[pscustomobject]@{ServerId=99;Generation=('c'*32);ReceiverCreationFileTime=999UL;Roles=@(
-        [pscustomobject]@{PID=11;Nonce=('a'*32);Slot=0;StartedTick=100L;RelayGeneration=('d'*32);SourceSHA256=('1'*64)},
+        [pscustomobject]@{PID=11;Nonce=('a'*32);Slot=0;StartedTick=100L;RelayGeneration=('d'*32);SourceSHA256=('1'*64);CreationFileTime=888UL},
         [pscustomobject]@{PID=12;Nonce=('b'*32);Slot=1;StartedTick=100L;RelayGeneration=('e'*32);SourceSHA256=('2'*64);CreationFileTime=999UL})}
     function Snapshot($tick){[pscustomobject]@{OwnershipValidated=$true;ServerId=99;Generation=('c'*32);FixtureReady=$true;EnableAudio=$true;PhysicalBytes=20GB;CommitBytes=20GB;Roles=@(
         [pscustomobject]@{PID=11;Nonce=('a'*32);Slot=0;Generation=('c'*32);RelayGeneration=('d'*32);Protected=$true;V2Ready=$true;UIReady=$true;Tick=$tick},
@@ -44,8 +44,11 @@ try{
     [BitConverter]::GetBytes([uint16]4).CopyTo($header,32);[BitConverter]::GetBytes([uint16]16).CopyTo($header,34)
     [Text.Encoding]::ASCII.GetBytes('data').CopyTo($header,36);[BitConverter]::GetBytes([uint32]4).CopyTo($header,40)
     [IO.File]::WriteAllBytes($wav,($header+[byte[]]@(1,0,1,0)));$null=Assert-IW7ReceiverWAV $wav 12
-    foreach($failureCase in @('none','slow_preflight','protection','foreign_ack','missing_ptt','malformed_wav','abort_bad')){
-        $clock=@{Tick=1000L;Events=[Collections.Generic.List[string]]::new();Sequence=0UL;Challenge=$null;Input=$null;CaptureArmed=$false;PTT=$false;Completed=$false;Mode=$failureCase;ArmCount=0;RecorderStarted=$false;ReadyTick=0L}
+    foreach($failureCase in @('none','slow_preflight','protection','foreign_ack','missing_ptt','malformed_wav','abort_bad','reverse','reverse_foreign_recorder')){
+        $selectedSlot=if($failureCase.StartsWith('reverse')){1}else{0}
+        $expected|Add-Member SenderSlot $selectedSlot -Force
+        $expected.ReceiverCreationFileTime=$expected.Roles[1-$selectedSlot].CreationFileTime
+        $clock=@{Tick=1000L;Events=[Collections.Generic.List[string]]::new();Sequence=0UL;Challenge=$null;Input=$null;CaptureArmed=$false;PTT=$false;Completed=$false;Mode=$failureCase;ArmCount=0;RecorderStarted=$false;ReadyTick=0L;Sender=$expected.Roles[$selectedSlot];Receiver=$expected.Roles[1-$selectedSlot];SenderSlot=$selectedSlot}
         $io=@{
             Now={$clock.Tick}
             Sleep={param($ms)$clock.Tick+=$ms}
@@ -54,23 +57,23 @@ try{
                 if($clock.Mode -eq 'protection' -and $clock.Input -and $clock.Input.Action -eq 'hold'){$s.Roles[1].Protected=$false}
                 $s
             }
-            StartRecorder={param($receiver,$output,$seconds)$clock.Events.Add('recorder_start');$clock.RecorderStarted=$true;$clock.ReadyTick=$clock.Tick;[pscustomobject]@{Started=$true}}
-            RecorderState={param($recorder)$clock.Events.Add('recorder_ready');[pscustomobject]@{OwnedIdentityValidated=$true;Exited=$clock.Completed;Stdout="WASAPI recording ready: scope=process_tree pid=12 creation=999 format=pcm16 rate=48000 channels=2 tick_ms=$($clock.ReadyTick) fallback=0`n"}}
-            PublishCaptureArm={param($record,$Deadline)Check $clock.RecorderStarted 'ARM before recorder';Check ($record.Slot -eq 0 -and $Deadline -eq $record.Tick+500) 'B armed or ARM TTL wrong';$clock.Events.Add('capture_arm');$clock.Challenge=$record.RecorderChallenge;$clock.CaptureArmed=$true;$clock.ArmCount++}
+            StartRecorder={param($receiver,$output,$seconds)Check ($receiver.PID -eq $clock.Receiver.PID) 'Recorder targets sender';$clock.Events.Add('recorder_start');$clock.RecorderStarted=$true;$clock.ReadyTick=$clock.Tick;[pscustomobject]@{Started=$true}}
+            RecorderState={param($recorder)$clock.Events.Add('recorder_ready');$pidValue=if($clock.Mode -ceq 'reverse_foreign_recorder'){$clock.Sender.PID}else{$clock.Receiver.PID};[pscustomobject]@{OwnedIdentityValidated=$true;Exited=$clock.Completed;Stdout="WASAPI recording ready: scope=process_tree pid=$pidValue creation=$($clock.Receiver.CreationFileTime) format=pcm16 rate=48000 channels=2 tick_ms=$($clock.ReadyTick) fallback=0`n"}}
+            PublishCaptureArm={param($record,$Deadline)Check $clock.RecorderStarted 'ARM before recorder';Check ($record.Slot -eq $clock.SenderSlot -and $record.PID -eq $clock.Sender.PID -and $Deadline -eq $record.Tick+500) 'Receiver armed or ARM TTL wrong';$clock.Events.Add('capture_arm');$clock.Challenge=$record.RecorderChallenge;$clock.CaptureArmed=$true;$clock.ArmCount++}
             CaptureState={
                 if(!$clock.CaptureArmed){$clock.Events.Add('prepared');if($clock.Mode -ceq 'slow_preflight'){$clock.Tick+=600}}
-                [pscustomobject]@{BothPrepared=(!$clock.CaptureArmed);DescriptorsValidated=$true;SourceLockNonzeroBytes=0;SenderArmed=$clock.CaptureArmed;ReceiverPrepared=$true;Failed=$false;BindingValidated=$true;Tick=$clock.Tick;RecorderChallenge=$clock.Challenge;SourceA='speech';SourceB='silence'}
+                [pscustomobject]@{BothPrepared=(!$clock.CaptureArmed);DescriptorsValidated=$true;SourceLockNonzeroBytes=0;SenderArmed=$clock.CaptureArmed;ReceiverPrepared=$true;Failed=$false;BindingValidated=$true;Tick=$clock.Tick;RecorderChallenge=$clock.Challenge;SourceA=$(if($clock.SenderSlot -eq 0){'speech'}else{'silence'});SourceB=$(if($clock.SenderSlot -eq 1){'speech'}else{'silence'})}
             }
             SendInput={param($action,$button,$duration,$deadline)
                 Check ($deadline -gt $clock.Tick) 'Input publication deadline already expired'
-                $clock.Events.Add($action);$clock.Sequence++;$clock.Input=[pscustomobject]@{PID=11;Nonce=('a'*32);Sequence=$clock.Sequence;Step=$clock.Sequence;SentTick=$clock.Tick;Action=$action;Duration=$duration}
+                $clock.Events.Add($action);$clock.Sequence++;$clock.Input=[pscustomobject]@{PID=$clock.Sender.PID;Nonce=$clock.Sender.Nonce;Sequence=$clock.Sequence;Step=$clock.Sequence;SentTick=$clock.Tick;Action=$action;Duration=$duration}
                 if($action -eq 'hold'){$clock.PTT=$true};$clock.Input
             }
             InputReply={param($receipt)
                 $status=if($receipt.Action -eq 'arm'){'armed'}elseif($clock.Tick-$receipt.SentTick -ge $receipt.Duration){$clock.PTT=$false;$clock.Completed=$true;'step_complete'}else{'dispatched'}
-                [pscustomobject]@{PID=$(if($clock.Mode -eq 'foreign_ack' -and $receipt.Action -eq 'hold'){999}else{11});Nonce=('a'*32);Sequence=$receipt.Sequence;Step=$receipt.Step;Tick=$clock.Tick;Status=$status}
+                [pscustomobject]@{PID=$(if($clock.Mode -eq 'foreign_ack' -and $receipt.Action -eq 'hold'){999}else{$clock.Sender.PID});Nonce=$clock.Sender.Nonce;Sequence=$receipt.Sequence;Step=$receipt.Step;Tick=$clock.Tick;Status=$status}
             }
-            PTTState={[pscustomobject]@{PID=11;Nonce=('a'*32);Tick=$clock.Tick;Active=($clock.PTT -and $clock.Mode -ne 'missing_ptt');Key0=$(if($clock.PTT -and $clock.Mode -ne 'missing_ptt'){224}else{0});Key1=0}}
+            PTTState={[pscustomobject]@{PID=$clock.Sender.PID;Nonce=$clock.Sender.Nonce;Tick=$clock.Tick;Active=($clock.PTT -and $clock.Mode -ne 'missing_ptt');Key0=$(if($clock.PTT -and $clock.Mode -ne 'missing_ptt'){224}else{0});Key1=0}}
             Counters={
                 $n=if($clock.Completed){1}else{0};@{SourceLockNonzeroBytes=$n;EncodedFrames=$n;SentAudioFrames=$n;ServerRelayedFrames=$n;AcceptedNativePlaybackCalls=$n}
             }
@@ -79,16 +82,18 @@ try{
             CancelCapture={$clock.Events.Add('capture_cancel');$clock.CaptureArmed=$false;[pscustomobject]@{Cancelled=$true}}
             AbortInput={
                 $clock.Events.Add('abort');$clock.PTT=$false;$clock.Sequence++
-                $receipt=[pscustomobject]@{PID=11;Nonce=('a'*32);Sequence=$clock.Sequence;Step=$clock.Sequence;SentTick=$clock.Tick}
-                [pscustomobject]@{Receipt=$receipt;Reply=[pscustomobject]@{PID=11;Nonce=('a'*32);Sequence=$clock.Sequence;Step=$clock.Sequence;Tick=$clock.Tick;Status=$(if($clock.Mode -eq 'abort_bad'){'dispatched'}else{'aborted'})}}
+                $receipt=[pscustomobject]@{PID=$clock.Sender.PID;Nonce=$clock.Sender.Nonce;Sequence=$clock.Sequence;Step=$clock.Sequence;SentTick=$clock.Tick}
+                [pscustomobject]@{Receipt=$receipt;Reply=[pscustomobject]@{PID=$clock.Sender.PID;Nonce=$clock.Sender.Nonce;Sequence=$clock.Sequence;Step=$clock.Sequence;Tick=$clock.Tick;Status=$(if($clock.Mode -eq 'abort_bad'){'dispatched'}else{'aborted'})}}
             }
         }
         [IO.File]::WriteAllBytes($wav,($header+[byte[]]@(1,0,1,0)))
         $case=Join-Path $root $failureCase
-        if($failureCase -in @('none','slow_preflight')){
+        if($failureCase -in @('none','slow_preflight','reverse')){
             $result=Invoke-IW7VoicePairWitness $expected $io $case -SpeechHoldMs 200
             Check ($result.MechanicalPathObserved -and !$result.IntelligibilityAccepted -and !$result.HumanConversationAccepted) 'Synthetic orchestration claimed words/human acceptance.'
+            Check ($result.SenderSlot -eq $clock.SenderSlot -and $result.ReceiverSlot -eq 1-$clock.SenderSlot) 'Result direction differs from actual input/recorder.'
         }else{Refuses{Invoke-IW7VoicePairWitness $expected $io $case -SpeechHoldMs 200}}
+        if($failureCase -ceq 'reverse_foreign_recorder'){Check ($clock.ArmCount -eq 0 -and !$clock.Events.Contains('hold') -and $clock.Events.Contains('recorder_finish')) 'Foreign reverse recorder allowed speech or leaked recorder';continue}
         Check ($clock.ArmCount -eq 1 -and $clock.Events.IndexOf('recorder_ready') -lt $clock.Events.IndexOf('capture_arm') -and $clock.Events.Contains('abort') -and $clock.Events.Contains('capture_cancel') -and $clock.Events.Contains('recorder_finish')) 'Release/cancel/recorder ordering or cleanup missing.'
         Check ($clock.Events.IndexOf('prepared') -lt $clock.Events.IndexOf('recorder_start')) 'Descriptor preflight consumes the recorder-ready ARM freshness window.'
     }
