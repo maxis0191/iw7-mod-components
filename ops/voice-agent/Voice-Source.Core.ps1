@@ -26,7 +26,7 @@ function Read-IW7VoiceFixtureWAV {
     [pscustomobject]@{Kind=$Kind;PCMBytes=$pcmBytes;PCMOffset=$pcmOffset;Seconds=$pcmBytes/32000.0;SourceIsSynthetic=$true;HumanAcceptance=$false}
 }
 function Set-IW7VoicePairPlanOptions {
-    param($PairPlan,$Speech,$Silence,[ValidateRange(0,1)][int]$SenderSlot=0)
+    param($PairPlan,$Speech,$Silence,[ValidateRange(0,1)][int]$SenderSlot=0,[switch]$QuietGameAudio)
     if($PairPlan.RunPlan.Debugger){throw 'This minimal VoicePair proposal requires explicit no-debugger20/20.'}
     $run=Get-IW7LabRunPlan Reduced -PlannedClients 2 -EnableAudio
     foreach($role in $PairPlan.Roles){
@@ -38,7 +38,7 @@ function Set-IW7VoicePairPlanOptions {
         if($source.Sha256 -cnotmatch '^[a-f0-9]{64}$' -or ![IO.Path]::IsPathFullyQualified($source.Path) -or $source.Path -match '["\r\n]'){throw 'Pinned absolute WAV source identity required.'}
         $role.Plan.RunPlan=$run
         $role.Plan.MutableFiles=@(@($role.Plan.MutableFiles)+@('iw7-mod/paris-voice-capture.arm')|Select-Object -Unique)
-        $role.Plan|Add-Member VoicePairSource ([pscustomobject]@{Path=$source.Path;SHA256=$source.Sha256;Kind=$proof.Kind;Slot=$role.Slot}) -Force
+        $role.Plan|Add-Member VoicePairSource ([pscustomobject]@{Path=$source.Path;SHA256=$source.Sha256;Kind=$proof.Kind;Slot=$role.Slot;QuietGameAudio=[bool]$QuietGameAudio}) -Force
     }
     $PairPlan.RunPlan=$run;$PairPlan
 }
@@ -49,7 +49,8 @@ function Get-IW7VoicePairExtraArguments {
         $Plan.RunPlan.PhysicalBytes -ne 20GB -or $Plan.RunPlan.CommitBytes -ne 20GB -or !$voice -or
         $voice.Slot -notin @(0,1) -or $voice.SHA256 -cnotmatch '^[a-f0-9]{64}$' -or $Plan.SHA256 -cnotmatch '^[a-fA-F0-9]{64}$' -or
         ![IO.Path]::IsPathFullyQualified($voice.Path) -or $voice.Path -match '["\r\n]'){throw 'Explicit pinned isolated VoicePair options required.'}
-    ' +set snd_enable 1 '+(Get-IW7LabVoiceArguments Player)+' -paris-voice-fake-capture -paris-fake-capture-wav="'+$voice.Path+'"'+
+    $background=if($voice.PSObject.Properties['QuietGameAudio'] -and $voice.QuietGameAudio){' +set snd_dialogue_volume 0 +set snd_music_volume 0 +set snd_licensed_content_volume 0'}else{''}
+    ' +set snd_enable 1 '+$background+' '+(Get-IW7LabVoiceArguments Player)+' -paris-voice-fake-capture -paris-fake-capture-wav="'+$voice.Path+'"'+
         ' -paris-fake-capture-sha256='+$voice.SHA256+' -paris-fake-capture-image-sha256='+$Plan.SHA256.ToLowerInvariant()+
         ' -paris-fake-capture-port='+$Plan.ServerPort+' -paris-fake-capture-slot='+$voice.Slot
 }
