@@ -106,15 +106,16 @@ function Read-IW7VoicePairNativeSnapshot($Wire,$Lease) {
     }
     $text=Read-IW7VoiceOwnedLog $Wire.ServerLog
     if($text -match '\[Paris agent voice pair\] FAIL'){throw 'VoicePair fixture failed.'}
-    $fixtureReady=$true
+    $fixtureReady=$true;$sampleTicks=@()
     foreach($index in @(0,1)){
         $pattern='(?m)^\[Paris agent voice pair\] SAMPLE; server_pid='+$Wire.Pair.Server.PID+'; client_nonce='+$Wire.Expected.Roles[$index].Nonce+'; server_generation='+$Wire.Expected.Generation+'; slot='+$index+'; native_tick_ms=(\d+); protected=1; sample_id=\d+; down_fixture=0; ready=1\.[ \t]*\r?$'
         $samples=[regex]::Matches($text,$pattern)
-        if(!$samples.Count){$fixtureReady=$false;continue}
+        if(!$samples.Count){$fixtureReady=$false;$sampleTicks+=0L;continue}
         $tick=[long]$samples[-1].Groups[1].Value;$now=[Environment]::TickCount64
         if($tick -gt $now -or $now-$tick -gt 500){throw 'Voice fixture SAMPLE stale.'}
+        $sampleTicks+=$tick
     }
-    [pscustomobject]@{OwnershipValidated=$true;ServerId=$Wire.Pair.Server.PID;Generation=$Wire.Expected.Generation;FixtureReady=$fixtureReady;Roles=$roles;
+    [pscustomobject]@{OwnershipValidated=$true;ServerId=$Wire.Pair.Server.PID;Generation=$Wire.Expected.Generation;FixtureReady=$fixtureReady;FixtureTicks=$sampleTicks;Roles=$roles;
         EnableAudio=$Wire.Pair.Plan.RunPlan.EnableAudio;PhysicalBytes=$Lease.PhysicalBytes;CommitBytes=$Lease.CommitBytes}
 }
 function New-IW7VoicePairProviders {
@@ -200,7 +201,7 @@ function New-IW7VoicePairProviders {
                 $null=Get-IW7VoiceArmLease $wire.Pair
                 if($record.PID -ne $wire.Sender.Identity.PID -or $record.Nonce -cne $wire.Sender.PairNonce -or $record.Slot -ne $wire.SenderSlot){throw 'Capture ARM does not own the selected sender.'}
                 if($record.RecorderReadyTick -gt [Environment]::TickCount64 -or [Environment]::TickCount64-$record.RecorderReadyTick -gt 500){throw 'Original recorder readiness expired before ARM publication.'}
-                Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.Sender.Plan.GameRoot 'iw7-mod/paris-voice-capture.arm') $record $Deadline -NotAfterTick ($record.RecorderReadyTick+500)
+                Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.Sender.Plan.GameRoot 'iw7-mod/paris-voice-capture.arm') $record $Deadline -NotAfterTick $record.FreshDeadline
                 $wire.ArmRecord=$record
             }
             CaptureState={

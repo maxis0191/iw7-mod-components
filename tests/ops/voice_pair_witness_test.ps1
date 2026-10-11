@@ -10,13 +10,14 @@ try{
     $expected=[pscustomobject]@{ServerId=99;Generation=('c'*32);ReceiverCreationFileTime=999UL;Roles=@(
         [pscustomobject]@{PID=11;Nonce=('a'*32);Slot=0;StartedTick=100L;RelayGeneration=('d'*32);SourceSHA256=('1'*64);CreationFileTime=888UL},
         [pscustomobject]@{PID=12;Nonce=('b'*32);Slot=1;StartedTick=100L;RelayGeneration=('e'*32);SourceSHA256=('2'*64);CreationFileTime=999UL})}
-    function Snapshot($tick){[pscustomobject]@{OwnershipValidated=$true;ServerId=99;Generation=('c'*32);FixtureReady=$true;EnableAudio=$true;PhysicalBytes=20GB;CommitBytes=20GB;Roles=@(
+    function Snapshot($tick){[pscustomobject]@{OwnershipValidated=$true;ServerId=99;Generation=('c'*32);FixtureReady=$true;FixtureTicks=@($tick,$tick);EnableAudio=$true;PhysicalBytes=20GB;CommitBytes=20GB;Roles=@(
         [pscustomobject]@{PID=11;Nonce=('a'*32);Slot=0;Generation=('c'*32);RelayGeneration=('d'*32);Protected=$true;V2Ready=$true;UIReady=$true;Tick=$tick},
         [pscustomobject]@{PID=12;Nonce=('b'*32);Slot=1;Generation=('c'*32);RelayGeneration=('e'*32);Protected=$true;V2Ready=$true;UIReady=$true;Tick=$tick})}}
     $snapshot=Snapshot 1000;Assert-IW7VoicePairSnapshot $snapshot 1000 $expected
     $snapshot.Roles[1].Protected=$false;Refuses{Assert-IW7VoicePairSnapshot $snapshot 1000 $expected}
     $snapshot=Snapshot 499;Refuses{Assert-IW7VoicePairSnapshot $snapshot 1000 $expected}
     $snapshot=Snapshot 1001;Refuses{Assert-IW7VoicePairSnapshot $snapshot 1000 $expected}
+    $snapshot=Snapshot 1000;$snapshot.FixtureTicks[1]=499;Refuses{Assert-IW7VoicePairSnapshot $snapshot 1000 $expected}
     $snapshot=Snapshot 1000;$snapshot.Roles[1].RelayGeneration='f'*32;Refuses{Assert-IW7VoicePairSnapshot $snapshot 1000 $expected}
     $snapshot=Snapshot 1000;$snapshot.Roles[1].V2Ready=1;Refuses{Assert-IW7VoicePairSnapshot $snapshot 1000 $expected}
     $readyText="WASAPI recording ready: scope=process_tree pid=12 creation=999 format=pcm16 rate=48000 channels=2 tick_ms=1000 fallback=0`n"

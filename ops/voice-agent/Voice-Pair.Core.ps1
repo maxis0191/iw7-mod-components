@@ -9,10 +9,11 @@ function Assert-IW7VoicePairSnapshot {
     param($Snapshot,[long]$NowTick,$Expected)
     if(!$Snapshot -or $Snapshot.OwnershipValidated -isnot [bool] -or !$Snapshot.OwnershipValidated -or
         $Snapshot.ServerId -ne $Expected.ServerId -or $Snapshot.Generation -cne $Expected.Generation -or
-        $Snapshot.Roles.Count -ne 2 -or $Snapshot.FixtureReady -isnot [bool] -or !$Snapshot.FixtureReady -or $Snapshot.EnableAudio -isnot [bool] -or $Snapshot.EnableAudio -ne $true -or
+        $Snapshot.Roles.Count -ne 2 -or $Snapshot.FixtureTicks.Count -ne 2 -or $Snapshot.FixtureReady -isnot [bool] -or !$Snapshot.FixtureReady -or $Snapshot.EnableAudio -isnot [bool] -or $Snapshot.EnableAudio -ne $true -or
         $Snapshot.PhysicalBytes -ne 20GB -or $Snapshot.CommitBytes -ne 20GB){throw 'Exact audio-enabled 20/20 owned pair and no-down fixture required.'}
     foreach($index in @(0,1)){
         $role=$Snapshot.Roles[$index];$owned=$Expected.Roles[$index]
+        if($Snapshot.FixtureTicks[$index] -lt $owned.StartedTick -or $Snapshot.FixtureTicks[$index] -gt $NowTick -or $NowTick-$Snapshot.FixtureTicks[$index] -gt 500){throw 'Original no-down fixture sample expired.'}
         if($role.PID -ne $owned.PID -or $role.Nonce -cne $owned.Nonce -or $role.Slot -ne $index -or
             $role.Nonce -cnotmatch '^[a-f0-9]{32}$' -or $role.Generation -cne $Expected.Generation -or
             $role.RelayGeneration -cne $owned.RelayGeneration -or $role.RelayGeneration -cnotmatch '^[a-f0-9]{32}$' -or
@@ -39,9 +40,13 @@ function New-IW7VoicePairArmRecord {
     $receiverSlot=1-(Get-IW7VoicePairSenderSlot $Expected)
     if(!$Recorder -or $Recorder.PID -ne $Expected.Roles[$receiverSlot].PID -or $Recorder.CreationFileTime -ne $Expected.ReceiverCreationFileTime -or
         $Recorder.Tick -gt $NowTick -or $NowTick-$Recorder.Tick -gt 500 -or $RecorderChallenge -cnotmatch '^[a-f0-9]{32}$'){throw 'Owned receiver stream must be fresh and ready before COM ARM.'}
+    $freshDeadline=$Recorder.Tick+500
+    foreach($index in @(0,1)){
+        $freshDeadline=[math]::Min($freshDeadline,[math]::Min($Snapshot.Roles[$index].Tick+500,$Snapshot.FixtureTicks[$index]+500))
+    }
     foreach($role in $Expected.Roles){
         if($role.SourceSHA256 -cnotmatch '^[a-f0-9]{64}$'){throw 'Pinned role source hash required.'}
-        [pscustomobject]@{PID=$role.PID;Nonce=$role.Nonce;Generation=$Expected.Generation;Slot=$role.Slot;RecorderChallenge=$RecorderChallenge;Tick=$NowTick;RecorderReadyTick=$Recorder.Tick;
+        [pscustomobject]@{PID=$role.PID;Nonce=$role.Nonce;Generation=$Expected.Generation;Slot=$role.Slot;RecorderChallenge=$RecorderChallenge;Tick=$NowTick;RecorderReadyTick=$Recorder.Tick;FreshDeadline=$freshDeadline;
             Wire="capturearm1 $($role.PID) $($role.Nonce) $($Expected.Generation) $($role.Slot) $($role.SourceSHA256) $RecorderChallenge $NowTick`n"}
     }
 }
