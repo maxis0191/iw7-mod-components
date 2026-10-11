@@ -125,6 +125,19 @@ bool talk_admitted() noexcept {
         return m.armed && !m.failed && fresh(state.get(),state->scope,GetTickCount64());
     }catch(...){return false;}
 }
+bool begin_source_after_native_talk(std::uint64_t tick) noexcept {
+    try {
+        std::lock_guard lifecycle_guard(lifecycle);
+        if(GetCurrentThreadId()!=main_tid || !installed || cancelled || !armed || !state || !control)return false;
+        const auto proof=paris_test_fixture::capture_protection();
+        if(!proof.protected_now || !proof.ui_ready || !proof.talk_valid || !proof.talk_active ||
+            proof.talk_key0!=224 || proof.talk_key1 || !fresh(state.get(),state->scope,GetTickCount64()) ||
+            FAILED(control->begin_source(tick))){cancel();return false;}
+        console::info("[paris-fake-capture] Source started after native PTT pid=%lu nonce=%s gen=%s slot=%u source_tick_ms=%llu tick_ms=%llu\n",
+            GetCurrentProcessId(),state->scope.client_nonce.c_str(),state->scope.server_generation.c_str(),state->scope.slot,tick,GetTickCount64());
+        return true;
+    }catch(...){cancel();return false;}
+}
 void relay_main_tick() noexcept {
     try {
         std::lock_guard lifecycle_guard(lifecycle);
@@ -145,9 +158,9 @@ void relay_main_tick() noexcept {
         const auto report_tick=GetTickCount64();
         if(control && (!last_report || report_tick-last_report>=1000)) {
             last_report=report_tick;const auto m=control->snapshot();
-            console::info("[paris-fake-capture] Observed pid=%lu tick_ms=%llu prepared=%u armed=%u failed=%u buffer_started=%u locked=%u rate=%u channels=%u bits=%u align=%u buffer_bytes=%u source_frames=%llu published_frames=%llu source_output_frames=%llu nonzero_frames=%llu lock_calls=%llu lock_bytes=%llu lock_nonzero_bytes=%llu prepared_lock_bytes=%llu unlock_calls=%llu unlock_bytes=%llu\n",
+            console::info("[paris-fake-capture] Observed pid=%lu tick_ms=%llu prepared=%u armed=%u failed=%u buffer_started=%u locked=%u source_started=%u source_tick_ms=%llu rate=%u channels=%u bits=%u align=%u buffer_bytes=%u source_frames=%llu published_frames=%llu source_output_frames=%llu nonzero_frames=%llu lock_calls=%llu lock_bytes=%llu lock_nonzero_bytes=%llu prepared_lock_bytes=%llu unlock_calls=%llu unlock_bytes=%llu\n",
                 GetCurrentProcessId(),report_tick,static_cast<unsigned>(m.prepared),static_cast<unsigned>(m.armed),static_cast<unsigned>(m.failed),static_cast<unsigned>(m.buffer_started),static_cast<unsigned>(m.buffer_locked),
-                m.rate,m.channels,m.bits,m.block_align,m.buffer_bytes,m.source_frames,m.published_frames,m.published_source_frames,m.published_nonzero_frames,
+                static_cast<unsigned>(m.source_started),m.source_start_tick,m.rate,m.channels,m.bits,m.block_align,m.buffer_bytes,m.source_frames,m.published_frames,m.published_source_frames,m.published_nonzero_frames,
                 m.lock_calls,m.lock_bytes,m.lock_nonzero_bytes,m.prepared_lock_bytes,m.unlock_calls,m.unlock_bytes);
         }
         const auto relay=voice_relay::test_readiness(); // v2 mutex already released.

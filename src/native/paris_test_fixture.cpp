@@ -268,6 +268,11 @@ namespace paris_test_fixture
                 const auto engine_time = game::Sys_Milliseconds(); event.start = GetTickCount64();
                 utils::hook::invoke<void>(0x14032A3B0, 0, binding, 210 + static_cast<int>(index), engine_time);
                 event.end = GetTickCount64(); event.after = agent_input_snapshot(key);
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+                if(key==iw7::agent::button::talk && down &&
+                    (!event.after.key_valid || !event.after.key.active ||
+                    !paris_voice_test_capture::begin_source_after_native_talk(event.end)))agent_binding_failed=true;
+#endif
                 // Fixed, main-thread-only queue: no logging/file/network IO may
                 // delay the next release in this frame's release-all batch.
                 if (agent_dispatch_event_count < agent_dispatch_events.size()) agent_dispatch_events[agent_dispatch_event_count++] = event;
