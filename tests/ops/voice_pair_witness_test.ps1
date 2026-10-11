@@ -44,8 +44,8 @@ try{
     [BitConverter]::GetBytes([uint16]4).CopyTo($header,32);[BitConverter]::GetBytes([uint16]16).CopyTo($header,34)
     [Text.Encoding]::ASCII.GetBytes('data').CopyTo($header,36);[BitConverter]::GetBytes([uint32]4).CopyTo($header,40)
     [IO.File]::WriteAllBytes($wav,($header+[byte[]]@(1,0,1,0)));$null=Assert-IW7ReceiverWAV $wav 12
-    foreach($failureCase in @('none','protection','foreign_ack','missing_ptt','malformed_wav','abort_bad')){
-        $clock=@{Tick=1000L;Events=[Collections.Generic.List[string]]::new();Sequence=0UL;Challenge=$null;Input=$null;CaptureArmed=$false;PTT=$false;Completed=$false;Mode=$failureCase;ArmCount=0;RecorderStarted=$false}
+    foreach($failureCase in @('none','slow_preflight','protection','foreign_ack','missing_ptt','malformed_wav','abort_bad')){
+        $clock=@{Tick=1000L;Events=[Collections.Generic.List[string]]::new();Sequence=0UL;Challenge=$null;Input=$null;CaptureArmed=$false;PTT=$false;Completed=$false;Mode=$failureCase;ArmCount=0;RecorderStarted=$false;ReadyTick=0L}
         $io=@{
             Now={$clock.Tick}
             Sleep={param($ms)$clock.Tick+=$ms}
@@ -54,10 +54,13 @@ try{
                 if($clock.Mode -eq 'protection' -and $clock.Input -and $clock.Input.Action -eq 'hold'){$s.Roles[1].Protected=$false}
                 $s
             }
-            StartRecorder={param($receiver,$output,$seconds)$clock.Events.Add('recorder_start');$clock.RecorderStarted=$true;[pscustomobject]@{Started=$true}}
-            RecorderState={param($recorder)$clock.Events.Add('recorder_ready');[pscustomobject]@{OwnedIdentityValidated=$true;Exited=$clock.Completed;Stdout="WASAPI recording ready: scope=process_tree pid=12 creation=999 format=pcm16 rate=48000 channels=2 tick_ms=$($clock.Tick) fallback=0`n"}}
+            StartRecorder={param($receiver,$output,$seconds)$clock.Events.Add('recorder_start');$clock.RecorderStarted=$true;$clock.ReadyTick=$clock.Tick;[pscustomobject]@{Started=$true}}
+            RecorderState={param($recorder)$clock.Events.Add('recorder_ready');[pscustomobject]@{OwnedIdentityValidated=$true;Exited=$clock.Completed;Stdout="WASAPI recording ready: scope=process_tree pid=12 creation=999 format=pcm16 rate=48000 channels=2 tick_ms=$($clock.ReadyTick) fallback=0`n"}}
             PublishCaptureArm={param($record,$Deadline)Check $clock.RecorderStarted 'ARM before recorder';Check ($record.Slot -eq 0 -and $Deadline -eq $record.Tick+500) 'B armed or ARM TTL wrong';$clock.Events.Add('capture_arm');$clock.Challenge=$record.RecorderChallenge;$clock.CaptureArmed=$true;$clock.ArmCount++}
-            CaptureState={[pscustomobject]@{BothPrepared=(!$clock.CaptureArmed);DescriptorsValidated=$true;SourceLockNonzeroBytes=0;SenderArmed=$clock.CaptureArmed;ReceiverPrepared=$true;Failed=$false;BindingValidated=$true;Tick=$clock.Tick;RecorderChallenge=$clock.Challenge;SourceA='speech';SourceB='silence'}}
+            CaptureState={
+                if(!$clock.CaptureArmed){$clock.Events.Add('prepared');if($clock.Mode -ceq 'slow_preflight'){$clock.Tick+=600}}
+                [pscustomobject]@{BothPrepared=(!$clock.CaptureArmed);DescriptorsValidated=$true;SourceLockNonzeroBytes=0;SenderArmed=$clock.CaptureArmed;ReceiverPrepared=$true;Failed=$false;BindingValidated=$true;Tick=$clock.Tick;RecorderChallenge=$clock.Challenge;SourceA='speech';SourceB='silence'}
+            }
             SendInput={param($action,$button,$duration,$deadline)
                 Check ($deadline -gt $clock.Tick) 'Input publication deadline already expired'
                 $clock.Events.Add($action);$clock.Sequence++;$clock.Input=[pscustomobject]@{PID=11;Nonce=('a'*32);Sequence=$clock.Sequence;Step=$clock.Sequence;SentTick=$clock.Tick;Action=$action;Duration=$duration}
@@ -82,11 +85,12 @@ try{
         }
         [IO.File]::WriteAllBytes($wav,($header+[byte[]]@(1,0,1,0)))
         $case=Join-Path $root $failureCase
-        if($failureCase -eq 'none'){
+        if($failureCase -in @('none','slow_preflight')){
             $result=Invoke-IW7VoicePairWitness $expected $io $case -SpeechHoldMs 200
             Check ($result.MechanicalPathObserved -and !$result.IntelligibilityAccepted -and !$result.HumanConversationAccepted) 'Synthetic orchestration claimed words/human acceptance.'
         }else{Refuses{Invoke-IW7VoicePairWitness $expected $io $case -SpeechHoldMs 200}}
         Check ($clock.ArmCount -eq 1 -and $clock.Events.IndexOf('recorder_ready') -lt $clock.Events.IndexOf('capture_arm') -and $clock.Events.Contains('abort') -and $clock.Events.Contains('capture_cancel') -and $clock.Events.Contains('recorder_finish')) 'Release/cancel/recorder ordering or cleanup missing.'
+        Check ($clock.Events.IndexOf('prepared') -lt $clock.Events.IndexOf('recorder_start')) 'Descriptor preflight consumes the recorder-ready ARM freshness window.'
     }
     'PASS draft VoicePair pure clock orchestration, actual atomic arm file, real WAV validation, stale/foreign/protection/release failures. No audio/game activated.'
 }finally{Remove-Item -LiteralPath $root -Recurse -Force}

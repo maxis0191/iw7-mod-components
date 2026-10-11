@@ -77,6 +77,10 @@ try{
     Refuses{& $providers.IO.PTTState}
     [IO.File]::WriteAllText($pair.Sessions.A.Identity.Stdout,$before)
     Refuses{Read-IW7VoiceFields "[paris-voice-pair] STATE; pid=11; pid=12.`n" '[paris-voice-pair] STATE; '}
+    $prefix='[paris-voice-pair] STATE; '
+    Check ((Read-IW7VoiceFields ($prefix+"pid=11.`nconsole embedded "+$prefix+"pid=99.`n") $prefix).pid -ceq '11') 'Embedded prefix inside a console line treated as a native publication.'
+    $largeLog=("ordinary loading line`n"*10000)+$prefix+"pid=11.`r`n"+$prefix+"pid=12.`t`r`n"
+    Check ((Read-IW7VoiceFields $largeLog $prefix).pid -ceq '12') 'Latest exact publication after a long startup log lost.'
     # Log handle denies ordinary unlink/replacement; preserve evidence identity.
     Refuses{[IO.File]::Delete($pair.Sessions.A.Identity.Stdout)}
     # Reproduce actual blocking ownership audits while native main continues

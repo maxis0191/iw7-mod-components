@@ -105,6 +105,10 @@ function Invoke-IW7VoicePairWitness {
     try{
         $snapshot=& $refresh
         $baseline=& $IO.Counters
+        # Descriptor/source preflight may parse both lengthy startup logs. Do it
+        # before the one-shot WASAPI-ready publication starts its 500ms ARM TTL.
+        $prepared=& $IO.CaptureState
+        if(!$prepared.BothPrepared -or !$prepared.DescriptorsValidated -or $prepared.SourceLockNonzeroBytes -ne 0){throw 'Both actual Prepared/silent COM descriptors required before ARM.'}
         $state.Recorder=& $IO.StartRecorder $Expected.Roles[1] $OutputRoot 12
         do{
             $snapshot=& $refresh;$recorderState=& $IO.RecorderState $state.Recorder
@@ -112,8 +116,6 @@ function Invoke-IW7VoicePairWitness {
             $ready=Read-IW7VoiceRecorderReady $recorderState.Stdout $Expected.Roles[1] $state.Started (& $IO.Now)
             if(!$ready){& $IO.Sleep 10}
         }while(!$ready)
-        $prepared=& $IO.CaptureState
-        if(!$prepared.BothPrepared -or !$prepared.DescriptorsValidated -or $prepared.SourceLockNonzeroBytes -ne 0){throw 'Both actual Prepared/silent COM descriptors required before ARM.'}
         $challenge=[guid]::NewGuid().ToString('N')
         $records=@(New-IW7VoicePairArmRecord $snapshot $Expected $ready (& $IO.Now) $challenge)
         $state.ArmRequested=$true

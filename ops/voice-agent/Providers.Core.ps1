@@ -18,9 +18,12 @@ function Read-IW7VoiceOwnedLog {
 }
 function Read-IW7VoiceFields {
     param([string]$Text,[string]$Prefix)
-    $lines=@($Text.Split("`n")|Where-Object {$_.StartsWith($Prefix,[StringComparison]::Ordinal)})
-    if(!$lines.Count){return $null}
-    $row=$lines[-1].Substring($Prefix.Length).TrimEnd([char[]]"`r`t .");$fields=@{}
+    # Native STATE logs grow throughout map loading. Avoid a PowerShell pipeline
+    # over every historical line on each poll; retain exact line-start matching.
+    $start=$Text.LastIndexOf("`n"+$Prefix,[StringComparison]::Ordinal)
+    if($start -ge 0){$start++}elseif($Text.StartsWith($Prefix,[StringComparison]::Ordinal)){$start=0}else{return $null}
+    $end=$Text.IndexOf("`n",$start);if($end -lt 0){$end=$Text.Length}
+    $row=$Text.Substring($start+$Prefix.Length,$end-$start-$Prefix.Length).TrimEnd([char[]]"`r`t .");$fields=@{}
     foreach($token in @($row -split '[; ]+'|Where-Object {$_})){if($token -cnotmatch '^([a-z_][a-z0-9_]*)=([a-zA-Z0-9_-]+)$' -or $fields.ContainsKey($Matches[1])){throw 'Malformed complete native voice field record.'};$fields[$Matches[1]]=$Matches[2]}
     $fields
 }
