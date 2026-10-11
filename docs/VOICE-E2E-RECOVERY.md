@@ -67,6 +67,21 @@ GSC parsing and the unchanged 17-script/910-identifier catalog.
 These are component and simulated-network results. They do not prove speech
 audibility, microphone capture, a remote PC, or Multiplayer voice support.
 
+## Private integration and CI admission
+
+[PR126](https://github.com/maxis0191/iw7-paris-server/pull/126) contains the
+recovery and the new fix. Its exact code head
+`dfc892049bb5ef959222d330dfc9ec051d350b1f` has
+[run38102586326](https://github.com/maxis0191/iw7-paris-server/actions/runs/38102586326).
+Both jobs (`114361415191` validate and `114361415378` native-protocol) have
+runner0 and no steps. GitHub's authenticated page says they were not started
+because of account payments/spending limits. The CLI token cannot read check
+annotations (HTTP403), so that reason was read using the existing Chrome
+extension. No CI test executed. The prior owner's billing/quota exception in
+GIT-WORKFLOW applies; this is separate from the passing local checks.
+The final documentation head's admission result is recorded on the PR before
+merge. No executed failure is ignored.
+
 ## Runtime gate and exact next action
 
 The complete build was refused by the shared resource scheduler: the observed
