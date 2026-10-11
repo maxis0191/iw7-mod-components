@@ -218,7 +218,7 @@ if (Test-Path -LiteralPath $labComponent) {
 }
 $nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','voice_capture_adapter.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp',
     'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','voice_inbox.hpp','dvar_metadata.hpp','agent_scenario.hpp',
-    'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp')
+    'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp')
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
 else {
     # The older standalone voice SDK does not expose the pinned CP WeaponDef.
@@ -263,6 +263,7 @@ if($LASTEXITCODE){throw 'Pinned upstream input.cpp could not be read.'}
 $pttInputBridgeBuild=Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot $root -BaseInput ([Text.UTF8Encoding]::new($false).GetBytes($inputBaseText)) -IsolatedLab:([bool]$IsolatedLab) -ServerModules:([bool]$ServerModules)
 if($pttInputBridgeBuild.Compiled){$nativeSources+=$pttInputBridgeBuild.Files}
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
+$incidentOverlay = & "$PSScriptRoot/Apply-IncidentOverlay.ps1" -NativeRoot $root -Commit $commit
 $downloadCacheOverlay = $null
 if ($commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
     $downloadCacheOverlay = & "$PSScriptRoot/Apply-DownloadCacheOverlay.ps1" -NativeRoot $root -Commit $commit
@@ -487,6 +488,9 @@ $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
 $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
 $manifest.SessionAliases = 'Temporary duplicate names, server only'
+$manifest.IncidentOverlaySHA256 = $incidentOverlay.SHA256
+$manifest.IncidentDropOverlaySHA256 = $incidentOverlay.DropSHA256
+$manifest.IncidentRecorder = 'Explicit dedicated paris-incident-log flag; no packet retries or protocol changes'
 $manifest.IsolatedLab = [bool]$IsolatedLab
 $manifest.VoiceCaptureSelectorBuild = [bool]$IsolatedLab
 $manifest.VoiceCopiedSourceSHA256 = (Get-FileHash -LiteralPath $copiedVoice).Hash
