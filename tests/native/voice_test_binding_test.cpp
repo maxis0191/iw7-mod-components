@@ -1,6 +1,24 @@
 #include "voice_test_binding.hpp"
 #include <cassert>
 int main() {
+    using voice_test_binding::preserve_startup_shutdown;
+    const voice_test_binding::startup_shutdown startup{true,true,false,false,false,false,false,false,1000,121000,2000};
+    assert(preserve_startup_shutdown(startup));
+    auto shutdown=startup;shutdown.observed_tick=1000;assert(preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.observed_tick=121000;assert(preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.observed_tick=999;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.observed_tick=121001;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.deadline_tick++;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.deadline_tick=999;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.admitted_tick=0;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.admitted=false;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.main_thread=false;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.already_preserved=true;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.armed=true;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.cancelled=true;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.protection_seen=true;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.binding_seen=true;assert(!preserve_startup_shutdown(shutdown));
+    shutdown=startup;shutdown.capture_failed=true;assert(!preserve_startup_shutdown(shutdown));
     voice_test_binding::observation o{true,true,true,true,123,27116,1,1,1000,1100,1,2,
         std::string(32,'a'),std::string(32,'b'),"challenge"};
     using voice_test_binding::current;using voice_test_binding::same;

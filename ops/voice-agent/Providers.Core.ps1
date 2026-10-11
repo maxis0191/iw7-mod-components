@@ -48,8 +48,9 @@ function Get-IW7VoiceStateFields {
 }
 function Convert-IW7VoiceRelayGeneration($Fields){([uint64]$Fields.relay_gen_high).ToString('x16')+([uint64]$Fields.relay_gen_low).ToString('x16')}
 function New-IW7VoicePairProviders {
-    param($Pair,[string]$CaseRoot,[string]$ProbePath,[string]$ProbeSHA256)
+    param($Pair,[string]$CaseRoot,[string]$ProbePath,[string]$ProbeSHA256,[string]$RecorderSourceSHA256)
     $ErrorActionPreference='Stop'
+    if($RecorderSourceSHA256 -cnotmatch '^[A-F0-9]{64}$'){throw 'Explicit reviewed recorder source pin required for voice providers.'}
     if($Pair.Closed -or $Pair.Sessions.Count -ne 2){throw 'Two started Pair sessions required.'}
     Initialize-IW7AgentPairNtfs
     $a=$Pair.Sessions.A;$b=$Pair.Sessions.B;$logs=@{};$response=Resolve-IW7BasePath $a.Plan.GameRoot 'iw7-mod/paris-agent.response'
@@ -86,7 +87,7 @@ function New-IW7VoicePairProviders {
                 Image=$context.Identity.Image;ImageSHA256=$context.Identity.SHA256;CreationFileTime=[uint64]([datetimeoffset]$context.Identity.CreatedUtc).UtcDateTime.ToFileTimeUtc()}
         }
         $expected=[pscustomobject]@{ServerId=$Pair.Server.PID;Generation=$Pair.Generation;Roles=$roles;ReceiverCreationFileTime=$roles[1].CreationFileTime}
-        $wire=@{ProposalRoot=$PSScriptRoot;Sequence=0UL;Step=0UL;LastRead=$null;ArmRecord=$null;ServerLog=$logs.Server;Logs=$logs;Pair=$Pair;Expected=$expected;A=$a;B=$b;Response=$response;CaseRoot=$CaseRoot;ProbePath=$ProbePath;ProbeSHA256=$ProbeSHA256}
+        $wire=@{ProposalRoot=$PSScriptRoot;Sequence=0UL;Step=0UL;LastRead=$null;ArmRecord=$null;ServerLog=$logs.Server;Logs=$logs;Pair=$Pair;Expected=$expected;A=$a;B=$b;Response=$response;CaseRoot=$CaseRoot;ProbePath=$ProbePath;ProbeSHA256=$ProbeSHA256;RecorderSourceSHA256=$RecorderSourceSHA256}
         $previous=Read-IW7AgentResponse (Read-IW7AgentWire $response -RequireTerminator) $a.Identity.PID $a.PairNonce
         if($previous){$wire.Sequence=$previous.Sequence;$wire.Step=$previous.Step}
         $io=@{
@@ -115,7 +116,7 @@ function New-IW7VoicePairProviders {
                 [pscustomobject]@{OwnershipValidated=$true;ServerId=$wire.Pair.Server.PID;Generation=$wire.Expected.Generation;FixtureReady=$fixtureReady;Roles=$roles;
                     EnableAudio=$wire.Pair.Plan.RunPlan.EnableAudio;PhysicalBytes=$wire.Pair.Plan.RunPlan.PhysicalBytes;CommitBytes=$wire.Pair.Plan.RunPlan.CommitBytes}
             }
-            StartRecorder={param($receiver,$output,$seconds)Start-IW7VoicePairRecorder $receiver $wire.ProbePath $wire.ProbeSHA256 $output $seconds $wire.Pair.LeaseToken $wire.Pair.Plan.ServerRoot}
+            StartRecorder={param($receiver,$output,$seconds)Start-IW7VoicePairRecorder $receiver $wire.ProbePath $wire.ProbeSHA256 $output $seconds $wire.Pair.LeaseToken $wire.Pair.Plan.ServerRoot $wire.RecorderSourceSHA256}
             RecorderState={param($recorder)Get-IW7VoicePairRecorderState $recorder}
             FinishRecorder={param($recorder)Complete-IW7VoicePairRecorder $recorder}
             AnalyzeWAV={param($path)

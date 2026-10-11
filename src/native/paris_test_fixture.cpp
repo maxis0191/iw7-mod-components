@@ -17,6 +17,9 @@
 #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
 #include "voice_capture_wire.hpp"
 #include "paris_voice_test_capture.hpp"
+#ifdef IW7_PARIS_ISOLATED_PTT_INPUT_BRIDGE
+#include "voice_ptt_guard.hpp"
+#endif
 #endif
 #include "agent_scenario.hpp"
 #include "paris_model_diagnostics.hpp"
@@ -168,18 +171,14 @@ namespace paris_test_fixture
         }
 #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
         bool agent_read_talk(iw7::agent::movement_key_snapshot& state) {
-            if(std::memcmp(reinterpret_cast<const void*>(0x14032A3B0),"\x48\x89\x6c\x24\x10\x48\x89\x74\x24\x18\x57\x48\x83\xec\x20\x41\x8b\xe9\x41\x8b\xf8\x8b\xf2\x83\xfa\x51\x75\x6a\x44\x8b\x0d\xed\xaf\xcd\x05\x48\x63\xc1\x48\x69\xc8\x60\x04\x00\x00\x48\x8d\x05\x68\xb7\xcb\x01\x48\x03\xc8\x8b\x11\x44\x3b\xc2\x0f\x84\x16\x11\x00\x00\x8b\x41\x04\x44\x3b\xc0\x0f\x84\x0a\x11\x00\x00\x85\xd2\x75\x05\x44\x89\x01\xeb\x0b\x85\xc0\x0f\x85\xf9\x10\x00\x00\x89\x79\x04\x80\x79\x10\x00\x0f\x85\xec\x10\x00\x00\x44\x89\x49\x08\x66\xc7\x41\x10\x01\x01\x48\x8b\x6c\x24\x38\x48\x8b\x74\x24\x40\x48\x83\xc4\x20\x5f\xc3\x83\xfe\x52\x0f\x85\x8b\x00\x00\x00\x8b\x15\x7b\xaf\xcd\x05\x48\x63\xc1\x48\x69\xc8\x60\x04\x00\x00\x48\x8d\x05\xf6\xb6\xcb\x01\x48\x03\xc8\x8b\x01\x3b\xc7\x75\x08\xc7\x01\x00\x00\x00\x00\xeb\x18\x39\x79\x04\x0f\x85\x98\x10\x00\x00\xc7\x41\x04\x00\x00\x00\x00\x85\xc0\x0f\x85\x89\x10\x00\x00\x83\x79\x04\x00\x0f\x85\x7f\x10\x00\x00\xc6\x41\x10\x00\x85\xd2\x74\x1a\x2b\x51\x08\x01\x51\x0c\xc6\x41\x10\x00\x48\x8b\x6c\x24\x38\x48\x8b\x74\x24\x40\x48\x83\xc4\x20\x5f\xc3\x8b\x05\x8f\xb8\xcb\x01\xd1\xe8\x01\x41\x0c\xc6\x41\x10\x00\x48\x8b\x6c\x24\x38\x48\x8b\x74\x24\x40\x48\x83\xc4\x20\x5f\xc3",282) ||
-                std::memcmp(reinterpret_cast<const void*>(0x14036FE40),"\x48\x63\xc1\x48\x69\xc8\x60\x04\x00\x00\x48\x8d\x05\x0b\x5d\xc7\x01\x0f\xb6\x04\x01\xc3",22))return false;
-            constexpr std::uintptr_t address=0x141FE5B4C;
-            MEMORY_BASIC_INFORMATION region{};
-            if(VirtualQuery(reinterpret_cast<const void*>(address),&region,sizeof(region))!=sizeof(region) ||
-                region.State!=MEM_COMMIT || (region.Protect&(PAGE_GUARD|PAGE_NOACCESS)) ||
-                !(region.Protect&(PAGE_READONLY|PAGE_READWRITE|PAGE_WRITECOPY|PAGE_EXECUTE_READ|PAGE_EXECUTE_READWRITE|PAGE_EXECUTE_WRITECOPY)) ||
-                address<reinterpret_cast<std::uintptr_t>(region.BaseAddress) ||
-                address+sizeof(state)>reinterpret_cast<std::uintptr_t>(region.BaseAddress)+region.RegionSize)return false;
-            std::memcpy(&state,reinterpret_cast<const void*>(address),sizeof(state));
-            const auto active=utils::hook::invoke<unsigned char>(0x14036FE40,0);
-            return active==state.active;
+#ifdef IW7_PARIS_ISOLATED_PTT_INPUT_BRIDGE
+            static_assert(sizeof(state)==voice_ptt_guard::state_size);
+            static_assert(offsetof(iw7::agent::movement_key_snapshot,active)==voice_ptt_guard::active_offset);
+            return voice_ptt_guard::input_snapshot(reinterpret_cast<unsigned char*>(&state),sizeof(state),capture_main_tid).valid();
+#else
+            (void)state;
+            return false; // A build without the real input owner bridge has no PTT proof.
+#endif
         }
         bool agent_voice_ui_ready() {
             const auto& ui=game::clientUIActives[0];
