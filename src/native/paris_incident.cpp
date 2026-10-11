@@ -4,6 +4,7 @@
 #include "scheduler.hpp"
 #include "console/console.hpp"
 #include "paris_incident.hpp"
+#include "paris_afk.hpp"
 #include <utils/flags.hpp>
 #include <fstream>
 #include <deque>
@@ -138,6 +139,7 @@ namespace paris_incident
 
     void client_drop(const void* client, const char* reason, bool tell) noexcept
     {
+        paris_afk::disconnected(client);
         if (enabled.load(std::memory_order_relaxed)) record_drop(static_cast<const game::client_t*>(client), reason, tell);
     }
 
