@@ -8,6 +8,10 @@ if ($ServerModules -and ($RhinoExperiment -or $EnemyExperiment)) {
     throw 'ServerModules is incompatible with enemy/Rhino overlays.'
 }
 $repo = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot/Resource-Scheduler.Core.ps1"
+# Reserve the complete operation before compiling tests, sanitizer binaries or
+# native sources. TestsOnly uses the same admission and final release path.
+Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
 $root = Join-Path $repo 'tools/iw7-mod-native'
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
 if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
@@ -48,6 +52,8 @@ if errorlevel 1 exit /b 1
 if errorlevel 1 exit /b 1
 pwsh -NoProfile -File "$repo\tests\ops\capacity_checkpoint_overlay_test.ps1"
 if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\kernel_image_alias_regression_test.ps1"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /c "$repo\tests\native\voice_test_capture_test.cpp" /Fo:"$runtime\fake-capture-test.obj"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /c "$repo\src\native\voice_test_capture.cpp" /Fo:"$runtime\fake-capture-impl.obj"
@@ -67,6 +73,12 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_ptt_protocol_test.cpp" /Fe:"$runtime\voice-ptt-protocol.exe" /Fo:"$runtime\voice-ptt-protocol.obj"
 if errorlevel 1 exit /b 1
 "$runtime\voice-ptt-protocol.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_ptt_guard_test.cpp" /Fe:"$runtime\voice-ptt-guard.exe" /Fo:"$runtime\voice-ptt-guard.obj"
+if errorlevel 1 exit /b 1
+"$runtime\voice-ptt-guard.exe"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File "$repo\tests\ops\voice_agent_ptt_contract_test.ps1"
 if errorlevel 1 exit /b 1
 pwsh -NoProfile -File "$repo\ops\voice-agent\test_fake_build_copy.ps1" -RepoRoot "$repo"
 if errorlevel 1 exit /b 1
@@ -237,6 +249,15 @@ if ($IsolatedLab) {
         [IO.File]::WriteAllText($path,(Convert-IW7IsolatedVoiceSource ([IO.File]::ReadAllText($path))),[Text.UTF8Encoding]::new($false))
     }
 }
+# The real input owner is bridged only in the pinned CP isolated profile.
+# Disabled/ordinary profiles preserve clean input.cpp bytes exactly. Reusing
+# a known enabled checkout restores its retained original bytes, never a guessed
+# or generic detour. Helper/template/dependency pins enter the build manifest.
+. "$PSScriptRoot/voice-agent/PTT-InputBridge.Core.ps1"
+$inputBaseText=((git -C $root show ($commit+':src/client/component/input.cpp')) -join "`n")+"`n"
+if($LASTEXITCODE){throw 'Pinned upstream input.cpp could not be read.'}
+$pttInputBridgeBuild=Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot $root -BaseInput ([Text.UTF8Encoding]::new($false).GetBytes($inputBaseText)) -IsolatedLab:([bool]$IsolatedLab) -ServerModules:([bool]$ServerModules)
+if($pttInputBridgeBuild.Compiled){$nativeSources+=$pttInputBridgeBuild.Files}
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 $downloadCacheOverlay = $null
 if ($commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
@@ -418,11 +439,8 @@ Push-Location $root
 try {
     & ./tools/premake5.exe vs2022
     if ($LASTEXITCODE) { throw 'Premake failed.' }
-    . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
-    Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
-        & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
-        if ($LASTEXITCODE) { throw 'Voice build failed.' }
-    }
+    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
+    if ($LASTEXITCODE) { throw 'Voice build failed.' }
 } finally { Pop-Location }
 $output = Join-Path $runtime 'voice-package'
 New-Item -ItemType Directory -Path $output -Force | Out-Null
@@ -442,6 +460,7 @@ Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.pdb" -Destination (J
 $manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
 $manifest.Debugger = [bool]$Debugger
 $manifest.FakeCaptureBuild=$fakeCaptureBuild
+$manifest.PTTInputBridgeBuild=$pttInputBridgeBuild
 $manifest.FakeCaptureBuildHelperSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/voice-agent/Fake-BuildCopy.Core.ps1").Hash
 $manifest.FakeCaptureTransformedSourceHashes=@(@('paris_voice.cpp','voice_relay.cpp','paris_test_fixture.cpp')|ForEach-Object{
     @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$_))).Hash}
@@ -490,3 +509,4 @@ if ($EnemyExperiment) {
 }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$output/build-manifest.json" -Encoding UTF8
 Write-Output "Prepared private client/server build: $output"
+}

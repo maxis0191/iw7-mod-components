@@ -102,9 +102,9 @@ namespace paris_voice
             if (port.empty() || port.size() != 5 || port.find_first_not_of(L"0123456789") != std::wstring::npos) throw std::runtime_error("Explicit voice capture test port required");
             selected_capture.server_port=static_cast<unsigned>(std::stoul(port));
             if (selected_endpoint.empty() || selected_endpoint.size() > 512 || FAILED(CLSIDFromString(guid.c_str(),&selected_capture.endpoint_guid))) throw std::runtime_error("Explicit capture endpoint/GUID invalid");
-            wchar_t image[MAX_PATH]{};
-            const auto length=GetModuleFileNameW(nullptr,image,MAX_PATH);
-            if (!length || length >= MAX_PATH || expected_hash.size() != 64 || expected_hash.find_first_not_of(L"0123456789abcdefABCDEF") != std::wstring::npos) throw std::runtime_error("Capture image identity missing");
+            // The loader remaps PEB module names; only the OS process image identifies this capture owner.
+            wchar_t image[MAX_PATH]{};DWORD length=MAX_PATH;
+            if (!QueryFullProcessImageNameW(GetCurrentProcess(),0,image,&length) || !length || length >= MAX_PATH || expected_hash.size() != 64 || expected_hash.find_first_not_of(L"0123456789abcdefABCDEF") != std::wstring::npos) throw std::runtime_error("Capture image identity missing");
             selected_image_guard=CreateFileW(image,GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
             LARGE_INTEGER size{};
             if (selected_image_guard == INVALID_HANDLE_VALUE || !GetFileSizeEx(selected_image_guard,&size) || size.QuadPart <= 0 || size.QuadPart > 64*1024*1024) throw std::runtime_error("Capture image cannot be retained");

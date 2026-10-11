@@ -5,6 +5,19 @@
 #include <limits>
 
 namespace voice_test_binding {
+struct startup_shutdown {
+    bool admitted{}, main_thread{}, already_preserved{}, armed{}, cancelled{};
+    bool protection_seen{}, binding_seen{}, capture_failed{};
+    std::uint64_t admitted_tick{}, deadline_tick{}, observed_tick{};
+};
+// A single frontend-to-map shutdown may precede the first protected binding.
+// This preserves only silent startup; it grants no capture ARM or PTT authority.
+inline bool preserve_startup_shutdown(const startup_shutdown& s) {
+    return s.admitted && s.main_thread && !s.already_preserved && !s.armed && !s.cancelled &&
+        !s.protection_seen && !s.binding_seen && !s.capture_failed && s.admitted_tick &&
+        s.deadline_tick>=s.admitted_tick && s.deadline_tick-s.admitted_tick==120000 &&
+        s.observed_tick>=s.admitted_tick && s.observed_tick<=s.deadline_tick;
+}
 struct observation {
     bool relay_ready{}, loopback{}, protected_now{}, slot_correlated{};
     unsigned pid{}, port{}, relay_slot{}, protected_slot{};

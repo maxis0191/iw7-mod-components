@@ -33,7 +33,7 @@ try{
         $serverText+="[Paris agent voice pair] SAMPLE; server_pid=99; client_nonce=$nonce; server_generation=$generation; slot=$index; native_tick_ms=$now; protected=1; sample_id=$index; down_fixture=0; ready=1.`t`r`n"
     }
     [IO.File]::WriteAllText($pair.Server.Stdout,$serverText+"[voice-relay] version=2 installed=1 dedicated=1 ready=0 slot=-1 encoded=0 sent=0 relayed=0 playback_calls=0 rejected=0 muted=0 accepted_joins=2 registrations=0 registration_attempts=0 registration_failures=0 roster_mask=0 native_mask=0 gate=server voice_enabled=0 packets_received=10 hellos_sent=0 confirms_sent=0 server_running=1 eligible_mask=3 voice_peers_mask=3`n")
-    $providers=New-IW7VoicePairProviders $pair $root 'C:\not-launched-probe.exe' ('5'*64)
+    $providers=New-IW7VoicePairProviders $pair $root 'C:\not-launched-probe.exe' ('5'*64) ('6'*64)
     # Provider construction/definition snapshots can take >500ms. Native main
     # continues publishing; emulate that real update with fresh same-file bytes.
     $fresh=[Environment]::TickCount64

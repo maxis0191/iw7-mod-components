@@ -32,6 +32,7 @@ std::shared_ptr<provider> state;
 std::shared_ptr<voice_test_capture::control> control;
 utils::hook::detour volume_hook;
 bool installed{},armed{},cancelled{},cancel_acknowledged{};
+bool protection_seen{},startup_shutdown_preserved{};
 std::recursive_mutex lifecycle;
 std::uint64_t last_report{},last_state_report{};
 DWORD main_tid{};
@@ -151,6 +152,7 @@ void relay_main_tick() noexcept {
         }
         const auto relay=voice_relay::test_readiness(); // v2 mutex already released.
         const auto protected_client=paris_test_fixture::capture_protection();
+        protection_seen=protection_seen || protected_client.protected_now || !protected_client.nonce.empty();
         voice_test_binding::observation o;
         o.relay_ready=relay.ready && relay.both_roles_ready;o.loopback=relay.loopback;o.protected_now=protected_client.protected_now;
         o.slot_correlated=protected_client.slot_correlated;o.pid=protected_client.pid;o.port=protected_client.port;
@@ -201,8 +203,10 @@ void install() {
     if(!GetProcessTimes(GetCurrentProcess(),&p->created,&exit,&kernel,&user))throw std::runtime_error("Fake process creation unavailable");
     p->marker=retain(std::filesystem::absolute(L"iw7-mod/paris-isolated-lab.marker").wstring(),64,marker);
     if(std::string(marker.begin(),marker.end())!="iw7-paris-isolated-lab-v1")throw std::runtime_error("Fake capture marker differs");
-    wchar_t image[MAX_PATH]{};const auto length=GetModuleFileNameW(nullptr,image,MAX_PATH);
-    if(!length || length>=MAX_PATH)throw std::runtime_error("Fake image identity missing");
+    // The loader remaps PEB module names to iw7_ship.exe. Pin the original OS process image.
+    wchar_t image[MAX_PATH]{};DWORD length=MAX_PATH;
+    if(!QueryFullProcessImageNameW(GetCurrentProcess(),0,image,&length) || !length || length>=MAX_PATH)
+        throw std::runtime_error("Fake image identity missing");
     std::vector<unsigned char> image_bytes;p->image=retain(image,64*1024*1024,image_bytes);
     const auto image_hash=utils::cryptography::sha256::compute(std::string(image_bytes.begin(),image_bytes.end()),true);
     auto normalized_hash=image_hash;for(auto& c:normalized_hash)if(c>='A' && c<='F')c=static_cast<char>(c-'A'+'a');
@@ -229,6 +233,33 @@ void install() {
     a.process_id=GetCurrentProcessId();a.admitted_tick=GetTickCount64();a.deadline_tick=a.admitted_tick+120000;
     state=p;installed=true;
     utils::hook::call(0x140B7A095,reinterpret_cast<void*>(factory));volume_hook.create(0x140D5A2E0,volume_init);
-    scripting::on_shutdown([](bool,bool post){if(!post)cancel();});
+    scripting::on_shutdown([](bool full_clear,bool post){
+        if(post)return;
+        try {
+            std::lock_guard lifecycle_guard(lifecycle);
+            const auto tick=GetTickCount64();
+            const bool main_thread=main_tid && main_tid==GetCurrentThreadId();
+            if(main_thread){
+                const auto latest=paris_test_fixture::capture_protection();
+                protection_seen=protection_seen || latest.protected_now || !latest.nonce.empty();
+            }
+            const bool bound=state && !state->bound.nonce.empty();
+            const bool failed=control && control->snapshot().failed;
+            const bool admitted=installed && state && state->scope.process_id==GetCurrentProcessId() &&
+                !*reinterpret_cast<void**>(0x1477A0190) && !*reinterpret_cast<const int*>(0x1477A0188);
+            const voice_test_binding::startup_shutdown observed{admitted,
+                main_thread,startup_shutdown_preserved,armed,cancelled,
+                protection_seen,bound,failed,state?state->scope.admitted_tick:0,
+                state?state->scope.deadline_tick:0,tick};
+            const bool preserve=voice_test_binding::preserve_startup_shutdown(observed);
+            console::info("[paris-fake-capture] Shutdown pre pid=%lu full_clear=%u action=%s admitted=%u main_thread=%u armed=%u protection_seen=%u binding_seen=%u capture_failed=%u already_preserved=%u admitted_tick=%llu deadline_tick=%llu tick_ms=%llu\n",
+                GetCurrentProcessId(),static_cast<unsigned>(full_clear),preserve?"preserve_startup":"cancel",
+                static_cast<unsigned>(admitted),static_cast<unsigned>(main_thread),static_cast<unsigned>(armed),
+                static_cast<unsigned>(protection_seen),static_cast<unsigned>(bound),static_cast<unsigned>(failed),
+                static_cast<unsigned>(startup_shutdown_preserved),observed.admitted_tick,observed.deadline_tick,tick);
+            if(preserve){startup_shutdown_preserved=true;return;}
+            cancel();
+        }catch(...){cancel();}
+    });
 }
 }
