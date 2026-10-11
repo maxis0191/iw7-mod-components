@@ -458,9 +458,17 @@ namespace voice_relay
                     muted += data.frames.size();
                     continue;
                 }
+                unsigned frame_index=0;
                 for (const auto& frame : data.frames)
                 {
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+                    paris_voice_test_capture::received_playback(session,data.slot,frame.data(),
+                        static_cast<int>(frame.size()),member.user,data.generation.low,data.generation.high,
+                        data.sequence,frame_index++);
+#else
                     engine::playback(session, data.slot, frame);
+                    ++frame_index;
+#endif
                     ++played;
                 }
             }
@@ -506,6 +514,9 @@ namespace voice_relay
             }
             // Replace unroutable native P2P only in a connected external CP game.
             // The existing native capture path has already applied PTT/threshold.
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            paris_voice_test_capture::observe_native_encoder();
+#endif
             std::lock_guard lock(state_mutex);
             ++encoded;
             if (!client || !client->ready() || !voice_enabled() ||

@@ -38,6 +38,16 @@ try{
     $quiet=Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan
     Check ($quiet.Contains('-paris-voice-pair-quiet') -and !$quiet.Contains('+set snd_volume') -and
         !$quiet.Contains('+set snd_effects_volume') -and !$quiet.Contains('winvoice_')) 'Quiet fixture changes master/effects/microphone instead of only background categories.'
+    $stem=Join-Path $root 'native-receiver'
+    $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot 1 -ReceivedPCMOutputStem $stem
+    Check ((Get-IW7VoicePairExtraArguments $plan.Roles[0].Plan).Contains('-paris-voice-received-output="'+$stem+'"') -and
+        !(Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan).Contains('-paris-voice-received-pcm') -and
+        'iw7-mod/paris-voice-output.arm' -in $plan.Roles[0].Plan.MutableFiles) 'PCM tap must follow the actual silent receiver and restore its mailbox.'
+    Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -ReceivedPCMOutputStem 'relative-stem'}
+    Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -ReceivedPCMOutputStem 'C:\unsafe"stem'}
+    $plan.Roles[1].Plan.VoicePairSource.ReceivedPCMOutputStem=$stem
+    Refuses{Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan}
+    $plan.Roles[1].Plan.VoicePairSource.ReceivedPCMOutputStem=''
     $plan.Roles[0].Plan.VoicePairSource.Path='C:\voice"unsafe.wav';Refuses{Get-IW7VoicePairExtraArguments $plan.Roles[0].Plan}
     'PASS draft speech/silence RIFF/categories/options20/20/audio/slot/arm restitution, no probe flags. No SAPI/audio/game.'
 }finally{Remove-Item -LiteralPath $root -Recurse -Force}
