@@ -34,6 +34,10 @@ std::shared_ptr<voice_test_capture::control> control;
 utils::hook::detour volume_hook;
 bool installed{},armed{},cancelled{},cancel_acknowledged{};
 bool codec_observed{};
+int requested_quality{};
+struct saved_codec_state {
+    void* encoder{};int mode{},cached{},vad{},dtx{},vbr{},abr{};bool changed{};
+} saved_codec;
 bool protection_seen{},startup_shutdown_preserved{};
 std::recursive_mutex lifecycle;
 std::uint64_t last_report{},last_state_report{};
@@ -109,6 +113,57 @@ bool received_fresh(std::uint64_t tick) {
     if(!state || cancelled || received_finished || !received_pcm)return false;
     std::lock_guard lock(state->mutex);
     return voice_test_binding::current(state->cached,tick) && voice_test_binding::same(received_binding,state->cached);
+}
+bool codec_get(void* encoder,int request,int& value) {
+    return utils::hook::invoke<int>(0x1405E9520,encoder,request,&value)==0;
+}
+bool codec_flags_same() {
+    int vad{},dtx{},vbr{},abr{};
+    return codec_get(saved_codec.encoder,31,vad) && codec_get(saved_codec.encoder,35,dtx) &&
+        codec_get(saved_codec.encoder,13,vbr) && codec_get(saved_codec.encoder,33,abr) &&
+        vad==saved_codec.vad && dtx==saved_codec.dtx && vbr==saved_codec.vbr && abr==saved_codec.abr;
+}
+bool restore_codec_quality() noexcept {
+    if(!saved_codec.changed)return true;
+    try {
+        // A recreated encoder belongs to a different lifetime; never dereference
+        // the saved pointer after that ownership changes.
+        if(*reinterpret_cast<void**>(0x145D5C6E8)!=saved_codec.encoder)return false;
+        int mode=saved_codec.mode,observed{};
+        const bool restored=utils::hook::invoke<int>(0x1405E9520,saved_codec.encoder,6,&mode)==0 &&
+            codec_get(saved_codec.encoder,7,observed) && observed==saved_codec.mode &&
+            *reinterpret_cast<const int*>(static_cast<const char*>(saved_codec.encoder)+0x174)==saved_codec.mode &&
+            *reinterpret_cast<const int*>(0x141BB2C7C)==saved_codec.cached && codec_flags_same();
+        console::info("[paris-voice-pair] CODEC_RESTORED; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; requested_quality=%d; restored=%u; configured_mode=%d; cached_quality=%d.\n",
+            GetCurrentProcessId(),state->scope.client_nonce.c_str(),state->scope.server_generation.c_str(),GetTickCount64(),requested_quality,
+            static_cast<unsigned>(restored),observed,*reinterpret_cast<const int*>(0x141BB2C7C));
+        if(restored)saved_codec.changed=false;
+        return restored;
+    }catch(...){return false;}
+}
+bool apply_codec_quality() {
+    if(!requested_quality)return true;
+    if(saved_codec.changed || requested_quality!=10)return false;
+    saved_codec.encoder=*reinterpret_cast<void**>(0x145D5C6E8);
+    if(!saved_codec.encoder || !codec_get(saved_codec.encoder,7,saved_codec.mode))return false;
+    const int configured=*reinterpret_cast<const int*>(static_cast<const char*>(saved_codec.encoder)+0x174);
+    saved_codec.cached=*reinterpret_cast<const int*>(0x141BB2C7C);
+    // Require a quiescent unchanged retail configuration so restoring SET_MODE
+    // recovers both original current/configured modes without raw memory writes.
+    if(saved_codec.mode<1 || saved_codec.mode>8 || configured!=saved_codec.mode ||
+        saved_codec.cached<0 || saved_codec.cached>10 || saved_codec.cached!=*reinterpret_cast<const int*>(0x1415062D8) ||
+        !codec_get(saved_codec.encoder,31,saved_codec.vad) || !codec_get(saved_codec.encoder,35,saved_codec.dtx) ||
+        !codec_get(saved_codec.encoder,13,saved_codec.vbr) || !codec_get(saved_codec.encoder,33,saved_codec.abr))return false;
+    saved_codec.changed=true;int quality=requested_quality,mode{};
+    const bool applied=utils::hook::invoke<int>(0x1405E9520,saved_codec.encoder,4,&quality)==0 &&
+        codec_get(saved_codec.encoder,7,mode) && mode==7 &&
+        *reinterpret_cast<const int*>(static_cast<const char*>(saved_codec.encoder)+0x174)==7 &&
+        *reinterpret_cast<const int*>(0x141BB2C7C)==saved_codec.cached && codec_flags_same();
+    console::info("[paris-voice-pair] CODEC_QUALITY; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; requested_quality=%d; before_mode=%d; after_mode=%d; applied=%u; capture_rate_unchanged=1; flags_unchanged=%u.\n",
+        GetCurrentProcessId(),state->scope.client_nonce.c_str(),state->scope.server_generation.c_str(),GetTickCount64(),requested_quality,
+        saved_codec.mode,mode,static_cast<unsigned>(applied),static_cast<unsigned>(codec_flags_same()));
+    if(!applied){restore_codec_quality();return false;}
+    return true;
 }
 int received_decode(const char* data,int length,short* pcm,int samples) {
     const auto result=received_decode_hook.invoke<int>(data,length,pcm,samples);
@@ -231,6 +286,7 @@ void cancel() noexcept {
     try {
     std::lock_guard lifecycle_guard(lifecycle);
     finish_received();cancelled=true;if(control)control->cancel();
+    if(!restore_codec_quality())console::error("[paris-voice-pair] Codec restoration failed pid=%lu; retain diagnostics.\n",GetCurrentProcessId());
     if(state){std::lock_guard lock(state->mutex);state->cached={};}
     }catch(...){}
 }
@@ -267,6 +323,7 @@ bool begin_source_after_native_talk(std::uint64_t tick) noexcept {
         const auto proof=paris_test_fixture::capture_protection();
         if(!proof.protected_now || !proof.ui_ready || !proof.talk_valid || !proof.talk_active ||
             proof.talk_key0!=224 || proof.talk_key1 || !fresh(state.get(),state->scope,GetTickCount64()) ||
+            !apply_codec_quality() ||
             FAILED(control->begin_source(tick))){cancel();return false;}
         console::info("[paris-fake-capture] Source started after native PTT pid=%lu nonce=%s gen=%s slot=%u source_tick_ms=%llu tick_ms=%llu\n",
             GetCurrentProcessId(),state->scope.client_nonce.c_str(),state->scope.server_generation.c_str(),state->scope.slot,tick,GetTickCount64());
@@ -364,7 +421,7 @@ void relay_main_tick() noexcept {
 void install() {
     if(!utils::flags::has_flag("paris-voice-fake-capture")){
         if(std::wcsstr(GetCommandLineW(),L"-paris-fake-capture-") || utils::flags::has_flag("paris-voice-received-pcm") ||
-            std::wcsstr(GetCommandLineW(),L"-paris-voice-received-output="))throw std::runtime_error("Orphan fake/received capture selectors refused");
+            std::wcsstr(GetCommandLineW(),L"-paris-voice-received-output=") || std::wcsstr(GetCommandLineW(),L"-paris-voice-pair-quality="))throw std::runtime_error("Orphan fake/received capture selectors refused");
         return;
     }
     if(std::wcsstr(GetCommandLineW(),L"-paris-lab-capture-"))throw std::runtime_error("Fake and endpoint selectors are mutually exclusive");
@@ -390,6 +447,13 @@ void install() {
     auto wav_hash=utils::cryptography::sha256::compute(std::string(p->wav.begin(),p->wav.end()),true);
     for(auto& c:wav_hash)if(c>='A' && c<='F')c=static_cast<char>(c-'A'+'a');
     if(wav_hash!=a.source_sha256)throw std::runtime_error("Retained fake WAV hash differs");
+    if(std::wcsstr(GetCommandLineW(),L"-paris-voice-pair-quality=")){
+        const int expected_modes[]{1,8,2,3,3,4,4,5,5,6,7};
+        if(argument(L"-paris-voice-pair-quality=")!=L"10" ||
+            std::memcmp(reinterpret_cast<const void*>(0x1415DD74C),expected_modes,sizeof(expected_modes)) ||
+            !std::any_of(p->wav.begin()+44,p->wav.end(),[](unsigned char sample){return sample!=0;}))throw std::runtime_error("Exact speech-only lab quality10 required");
+        requested_quality=10;
+    }
     const auto port=argument(L"-paris-fake-capture-port=");
     if(port.size()!=5 || port.find_first_not_of(L"0123456789")!=std::wstring::npos)throw std::runtime_error("Fake port format");
     a.server_port=static_cast<unsigned>(std::stoul(port));

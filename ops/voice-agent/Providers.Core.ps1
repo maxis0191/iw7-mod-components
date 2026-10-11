@@ -331,7 +331,21 @@ function New-IW7VoicePairProviders {
                 Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.Sender.Plan.GameRoot 'iw7-mod/paris-voice-capture.arm') $record ($sent+500)
                 do{
                     $f=Read-IW7VoiceFields (Read-IW7VoiceOwnedLog $wire.Logs[$wire.SenderName]) '[paris-fake-capture] Cancelled request '
-                    if($f -and [int]$f.pid -eq $wire.Sender.Identity.PID -and $f.nonce -ceq $wire.Sender.PairNonce -and $f.gen -ceq $wire.Expected.Generation -and $f.slot -ceq [string]$wire.SenderSlot -and $f.recorder_challenge -ceq $original.RecorderChallenge -and [long]$f.tick_ms -ge $sent -and [long]$f.tick_ms -le [Environment]::TickCount64){if($receiverFailure){throw $receiverFailure};return [pscustomobject]@{Cancelled=$true;Tick=[long]$f.tick_ms}}
+                    if($f -and [int]$f.pid -eq $wire.Sender.Identity.PID -and $f.nonce -ceq $wire.Sender.PairNonce -and $f.gen -ceq $wire.Expected.Generation -and $f.slot -ceq [string]$wire.SenderSlot -and $f.recorder_challenge -ceq $original.RecorderChallenge -and [long]$f.tick_ms -ge $sent -and [long]$f.tick_ms -le [Environment]::TickCount64){
+                        if($wire.Sender.Plan.VoicePairSource.PSObject.Properties['NativeCodecQuality'] -and $wire.Sender.Plan.VoicePairSource.NativeCodecQuality -eq 10){
+                            $text=Read-IW7VoiceOwnedLog $wire.Logs[$wire.SenderName]
+                            $applied=Read-IW7VoiceFields $text '[paris-voice-pair] CODEC_QUALITY; '
+                            $restored=Read-IW7VoiceFields $text '[paris-voice-pair] CODEC_RESTORED; '
+                            foreach($record in @($applied,$restored)){
+                                if(!$record -or $record.pid -cne [string]$wire.Sender.Identity.PID -or $record.nonce -cne $wire.Sender.PairNonce -or
+                                    $record.gen -cne $wire.Expected.Generation -or $record.requested_quality -cne '10' -or
+                                    [long]$record.tick_ms -lt $original.Tick -or [long]$record.tick_ms -gt [Environment]::TickCount64){throw 'Exact owned native codec quality proof missing.'}
+                            }
+                            if($applied.applied -cne '1' -or $applied.after_mode -cne '7' -or $applied.flags_unchanged -cne '1' -or
+                                $restored.restored -cne '1' -or $restored.configured_mode -cne $applied.before_mode -or [long]$restored.tick_ms -lt $sent){throw 'Native codec quality application/restoration unconfirmed.'}
+                        }
+                        if($receiverFailure){throw $receiverFailure};return [pscustomobject]@{Cancelled=$true;Tick=[long]$f.tick_ms}
+                    }
                     Start-Sleep -Milliseconds 10
                 }while([Environment]::TickCount64-$sent -lt 1000)
                 throw 'Exact native capturecancel ACK unavailable; retain cleanup diagnostics.'

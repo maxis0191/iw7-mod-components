@@ -48,6 +48,28 @@ try{
     $plan.Roles[1].Plan.VoicePairSource.ReceivedPCMOutputStem=$stem
     Refuses{Get-IW7VoicePairExtraArguments $plan.Roles[1].Plan}
     $plan.Roles[1].Plan.VoicePairSource.ReceivedPCMOutputStem=''
+    foreach($senderSlot in @(0,1)){
+        $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot $senderSlot -NativeCodecQuality 10
+        $sender=$plan.Roles[$senderSlot].Plan;$receiver=$plan.Roles[1-$senderSlot].Plan
+        Check ($sender.VoicePairSource.Kind -ceq 'speech' -and $sender.VoicePairSource.NativeCodecQuality -eq 10 -and
+            (Get-IW7VoicePairExtraArguments $sender).Contains('-paris-voice-pair-quality=10')) 'Explicit quality10 must follow actual speech sender.'
+        Check (!$receiver.VoicePairSource.PSObject.Properties['NativeCodecQuality'] -and
+            !(Get-IW7VoicePairExtraArguments $receiver).Contains('-paris-voice-pair-quality')) 'Receiver silently receives codec override.'
+        $receiver.VoicePairSource|Add-Member NativeCodecQuality 10
+        Refuses{Get-IW7VoicePairExtraArguments $receiver}
+        $receiver.VoicePairSource.NativeCodecQuality=0
+        Refuses{Get-IW7VoicePairExtraArguments $receiver}
+        $receiver.VoicePairSource.PSObject.Properties.Remove('NativeCodecQuality')
+        foreach($invalid in @(1,9,11,-1,'10')){
+            $sender.VoicePairSource.NativeCodecQuality=$invalid
+            Refuses{Get-IW7VoicePairExtraArguments $sender}
+        }
+        $null=Set-IW7VoicePairPlanOptions $plan $srcA $srcB -SenderSlot $senderSlot
+        Check ($plan.Roles[$senderSlot].Plan.VoicePairSource.NativeCodecQuality -eq 0 -and
+            !(Get-IW7VoicePairExtraArguments $plan.Roles[$senderSlot].Plan).Contains('-paris-voice-pair-quality') -and
+            !$plan.Roles[1-$senderSlot].Plan.VoicePairSource.PSObject.Properties['NativeCodecQuality']) 'Default must remove prior quality10 on either direction.'
+    }
+    foreach($invalidQuality in @(1,9,11,-1)){Refuses{Set-IW7VoicePairPlanOptions $plan $srcA $srcB -NativeCodecQuality $invalidQuality}}
     $plan.Roles[0].Plan.VoicePairSource.Path='C:\voice"unsafe.wav';Refuses{Get-IW7VoicePairExtraArguments $plan.Roles[0].Plan}
     'PASS draft speech/silence RIFF/categories/options20/20/audio/slot/arm restitution, no probe flags. No SAPI/audio/game.'
 }finally{Remove-Item -LiteralPath $root -Recurse -Force}
