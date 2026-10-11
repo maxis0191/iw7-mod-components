@@ -67,6 +67,13 @@ function Write-IW7VoiceCaptureArmRecord {
                 if(($_.Exception.HResult -band 0xffff) -notin @(5,32,33)){throw}
                 Start-Sleep -Milliseconds 5
             }
+            catch [UnauthorizedAccessException]{
+                # NTFS replacement of the same non-delete-shared mailbox can
+                # report ACCESS_DENIED using this exception type instead.
+                # A permanent ACL denial still expires at the original TTL.
+                if(($_.Exception.HResult -band 0xffff) -ne 5){throw}
+                Start-Sleep -Milliseconds 5
+            }
         }while($true)
     }finally{if(Test-Path -LiteralPath $temporary){Remove-Item -LiteralPath $temporary}}
 }

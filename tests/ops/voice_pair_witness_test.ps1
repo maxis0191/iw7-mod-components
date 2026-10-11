@@ -40,6 +40,49 @@ try{
     $bounded=@(New-IW7VoicePairArmRecord $snapshot $expected $realReady $realTick ('f'*32))[0]
     Check ($bounded.FreshDeadline -eq $realTick+100 -and $bounded.RecorderReadyTick -eq $realReady.Tick) 'ARM deadline renewed an original fixture/recorder timestamp.'
     Check ([IO.File]::ReadAllText($armPath) -ceq $record.Wire -and @(Get-ChildItem $root -Filter '*.tmp').Count -eq 0) 'Expired ARM replaced original record or leaked temp.'
+    # Real NTFS contention: the native reader shares reads, not replacement.
+    # Release on a CLR task so the retry remains on the calling PS thread.
+    Add-Type -TypeDefinition @'
+public static class IW7MailboxLockRelease {
+    public static System.Threading.Tasks.Task After(System.IO.FileStream stream, int milliseconds) {
+        return System.Threading.Tasks.Task.Run(async () => {
+            await System.Threading.Tasks.Task.Delay(milliseconds);
+            stream.Dispose();
+        });
+    }
+}
+'@
+    $locked=[IO.File]::Open($armPath,'Open','Read','Read')
+    try{
+        $probe=Join-Path $root 'replacement-probe'
+        [IO.File]::WriteAllText($probe,'probe')
+        $contention=$false
+        try{[IO.File]::Move($probe,$armPath,$true)}
+        catch [IO.IOException]{$contention=($_.Exception.HResult -band 0xffff) -in @(5,32,33)}
+        catch [UnauthorizedAccessException]{$contention=($_.Exception.HResult -band 0xffff) -eq 5}
+        Check $contention 'NTFS reader did not block mailbox replacement.'
+        Remove-Item -LiteralPath $probe
+        $retryTick=[Environment]::TickCount64
+        $retryRecord=$record.PSObject.Copy();$retryRecord.Tick=$retryTick
+        $retryRecord.Wire=$record.Wire.Replace(" $realTick`n"," $retryTick`n")
+        $release=[IW7MailboxLockRelease]::After($locked,100)
+        Write-IW7VoiceCaptureArmRecord $armPath $retryRecord ($retryTick+500)
+        $null=$release.GetAwaiter().GetResult()
+        Check ([IO.File]::ReadAllText($armPath) -ceq $retryRecord.Wire -and $retryRecord.Tick -eq $retryTick) 'Contended publication changed original bytes or timestamp.'
+    }finally{$locked.Dispose()}
+    $oldWire=[IO.File]::ReadAllText($armPath)
+    $locked=[IO.File]::Open($armPath,'Open','Read','Read')
+    try{
+        $retryTick=[Environment]::TickCount64
+        $retryRecord=$record.PSObject.Copy();$retryRecord.Tick=$retryTick
+        $retryRecord.Wire=$record.Wire.Replace(" $realTick`n"," $retryTick`n")
+        $expiredOnContention=$false
+        try{Write-IW7VoiceCaptureArmRecord $armPath $retryRecord ($retryTick+500)}
+        catch{$expiredOnContention=$_.Exception.Message -like '*Capturearm expired before publication*'}
+        $retryElapsed=[Environment]::TickCount64-$retryTick
+        Check ($expiredOnContention -and $retryElapsed -ge 500 -and $retryElapsed -lt 1500) 'Persistent mailbox contention escaped its original deadline.'
+        Check ([IO.File]::ReadAllText($armPath) -ceq $oldWire -and @(Get-ChildItem $root -Filter '*.tmp').Count -eq 0) 'Expired contended publication replaced old bytes or leaked temp.'
+    }finally{$locked.Dispose()}
     # Real PCM file validation; counters never substitute for output bytes.
     $wav=Join-Path $root 'synthetic-receiver.wav';$header=[byte[]]::new(44)
     [Text.Encoding]::ASCII.GetBytes('RIFF').CopyTo($header,0);[BitConverter]::GetBytes([uint32]40).CopyTo($header,4)
