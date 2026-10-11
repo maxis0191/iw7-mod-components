@@ -135,9 +135,48 @@ std::string sha256(HANDLE file)
     }
     catch (...) { if (hash) BCryptDestroyHash(hash); if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0); throw; }
 }
+struct exact_console
+{
+    win_handle process, image;
+    std::wstring expected_image;
+    std::uint64_t creation{};
+    DWORD pid;
+    exact_console(DWORD child, std::uint64_t root_creation) : pid(child)
+    {
+        wchar_t system[32768]{};
+        const auto length = GetSystemDirectoryW(system, 32768);
+        if (!length || length >= 32768) throw std::runtime_error("Windows console image directory unavailable");
+        expected_image = std::wstring(system) + L"\\conhost.exe";
+        process.value = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
+        if (!process.value) throw std::runtime_error("Observed console process access failed");
+        FILETIME created{}, exited{}, kernel{}, user{};
+        if (!GetProcessTimes(process.value, &created, &exited, &kernel, &user))
+            throw std::runtime_error("Observed console creation unavailable");
+        creation = (static_cast<std::uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+        if (creation < root_creation) throw std::runtime_error("Observed console predates the target");
+        verify();
+        image.value = CreateFileW(expected_image.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (image.value == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot retain installed Windows console image");
+        const auto hash = sha256(image.value);
+        verify();
+        std::cout << "WASAPI verified console companion: pid=" << pid << " creation=" << creation
+            << " system32_conhost=1 image_sha256=" << hash << " scope=process_tree\n" << std::flush;
+    }
+    void verify()
+    {
+        FILETIME created{}, exited{}, kernel{}, user{};
+        wchar_t actual[32768]{}; DWORD size = 32768;
+        if (WaitForSingleObject(process.value, 0) != WAIT_TIMEOUT ||
+            !GetProcessTimes(process.value, &created, &exited, &kernel, &user) ||
+            !QueryFullProcessImageNameW(process.value, 0, actual, &size) ||
+            ((static_cast<std::uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime) != creation ||
+            _wcsicmp(actual, expected_image.c_str())) throw std::runtime_error("Exact Windows console companion identity differs");
+    }
+};
 struct exact_process
 {
     win_handle process, image;
+    std::unique_ptr<exact_console> console;
     std::wstring expected_image;
     std::uint64_t creation;
     DWORD pid;
@@ -166,10 +205,11 @@ struct exact_process
             ((static_cast<std::uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime) != creation ||
             _wcsicmp(actual_image, expected_image.c_str())) throw std::runtime_error("Exact PID/creation/image mismatch");
     }
-    void verify_no_children()
+    void verify_capture_tree()
     {
-        // Windows' API includes the target tree. Refuse observed child processes
-        // rather than silently presenting that scope as a single audio session.
+        // Windows' API includes the target tree. IW7's console can create its
+        // System32 conhost child; retain and report that exact original process.
+        // Every other observed descendant still refuses capture.
         win_handle snapshot; snapshot.value = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (snapshot.value == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot inventory process-loopback descendants");
         PROCESSENTRY32W entry{}; entry.dwSize = sizeof(entry);
@@ -181,7 +221,15 @@ struct exact_process
         }
         while (Process32NextW(snapshot.value, &entry));
         if (GetLastError() != ERROR_NO_MORE_FILES) throw std::runtime_error("Incomplete process inventory");
-        if (audio_recording::descendants(rows, pid)) throw std::runtime_error("Process-loopback descendant scope refused");
+        const auto ids = audio_recording::descendant_ids(rows, pid);
+        if (!console && ids.size() == 1)
+        {
+            // The topology is checked before opening any candidate child.
+            audio_recording::verify_capture_tree(rows, pid, ids.front());
+            console = std::make_unique<exact_console>(ids.front(), creation);
+        }
+        audio_recording::verify_capture_tree(rows, pid, console ? console->pid : 0);
+        if (console) console->verify();
     }
 };
 void write_all(HANDLE file, const void* data, DWORD bytes)
@@ -192,7 +240,7 @@ void write_all(HANDLE file, const void* data, DWORD bytes)
 int record_process(const audio_recording::request& request)
 {
     exact_process identity(request);
-    identity.verify_no_children();
+    identity.verify_capture_tree();
     const auto path = wide(request.output);
     if (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES || GetLastError() != ERROR_FILE_NOT_FOUND)
         throw std::runtime_error("Fresh output WAV in an existing directory required");
@@ -223,7 +271,7 @@ int record_process(const audio_recording::request& request)
             identity.verify();
             if (GetTickCount64() - children_checked >= 100)
             {
-                identity.verify_no_children(); children_checked = GetTickCount64();
+                identity.verify_capture_tree(); children_checked = GetTickCount64();
             }
             UINT32 available{}; ok(capture->GetNextPacketSize(&available));
             while (available && GetTickCount64() < end)
@@ -246,7 +294,7 @@ int record_process(const audio_recording::request& request)
             }
             Sleep(5);
         }
-        identity.verify(); identity.verify_no_children(); ok(audio->Stop()); started = false;
+        identity.verify(); identity.verify_capture_tree(); ok(audio->Stop()); started = false;
         if (!bytes) throw std::runtime_error("No process audio frames captured");
         LARGE_INTEGER zero{};
         if (!SetFilePointerEx(output.value, zero, nullptr, FILE_BEGIN)) throw std::runtime_error("WAV finalization seek failed");
@@ -263,6 +311,19 @@ void recording_self_test()
 {
     if (audio_recording::descendants({{10,1},{20,10},{30,20},{40,1}},10) != 2 ||
         audio_recording::descendants({{10,1},{30,20}},10) != 0) throw std::runtime_error("Process-tree closure regression");
+    audio_recording::verify_capture_tree({{10,1},{40,1}},10,0);
+    audio_recording::verify_capture_tree({{10,1},{20,10},{40,1}},10,20);
+    for (const auto& rows : {std::vector<std::pair<std::uint32_t,std::uint32_t>>{{10,1},{20,10},{30,20}},
+        std::vector<std::pair<std::uint32_t,std::uint32_t>>{{10,1},{20,10},{30,10}},
+        std::vector<std::pair<std::uint32_t,std::uint32_t>>{{10,1},{30,10}},
+        std::vector<std::pair<std::uint32_t,std::uint32_t>>{{10,1}}})
+    {
+        bool rejected=false; try { audio_recording::verify_capture_tree(rows,10,20); } catch (...) { rejected=true; }
+        if (!rejected) throw std::runtime_error("Unexpected, nested or disappeared console tree accepted");
+    }
+    bool unowned_child_rejected=false;
+    try { audio_recording::verify_capture_tree({{10,1},{20,10}},10,0); } catch (...) { unowned_child_rejected=true; }
+    if (!unowned_child_rejected) throw std::runtime_error("Unverified companion accepted");
     for (const auto& rows : {std::vector<std::pair<std::uint32_t,std::uint32_t>>{{10,20},{20,10}},
         std::vector<std::pair<std::uint32_t,std::uint32_t>>{{10,1},{20,10},{20,10}}})
     {
@@ -306,6 +367,9 @@ void recording_self_test()
     if (file.value == INVALID_HANDLE_VALUE) throw std::runtime_error("Self image unavailable");
     audio_recording::request request{1, GetCurrentProcessId(), (static_cast<std::uint64_t>(creation.dwHighDateTime) << 32) | creation.dwLowDateTime, image_utf8, sha256(file.value), "unused.wav"};
     exact_process valid(request); valid.verify();
+    bool fake_console_rejected=false;
+    try { exact_console wrong(GetCurrentProcessId(),request.creation); } catch (...) { fake_console_rejected=true; }
+    if (!fake_console_rejected) throw std::runtime_error("Non-System32 console image accepted");
     auto refuse_identity = [&](const audio_recording::request& invalid) {
         bool rejected = false; try { exact_process wrong(invalid); } catch (...) { rejected = true; }
         if (!rejected) throw std::runtime_error("Foreign identity accepted");

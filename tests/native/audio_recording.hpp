@@ -11,7 +11,7 @@
 
 namespace audio_recording
 {
-inline std::size_t descendants(const std::vector<std::pair<std::uint32_t, std::uint32_t>>& rows, std::uint32_t root)
+inline std::vector<std::uint32_t> descendant_ids(const std::vector<std::pair<std::uint32_t, std::uint32_t>>& rows, std::uint32_t root)
 {
     if (rows.size() > 16384 || !root) throw std::runtime_error("Process inventory bound exceeded");
     std::unordered_multimap<std::uint32_t, std::uint32_t> children;
@@ -31,7 +31,23 @@ inline std::size_t descendants(const std::vector<std::pair<std::uint32_t, std::u
             pending.push_back(next->second);
         }
     }
-    return pending.size() - 1;
+    return {pending.begin() + 1, pending.end()};
+}
+inline std::size_t descendants(const std::vector<std::pair<std::uint32_t, std::uint32_t>>& rows, std::uint32_t root)
+{
+    return descendant_ids(rows, root).size();
+}
+inline void verify_capture_tree(const std::vector<std::pair<std::uint32_t, std::uint32_t>>& rows,
+    std::uint32_t root, std::uint32_t verified_console)
+{
+    const auto ids = descendant_ids(rows, root);
+    if (ids.empty() && !verified_console) return;
+    // Only one independently verified Windows console host may accompany the
+    // target. Another application, nested tree or changed console is refused.
+    if (verified_console && ids.size() == 1 && ids.front() == verified_console)
+        for (const auto& row : rows)
+            if (row.first == verified_console && row.second == root) return;
+    throw std::runtime_error("Process-loopback unexpected descendant scope refused");
 }
 inline std::uint64_t decimal(const std::string& value)
 {
