@@ -16,6 +16,7 @@
 #include "paris_test_safety.hpp"
 #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
 #include "voice_capture_wire.hpp"
+#include <intrin.h>
 #include "paris_voice_test_capture.hpp"
 #ifdef IW7_PARIS_ISOLATED_PTT_INPUT_BRIDGE
 #include "voice_ptt_guard.hpp"
@@ -184,11 +185,97 @@ namespace paris_test_fixture
             const auto& ui=game::clientUIActives[0];
             return !ui.frontEndSceneState[0] && ui.cgameInitialized && !ui.keyCatchers && ui.connectionState==game::CA_ACTIVE;
         }
+        utils::hook::detour movie_volume_hook;
+        std::recursive_mutex movie_mutex;
+        struct movie_owner {
+            void* handle{};
+            DWORD thread{};
+            std::uint64_t epoch{}, admitted_epoch{}, deadline{};
+            bool muted{};
+        } movie;
+        bool movie_guarded{};
+        bool movie_flags() {
+            return utils::flags::has_flag("paris-isolated-lab") &&
+                utils::flags::has_flag("paris-voice-fake-capture") &&
+                utils::flags::has_flag("paris-voice-audio-lab") &&
+                utils::flags::has_flag("paris-voice-pair-quiet");
+        }
+        void* current_movie() { return *reinterpret_cast<void**>(0x1483D4560); }
+        const std::uint32_t* movie_tracks() { return reinterpret_cast<const std::uint32_t*>(0x1483D4BEC); }
+        bool movie_live_owner() {
+            return movie.handle && movie.epoch && movie.handle==current_movie() &&
+                movie.thread==GetCurrentThreadId() && movie.thread==capture_main_tid;
+        }
+        void movie_restore() {
+            std::lock_guard lock(movie_mutex);
+            movie.deadline=0;
+            if(!movie.muted)return;
+            if(movie_guarded && movie_live_owner() && movie.admitted_epoch==movie.epoch) {
+                const auto requested=*reinterpret_cast<const unsigned char*>(0x1483D4BDC);
+                if(requested<=1) {
+                    movie_volume_hook.invoke<void>(movie.handle,movie_tracks(),requested?0.0f:1.0f);
+                    movie.muted=false;
+                }
+            }
+        }
+        void movie_volume(void* handle,const std::uint32_t* tracks,float gain) {
+            const auto caller=reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+            std::lock_guard lock(movie_mutex);
+            // Every retail opening reaches this call after publishing its new
+            // handle. Count even a reused address as a new lifetime.
+            if(caller==0x140DD6C5A) {
+                const auto next=movie.epoch+1;
+                movie={};movie.epoch=next;
+                if(next && handle && handle==current_movie() && tracks==movie_tracks()) {
+                    movie.handle=handle;movie.thread=GetCurrentThreadId();
+                }
+            }
+            const auto tick=GetTickCount64();
+            const bool suppress=movie_guarded && movie_flags() && movie_live_owner() &&
+                movie.admitted_epoch==movie.epoch && movie.deadline && tick<movie.deadline &&
+                handle==movie.handle && tracks==movie_tracks() &&
+                (caller==0x140DD4AF9 || caller==0x140DD6C5A);
+            movie_volume_hook.invoke<void>(handle,tracks,suppress?0.0f:gain);
+            if(handle==movie.handle && tracks==movie_tracks())movie.muted=suppress;
+        }
+        void install_movie_observer() {
+            if(!movie_flags())return;
+            const auto matches=[](std::uintptr_t address,const char* bytes,std::size_t size) {
+                return std::memcmp(reinterpret_cast<const void*>(address),bytes,size)==0;
+            };
+            movie_guarded=matches(0x140DD5D60,"\x48\x89\x5c\x24\x18\x55\x56\x57\x48\x8b\xec\x48\x83\xec\x60",15) &&
+                matches(0x140DD4AC6,"\x0f\xb6\x05\x0f\x01\x60\x07\x38\x05\x0a\x01\x60\x07\x74\x31",15) &&
+                matches(0x140DD4AE6,"\x48\x8b\x0d\x73\xfa\x5f\x07\x48\x8d\x15\xf8\x00\x60\x07\xe8\x67\x12\x00\x00",19) &&
+                matches(0x140DD6C36,"\x48\x8b\x0d\x23\xd9\x5f\x07\x48\x8d\x15\xa8\xdf\x5f\x07\xf3\x0f\x10\x15\xc0\x22\x66\x00\x8b\x41\x0c\x89\x05\xe3\xd7\x5f\x07\xe8\x06\xf1\xff\xff",36);
+            if(movie_guarded) {
+                movie_volume_hook.create(0x140DD5D60,movie_volume);
+                // Query loss may return before the normal quiet measurement.
+                // Restore only the still-current owner on the engine main
+                // thread when its original protection deadline expires.
+                scheduler::loop([] {
+                    std::lock_guard lock(movie_mutex);
+                    if(movie.deadline && GetTickCount64()>=movie.deadline)movie_restore();
+                },scheduler::main,50ms);
+            }
+            else console::error("[paris-voice-pair] Movie wrapper signatures unavailable; quiet refused.\n");
+        }
+        bool movie_quiet_measurement(bool& present,bool& muted) {
+            std::lock_guard lock(movie_mutex);
+            present=current_movie()!=nullptr;muted=false;
+            if(!movie_guarded)return false;
+            if(!present){movie.deadline=0;movie.muted=false;return true;}
+            if(!movie_live_owner())return false;
+            if(*reinterpret_cast<const unsigned char*>(0x1483D4BDC)>1 ||
+                *reinterpret_cast<const unsigned char*>(0x1483D4BDD)>1)return false;
+            const auto tick=GetTickCount64();
+            if(!agent_safety.received || tick<agent_safety.received || tick-agent_safety.received>=500)return false;
+            movie.admitted_epoch=movie.epoch;movie.deadline=agent_safety.received+500;
+            movie_volume_hook.invoke<void>(movie.handle,movie_tracks(),0.0f);
+            movie.muted=true;muted=true;return true;
+        }
         void agent_voice_quiet_measurement() {
-            if (!utils::flags::has_flag("paris-voice-pair-quiet") ||
-                !utils::flags::has_flag("paris-voice-fake-capture") ||
-                !utils::flags::has_flag("paris-voice-audio-lab") || !agent_voice_ui_ready() ||
-                !iw7::agent::scenario::safe(agent_safety, GetTickCount64())) return;
+            if (!movie_flags() || GetCurrentThreadId()!=capture_main_tid || !agent_voice_ui_ready() ||
+                !iw7::agent::scenario::safe(agent_safety, GetTickCount64())) {movie_restore();return;}
             bool quiet = true;
             // Startup +set can be overwritten by the later player profile.
             // Retail aliases can bypass the dialogue/music categories. The
@@ -202,8 +289,13 @@ namespace paris_test_fixture
                 if (dvar->current.value != 0.0f) game::Dvar_SetFromStringByName(name, "0", game::DVAR_SOURCE_INTERNAL);
                 if (dvar->current.value != 0.0f) quiet = false;
             }
-            console::info("[paris-voice-pair] AUDIO; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; quiet=%d.\n",
-                GetCurrentProcessId(), agent_runtime.client_nonce.c_str(), agent_generation.c_str(), GetTickCount64(), static_cast<int>(quiet));
+            bool movie_present{},movie_muted{};
+            if(!movie_quiet_measurement(movie_present,movie_muted)){movie_restore();quiet=false;}
+            std::lock_guard movie_lock(movie_mutex);
+            console::info("[paris-voice-pair] AUDIO; pid=%lu; nonce=%s; gen=%s; tick_ms=%llu; quiet=%d; movie_present=%u; movie_muted=%u; movie_owner_tid=%lu; movie_main_tid=%lu; movie_epoch=%llu; movie_guarded=%u.\n",
+                GetCurrentProcessId(), agent_runtime.client_nonce.c_str(), agent_generation.c_str(), GetTickCount64(), static_cast<int>(quiet),
+                static_cast<unsigned>(movie_present),static_cast<unsigned>(movie_muted),movie.thread,capture_main_tid,movie.epoch,
+                static_cast<unsigned>(movie_guarded));
         }
 #endif
         struct agent_input_sample
@@ -756,6 +848,9 @@ namespace paris_test_fixture
     public:
         void post_unpack() override
         {
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            if(!game::environment::is_dedi())install_movie_observer();
+#endif
             if (!game::environment::is_dedi() && utils::flags::has_flag("paris-server-client-test"))
             {
                 scheduler::loop(client_request, scheduler::main, 100ms);
@@ -796,6 +891,12 @@ namespace paris_test_fixture
             {
                 return protection_snapshot(ent);
             });
+        }
+        void pre_destroy() override
+        {
+#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
+            movie_restore();
+#endif
         }
     };
 }
