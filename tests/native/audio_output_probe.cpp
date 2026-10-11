@@ -222,6 +222,26 @@ struct exact_process
         while (Process32NextW(snapshot.value, &entry));
         if (GetLastError() != ERROR_NO_MORE_FILES) throw std::runtime_error("Incomplete process inventory");
         const auto ids = audio_recording::descendant_ids(rows, pid);
+        // Preserve the actual refused topology, including creation times. PID
+        // ancestry alone can also expose a reused parent's stale children.
+        if (ids.size() > 1 || (console && (ids.size() != 1 || ids.front() != console->pid)))
+        {
+            std::cerr << "WASAPI refused tree: root=" << pid << " creation=" << creation
+                << " descendants=" << ids.size() << '\n';
+            for (const auto id : ids)
+            {
+                if (ids.size() > 64) break;
+                win_handle child;
+                child.value = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, id);
+                FILETIME born{}, ended{}, kernel{}, user{};
+                wchar_t path[32768]{}; DWORD size = 32768;
+                const bool observed = child.value && GetProcessTimes(child.value, &born, &ended, &kernel, &user) &&
+                    QueryFullProcessImageNameW(child.value, 0, path, &size);
+                std::cerr << "WASAPI descendant: pid=" << id << " observed=" << observed
+                    << " creation=" << ((static_cast<std::uint64_t>(born.dwHighDateTime) << 32) | born.dwLowDateTime) << '\n';
+                if (observed) std::wcerr << L"WASAPI descendant image: " << path << L'\n';
+            }
+        }
         if (!console && ids.size() == 1)
         {
             // The topology is checked before opening any candidate child.
