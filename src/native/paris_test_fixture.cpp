@@ -191,9 +191,12 @@ namespace paris_test_fixture
                 !iw7::agent::scenario::safe(agent_safety, GetTickCount64())) return;
             bool quiet = true;
             // Startup +set can be overwritten by the later player profile.
-            // Apply only these test mix categories on the engine main thread,
-            // after actual join/protection, and publish the observed values.
-            for (const auto* name : {"snd_dialogue_volume", "snd_music_volume", "snd_licensed_content_volume"}) {
+            // Retail aliases can bypass the dialogue/music categories. The
+            // game's master gain uses snd_volume; received voice has its own
+            // DirectSound buffer. Apply this admitted lab mix on main after
+            // actual join/protection and verify the live values. The owned
+            // process closes and original player profile restores after test.
+            for (const auto* name : {"snd_volume", "snd_dialogue_volume", "snd_music_volume", "snd_licensed_content_volume"}) {
                 auto* dvar = game::Dvar_FindVar(name);
                 if (!dvar || dvar->type != game::DVAR_TYPE_FLOAT) { quiet = false; continue; }
                 if (dvar->current.value != 0.0f) game::Dvar_SetFromStringByName(name, "0", game::DVAR_SOURCE_INTERNAL);
