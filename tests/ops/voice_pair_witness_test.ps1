@@ -44,7 +44,7 @@ try{
     [BitConverter]::GetBytes([uint16]4).CopyTo($header,32);[BitConverter]::GetBytes([uint16]16).CopyTo($header,34)
     [Text.Encoding]::ASCII.GetBytes('data').CopyTo($header,36);[BitConverter]::GetBytes([uint32]4).CopyTo($header,40)
     [IO.File]::WriteAllBytes($wav,($header+[byte[]]@(1,0,1,0)));$null=Assert-IW7ReceiverWAV $wav 12
-    foreach($failureCase in @('none','slow_preflight','protection','foreign_ack','missing_ptt','malformed_wav','abort_bad','reverse','reverse_foreign_recorder')){
+    foreach($failureCase in @('none','slow_preflight','slow_audit','stale_ready','protection','foreign_ack','missing_ptt','malformed_wav','abort_bad','reverse','reverse_foreign_recorder')){
         $selectedSlot=if($failureCase.StartsWith('reverse')){1}else{0}
         $expected|Add-Member SenderSlot $selectedSlot -Force
         $expected.ReceiverCreationFileTime=$expected.Roles[1-$selectedSlot].CreationFileTime
@@ -53,12 +53,17 @@ try{
             Now={$clock.Tick}
             Sleep={param($ms)$clock.Tick+=$ms}
             Snapshot={
+                if($clock.Mode -ceq 'slow_audit'){
+                    if($clock.RecorderStarted -and !$clock.CaptureArmed){throw 'Full audit ran inside recorder ARM window.'}
+                    $clock.Tick+=600
+                }
                 $s=Snapshot $clock.Tick
                 if($clock.Mode -eq 'protection' -and $clock.Input -and $clock.Input.Action -eq 'hold'){$s.Roles[1].Protected=$false}
                 $s
             }
+            ArmSnapshot={Check $clock.RecorderStarted 'Fast ARM read before recorder';$clock.Events.Add('fast_arm_read');Snapshot $clock.Tick}
             StartRecorder={param($receiver,$output,$seconds)Check ($receiver.PID -eq $clock.Receiver.PID) 'Recorder targets sender';$clock.Events.Add('recorder_start');$clock.RecorderStarted=$true;$clock.ReadyTick=$clock.Tick;[pscustomobject]@{Started=$true}}
-            RecorderState={param($recorder)$clock.Events.Add('recorder_ready');$pidValue=if($clock.Mode -ceq 'reverse_foreign_recorder'){$clock.Sender.PID}else{$clock.Receiver.PID};[pscustomobject]@{OwnedIdentityValidated=$true;Exited=$clock.Completed;Stdout="WASAPI recording ready: scope=process_tree pid=$pidValue creation=$($clock.Receiver.CreationFileTime) format=pcm16 rate=48000 channels=2 tick_ms=$($clock.ReadyTick) fallback=0`n"}}
+            RecorderState={param($recorder)$clock.Events.Add('recorder_ready');if($clock.Mode -ceq 'stale_ready'){$clock.Tick+=501};$pidValue=if($clock.Mode -ceq 'reverse_foreign_recorder'){$clock.Sender.PID}else{$clock.Receiver.PID};[pscustomobject]@{OwnedIdentityValidated=$true;Exited=$clock.Completed;Stdout="WASAPI recording ready: scope=process_tree pid=$pidValue creation=$($clock.Receiver.CreationFileTime) format=pcm16 rate=48000 channels=2 tick_ms=$($clock.ReadyTick) fallback=0`n"}}
             PublishCaptureArm={param($record,$Deadline)Check $clock.RecorderStarted 'ARM before recorder';Check ($record.Slot -eq $clock.SenderSlot -and $record.PID -eq $clock.Sender.PID -and $Deadline -eq $record.Tick+500) 'Receiver armed or ARM TTL wrong';$clock.Events.Add('capture_arm');$clock.Challenge=$record.RecorderChallenge;$clock.CaptureArmed=$true;$clock.ArmCount++}
             CaptureState={
                 if(!$clock.CaptureArmed){$clock.Events.Add('prepared');if($clock.Mode -ceq 'slow_preflight'){$clock.Tick+=600}}
@@ -88,12 +93,12 @@ try{
         }
         [IO.File]::WriteAllBytes($wav,($header+[byte[]]@(1,0,1,0)))
         $case=Join-Path $root $failureCase
-        if($failureCase -in @('none','slow_preflight','reverse')){
+        if($failureCase -in @('none','slow_preflight','slow_audit','reverse')){
             $result=Invoke-IW7VoicePairWitness $expected $io $case -SpeechHoldMs 200
             Check ($result.MechanicalPathObserved -and !$result.IntelligibilityAccepted -and !$result.HumanConversationAccepted) 'Synthetic orchestration claimed words/human acceptance.'
             Check ($result.SenderSlot -eq $clock.SenderSlot -and $result.ReceiverSlot -eq 1-$clock.SenderSlot) 'Result direction differs from actual input/recorder.'
         }else{Refuses{Invoke-IW7VoicePairWitness $expected $io $case -SpeechHoldMs 200}}
-        if($failureCase -ceq 'reverse_foreign_recorder'){Check ($clock.ArmCount -eq 0 -and !$clock.Events.Contains('hold') -and $clock.Events.Contains('recorder_finish')) 'Foreign reverse recorder allowed speech or leaked recorder';continue}
+        if($failureCase -in @('reverse_foreign_recorder','stale_ready')){Check ($clock.ArmCount -eq 0 -and !$clock.Events.Contains('hold') -and $clock.Events.Contains('recorder_finish')) 'Foreign/stale recorder allowed speech or leaked recorder';continue}
         Check ($clock.ArmCount -eq 1 -and $clock.Events.IndexOf('recorder_ready') -lt $clock.Events.IndexOf('capture_arm') -and $clock.Events.Contains('abort') -and $clock.Events.Contains('capture_cancel') -and $clock.Events.Contains('recorder_finish')) 'Release/cancel/recorder ordering or cleanup missing.'
         Check ($clock.Events.IndexOf('prepared') -lt $clock.Events.IndexOf('recorder_start')) 'Descriptor preflight consumes the recorder-ready ARM freshness window.'
     }

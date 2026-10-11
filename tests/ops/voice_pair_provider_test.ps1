@@ -26,6 +26,9 @@ try{
         [pscustomobject]@{Protected=$true}
     }
     function Read-IW7AgentPairRoleSafety {}
+    function New-IW7VoiceArmProcessPin { [pscustomobject]@{Image=[IO.MemoryStream]::new()} }
+    function Assert-IW7VoiceArmProcessPin {}
+    function Get-IW7VoiceArmLease { [pscustomobject]@{PhysicalBytes=20GB;CommitBytes=20GB} }
     function Save-IW7AgentPreActionFrame {[pscustomobject]@{ReducedProfileValidated=$true;SyntheticTestOnly=$true}}
     function Read-IW7AgentResponse {$null}
     function Read-IW7AgentWire {''}
@@ -95,6 +98,17 @@ try{
     Check ($watch.ElapsedMilliseconds -ge 600 -and $snapshot.FixtureReady -and $snapshot.Roles.Count -eq 2) 'Fresh STATE/SAMPLE publication after blocking ownership audits rejected.'
     . "$repo/ops/voice-agent/Voice-Pair.Core.ps1"
     Assert-IW7VoicePairSnapshot $snapshot ([Environment]::TickCount64) $providers.Expected
+    $watch.Restart();$snapshot=& $providers.IO.ArmSnapshot
+    Check ($watch.ElapsedMilliseconds -lt 500 -and $snapshot.Roles[0].Protected -and $snapshot.FixtureReady) 'ARM snapshot repeated blocking full ownership audits.'
+    $valid=[IO.File]::ReadAllText($pair.Sessions.A.Identity.Stdout)
+    [IO.File]::WriteAllText($pair.Sessions.A.Identity.Stdout,$valid.Replace('both_ready=1','both_ready=0'))
+    $lost=& $providers.IO.ArmSnapshot
+    Refuses{Assert-IW7VoicePairSnapshot $lost ([Environment]::TickCount64) $providers.Expected}
+    [IO.File]::WriteAllText($pair.Sessions.A.Identity.Stdout,$valid.Replace('gen='+$generation,'gen='+('f'*32)))
+    Refuses{& $providers.IO.ArmSnapshot}
+    [IO.File]::WriteAllText($pair.Sessions.A.Identity.Stdout,$valid.Replace('query_tick='+$snapshot.Roles[0].Tick,'query_tick=1'))
+    Refuses{& $providers.IO.ArmSnapshot}
+    [IO.File]::WriteAllText($pair.Sessions.A.Identity.Stdout,$valid)
     $pair.Sessions.A.Plan.VoicePairSource.Kind='silence';$pair.Sessions.B.Plan.VoicePairSource.Kind='speech'
     foreach($name in @('A','B')){Rename-Item -LiteralPath (Join-Path $root ('voice-pre-action-'+$name)) -NewName ('first-pre-action-'+$name)}
     $reverse=New-IW7VoicePairProviders $pair $root 'C:\not-launched-probe.exe' ('5'*64) ('6'*64) -SenderSlot 1

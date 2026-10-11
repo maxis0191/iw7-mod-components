@@ -50,14 +50,81 @@ function Get-IW7VoiceStateFields {
     $fields
 }
 function Convert-IW7VoiceRelayGeneration($Fields){([uint64]$Fields.relay_gen_high).ToString('x16')+([uint64]$Fields.relay_gen_low).ToString('x16')}
+function New-IW7VoiceArmProcessPin($Record,$Handle) {
+    if(!$Handle -or $Handle -isnot [IW7LabProcess+OwnedProcess]){throw 'Original lab process handle required before recorder resume.'}
+    $original=$Handle.ReadIdentity()
+    $expectedTime=([datetimeoffset]$Record.CreatedUtc).UtcDateTime.ToFileTimeUtc()
+    if($original.PID -ne $Record.PID -or $original.Image -ine $Record.Image -or
+        [math]::Abs($original.CreationFileTime-$expectedTime) -gt 10){throw 'Original ARM process tuple differs.'}
+    $image=[IO.FileStream]::new($Record.Image,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try {
+        if($image.Length -gt 256MB){throw 'ARM executable guard exceeds bound.'}
+        $hash=[Security.Cryptography.SHA256]::Create()
+        try{$actual=[Convert]::ToHexString($hash.ComputeHash($image))}finally{$hash.Dispose()}
+        if($actual -cne $Record.SHA256){throw 'ARM immutable executable hash differs.'}
+        $pin=[pscustomobject]@{Record=$Record;Handle=$Handle;Original=$original;Image=$image;FileId=[IW7AgentPairNtfs]::Identity($image.SafeFileHandle)}
+        Assert-IW7VoiceArmProcessPin $pin
+        $pin
+    }catch{$image.Dispose();throw}
+}
+function Assert-IW7VoiceArmProcessPin($Pin) {
+    if(!$Pin -or !$Pin.Image.CanRead -or $Pin.Handle.Id -ne $Pin.Record.PID){throw 'Original ARM process/image guard lost.'}
+    $current=$Pin.Handle.ReadIdentity()
+    if($current.PID -ne $Pin.Original.PID -or $current.CreationFileTime -ne $Pin.Original.CreationFileTime -or
+        $current.Image -ine $Pin.Original.Image -or $current.Image -ine $Pin.Record.Image){throw 'Original ARM kernel identity changed.'}
+    $image=[IO.File]::Open($Pin.Record.Image,'Open','Read','Read')
+    try {
+        if([IW7AgentPairNtfs]::Identity($Pin.Image.SafeFileHandle) -cne $Pin.FileId -or
+            [IW7AgentPairNtfs]::Identity($image.SafeFileHandle) -cne $Pin.FileId){throw 'ARM executable physical identity changed.'}
+    }finally{$image.Dispose()}
+}
+function Get-IW7VoiceArmLease($Pair) {
+    if($Pair.Schema -cne 'iw7.agent-pair-owned/1' -or $Pair.Closed){throw 'Active ARM pair ownership required.'}
+    # Read the current account-wide registry under its normal lock. Memory/CIM
+    # admission is completed before recorder resume; this does not renew a lease.
+    $leases=@(Invoke-IW7ResourceLock { (Read-IW7ResourceState).Leases } | Where-Object Token -CEQ $Pair.LeaseToken)
+    if($leases.Count -ne 1){throw 'Unique current ARM pair lease required.'}
+    $lease=$leases[0];Assert-IW7AgentPairLease $Pair.Plan $lease
+    Assert-IW7BaseLease $lease $Pair.Plan.Roles[0].Plan $Pair.Server
+    if($lease.Phase -cne 'Running' -or $lease.PhysicalBytes -ne 20GB -or $lease.CommitBytes -ne 20GB){throw 'Exact running audio 20/20 ARM lease required.'}
+    foreach($name in @('A','B')){
+        $context=$Pair.Sessions[$name];$registered=@($lease.Processes | Where-Object PID -EQ $context.Identity.PID)
+        if($context.PairOwnership -ne $Pair -or $context.LeaseToken -cne $Pair.LeaseToken -or $registered.Count -ne 1 -or
+            $registered[0].Image -ine $context.Identity.Image -or
+            [math]::Abs((([datetimeoffset]$registered[0].CreatedUtc)-([datetimeoffset]$context.Identity.CreatedUtc)).Ticks) -gt 10){throw 'Original ARM role registration changed.'}
+    }
+    $lease
+}
+function Read-IW7VoicePairNativeSnapshot($Wire,$Lease) {
+    $roles=@()
+    foreach($index in @(0,1)){
+        $name=@('A','B')[$index];$context=$Wire.Pair.Sessions[$name]
+        $f=Get-IW7VoiceStateFields $Wire.Logs[$name] $context ([Environment]::TickCount64)
+        if(!$f -or $f.gen -cne $Wire.Expected.Generation -or [int]$f.slot -ne $index){throw 'Owned current STATE binding changed.'}
+        $roles+=[pscustomobject]@{PID=$context.Identity.PID;Nonce=$f.nonce;Generation=$f.gen;Slot=$index;RelayGeneration=(Convert-IW7VoiceRelayGeneration $f);
+            Protected=($f.both_ready -ceq '1');V2Ready=($f.both_ready -ceq '1');UIReady=($f.ui_ready -ceq '1');Tick=[long]$f.query_tick}
+    }
+    $text=Read-IW7VoiceOwnedLog $Wire.ServerLog
+    if($text -match '\[Paris agent voice pair\] FAIL'){throw 'VoicePair fixture failed.'}
+    $fixtureReady=$true
+    foreach($index in @(0,1)){
+        $pattern='(?m)^\[Paris agent voice pair\] SAMPLE; server_pid='+$Wire.Pair.Server.PID+'; client_nonce='+$Wire.Expected.Roles[$index].Nonce+'; server_generation='+$Wire.Expected.Generation+'; slot='+$index+'; native_tick_ms=(\d+); protected=1; sample_id=\d+; down_fixture=0; ready=1\.[ \t]*\r?$'
+        $samples=[regex]::Matches($text,$pattern)
+        if(!$samples.Count){$fixtureReady=$false;continue}
+        $tick=[long]$samples[-1].Groups[1].Value;$now=[Environment]::TickCount64
+        if($tick -gt $now -or $now-$tick -gt 500){throw 'Voice fixture SAMPLE stale.'}
+    }
+    [pscustomobject]@{OwnershipValidated=$true;ServerId=$Wire.Pair.Server.PID;Generation=$Wire.Expected.Generation;FixtureReady=$fixtureReady;Roles=$roles;
+        EnableAudio=$Wire.Pair.Plan.RunPlan.EnableAudio;PhysicalBytes=$Lease.PhysicalBytes;CommitBytes=$Lease.CommitBytes}
+}
 function New-IW7VoicePairProviders {
-    param($Pair,[string]$CaseRoot,[string]$ProbePath,[string]$ProbeSHA256,[string]$RecorderSourceSHA256,[ValidateRange(0,1)][int]$SenderSlot=0)
+    param($Pair,[string]$CaseRoot,[string]$ProbePath,[string]$ProbeSHA256,[string]$RecorderSourceSHA256,[ValidateRange(0,1)][int]$SenderSlot=0,$ServerHandle=$null)
     $ErrorActionPreference='Stop'
     if($RecorderSourceSHA256 -cnotmatch '^[A-F0-9]{64}$'){throw 'Explicit reviewed recorder source pin required for voice providers.'}
     if($Pair.Closed -or $Pair.Sessions.Count -ne 2){throw 'Two started Pair sessions required.'}
     Initialize-IW7AgentPairNtfs
     $senderName=@('A','B')[$SenderSlot];$receiverName=@('A','B')[1-$SenderSlot]
-    $sender=$Pair.Sessions[$senderName];$receiver=$Pair.Sessions[$receiverName];$logs=@{}
+    $sender=$Pair.Sessions[$senderName];$receiver=$Pair.Sessions[$receiverName];$logs=@{};$armPins=@{}
     if($sender.Plan.VoicePairSource.Kind -cne 'speech' -or $receiver.Plan.VoicePairSource.Kind -cne 'silence'){throw 'Sender speech and receiver silence must match the original role slots.'}
     $response=Resolve-IW7BasePath $sender.Plan.GameRoot 'iw7-mod/paris-agent.response'
     $lease=Get-IW7AgentPairLease $Pair
@@ -70,6 +137,8 @@ function New-IW7VoicePairProviders {
             $logs[$role]=Open-IW7VoiceOwnedLog $context.Identity.Stdout
         }
         $logs.Server=Open-IW7VoiceOwnedLog $Pair.Server.Stdout
+        foreach($name in @('A','B')){$armPins[$name]=New-IW7VoiceArmProcessPin $Pair.Sessions[$name].Identity $Pair.Sessions[$name].Handle}
+        $armPins.Server=New-IW7VoiceArmProcessPin $Pair.Server $ServerHandle
         $until=[Environment]::TickCount64+90000L
         do{
             $states=@();$ready=$true
@@ -93,14 +162,14 @@ function New-IW7VoicePairProviders {
                 Image=$context.Identity.Image;ImageSHA256=$context.Identity.SHA256;CreationFileTime=[uint64]([datetimeoffset]$context.Identity.CreatedUtc).UtcDateTime.ToFileTimeUtc()}
         }
         $expected=[pscustomobject]@{ServerId=$Pair.Server.PID;Generation=$Pair.Generation;Roles=$roles;SenderSlot=$SenderSlot;ReceiverCreationFileTime=$roles[1-$SenderSlot].CreationFileTime}
-        $wire=@{ProposalRoot=$PSScriptRoot;Sequence=0UL;Step=0UL;LastRead=$null;ArmRecord=$null;ServerLog=$logs.Server;Logs=$logs;Pair=$Pair;Expected=$expected;Sender=$sender;Receiver=$receiver;SenderName=$senderName;ReceiverName=$receiverName;SenderSlot=$SenderSlot;ReceiverSlot=(1-$SenderSlot);Response=$response;CaseRoot=$CaseRoot;ProbePath=$ProbePath;ProbeSHA256=$ProbeSHA256;RecorderSourceSHA256=$RecorderSourceSHA256}
+        $wire=@{ProposalRoot=$PSScriptRoot;Sequence=0UL;Step=0UL;LastRead=$null;ArmRecord=$null;ServerLog=$logs.Server;Logs=$logs;Pair=$Pair;Expected=$expected;Sender=$sender;Receiver=$receiver;SenderName=$senderName;ReceiverName=$receiverName;SenderSlot=$SenderSlot;ReceiverSlot=(1-$SenderSlot);Response=$response;CaseRoot=$CaseRoot;ProbePath=$ProbePath;ProbeSHA256=$ProbeSHA256;RecorderSourceSHA256=$RecorderSourceSHA256;ArmPins=$armPins}
         $previous=Read-IW7AgentResponse (Read-IW7AgentWire $response -RequireTerminator) $sender.Identity.PID $sender.PairNonce
         if($previous){$wire.Sequence=$previous.Sequence;$wire.Step=$previous.Step}
         $io=@{
             Now={[Environment]::TickCount64}
             Sleep={param($ms)Start-Sleep -Milliseconds $ms}
             Snapshot={
-                Assert-IW7BaseIdentity $wire.Pair.Server;$null=Get-IW7AgentPairLease $wire.Pair
+                Assert-IW7BaseIdentity $wire.Pair.Server;$lease=Get-IW7AgentPairLease $wire.Pair
                 # Ownership/CIM/UDP/resource checks can consume the 500ms native
                 # publication window. Complete both before reading STATE/SAMPLE;
                 # validating an earlier cached transcript creates false staleness.
@@ -108,26 +177,12 @@ function New-IW7VoicePairProviders {
                     $proof=Update-IW7BaseClient $wire.Pair.Sessions[$name]
                     if(!$proof.Protected){throw 'Pair lost actual protection.'}
                 }
-                $roles=@()
-                foreach($index in @(0,1)){
-                    $name=@('A','B')[$index];$context=$wire.Pair.Sessions[$name]
-                    $f=Get-IW7VoiceStateFields $wire.Logs[$name] $context ([Environment]::TickCount64)
-                    if(!$f -or $f.gen -cne $wire.Expected.Generation -or [int]$f.slot -ne $index){throw 'Owned current STATE binding changed.'}
-                    $roles+=[pscustomobject]@{PID=$context.Identity.PID;Nonce=$f.nonce;Generation=$f.gen;Slot=$index;RelayGeneration=(Convert-IW7VoiceRelayGeneration $f);
-                        Protected=$true;V2Ready=($f.both_ready -ceq '1');UIReady=($f.ui_ready -ceq '1');Tick=[long]$f.query_tick}
-                }
-                $text=Read-IW7VoiceOwnedLog $wire.ServerLog
-                if($text -match '\[Paris agent voice pair\] FAIL'){throw 'VoicePair fixture failed.'}
-                $fixtureReady=$true
-                foreach($index in @(0,1)){
-                    $pattern='(?m)^\[Paris agent voice pair\] SAMPLE; server_pid='+$wire.Pair.Server.PID+'; client_nonce='+$wire.Expected.Roles[$index].Nonce+'; server_generation='+$wire.Expected.Generation+'; slot='+$index+'; native_tick_ms=(\d+); protected=1; sample_id=\d+; down_fixture=0; ready=1\.[ \t]*\r?$'
-                    $samples=[regex]::Matches($text,$pattern)
-                    if(!$samples.Count){$fixtureReady=$false;continue}
-                    $tick=[long]$samples[-1].Groups[1].Value;$now=[Environment]::TickCount64
-                    if($tick -gt $now -or $now-$tick -gt 500){throw 'Voice fixture SAMPLE stale.'}
-                }
-                [pscustomobject]@{OwnershipValidated=$true;ServerId=$wire.Pair.Server.PID;Generation=$wire.Expected.Generation;FixtureReady=$fixtureReady;Roles=$roles;
-                    EnableAudio=$wire.Pair.Plan.RunPlan.EnableAudio;PhysicalBytes=$wire.Pair.Plan.RunPlan.PhysicalBytes;CommitBytes=$wire.Pair.Plan.RunPlan.CommitBytes}
+                Read-IW7VoicePairNativeSnapshot $wire $lease
+            }
+            ArmSnapshot={
+                foreach($name in @('A','B','Server')){Assert-IW7VoiceArmProcessPin $wire.ArmPins[$name]}
+                $lease=Get-IW7VoiceArmLease $wire.Pair
+                Read-IW7VoicePairNativeSnapshot $wire $lease
             }
             StartRecorder={param($receiver,$output,$seconds)Start-IW7VoicePairRecorder $receiver $wire.ProbePath $wire.ProbeSHA256 $output $seconds $wire.Pair.LeaseToken $wire.Pair.Plan.ServerRoot $wire.RecorderSourceSHA256}
             RecorderState={param($recorder)Get-IW7VoicePairRecorderState $recorder}
@@ -141,9 +196,11 @@ function New-IW7VoicePairProviders {
                 $result
             }
             PublishCaptureArm={param($record,$Deadline)
-                Assert-IW7BaseIdentity $wire.Sender.Identity $wire.Sender.Handle
+                foreach($name in @('A','B','Server')){Assert-IW7VoiceArmProcessPin $wire.ArmPins[$name]}
+                $null=Get-IW7VoiceArmLease $wire.Pair
                 if($record.PID -ne $wire.Sender.Identity.PID -or $record.Nonce -cne $wire.Sender.PairNonce -or $record.Slot -ne $wire.SenderSlot){throw 'Capture ARM does not own the selected sender.'}
-                Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.Sender.Plan.GameRoot 'iw7-mod/paris-voice-capture.arm') $record $Deadline
+                if($record.RecorderReadyTick -gt [Environment]::TickCount64 -or [Environment]::TickCount64-$record.RecorderReadyTick -gt 500){throw 'Original recorder readiness expired before ARM publication.'}
+                Write-IW7VoiceCaptureArmRecord (Resolve-IW7BasePath $wire.Sender.Plan.GameRoot 'iw7-mod/paris-voice-capture.arm') $record $Deadline -NotAfterTick ($record.RecorderReadyTick+500)
                 $wire.ArmRecord=$record
             }
             CaptureState={
@@ -214,6 +271,6 @@ function New-IW7VoicePairProviders {
             $frameRoot=Join-Path $CaseRoot ('voice-pre-action-'+$name);$null=New-Item -ItemType Directory -Path $frameRoot
             $frames+=Save-IW7AgentPreActionFrame $Pair.Sessions[$name] $frameRoot
         }
-        [pscustomobject]@{Expected=$expected;IO=$io;Logs=$logs;Frames=$frames;Dispose={foreach($log in $logs.Values){$log.Stream.Dispose()}}.GetNewClosure()}
-    }catch{foreach($log in $logs.Values){$log.Stream.Dispose()};throw}
+        [pscustomobject]@{Expected=$expected;IO=$io;Logs=$logs;Frames=$frames;Dispose={foreach($log in $logs.Values){$log.Stream.Dispose()};foreach($pin in $armPins.Values){$pin.Image.Dispose()}}.GetNewClosure()}
+    }catch{foreach($log in $logs.Values){$log.Stream.Dispose()};foreach($pin in $armPins.Values){$pin.Image.Dispose()};throw}
 }

@@ -39,6 +39,12 @@ public static class IW7LabProcess
     [DllImport("psapi.dll", SetLastError=true)] static extern bool EmptyWorkingSet(IntPtr process);
     // Keep the verified kernel object alive across exit and PID reuse. All wait,
     // exit-code and termination operations below use this same handle.
+    public sealed class ProcessIdentity
+    {
+        public int PID { get; internal set; }
+        public long CreationFileTime { get; internal set; }
+        public string Image { get; internal set; }
+    }
     public sealed class OwnedProcess : IDisposable
     {
         IntPtr handle;
@@ -54,6 +60,19 @@ public static class IW7LabProcess
             throw new Win32Exception(Marshal.GetLastWin32Error(),"Owned process wait failed");
         }
         public bool HasExited { get { return WaitForExit(0); } }
+        // Observe this original kernel handle without reopening a possibly
+        // reused PID or reading the loader's aliased main-module name.
+        public ProcessIdentity ReadIdentity() {
+            CheckOpen();
+            if (HasExited) throw new InvalidOperationException("Original process exited");
+            long created,exited,kernel,user;
+            var image=new StringBuilder(32768); int size=image.Capacity;
+            if (!GetProcessTimes(handle,out created,out exited,out kernel,out user) ||
+                !QueryFullProcessImageNameW(handle,0,image,ref size))
+                throw new Win32Exception(Marshal.GetLastWin32Error(),"Original process identity read failed");
+            if (HasExited) throw new InvalidOperationException("Original process exited during identity read");
+            return new ProcessIdentity { PID=Id, CreationFileTime=created, Image=image.ToString() };
+        }
         public uint ExitCode { get {
             CheckOpen();
             if (!HasExited) throw new InvalidOperationException("Owned process is still running");

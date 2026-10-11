@@ -41,13 +41,14 @@ function New-IW7VoicePairArmRecord {
         $Recorder.Tick -gt $NowTick -or $NowTick-$Recorder.Tick -gt 500 -or $RecorderChallenge -cnotmatch '^[a-f0-9]{32}$'){throw 'Owned receiver stream must be fresh and ready before COM ARM.'}
     foreach($role in $Expected.Roles){
         if($role.SourceSHA256 -cnotmatch '^[a-f0-9]{64}$'){throw 'Pinned role source hash required.'}
-        [pscustomobject]@{PID=$role.PID;Nonce=$role.Nonce;Generation=$Expected.Generation;Slot=$role.Slot;RecorderChallenge=$RecorderChallenge;Tick=$NowTick;
+        [pscustomobject]@{PID=$role.PID;Nonce=$role.Nonce;Generation=$Expected.Generation;Slot=$role.Slot;RecorderChallenge=$RecorderChallenge;Tick=$NowTick;RecorderReadyTick=$Recorder.Tick;
             Wire="capturearm1 $($role.PID) $($role.Nonce) $($Expected.Generation) $($role.Slot) $($role.SourceSHA256) $RecorderChallenge $NowTick`n"}
     }
 }
 function Write-IW7VoiceCaptureArmRecord {
-    param([string]$Path,$Record,[long]$Deadline)
+    param([string]$Path,$Record,[long]$Deadline,[long]$NotAfterTick=0)
     if($Record.Wire.Length -gt 256 -or !$Record.Wire.EndsWith("`n") -or $Deadline -ne $Record.Tick+500){throw 'Invalid bounded capturearm publication.'}
+    if($NotAfterTick -gt 0){$Deadline=[math]::Min($Deadline,$NotAfterTick)}
     $temporary=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
     try{
         [IO.File]::WriteAllText($temporary,$Record.Wire,[Text.Encoding]::ASCII)
@@ -96,7 +97,7 @@ function Confirm-IW7VoicePathCounters {
 function Invoke-IW7VoicePairWitness {
     param([Parameter(Mandatory)]$Expected,[Parameter(Mandatory)][hashtable]$IO,
         [Parameter(Mandatory)][string]$OutputRoot,[ValidateRange(200,5000)][int]$SpeechHoldMs=4000)
-    $required=@('Now','Snapshot','StartRecorder','RecorderState','PublishCaptureArm','CaptureState','SendInput','InputReply','PTTState','Counters','FinishRecorder','AnalyzeWAV','CancelCapture','AbortInput','Sleep')
+    $required=@('Now','Snapshot','ArmSnapshot','StartRecorder','RecorderState','PublishCaptureArm','CaptureState','SendInput','InputReply','PTTState','Counters','FinishRecorder','AnalyzeWAV','CancelCapture','AbortInput','Sleep')
     foreach($name in $required){if($IO[$name] -isnot [scriptblock]){throw "Missing bounded owned provider $name."}}
     $senderSlot=Get-IW7VoicePairSenderSlot $Expected;$receiverSlot=1-$senderSlot
     $sender=$Expected.Roles[$senderSlot];$receiver=$Expected.Roles[$receiverSlot]
@@ -111,6 +112,12 @@ function Invoke-IW7VoicePairWitness {
         Assert-IW7VoicePairSnapshot $snapshot $now $Expected
         $snapshot
     }
+    $armRefresh={
+        $snapshot=& $IO.ArmSnapshot;$now=& $IO.Now
+        if($now-$state.Started -ge 29000){throw 'VoicePair bounded 29s witness expired.'}
+        Assert-IW7VoicePairSnapshot $snapshot $now $Expected
+        $snapshot
+    }
     try{
         $snapshot=& $refresh
         $baseline=& $IO.Counters
@@ -120,7 +127,7 @@ function Invoke-IW7VoicePairWitness {
         if(!$prepared.BothPrepared -or !$prepared.DescriptorsValidated -or $prepared.SourceLockNonzeroBytes -ne 0){throw 'Both actual Prepared/silent COM descriptors required before ARM.'}
         $state.Recorder=& $IO.StartRecorder $receiver $OutputRoot 12
         do{
-            $snapshot=& $refresh;$recorderState=& $IO.RecorderState $state.Recorder
+            $snapshot=& $armRefresh;$recorderState=& $IO.RecorderState $state.Recorder
             if(!$recorderState.OwnedIdentityValidated -or $recorderState.Exited){throw 'Owned recorder exited/identity lost before readiness.'}
             $ready=Read-IW7VoiceRecorderReady $recorderState.Stdout $receiver $state.Started (& $IO.Now)
             if(!$ready){& $IO.Sleep 10}
@@ -131,7 +138,7 @@ function Invoke-IW7VoicePairWitness {
         & $IO.PublishCaptureArm $records[$senderSlot] -Deadline ($records[$senderSlot].Tick+500)|Out-Null
         & $write @{type='capture_arm_requested';record=$records[$senderSlot];receiver_stays_prepared=$true;recorder_ready=$ready}
         do{
-            $null=& $refresh;$capture=& $IO.CaptureState
+            $null=& $armRefresh;$capture=& $IO.CaptureState
             if($capture.Failed){throw 'Capture failed before PTT.'}
             if(!$capture.SenderArmed){& $IO.Sleep 10}
         }while(!$capture.SenderArmed)
