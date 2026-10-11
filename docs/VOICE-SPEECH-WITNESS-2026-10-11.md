@@ -20,12 +20,12 @@ component for build checks, but its activation flag is absent.
 The source is the pinned four-second PCM16 mono16kHz fixture saying
 `Alpha seven. Blue lantern.` (SHA256
 `c2d4b48b6b9a1b7e267e8bb90e492bb336e35bd11c952a8421184a5f86e1289b`).
-B's injected capture source remains silence. Software input enters the actual
+The receiver's injected capture source remains silence in either direction. Software input enters the actual
 IDirectSoundCapture interface, then ordinary native PTT, codec, server relay
 and receiver playback. It does not exercise a physical microphone or two
 independent computers/WAN paths.
 
-The recorder uses Windows process-tree WASAPI for the original B kernel
+The recorder uses Windows process-tree WASAPI for the original receiver kernel
 process, pinned by PID, creation time, kernel image and immutable executable
 hash. Its original child handle, final exit, producer EOF, WAV format/hash and
 cleanup are checked. No default audio endpoint fallback is allowed.
@@ -327,6 +327,92 @@ retail effects category gain in the scoped mix. Its actual voice DirectSound
 surface and final-output words still require the next trial. Run17 remains
 recording evidence, with the earlier clock publication limitation retained.
 
+## Current build, reverse receipt and mailbox correction
+
+The full native suites and Release link pass at native source `a4b9cc6`, pinned
+Aurora `77e6d4d24e918ee363b3feee3735c3b889dff7d7`. Executable SHA256 is
+`A3A2147EDF966313A842134CC046540390BCA646829A1DD729D7799408108287`,
+built at2026-10-11T05:30:52.2654925Z. Source checks pass after the subsequent
+PowerShell-only mailbox correction `4c2b50a` (17 scripts/910 identifiers).
+
+Run18 reverses the original roles: B sends and A receives. The native observer
+closes206 frames/65920bytes, without truncation or surface failures, at8192Hz;
+206 surface observations include186 playing samples, volume0dB, pan0 and
+advancing actual DirectSound cursors. The receiver never reads the phrase source
+and the original native calls are forwarded. The actual11.97-second process-tree
+WAV closes with SHA256
+`A8F1074331FFAF91A07F531FD97A499380418A8077A1BE09300FF63824408D91`.
+The trial then fails during source Cancel mailbox replacement: Windows reports
+UnauthorizedAccessException/HRESULT5 while the native reader holds the old file.
+PTT release/Abort ACK, original process closure and exact file restoration still
+finish: Restored=true, CleanupError=null. The complete trial remains Passed=false;
+its earlier successfully closed receiver evidence is independently retained.
+
+Unprompted pinned Whisper/default VAD passes source/silence controls and reads
+"Alpha 7, Blue Lantern" from both actual native WAVs in this reverse direction.
+Final left/right reads "Alpha-Shivit, Blue Linder." and "Alpha-Shivit, Blue Minders."
+Waveform matching finds1781.5625ms in both channels, gain0.990/0.996,
+correlations0.784/0.741 and residual RMS1465/1689 versus native1869. This proves
+actual received/rendered speech presence, not full final-word recognition.
+
+`4c2b50a` retries only the native reader's HRESULT5 sharing/access contention,
+using the same ARM/Cancel bytes and original deadline. It does not grant another
+freshness window. Actual NTFS tests hold the destination with FileShare.Read:
+release after100ms permits replacement; holding through500ms preserves the old
+bytes and removes the temporary file. Permanent denial remains a bounded error.
+A final independent review finds no clock renewal, forwarding loss or temporary
+file leak in this correction and the atomic cinematic clock publication.
+
+Run19 repeats A-to-B with that correction. Passed=true, Restored=true and both
+Failure/CleanupError=null. Its real process-tree WAV is11.97seconds, SHA256
+`D15C75C691A63AEA9116EDD2433B23A7371E7CC70856441DC785975A128679E8`.
+Native decoding and submission both contain205 frames/65600bytes, SHA256
+`811DF4BEFE82E6A507751F9FD4F5E4F6B40E7C058AEEFB4371DEF9D8896F988B`.
+No truncation/surface failure, actual8192Hz, volume0dB and pan0 are retained.
+Independent Whisper/default VAD controls pass; both native texts read
+"Alpha 7, Blue Lantern". Final left/right remain "Alpha-7. We might do that."
+and "Alpha-shovel. Blue legend." Waveform matching finds1801.5625ms in both
+channels, gain0.980/0.986, correlations0.591/0.578, residual RMS2532/2634 versus
+native1891. Zero gain dvars and no active movie during the witness still do not
+establish a fully quiet final mix or active cinematic suppression.
+
+The outer legacy witness keeps NativeDecodeSucceeded/IntelligibilityAccepted
+false; those defaults are not the independently validated native PCM closure
+proof. Raw decoder/submission receipts and unprompted frozen recognition remain
+separate from final mix word acceptance.
+
+Run20 repeats B-to-A with the corrected mailbox lifecycle. Passed=true,
+Restored=true, Failure=null and CleanupError=null. Its actual11.97-second
+process-tree WAV has SHA256
+`30B44131FE93F06364FFBC188539AA54254DF42D95D5052458A77D85D5BAC2FD`.
+Native decoder/submission both contain204 frames/65280bytes, SHA256
+`0111188602B16EC5BE3B3306FC9212ADF0618941744970D5B7CB3AF7844E8DE5`.
+Actual8192Hz,204 surface observations/184 playing, no truncation/failure,
+forwarded originals and receiver InputSourceRead=false are retained. Independent
+counter windows report204 encoded/sent/playback calls,18 server relayed-frame
+delta and300 diagnostic packets; these are not one cumulative frame total.
+Original recorder close/EOF, PTT release, both capture cancellations, test-server
+zero-client shutdown and exact stock/profile/bank restoration complete.
+
+After complete restoration, pinned Whisper/default VAD passes source/silence
+controls and reads "Alpha 7, Blue Lantern." from both native WAVs. Final channels
+remain "Alpha-Chev and Blue Mindy." and "Alpha Shepherd Blue Minded." Waveform
+matching locates the received speech at1741.5625ms in both channels, gain
+0.986/0.985, correlations0.774/0.809 and residual RMS1510/1340 versus native1874.
+Residual means the unmatched output after scalar/lag alignment; this measurement
+alone cannot attribute it to game dialogue, DSP distortion or another source.
+Complete final-output word recognition remains unaccepted.
+
+All heavy test/analysis reservations finish before restoration of Main and the
+temporarily stopped applications. On2026-10-11T05:58Z Main restarts with the
+unchanged approved protocol2 binary, SHA256
+`CC356A3C31AAAD890FE8DBEC8738FC4D3C68021106A349FF6FFA3E799EBCBAA3`,
+approved build project commit `a2365b9499baf9f24594dfb88c1a7a2422edfceb`.
+All65 preserved native/script/config/bank files match their earlier hashes
+before and after restart. Telegram and Chrome restore from their verified
+original executable hashes; Chrome requests its saved prior session.
+No candidate voice executable is promoted to Main.
+
 Word analysis uses the retained offline SAPI tool with the current merged
 resource scheduler, built and staged only in ignored runtime. FFmpeg 8.1.2
 derives independent left/right PCM16 mono16kHz files under an Analysis 2/3 GiB
@@ -340,7 +426,7 @@ compared only after raw recognition results are frozen and hashed.
 
 ## Full build and remaining acceptance
 
-The fresh complete game build at code head
+The earlier complete game build at code head
 `1bd975914490316c723759338f305824c0f090fb`, pinned Aurora
 `77e6d4d24e918ee363b3feee3735c3b889dff7d7`, has executable SHA256
 `FAC0C1E4894A1BBC4ACE3DA69F17FEA46EAD24E18ABF6B4B1ADBCE034C7933A2`.
@@ -355,7 +441,8 @@ The subsequent full post-profile quiet build uses source head
 All native suites and the Release link pass again; source checks still verify
 the unchanged17-script catalog. No live debugger activation is used.
 
-The synchronized actual speech recording is being evaluated. Reverse direction,
+Current native decoded/submitted speech is verified in both directions. Final
+rendered speech is recorded in both directions; full final-word recognition,
 released-PTT negative controls, mute/reconnect/map behavior, real microphones,
 remote PCs, Multiplayer and ordinary player compatibility remain unaccepted.
 No build is promoted to Main and no accepted voice tag is justified.
