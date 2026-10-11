@@ -135,8 +135,9 @@ int received_enqueue(void* buffer,const short* pcm,int bytes) {
                 format.nAvgBytesPerSec!=format.nSamplesPerSec*2 || format.cbSize || FAILED(device->GetFrequency(&frequency)) ||
                 frequency<4000 || frequency>96000 || (received_rate && received_rate!=format.nSamplesPerSec)){c->invalid=true;return result;}
             received_rate=format.nSamplesPerSec;
-            frequency_min=frequency_min?(std::min)(frequency_min,frequency):frequency;
-            frequency_max=(std::max)(frequency_max,frequency);
+            const auto observed_frequency=static_cast<unsigned>(frequency);
+            frequency_min=frequency_min?(std::min)(frequency_min,observed_frequency):observed_frequency;
+            frequency_max=(std::max)(frequency_max,observed_frequency);
             c->enqueued=true;c->frame.enqueued_bytes=result;
         }catch(...){c->invalid=true;}
     }
