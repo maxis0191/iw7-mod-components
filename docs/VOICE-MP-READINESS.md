@@ -2,9 +2,11 @@
 
 Source audit at `21b91e3ebace48fda5ed60024719168064b2cca5` (private main).
 Issue 4 remains open. This document does not enable MP voice or report a new
-audio test. The delegated scope permits only this document; native, operations,
-packaging and shared runtime files are unchanged. Integration/publication and
-later resource admission belong to the coordinating voice chat.
+audio test. The initial pass was documentation-only. The parent subsequently
+extended ownership to the legacy player packager and associated light tests;
+the resulting correction is recorded below. Native/shared runtime files remain
+unchanged. Integration/publication and later resource admission belong to the
+coordinating voice chat.
 
 ## Current evidence and supported route
 
@@ -91,7 +93,7 @@ source/tests/build manifest are a separate archive (`:23-27`, `:36-62`,
 `SelectedVoiceProtocol=2` is the package's selected transport. The explicit
 installer checks both (`ops/Install-VoiceClient.ps1:13-24`).
 
-**Reproduced source-contract defect:** current packaging cannot accept a fresh
+**Reproduced source-contract defect at the audited main:** packaging cannot accept a fresh
 ordinary build's full manifest. `Build-Voice.ps1:223-225` always lists 23 base
 sources; `Package-Voice.ps1:10-12` permits only 14. Read-only PowerShell AST
 comparison finds nine rejected current sources, first `voice_capture_adapter.hpp`:
@@ -105,9 +107,9 @@ comparison finds nine rejected current sources, first `voice_capture_adapter.hpp
 will throw `Native source changed since build.` even when their hashes match.
 ServerModules adds two more source entries (`:226`) absent from that allowlist.
 This finding does not invalidate an older completed ZIP and is not a newly
-attempted build/package. Repair the profile/source contract before packaging
-the next normal candidate; keep exact hashes and the development-build refusal.
-Do not bypass it by deleting manifest entries or packaging the isolated witness.
+attempted build/package. The correction below restores the profile/source
+contract, retaining exact hashes and the development-build refusal. Never bypass
+it by deleting manifest entries or packaging the isolated witness.
 
 The retained `voice-e2e` package was observed as `isolated-modules`,
 `IsolatedLab=true`, project `a4b9cc62a377efa25078e3fd53ccff841fcf4308`, pinned
@@ -162,8 +164,8 @@ label or command acceptance is insufficient.
    protection, native-session readiness and passive route observations above.
    Preserve the v2 CP guards. First determine whether native MP works; extending
    relay mode guards would otherwise conceal the native baseline.
-3. Correct the package contract before the next ordinary-player release, and
-   later check stock/candidate mixed gameplay plus candidate-to-candidate voice.
+3. Integrate the package-contract correction below before the next normal build
+   and release, then check stock/candidate mixed gameplay and candidate voice.
    This is independent of whether native MP needs a transport repair.
 
 **One next MP experiment, after step 2:** a protected native-MP A-to-B witness
@@ -203,7 +205,7 @@ MP path. Reverse direction, actual player PTT, mute/unmute, reconnect/map change
 team/opponent/spectator/dead-player routing, stock-client regression, microphones,
 independent PCs and WAN/human intelligibility remain distinct subsequent gates.
 
-## Checks performed in this audit
+## Checks performed in the initial audit
 
 - Fetched existing private origin; created a source-only worktree from the
   audited main. No SDK/assets/runtime evidence were copied from `voice-e2e`.
@@ -221,7 +223,88 @@ Preparation occupied 6,353,250 bytes before the final document review, below the
 100 MiB preparation ceiling. This is logical file size, not an NTFS allocation
 or free-space claim; no retail files were created.
 
+## Package correction and targeted validation
+
+The parent authorizes correction of `ops/Package-Voice.ps1` and its tests.
+Only the two normal profiles are accepted: `native-helper` with the explicit
+23 base files and `ServerModules=false`, or `server-only` with those files plus
+the two Doom files and `ServerModules=true`. The profile must be a string and
+ServerModules a boolean. All required source entries must occur exactly once,
+have a canonical allowed filename and a matching SHA256. Missing, duplicate,
+unknown, wrong-profile, path-like and laboratory sources fail before output
+directories are created. New source files require deliberate review; there is
+no universal allowlist or manifest-entry deletion fallback.
+
+IsolatedLab, ExperimentalAssets, VoiceTrace, Debugger and VoiceCaptureSelectorBuild
+must explicitly be boolean false. Declared fake-capture, PTT-bridge, capacity-watch
+and capacity-checkpoint overlays must be disabled. Existing executable, upstream,
+startup, dvar and other overlay hash checks remain. Upstream Git query failure is
+also an explicit refusal. Older incomplete manifests require a reviewed rebuild,
+not relabeling. This changes package admission, not installed player files.
+
+`tests/ops/voice_package_test.ps1` constructs a tiny local Git SDK fixture and
+inert text executable; it never copies the real SDK, game or retained evidence.
+Its source manifest is derived from the real build script's literal source lists,
+so a future build-source addition exercises the packager's explicit contract.
+Three actual synthetic ZIP releases pass: native-helper v2, server-only v2 and
+native-helper v1. Tests open both archives and verify player-file membership,
+launcher/protocol selection, corresponding native/overlay hashes, source manifest,
+test include paths, archive receipts and exclusion of an untracked private marker.
+
+72 rejection cases pass: all 25 possible required sources individually missing,
+unknown/wrong-profile/laboratory/path-like sources, duplicates, malformed/mismatched
+hashes, actual source drift, invalid/mismatched profiles, nonboolean/absent flags,
+enabled development overlays, missing required or changed provenance, upstream
+identity and executable mismatch. Each refusal checks that no output root was
+created and the input executable remained unchanged.
+
+Both PowerShell 7 and Windows PowerShell 5.1 pass the suite. The initial 5.1 test
+failed because its .NET Framework ZIP writer uses backslashes in entry names;
+inspection found the correct four player files. The test reader now normalizes
+separators while requiring exactly one matching logical entry and the exact
+player-file set. Archive production behavior was not changed to hide that failure.
+The existing CI installer test invokes the new package suite; its positive/repeat
+installation, seven invalid-package boundaries and preservation checks also pass.
+All three changed PowerShell files parse and `git diff --check` passes. No compiler,
+native Add-Type, audio device, game or resource reservation is involved.
+
+Preparation plus retained synthetic test outputs measured 12,450,423 logical
+bytes before final documentation, still below the 100 MiB limit. No genuine
+player release was produced; building/packaging real candidate binaries waits
+for coordinated admission and the parent's GO.
+
+## MP adaptation preparation: additional receiver boundary
+
+Further source review finds an additional reason not to launch the current
+runner as an MP test. `src/native/paris_voice_test_capture.cpp:325-342` creates
+the per-frame receiver context only inside `received_playback`; its only caller
+is `voice_relay.cpp:465`. Decoder/enqueue hooks collect only while that context
+exists (`paris_voice_test_capture.cpp:171-187`). Native MP incoming does not
+pass through this relay wrapper, so those hooks alone would yield no attributable
+MP PCM proof. The current receiver witness also explicitly rejects
+`paris-voice-native-trace` (`:506-518`) to avoid competing decode/enqueue owners.
+
+The smallest substantiated implementation plan therefore has four boundaries:
+
+1. Add an explicit MP plan/map expectation to the runner while keeping CP the
+   default; remove no current CP guards or restoration checks.
+2. Give MP its own reviewed protection and joined/native-session readiness,
+   including exact local/remote slot/UID, native channel eligibility and original
+   process/session lifecycle. Validate MP entity/flag assumptions before exposure.
+3. Bind capture ARM to that actual native MP readiness instead of faking v2
+   roster/generation evidence. Preserve original deadlines, PTT provenance,
+   scope cancellation, source isolation and current CP behavior.
+4. Give native MP incoming and decoder/enqueue observation one consistent hook
+   owner, with verified native callsite/signature and synchronous context binding.
+   Bind PCM to the real incoming remote user before the original call, never
+   to fabricated relay frames; forward originals and retain actual output proof.
+
+No safe native MP patch is implied merely by replacing GAME_MODE_CP with MP.
+Native incoming ownership, MP protection and channel/session correlation are
+still unverified execution boundaries. This task prepares their exact source
+requirements without changing native code or claiming MP functionality.
+
 No Main 27016 change, owner-client action, Windows-audio change, external message,
-purchase or acceptance claim is part of this audit. The single documentation
-commit is supplied locally for parent integration; no separate PR/merge is made
-under this delegated publication boundary.
+purchase or acceptance claim is part of this work. Local coherent commits are
+supplied for parent integration; no separate PR/merge is made under this
+delegated publication boundary.
