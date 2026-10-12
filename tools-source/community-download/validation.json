@@ -74,6 +74,7 @@
     "attributed_to_harness": false,
     "meaning": "Creation overlaps the first compile interval; no recorded compiler parent identity proves affiliation",
     "preserved_without_termination": true,
+    "subsequent_parent_report": "Parent later reports PID29324 absent before the locator Run, with no agent termination; observation time was not supplied here and this does not establish retrospective affiliation or harness closure",
     "prior_zero_match_snapshot_scope": "Only archive/scratch paths in images or runner/compiler command lines; insufficient for pathless descendants",
     "later_scheduler_classification": "Parent reports existing scheduler does not classify vctip as a builder; no scheduler change was made and this is not closure evidence"
   },

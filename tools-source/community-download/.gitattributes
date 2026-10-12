@@ -1,4 +1,6 @@
 *.cpp text eol=lf
 *.hpp text eol=lf
+*.cs text eol=lf
+*.ps1 text eol=lf
 *.patch -text -whitespace
 LICENSE.upstream -text

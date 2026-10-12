@@ -99,6 +99,9 @@ this archive; it could miss a pathless descendant and was not a closure proof.
 The residual remains preserved, without guessed attribution or termination.
 The parent's later observation that the unchanged scheduler does not classify
 VCTIP as a builder does not change this uncertainty.
+The parent subsequently reports PID29324 absent before its locator Run and no
+agent termination. This reported disappearance supplies neither retrospective
+harness attribution nor historical descendant closure.
 
 The original command files, logs, EXE/OBJ and receipts remain ignored in
 `.scratch/harness-7dfozczw` (2598031 bytes) and `.scratch/harness-gwstj0b0`
@@ -146,3 +149,37 @@ stop joined during enqueue, and a second-thread stop inside the connect adapter
 after commit (also checking absence of a held mutex). The resulting 46-case source
 has **not been compiled or executed**. The historical 43-case result remains bound
 to `35bea079780580a0fc49d957168496e50febb1d1`, not these reviewed corrections.
+
+## Prepared Plan/original-job repetition (source only)
+
+`Harness.ps1 -Action Plan` is the default and performs only path/hash inspection.
+It requires explicit installed Python/VC/Windows SDK paths and a fresh runtime
+output path. It creates no directory, reservation, process, compiler, assembly or
+network request. The historical `run_tests.py --native-source ...` entry now only
+prints an inert Plan notice. The old implicit compile route is removed.
+
+The separate `-Action Run` source requires the exact reviewed plan SHA-256 and an
+already-built, reviewed helper assembly bound to `Download-NativeJob.cs`. No
+`Add-Type`, helper build or vswhere/vcvars bootstrap occurs in that route. Preparing
+and qualifying that assembly is a future, separately admitted parent operation;
+supplying matching hashes alone is not qualification of the helper implementation.
+
+The prepared Run admits the complete 4 GiB physical / 6 GiB commit group before
+staging or launch. One original job owns the Python worker at process creation;
+its git, compiler/linker and test subprocesses inherit that job. The runner keeps
+the same original job handle after root exit, samples bounded kernel-verified
+member PID/creation/image identities, captures residuals before owned Stop, and
+requires root exit plus zero job members for CloseConfirmed. Sampled membership
+does not claim an exhaustive event history or unmeasured memory peaks. Root exit
+with residual members after two seconds fails the run even if functional tests
+passed; cleanup does not turn it into success. An unconfirmed closure quarantines
+the lease. There is no termination by guessed PID, process name or global sweep.
+
+`Download-NativeJob.cs` is an isolated derivative of the existing original-job
+helper. `job-source.json` binds its base and derived bytes. The additions expose
+root exit and bounded membership snapshots using opened handles checked against
+the retained original job, so PID reuse alone cannot supply attribution. Shared
+helper sources are unchanged. This derived helper and the Run path have not been
+compiled, loaded or executed. The 32 MiB output cap reserves 1 MiB for final
+metadata; root/descendant ownership, functional result and admission remain
+separate fields in the planned receipt. Full IW7 build and gameplay are excluded.
