@@ -562,3 +562,54 @@ DryRun reserved no resources and started no game. A fresh 04:08:36 UTC snapshot
 still showed Main alone and zero leases. The coordinator's runtime GO remains
 false, with animation then material FF work taking priority. Complete vertical
 restart/restoration and visual acceptance remain unproved.
+
+### SDK report: exact classification of the two pre-existing retail errors
+
+Read-only classification of all three closed SDK candidate `server.stdout.log`
+files finds exactly two complete `script runtime error` blocks per run: one
+`init_cryobomb`, then one `init_forgefreeze`. They remain **errors, unresolved**;
+they are not downgraded to warnings or removed from the report.
+
+Both blocks print the exact instruction diagnostic
+`while processing instruction OP_CastFieldObject: 0x140c07d63`. Each has precisely
+two stack frames, in this order:
+
+| Error | First frame | Caller frame |
+| --- | --- | --- |
+| Cryobomb initialization | `init_cryobomb` in `scripts/cp/maps/cp_zmb/cp_zmb_interactions.gsc` | `init` in `scripts/cp/cp_interaction.gsc` |
+| Forge Freeze initialization | `init_forgefreeze` in `scripts/cp/maps/cp_zmb/cp_zmb_interactions.gsc` | `init` in `scripts/cp/cp_interaction.gsc` |
+
+The report compares each entire five-line block, including its header, opcode,
+address, both frames and closing delimiter; only CRLF-to-LF normalization is
+used. A matching function name somewhere inside a different stack is insufficient.
+All three logs place these blocks at lines 147–151 and 152–156. They occur after
+the SDK initialization marker in these runs, so their timing alone cannot exclude
+SDK involvement. Their pre-existence is separately supported by the versioned
+[October 8 original-script comparison](deployments/2026-10-08-map-vote-unanimity.json),
+at immutable commit `e012849b70530f5062021b5e15d7acd76f27a23b`: it records both
+errors with the original map-vote script, `WholeMapClean:false`, and restored
+baseline/candidate state. That earlier receipt was re-read; its older raw logs
+were not revalidated during this classification.
+
+| Closed SDK run | Cryobomb / Forge Freeze | Other complete runtime blocks / unparsed runtime headers | Server stdout SHA-256 |
+| --- | --- | --- | --- |
+| `20261012-025611-746-c01d8ac6` | 1 / 1 | 0 / 0 | `E062A1EC92932B9E894A69C3201F54463A42096B8D9720E6C9D5165BA20EF9C5` |
+| `20261012-031247-081-1c188b33` | 1 / 1 | 0 / 0 | `68E6C86DDED4EEF2B58BA24B4387E9DF5ADA31BFFF8449CE97E1037B5238E7AD` |
+| `20261012-032431-768-1b928c5f` | 1 / 1 | 0 / 0 | `0C45BE1C840D888888BD71BFD6C6FDFD9135FBBD9F9567FE6DFBA04847C79882` |
+
+These counts concern complete runtime-error blocks in those three server stdout
+files only, not all diagnostic categories, client logs or future runs. Original
+log hashes matched before/after reading; all three original scenario results
+remain failed. The ignored local report
+`runtime/agent-candidate-plans/sdk-retail-errors-20261012.local.json`, SHA-256
+`DF0F681FD7F44959CA33B9CCD1CBC01DB2C5D7C5768542D808EDD1198149E33B`, retains the
+six complete blocks and original failure/restoration fields.
+
+The opcode/stack does not identify the invalid field/value, its originating
+cause or the gameplay impact. These traces neither prove a new beacon defect
+nor prove the retail interactions work. No retail patch, runtime-error filter,
+allowed-error set or acceptance gate changed. Every future error must remain
+reported: a changed opcode/address/frame, additional frame, incomplete block or
+extra occurrence needs separate comparison and cannot inherit this historical
+classification. The next runtime still needs fresh admission at the unchanged
+budget and the coordinator's explicit GO; this report starts no game.
