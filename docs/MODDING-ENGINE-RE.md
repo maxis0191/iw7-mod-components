@@ -613,3 +613,95 @@ reported: a changed opcode/address/frame, additional frame, incomplete block or
 extra occurrence needs separate comparison and cannot inherit this historical
 classification. The next runtime still needs fresh admission at the unchanged
 budget and the coordinator's explicit GO; this report starts no game.
+
+### Run 4: interaction/restart passes; runtime integrity fails on missing cdata
+
+The coordinator authorized one cycle at source `69fd1e0` (executable source
+unchanged from reviewed `569a772`). Fresh admission reserved the full 12/12 GiB
+at 04:27 UTC; the candidate used the durable Doom stock, the same reviewed
+native/1048-byte FF/SDK/observer hashes and the two project scripts. Native
+privacy, scoped engine godmode, inactivity 0 and cheats 0 were observed. No
+second cycle or retail repair was performed. The sanitized, hash-bound record is
+[Run 4 evidence](deployments/2026-10-12-sdk-beacon-run4.json); raw logs, captures,
+transactions and full error blocks remain under ignored
+`runtime/agent-lab/20261012-042704-926-54f4946d/`.
+
+The targeted witness succeeds: first real Use gives team 1/personal 1; after
+closing and restarting the owned client, the same server object persists with
+team 1/personal 0, then real Use gives team 2/personal 1. Input release is observed
+on both passes. The exact cache survives, the HTTP worker closes before rejoin,
+and the second client has a new process/session. This is a controlled client
+restart, not an in-process reconnect. Original `result.json` and
+`scenario.result.json` remain `Passed:true`; they do not contain a complete
+retail runtime-error gate and must not be presented as global acceptance.
+
+**Runtime integrity is not validated.** The final closed server stdout contains
+221 complete runtime-error blocks: the two exact pre-existing Cryobomb/Forge
+Freeze errors plus **219 new unresolved errors**. They are not allowlisted:
+
+| New diagnostic | Count | Observed log phase |
+| --- | --- | --- |
+| `OP_dec` in `cp_zmb::update_team_door_buy_on_spawn` | 3 | First client identity setup, before its first protected heartbeat/READY |
+| `OP_EvalLocalVariableObjectCached: 0x140c08a57` in `gametype_zombie::is_player_near_interaction_point` | 54 | Between connections and after the final connection |
+| `distancesquared`: `Type undefined is not a vector`, same leaf function | 54 | Same intervals |
+| `OP_less: 0x140c07e82`, same leaf function | 54 | Same intervals |
+| `OP_JumpOnTrue` in `gametype_zombie::get_closest_player_near_interaction_point` | 54 | Same intervals |
+
+The AI stacks continue through the nearest-player function and retail
+`scripts/anim/notetracks_mp.gsc::ai_update`, with unresolved intermediate frames.
+There are 160 AI blocks between the two active witness windows and 56 after the
+second, with none inside those windows. The first AI block is after the first
+owned client's verified closure/restoration (04:28:30 UTC). Log-order/native-tick
+brackets place its first group around 04:28:31–41, and the last around
+04:30:21–31; the error blocks themselves have no timestamp or captured variable
+values. The three spawn errors are bracketed around 04:27:51–04:28:01. Both
+client stdout logs contain zero runtime-error headers; that does not erase the
+server errors. A missing `sounddata/cp/cp_zmb.json` diagnostic is also retained.
+
+Read-only comparison identified a missing candidate prerequisite. Run 3 loaded
+Aurora's `custom_scripts/cp/patches.gsc` and `cp_mp/inspect.gsc` from its retained
+private `cdata`, in addition to project scripts. The reused Doom root had no
+private `iw7-mod/lab-appdata` before adoption. Agent-Lab starts with `-noupdate`
+and does not provision that updater content: Run 4 loaded only the two project
+scripts and lacked the Aurora patch and sound table. Nothing originally present
+in that candidate's private cdata was deleted; the absent-before appdata state
+was restored after the run. The earlier assertion of two *project* scripts was
+insufficient to establish a complete Aurora runtime environment.
+
+The retained Run 3 updater patch and current local Aurora-managed copy match
+SHA-256 `307F03A1427C18CF58A0861E86E2023BE58661338202A1FF246E41A4C7DC02B6`
+(3243 bytes). Its existing replacements guard exactly the failing paths: reject
+an undefined nearest player/interaction before the distance call, and initialize
+door prices for at least one player when a dedicated starts empty. The clean
+local retail reference at `1dd48a78e55ef9c99519fc5221a206168ce2e98a` shows the
+unguarded distance operands and a door initializer with cases 1–4 but no zero
+case, followed by the three unguarded donation decrements at spawn. Reference
+file hashes are recorded separately; no equivalence to the loaded retail
+bytecode was established. This strongly supports the missing updater guards as
+the mechanism, but their restorative effect has not been tested. Candidate root,
+project module selection and updater-data availability changed together, so
+this is not a controlled single-variable A/B. Native and retail map/AI code
+still execute despite the minimal project script profile.
+
+The coordinator separately inspected the two native rejoin before-Use/after-Use
+BMPs: SDK HUD changes from `You:0 Team:1` to `You:1 Team:2`; a dark cube is visible
+in both and `Activate beacon` is readable after. Retail portrait/ammo/cash are
+absent in before-Use and visible after, with a nearby 500 indicator. The cause of
+that HUD timing is unproved. These images do not prove normal texture quality or
+a certain visible rotation. The original `PixelsVerified:false` is preserved;
+the separate visual review is bound to the original BMP hashes.
+
+Restoration completed at 04:30:42 UTC. At 04:31:00, Main was the sole game process
+with unchanged creation/image identity; test ports and resource leases were
+absent. All four owned transactions were independently rechecked at 04:36:36,
+including the candidate's 17 original scripts and absent private appdata.
+Managed restoration and static Main checks pass; no Main bank delta was observed.
+Six native frames plus logs total about 21.33 MiB, below the 128 MiB limit.
+No original result, log or capture was rewritten to change its outcome.
+
+Next: review and bind the required Aurora updater cdata as an explicit candidate
+prerequisite, with preparation refusing incomplete environments. Do not repair
+retail code, widen allowed errors, copy another candidate's identities/bank, or
+retry gameplay under this one-cycle authorization. Any correction/retest needs
+its own reviewed plan and the coordinator's next GO. Overall acceptance remains
+blocked by this recorded runtime incident.
