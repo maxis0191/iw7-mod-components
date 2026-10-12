@@ -318,3 +318,8 @@ The 25 artifacts total 2839525 bytes. Exact receipts and hashes are preserved in
 and its independent compile/drain failures remain intact. No retry or deadline
 increase followed. Next work is a targeted explanation and legitimate resolution
 of the MSVC VCTIP child; any further native execution requires a separate GO.
+
+The subsequent [read-only VCTIP research](VCTIP-RESEARCH.md) identifies the exact
+installed version, Microsoft's surviving-child explanation and the documented
+VSCEIP opt-out candidate. It distinguishes optional telemetry policy from a
+proven bounded process lifetime. No configuration change or retry was made.
