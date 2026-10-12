@@ -49,12 +49,32 @@ def reader(path):
     return trace.ProcessReader(identity['PID'], identity['Image'], identity['CreatedUtc'], identity['SHA256'])
 
 
+def sample_pair(server, client, allow_transitions=False):
+    try:
+        authoritative = trace.Fields(server.read).sample()
+        predicted = prediction(client.read)
+        for row in authoritative['slots']:
+            ptr = trace.Fields(server.read).ptr(trace.CLIENT_TABLE + 8 * row['slot'])
+            row['reliable_sent'] = trace.Fields(server.read).i32(ptr + 0x4127C)
+            row['last_packet_time'] = trace.Fields(server.read).i32(ptr + 0x9EFB8)
+            row['delta_message'] = trace.Fields(server.read).i32(ptr + 0x410C8)
+        return {'type': 'sample', 'server': authoritative, 'prediction': predicted}
+    except (OSError, ValueError) as error:
+        if not allow_transitions:
+            raise
+        # A disconnected/loading client can release globals during a read.
+        # Preserve the gap explicitly; never turn it into a stable sample or
+        # infer that every unavailable interval is a harmless transition.
+        return {'type': 'unavailable', 'error': str(error)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server-identity', required=True)
     parser.add_argument('--client-identity', required=True)
     parser.add_argument('--seconds', type=int, choices=range(1, 121), default=40)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--transitions', action='store_true')
     args = parser.parse_args()
     destination = trace.output_path(args.output)
     server = reader(args.server_identity)
@@ -73,23 +93,18 @@ def main():
                   'limits': 'Asynchronous reads; reduced test is not normal-quality FPS acceptance.'})
             start = time.monotonic()
             samples = 0
+            unavailable = 0
             try:
                 while time.monotonic() - start < args.seconds and not destination.with_suffix('.stop').exists():
                     begin = time.monotonic()
-                    authoritative = trace.Fields(server.read).sample()
-                    predicted = prediction(client.read)
-                    for row in authoritative['slots']:
-                        ptr = trace.Fields(server.read).ptr(trace.CLIENT_TABLE + 8 * row['slot'])
-                        row['reliable_sent'] = trace.Fields(server.read).i32(ptr + 0x4127C)
-                        row['last_packet_time'] = trace.Fields(server.read).i32(ptr + 0x9EFB8)
-                        row['delta_message'] = trace.Fields(server.read).i32(ptr + 0x410C8)
-                    emit({'type': 'sample', 'elapsed_ms': round((begin - start) * 1000),
+                    row = sample_pair(server, client, args.transitions)
+                    emit({**row, 'elapsed_ms': round((begin - start) * 1000),
                           'utc': datetime.now(timezone.utc).isoformat(),
-                          'read_duration_ms': round((time.monotonic() - begin) * 1000, 3),
-                          'server': authoritative, 'prediction': predicted})
-                    samples += 1
+                          'read_duration_ms': round((time.monotonic() - begin) * 1000, 3)})
+                    samples += row['type'] == 'sample'
+                    unavailable += row['type'] == 'unavailable'
                     time.sleep(0.05)
-                emit({'type': 'complete', 'samples': samples, 'gameplay_pass': None})
+                emit({'type': 'complete', 'samples': samples, 'unavailable': unavailable, 'gameplay_pass': None})
             except Exception as error:
                 emit({'type': 'aborted', 'error': str(error), 'samples': samples})
                 raise

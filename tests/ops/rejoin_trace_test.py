@@ -3,6 +3,8 @@ import importlib.util
 from pathlib import Path
 import struct
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location('paired', Path(__file__).resolve().parents[2] / 'ops/Trace-Rejoin.py')
 paired = importlib.util.module_from_spec(spec)
@@ -62,6 +64,28 @@ class PredictionTests(unittest.TestCase):
     def test_changed_engine_getter_is_refused(self):
         with self.assertRaisesRegex(ValueError, 'getter layout changed'):
             paired.validate_prediction_layout(lambda address, size: bytes(size))
+
+    def test_transition_read_failure_is_explicit_then_recovers(self):
+        read, _ = self.memory()
+        client = SimpleNamespace(read=read)
+        server = SimpleNamespace(read=lambda address, size: bytes(size))
+        with patch.object(paired.trace.Fields, 'sample', side_effect=[OSError('allocation unavailable'), {'slots': []}]):
+            gap = paired.sample_pair(server, client, True)
+            self.assertEqual(gap['type'], 'unavailable')
+            self.assertNotIn('prediction', gap)
+            self.assertEqual(paired.sample_pair(server, client, True)['type'], 'sample')
+
+    def test_strict_mode_keeps_read_failure_fatal(self):
+        process = SimpleNamespace(read=lambda address, size: bytes(size))
+        with patch.object(paired.trace.Fields, 'sample', side_effect=OSError('allocation unavailable')):
+            with self.assertRaises(OSError):
+                paired.sample_pair(process, process)
+
+    def test_transition_mode_does_not_mask_programming_errors(self):
+        process = SimpleNamespace(read=lambda address, size: bytes(size))
+        with patch.object(paired.trace.Fields, 'sample', side_effect=RuntimeError('unexpected')):
+            with self.assertRaises(RuntimeError):
+                paired.sample_pair(process, process, True)
 
 
 if __name__ == '__main__':
