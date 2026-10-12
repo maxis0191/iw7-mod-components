@@ -765,13 +765,23 @@ namespace paris_test_fixture
             if (vote_input && vote_witness_running) return;
             if (vote_input && agent_runtime.client && agent_runtime.client->active()) return;
             if (voice_control && (!utils::flags::has_flag("iw7-voice-relay") || !utils::flags::has_flag("paris-voice-base-test"))) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input) return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input) return;
             if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
                 !utils::flags::has_flag("paris-voice-base-test"))) return;
             if ((action == "voiceprobe" || action == "voicereleasedprobe" || action == "voicecodecprobe" || action == "voiceconcurrentprobe" || action == "voicesoakprobe") && (!utils::flags::has_flag("paris-voice-native-trace") ||
                 !((utils::flags::has_flag("paris-isolated-lab") && utils::flags::has_flag("paris-voice-audio-lab")) ||
                   utils::flags::has_flag("paris-voice-base-test")))) return;
-            if (action == "connect")
+            if (action == "rejoin")
+            {
+                const auto* connection = party::get_server_connection_state();
+                if (!utils::flags::has_flag("paris-isolated-lab") || !lab_port() || lab_port() == 27016 ||
+                    !connection || !connection->hostDefined || !loopback(connection->host) ||
+                    ntohs(connection->host.port) != lab_port() || !game::CL_IsGameClientActive(0)) return;
+                if (agent_runtime.client) agent_runtime.client->stop(agent_binding);
+                command::execute("disconnect", false);
+                scheduler::once([] { connect_pending = true; }, scheduler::main, 3s);
+            }
+            else if (action == "connect")
             {
                 if (!utils::flags::has_flag("paris-isolated-lab") && !utils::flags::has_flag("paris-voice-base-test")) return;
                 if (!lab_port()) return;
