@@ -705,3 +705,56 @@ retail code, widen allowed errors, copy another candidate's identities/bank, or
 retry gameplay under this one-cycle authorization. Any correction/retest needs
 its own reviewed plan and the coordinator's next GO. Overall acceptance remains
 blocked by this recorded runtime incident.
+
+### Issue 149: explicit Aurora data prerequisite before planning or launch
+
+[Issue #149](https://github.com/maxis0191/iw7-paris-server/issues/149) remains
+open until a protected retest has verified the prerequisite, absence of the new
+errors and restoration. The old adoption checked retained stock, marker, native
+package and SDK inputs; the old DryRun returned before launch staging and never
+inspected updater cdata. A marker and a successful plan therefore did not imply
+a complete runtime. This was a missing preflight contract, not permission to
+remove updater-managed content or replace it with our own retail patches.
+
+`Agent-Lab.ps1` now requires explicit `-UpdaterDataRoot` and
+`-UpdaterDataSHA256` before DryRun can return. The digest binds the entire sorted
+directory/file inventory, relative paths, lengths and raw SHA-256 file hashes;
+it is independent of the machine path and NTFS identities. The helper bounds the
+tree to 512 MiB, 512 files and 128 directories, requires the CP patch, shared
+inspect script and Spaceland sound table, and rejects redirects, foreign top-level
+paths, partial candidates, content drift and candidate/provider hardlink aliases.
+The explicit provider must be outside the candidate. A reviewed digest is an
+input binding, not an independent upstream-release attestation.
+
+The local Aurora-managed provider contains 84 files and 23 subdirectories,
+394,436,292 bytes, with inventory digest
+`2649231856356E5B5BEE4A6D043AA13E547CCC26E3D5F7B8A385E0F1A03F4F6A`.
+Seven updater zone files account for 370,828,272 bytes; scripts, sound tables and
+UI account for the rest. This provider is copied as a complete updater tree;
+no retail game snapshot, identity, bank or parent AppData directory is imported.
+Real provider files were only inventoried, not staged during this correction.
+
+An already identical, independent candidate tree is reused. An absent tree is
+reported as `StagingRequired:true`, `CandidateVerified:false`, with explicit
+copy bytes; it is never called ready by DryRun. During a future admitted run,
+the existing lab-appdata transaction is saved before staging. The helper uses
+the same whole-tree Robocopy flags as reviewed `Isolated-Lab Prepare`, checks
+the source inventory again before and after copying, and verifies every target
+hash and independent file identity. A changed/partial existing tree is refused,
+not overlaid. Normal transaction restoration preserves existing bytes or restores
+the original absence, including after a partial copy. The two project SDK
+scripts remain separate from this Aurora prerequisite.
+
+Before a client may join, the fresh server stdout must also show the Aurora
+patch loaded and its `main` executed; a missing Spaceland sound-table diagnostic
+refuses the join. This load witness accepts no unrelated runtime errors. Existing
+error reporting/acceptance limits, native privacy/protection, the full 12/12 GiB
+reservation and Base/Resource helpers are unchanged.
+
+The new updater suite passes 34 controls using tiny synthetic provider files,
+the actual transaction/Robocopy path and the real Agent-Lab missing-provider
+DryRun refusal. It covers hashes, missing/foreign files, redirects, hardlink
+aliases, provider drift, no-copy reuse, existing-byte/absent-before restoration,
+partial-copy failure and missing/incomplete runtime load witnesses. The 66
+restoration and 145 vertical controls remain passing. These are source and file
+tests only; no real provider was copied and no new game was launched.
