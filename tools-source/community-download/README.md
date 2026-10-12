@@ -152,6 +152,9 @@ to `35bea079780580a0fc49d957168496e50febb1d1`, not these reviewed corrections.
 
 ## Prepared Plan/original-job repetition (source only)
 
+This preparation and its pure checks precede the authorized single attempt
+recorded below. Its earlier unexecuted status is historical, not the current result.
+
 `Harness.ps1 -Action Plan` is the default and performs only path/hash inspection.
 It requires explicit installed Python/VC/Windows SDK paths and a fresh runtime
 output path. It creates no directory, reservation, process, compiler, assembly or
@@ -252,3 +255,27 @@ reserve nothing and never enter the runner's Run branch. There are now 63 pure
 checks. Corrected downloader46-case execution and qualification of this binding
 and admitted pipeline remain pending. Keep the future Run in a fresh persistent
 PowerShell7 host so any AppDomain quarantine remains available for recovery.
+
+## Authorized single attempt, 2026-10-12: failed
+
+The exact `94c0760` source and Plan `3183E691...EF7BBB666` were admitted once at
+4 GiB RAM / 6 GiB commit. Compilation failed on C2220/C4459 under `/WX`:
+the `destination` parameter at `tests/test_download.cpp:148` hides the global at
+line 5. None of the 46 native cases executed. The worker exited with code 1.
+
+The two-second original-job drain then expired with an observed VCTIP member.
+Its membership/creation/image were checked on an opened handle against the exact
+original job. Owned job termination confirmed closure, released the read guards
+and lease, and left no quarantine object. The original persistent host exited
+normally only after those confirmations. Fresh inspection found no observed job
+PIDs, other heavy workload or leases; Main and the two preexisting light Python
+identities were unchanged. These cleanup facts do not turn the failed run into a
+pass or requalify the old unadmitted incident.
+
+All 19 artifacts (30198 bytes) are retained in ignored runtime, with control and
+verified postflight receipts in `.scratch`. See
+[`native-validation-20261012.json`](native-validation-20261012.json) for exact
+hashes and limits. An earlier read-only postflight filter failed and is explicitly
+unqualified; its retained evidence was not silently overwritten. No source fix,
+budget/deadline increase, second native attempt, or PID-based kill followed.
+Next action requires a separately reviewed source correction and explicit new GO.
