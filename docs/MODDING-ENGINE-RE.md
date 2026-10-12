@@ -428,3 +428,62 @@ The two retail initialization errors also predate this SDK test: see
 The retail functions dereference trigger structures without a defined check,
 but the exact non-object causing this runtime failure is not established.
 No SDK attribution or suppressive retail patch is justified by this evidence.
+
+### Third attempt: live Main bank audit and separate owned recovery
+
+Run `20261012-032431-768-1b928c5f` used fixed source
+`fa236d276ab263c52f10a75c245bf745188d8bd4`, the same pinned inputs and one
+12/12 GiB reservation. The dedicated started at 03:24:40 UTC. The first pass
+completed its real Use, counters 1/1, released input and three native captures
+(initial, after aim/before Use, after Use). Rejoin did not start. During the
+first client restoration, the strict Main audit detected four changed bank
+files: three balances and one previous-value file. Main executable, configuration
+and scripts were unchanged. The initial result remains `Passed:false`,
+`Restored:false`, with the original protected-file error and cleanup error.
+
+Main's read-only UDP query then reported one player. Its recent logs show a
+native endgame, a three-player handoff, cleanup and map rotation; those three
+account identities match the changed balances. The deployed bank callback saves
+each player's remaining points on game-ended. This is strong log/source/timing
+correlation with normal Main gameplay, not an attributed file-writer trace.
+No account identifiers or balances are included in this versioned record.
+
+Recovery preserved every current Main balance and the failed result/manifests.
+After 30 seconds of fresh empty private UDP replies, the exact candidate received
+quit. It did not close within ten seconds; the existing owned-handle helper
+terminated that same process and confirmed exit (code 3758096385). Candidate
+restoration completed at 03:29:36 UTC. At 03:30:20, canonical bank roots were
+distinct with no redirected ancestor/descendant and **66 NTFS file identities,
+zero shared identities**. The pinned launcher used the candidate directory as
+the process working directory. No Main bank path was a recovery write target.
+
+The separate `owned-recovery.local.json` completed at 03:31:50 UTC: 21 managed
+base files passed existence/hash checks, profile trees matched, and current Main
+bank hashes matched before/after recovery. The strict bank-audit failures and
+original `Restored:false` records remain untouched. Normal guarded lease release
+completed; 03:32:25 inspection found an empty registry and only Main, with its
+original creation identity and binary hash. This recovery is not a retroactive
+scenario PASS. Logs/frames totaled about 16.3 MB, below the 128 MiB ceiling.
+
+The source follow-up introduces an explicit Agent-Lab-only bank audit policy.
+Ordinary Base-Client restoration remains strict. The policy checks independent
+canonical bank roots and NTFS identities before staging, records the candidate
+working directory/configuration/script binding, and rechecks bank isolation at
+restoration. Main bank paths may never overlap managed files or restored profile
+trees. The wrapper invokes the original restoration, independently verifies owned
+file hashes/profile trees and the static Main file inventory, then records
+`ManagedFilesRestored`, `StaticMainUnchanged`, `MainBankDeltaObserved` and
+`MainBankWriterAttributed:false` separately. A bank delta stays observable and
+unattributed; neither current values nor original protected hashes are rewritten.
+Static Main changes and corrupt owned backups remain blocking failures.
+
+Cleanup now attempts exact candidate closure even if a client restoration audit
+has failed. It requires confirmed closure before any later restoration, attempts
+each owned restoration, and releases the reservation only after all stages
+succeed. The new temporary-file/synthetic-lifecycle suite passes 26 controls,
+including shared bank hardlink/junction rejection, live bank preservation,
+strict-default refusal, static file changes/additions, corrupt owned backups,
+profile/bank overlap, candidate closure following an audit error and lease
+retention on unknown closure or failed restoration. The 139 vertical controls
+and existing Base-Client/context regression suites also pass. This source change
+has not yet been game-tested; no fourth run is claimed.

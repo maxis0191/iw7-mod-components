@@ -350,7 +350,7 @@ function Send-IW7BaseRequest($Context,[string]$Action,[switch]$AllowUnprotected)
     $request
 }
 
-function Stop-IW7BaseClient($Context) {
+function Stop-IW7BaseClient($Context,$AgentMainBankIsolation=$null) {
     . "$PSScriptRoot/Lab-Lifecycle.ps1"
     if (Test-IW7BaseClientActive $Context) {
         Assert-IW7BaseVacant $Context.Plan.GameRoot $Context.Identity.PID $Context.PairOwnership $Context
@@ -377,7 +377,10 @@ function Stop-IW7BaseClient($Context) {
     }
     if ($Context.Handle -and !$Context.Handle.HasExited) { throw 'Client closure unconfirmed; retain transaction and reservation.' }
     Assert-IW7BaseVacant $Context.Plan.GameRoot -PairOwnership $Context.PairOwnership -CurrentContext $Context
-    if ($Context.Transaction) { Restore-IW7BaseTransaction $Context.Transaction }
+    if ($Context.Transaction) {
+        if($AgentMainBankIsolation){$null=Restore-IW7AgentMainTransaction $Context.Transaction $AgentMainBankIsolation}
+        else{Restore-IW7BaseTransaction $Context.Transaction}
+    }
     if ($Context.Handle) { $Context.Handle.Dispose();$Context.Handle=$null;$Context.Client=$null }
     if ($Context.Lock) { $Context.Lock.Dispose();$Context.Lock=$null }
     # Server owner releases the complete reservation only after its own teardown.
