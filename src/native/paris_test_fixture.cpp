@@ -761,11 +761,13 @@ namespace paris_test_fixture
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
             const bool voice_control = action == "voicemute" || action == "voiceunmute" || action == "voicedisable" || action == "voiceenable" || action == "voicerestore" || action == "voicecodecprobe" || action == "voiceconcurrentprobe" || action == "voicesoakprobe";
             const bool vote_input = action == "votenext" || action == "voteprevious" || action == "voteboth" || action == "voteholdnext" || action == "voterelease" || action == "votewitness";
+            const bool afk_input = action == "afk";
+            if (afk_input && !utils::flags::has_flag("paris-isolated-lab")) return;
             if (vote_input && !utils::flags::has_flag("paris-isolated-lab")) return;
             if (vote_input && vote_witness_running) return;
             if (vote_input && agent_runtime.client && agent_runtime.client->active()) return;
             if (voice_control && (!utils::flags::has_flag("iw7-voice-relay") || !utils::flags::has_flag("paris-voice-base-test"))) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input) return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input && !afk_input) return;
             if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
                 !utils::flags::has_flag("paris-voice-base-test"))) return;
             if ((action == "voiceprobe" || action == "voicereleasedprobe" || action == "voicecodecprobe" || action == "voiceconcurrentprobe" || action == "voicesoakprobe") && (!utils::flags::has_flag("paris-voice-native-trace") ||
@@ -818,6 +820,8 @@ namespace paris_test_fixture
                     action == "voteprevious" || action == "voteboth", action == "voteholdnext");
             }
             else if (action == "help") command::execute("cmd say ..help", true);
+            // Retail chat consumes its leading control byte before GSC say.
+            else if (afk_input) command::execute("cmd say ..afk", true);
             else if (action == "mods") command::execute("cmd say ..mods", true);
             else if (action == "close") command::execute("cmd say ..close", true);
             else if (action == "voiceprobe") command::execute("paris_voice_native_probe", true);

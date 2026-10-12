@@ -30,6 +30,10 @@ $testCmd = Join-Path $runtime 'compile-voice-tests.cmd'
 @echo off
 call "$vcvars" >nul
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\afk_inactivity_test.cpp" /Fe:"$runtime\afk-inactivity-test.exe" /Fo:"$runtime\afk-inactivity-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\afk-inactivity-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$testSource" /Fe:"$testExe" /Fo:"$runtime\voice-protocol-test.obj"
 if errorlevel 1 exit /b 1
 "$testExe"
@@ -218,7 +222,7 @@ if (Test-Path -LiteralPath $labComponent) {
 }
 $nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','voice_capture_adapter.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp',
     'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','voice_inbox.hpp','dvar_metadata.hpp','agent_scenario.hpp',
-    'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp')
+    'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp','paris_afk.cpp','paris_afk.hpp','afk_inactivity.hpp')
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
 else {
     # The older standalone voice SDK does not expose the pinned CP WeaponDef.
@@ -308,10 +312,12 @@ $botsPath = Join-Path $root 'src/client/component/bots.cpp'
 $baseBots = (((git -C $root show ($commit + ':src/client/component/bots.cpp')) -join "`n").TrimEnd()) + "`n"
 $kickMarker = "void sv_kick_client_num_stub(const int client_num, const char* reason, bool kicked_for_inactivity)`n`t`t{"
 if (($baseBots.Split([string[]]@($kickMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned existing kick hook marker changed.' }
-$testBots = $baseBots.Replace('namespace bots', '#include "paris_test_safety.hpp"' + "`n`nnamespace bots").Replace($kickMarker,
+$legacyTestBots = $baseBots.Replace('namespace bots', '#include "paris_test_safety.hpp"' + "`n`nnamespace bots").Replace($kickMarker,
     $kickMarker + "`n`t`t`tif (paris_test_fixture::suppress_inactivity_kick(client_num, reason)) return;")
+$testBots = $legacyTestBots.Replace('#include "paris_test_safety.hpp"', '#include "paris_test_safety.hpp"'+"`n"+'#include "paris_afk.hpp"').Replace($kickMarker,
+    $kickMarker + "`n`t`t`tif (paris_afk::suppress_script_inactivity(client_num, reason)) return;")
 $currentBots = [IO.File]::ReadAllText($botsPath).Replace("`r`n", "`n").TrimEnd() + "`n"
-if ($currentBots -ne $baseBots -and $currentBots -ne $testBots) { throw 'Unowned bots.cpp changes; preserve them.' }
+if ($currentBots -ne $baseBots -and $currentBots -ne $legacyTestBots -and $currentBots -ne $testBots) { throw 'Unowned bots.cpp changes; preserve them.' }
 [IO.File]::WriteAllText($botsPath,$testBots,[Text.UTF8Encoding]::new($false))
 # The pinned anti-debug helper writes legacy heap-header offsets. PageHeap uses
 # a different layout; preserve its verifier state only in the explicit private
