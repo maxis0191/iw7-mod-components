@@ -268,6 +268,7 @@ $pttInputBridgeBuild=Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot 
 if($pttInputBridgeBuild.Compiled){$nativeSources+=$pttInputBridgeBuild.Files}
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 $incidentOverlay = & "$PSScriptRoot/Apply-IncidentOverlay.ps1" -NativeRoot $root -Commit $commit
+$testPrivacyOverlay = & "$PSScriptRoot/Apply-TestPrivacyOverlay.ps1" -NativeRoot $root -Commit $commit
 $downloadCacheOverlay = $null
 if ($commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
     $downloadCacheOverlay = & "$PSScriptRoot/Apply-DownloadCacheOverlay.ps1" -NativeRoot $root -Commit $commit
@@ -496,6 +497,8 @@ $manifest.CountryAnnouncement = 'ipwho.is HTTPS, server only'
 $manifest.SessionAliases = 'Temporary duplicate names, server only'
 $manifest.IncidentOverlaySHA256 = $incidentOverlay.SHA256
 $manifest.IncidentDropOverlaySHA256 = $incidentOverlay.DropSHA256
+$manifest.TestPrivacyOverlaySHA256 = $testPrivacyOverlay.SHA256
+$manifest.TestHeartbeatSuppressed = $testPrivacyOverlay.TestHeartbeatSuppressed
 $manifest.IncidentRecorder = 'Explicit dedicated paris-incident-log flag; no packet retries or protocol changes'
 $manifest.IsolatedLab = [bool]$IsolatedLab
 $manifest.VoiceCaptureSelectorBuild = [bool]$IsolatedLab
@@ -522,5 +525,6 @@ if ($EnemyExperiment) {
     $manifest.EnemyAddonNativeSHA256 = (Get-FileHash -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_rhino.cpp").Hash
 }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$output/build-manifest.json" -Encoding UTF8
+Copy-Item -LiteralPath "$output/build-manifest.json" -Destination (Join-Path $symbols 'build-manifest.json') -Force
 Write-Output "Prepared private client/server build: $output"
 }

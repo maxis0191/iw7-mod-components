@@ -22,7 +22,11 @@ if($LASTEXITCODE){throw 'Pinned drop owner source unavailable.'}
 $dropMarker="void sv_drop_client_stub(game::client_t* client, const char* reason, bool tellThem)`n`t`t{"
 if($dropBase.Split([string[]]@($dropMarker),[StringSplitOptions]::None).Count -ne 2){throw 'Pinned existing drop stub changed.'}
 $dropOverlay=$dropBase.Replace('#include <std_include.hpp>','#include <std_include.hpp>'+"`n"+'#include "paris_incident.hpp"').Replace($dropMarker,$dropMarker+"`n`t`t`t"+'paris_incident::client_drop(client, reason, tellThem);')
+$legacyDropOverlay=$dropOverlay
+$ackMarker='__int64 reliable_acknowledge = msg_readlong_hook.invoke<__int64>(msg);'
+if($dropBase.Split([string[]]@($ackMarker),[StringSplitOptions]::None).Count -ne 2){throw 'Pinned ACK guard changed.'}
+$dropOverlay=$dropOverlay.Replace($ackMarker,$ackMarker+"`n`t`t`t`t"+'paris_incident::reliable_ack(reliable_acknowledge);')
 $dropCurrent=[IO.File]::ReadAllText($dropPath).Replace("`r`n","`n").TrimEnd()+"`n"
-if($dropCurrent -cne $dropBase -and $dropCurrent -cne $dropOverlay){throw 'Unowned drop owner edits; preserve them.'}
+if($dropCurrent -cne $dropBase -and $dropCurrent -cne $dropOverlay -and $dropCurrent -cne $legacyDropOverlay){throw 'Unowned drop owner edits; preserve them.'}
 [IO.File]::WriteAllText($dropPath,$dropOverlay,[Text.UTF8Encoding]::new($false))
 [pscustomobject]@{File='src/client/component/network.cpp';SHA256=(Get-FileHash $path).Hash;DropSHA256=(Get-FileHash $dropPath).Hash;ReturnValuesUnchanged=$true}
