@@ -145,9 +145,9 @@ int main()
         test("concurrent cancel during main LUI enqueue wins before terminal commit", []
         {
             start(); scheduler::tick(scheduler::async);
-            scheduler::before_enqueue = [](scheduler::pipeline destination)
+            scheduler::before_enqueue = [](scheduler::pipeline target_pipeline)
             {
-                if (scheduler::executing == scheduler::main && destination == scheduler::lui)
+                if (scheduler::executing == scheduler::main && target_pipeline == scheduler::lui)
                 {
                     // Run the actual stop on a second thread while main is in its
                     // enqueue, then join before allowing the final decision.
