@@ -372,3 +372,47 @@ were observed on both connections: engine godmode, inactivity 0 and cheats 0.
 Retail initialization errors in `init_cryobomb` / `init_forgefreeze` remain
 open and are not attributed to the beacon. Raw logs, identifiers and machine
 paths stay in ignored runtime evidence; this record is sanitized.
+
+### Second runtime attempt: server Use arrives after client release
+
+Run `20261012-031247-081-1c188b33` used fixed source
+`f14760c3078e3a8e8f8ca010b15873029951013a` and the same native, SDK, FF,
+fixture and 12/12 GiB reservation. The dedicated started at 03:12:55 UTC.
+The first pass again delivered the exact FF and completed its accepted Use,
+release and captures. Fresh getInfo after each connection reported protocol 2,
+`mods/sdk_beacon`, hash `7B685062`, private `cp_zmb`, zero clients between/after
+passes. The second connection preserved the entity/instance/generation and
+TEAM 1, reset YOU to 0, then reached an actual SDK Use and TEAM 2 / YOU 1,
+with model yaw 60 degrees. Aim calibration succeeded under the reviewed bound.
+
+The overall result still **failed** before the second after-capture. Its Use
+validator incorrectly required the server event to precede the client's release
+ACK. Both use the same monotonic clock, but they describe different observation
+points: request at tick 104017171, native client press at 104017234, release ACK
+at 104017671, actual server SDK Use (pressed=1) at 104017828, or **157 ms after
+ACK**. Later server samples show the released state and exact 2/1 counters.
+These are positive activation/persistence observations, not an accepted full
+scenario or a substitute for the missing final capture. An interim status
+prematurely called the second pass successful; that claim was retracted as soon
+as the absent after-capture exposed the still-running validation failure.
+
+The follow-up validator accepts an actual server event only between the request
+and at most 750 ms after release ACK, with fresh observation within 500 ms.
+It additionally requires a released server sample strictly after both that
+event and the ACK, at most 1500 ms after ACK, with exact identity and one-step
+counter changes. The runtime wait cannot finish on a pre-event released sample.
+Receipts expose client release, server event lag and server release separately.
+The 136-control pure suite covers +157/+750 ms acceptance, +751 ms rejection,
+pre-event/same-tick/late release refusal, and the actual pass driver receiving a
+delayed event after an apparently released pre-input sample. No runtime outcome
+is inferred from those synthetic tests.
+
+At 03:16:28 UTC, result was `Passed:false`, `Restored:true`, `CleanupError:null`;
+fresh process/resource inspection found no test process or lease, and Main's
+creation identity and binary hash remained unchanged. The run's sources were
+fixed until this closure. All evidence and rollback backups remain retained.
+The two retail initialization errors also predate this SDK test: see
+`deployments/2026-10-06-agent-debugger.json`, `BUGS.md` and `VALIDATION.md`.
+The retail functions dereference trigger structures without a defined check,
+but the exact non-object causing this runtime failure is not established.
+No SDK attribution or suppressive retail patch is justified by this evidence.
