@@ -533,3 +533,32 @@ and a null hash for vertical, while ordinary modes still require and hash the
 staged source. Unexpected source or compiled bank scripts in the minimal stage
 are refused. Five temporary-file checks cover these cases; the restoration
 suite passes 66 controls. No game ran with the incomplete profile.
+
+At 04:08:11 UTC, after the coordinator's verified same-volume move, the durable
+candidate was adopted under the shared admission lock. Its canonical root and
+NTFS identity matched the hash-bound move receipt. Main was the only IW7 process,
+with its unchanged creation identity and executable hash; the lease registry was
+empty. All 1,205 original files retained their identities, sizes and attributes;
+the 39 mutable hashes matched before and after adoption. Bank isolation checked
+66 file identities with none shared between Main and candidate.
+
+The sole candidate mutation was `CreateNew` of
+`iw7-mod/paris-isolated-lab.marker`: exact ASCII `iw7-paris-isolated-lab-v1`,
+25 bytes, no BOM/newline, SHA-256
+`705F28699E62148C720F7C88C4AE2C63C085DAB6F46610582161F312E0AE8BCA`.
+The original Doom marker and old read-only plan remained unchanged. This is
+adoption metadata, not runtime validation. Any rollback must first confirm owned
+process closure and the same canonical root and exact marker hash.
+
+The actual `Agent-Lab.ps1 -DryRun` then passed at source `569a772`, binding the
+durable root, move/adoption receipt hashes, reviewed native/FF/SDK inputs, only
+the beacon and passive observer scripts, and 12 GiB physical/12 GiB commit.
+The new local plan is under
+`runtime/agent-candidate-plans/doom-durable-20261012-040801/`; its SHA-256 is
+`B4E3C777F7512D08AC515033DF7C0FA5697DA3FD02633B55FBC68B62109C1C12`,
+and the adoption receipt SHA-256 is
+`004D3359BDB2ED13C7C1D72BB7D9B640CF89A0BB659E0D74D4CB0C2AFFCADE4F`.
+DryRun reserved no resources and started no game. A fresh 04:08:36 UTC snapshot
+still showed Main alone and zero leases. The coordinator's runtime GO remains
+false, with animation then material FF work taking priority. Complete vertical
+restart/restoration and visual acceptance remain unproved.
