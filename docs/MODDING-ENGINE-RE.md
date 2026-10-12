@@ -498,3 +498,316 @@ guard runs before any write, covering mixed separators, case, dot components,
 trailing separators and ancestor/descendant profiles. A `bank-other` sibling
 still restores normally. The earlier implementation and correction remain
 separate commits; no bank corruption was observed and no game ran between them.
+
+### Reused Doom candidate: beacon-only source profile
+
+The coordinator selected an existing stopped Doom dedicated for reuse, with a
+durable destination outside managed worktrees. This is a parameter change, not
+a new game copy or an import of another candidate's backup. Read-only inspection
+found 17 original custom CP scripts and the candidate's own bank/configuration;
+bank isolation again checked 66 NTFS file identities with zero shared Main IDs.
+The native package, 1048-byte FF and SDK source hashes still match the inputs
+above. The existing `doom-test.marker` identifies this separate dedicated, but
+the Agent-Lab/native appdata gate requires its exact isolation marker as well.
+No marker was written during this inspection. The old read-only plan remains a
+historical receipt; final parameters must bind the new root to the verified move
+receipt before the separately authorized marker adoption and DryRun.
+
+For vertical mode only, staged CP now contains exactly `sdk_beacon.gsc` and
+`agent_vertical_fixture.gsc`. Both depend on retail utility/native test APIs,
+not other Paris custom scripts. The transaction retains all original candidate
+scripts and restores their exact bytes. This prevents Doom's custom init/clip
+setup, rather than relying solely on `paris_mod_doom=0` to disable its encounter.
+Native protection and the existing native package remain unchanged; no absence
+of compiled Doom components is claimed. All other Agent-Lab modes keep the same
+catalog script selection and ordering. The plan records its two staged scripts.
+The vertical suite now passes 145 controls, including a real temporary-file
+17-to-2-to-17 restoration, duplicate catalog handling and unchanged non-vertical
+selection. No game was launched for this profile change.
+
+Follow-up source review caught a remaining unconditional bank-script hash read
+in the launch policy receipt, after the minimal stage had removed that script.
+It would stop a real vertical run before process creation; DryRun returns before
+this stage and cannot prove it. The receipt now records `BankScriptStaged:false`
+and a null hash for vertical, while ordinary modes still require and hash the
+staged source. Unexpected source or compiled bank scripts in the minimal stage
+are refused. Five temporary-file checks cover these cases; the restoration
+suite passes 66 controls. No game ran with the incomplete profile.
+
+At 04:08:11 UTC, after the coordinator's verified same-volume move, the durable
+candidate was adopted under the shared admission lock. Its canonical root and
+NTFS identity matched the hash-bound move receipt. Main was the only IW7 process,
+with its unchanged creation identity and executable hash; the lease registry was
+empty. All 1,205 original files retained their identities, sizes and attributes;
+the 39 mutable hashes matched before and after adoption. Bank isolation checked
+66 file identities with none shared between Main and candidate.
+
+The sole candidate mutation was `CreateNew` of
+`iw7-mod/paris-isolated-lab.marker`: exact ASCII `iw7-paris-isolated-lab-v1`,
+25 bytes, no BOM/newline, SHA-256
+`705F28699E62148C720F7C88C4AE2C63C085DAB6F46610582161F312E0AE8BCA`.
+The original Doom marker and old read-only plan remained unchanged. This is
+adoption metadata, not runtime validation. Any rollback must first confirm owned
+process closure and the same canonical root and exact marker hash.
+
+The actual `Agent-Lab.ps1 -DryRun` then passed at source `569a772`, binding the
+durable root, move/adoption receipt hashes, reviewed native/FF/SDK inputs, only
+the beacon and passive observer scripts, and 12 GiB physical/12 GiB commit.
+The new local plan is under
+`runtime/agent-candidate-plans/doom-durable-20261012-040801/`; its SHA-256 is
+`B4E3C777F7512D08AC515033DF7C0FA5697DA3FD02633B55FBC68B62109C1C12`,
+and the adoption receipt SHA-256 is
+`004D3359BDB2ED13C7C1D72BB7D9B640CF89A0BB659E0D74D4CB0C2AFFCADE4F`.
+DryRun reserved no resources and started no game. A fresh 04:08:36 UTC snapshot
+still showed Main alone and zero leases. The coordinator's runtime GO remains
+false, with animation then material FF work taking priority. Complete vertical
+restart/restoration and visual acceptance remain unproved.
+
+### SDK report: exact classification of the two pre-existing retail errors
+
+Read-only classification of all three closed SDK candidate `server.stdout.log`
+files finds exactly two complete `script runtime error` blocks per run: one
+`init_cryobomb`, then one `init_forgefreeze`. They remain **errors, unresolved**;
+they are not downgraded to warnings or removed from the report.
+
+Both blocks print the exact instruction diagnostic
+`while processing instruction OP_CastFieldObject: 0x140c07d63`. Each has precisely
+two stack frames, in this order:
+
+| Error | First frame | Caller frame |
+| --- | --- | --- |
+| Cryobomb initialization | `init_cryobomb` in `scripts/cp/maps/cp_zmb/cp_zmb_interactions.gsc` | `init` in `scripts/cp/cp_interaction.gsc` |
+| Forge Freeze initialization | `init_forgefreeze` in `scripts/cp/maps/cp_zmb/cp_zmb_interactions.gsc` | `init` in `scripts/cp/cp_interaction.gsc` |
+
+The report compares each entire five-line block, including its header, opcode,
+address, both frames and closing delimiter; only CRLF-to-LF normalization is
+used. A matching function name somewhere inside a different stack is insufficient.
+All three logs place these blocks at lines 147–151 and 152–156. They occur after
+the SDK initialization marker in these runs, so their timing alone cannot exclude
+SDK involvement. Their pre-existence is separately supported by the versioned
+[October 8 original-script comparison](deployments/2026-10-08-map-vote-unanimity.json),
+at immutable commit `e012849b70530f5062021b5e15d7acd76f27a23b`: it records both
+errors with the original map-vote script, `WholeMapClean:false`, and restored
+baseline/candidate state. That earlier receipt was re-read; its older raw logs
+were not revalidated during this classification.
+
+| Closed SDK run | Cryobomb / Forge Freeze | Other complete runtime blocks / unparsed runtime headers | Server stdout SHA-256 |
+| --- | --- | --- | --- |
+| `20261012-025611-746-c01d8ac6` | 1 / 1 | 0 / 0 | `E062A1EC92932B9E894A69C3201F54463A42096B8D9720E6C9D5165BA20EF9C5` |
+| `20261012-031247-081-1c188b33` | 1 / 1 | 0 / 0 | `68E6C86DDED4EEF2B58BA24B4387E9DF5ADA31BFFF8449CE97E1037B5238E7AD` |
+| `20261012-032431-768-1b928c5f` | 1 / 1 | 0 / 0 | `0C45BE1C840D888888BD71BFD6C6FDFD9135FBBD9F9567FE6DFBA04847C79882` |
+
+These counts concern complete runtime-error blocks in those three server stdout
+files only, not all diagnostic categories, client logs or future runs. Original
+log hashes matched before/after reading; all three original scenario results
+remain failed. The ignored local report
+`runtime/agent-candidate-plans/sdk-retail-errors-20261012.local.json`, SHA-256
+`DF0F681FD7F44959CA33B9CCD1CBC01DB2C5D7C5768542D808EDD1198149E33B`, retains the
+six complete blocks and original failure/restoration fields.
+
+The opcode/stack does not identify the invalid field/value, its originating
+cause or the gameplay impact. These traces neither prove a new beacon defect
+nor prove the retail interactions work. No retail patch, runtime-error filter,
+allowed-error set or acceptance gate changed. Every future error must remain
+reported: a changed opcode/address/frame, additional frame, incomplete block or
+extra occurrence needs separate comparison and cannot inherit this historical
+classification. The next runtime still needs fresh admission at the unchanged
+budget and the coordinator's explicit GO; this report starts no game.
+
+### Run 4: interaction/restart passes; runtime integrity fails on missing cdata
+
+The coordinator authorized one cycle at source `69fd1e0` (executable source
+unchanged from reviewed `569a772`). Fresh admission reserved the full 12/12 GiB
+at 04:27 UTC; the candidate used the durable Doom stock, the same reviewed
+native/1048-byte FF/SDK/observer hashes and the two project scripts. Native
+privacy, scoped engine godmode, inactivity 0 and cheats 0 were observed. No
+second cycle or retail repair was performed. The sanitized, hash-bound record is
+[Run 4 evidence](deployments/2026-10-12-sdk-beacon-run4.json); raw logs, captures,
+transactions and full error blocks remain under ignored
+`runtime/agent-lab/20261012-042704-926-54f4946d/`.
+
+The targeted witness succeeds: first real Use gives team 1/personal 1; after
+closing and restarting the owned client, the same server object persists with
+team 1/personal 0, then real Use gives team 2/personal 1. Input release is observed
+on both passes. The exact cache survives, the HTTP worker closes before rejoin,
+and the second client has a new process/session. This is a controlled client
+restart, not an in-process reconnect. Original `result.json` and
+`scenario.result.json` remain `Passed:true`; they do not contain a complete
+retail runtime-error gate and must not be presented as global acceptance.
+
+**Runtime integrity is not validated.** The final closed server stdout contains
+221 complete runtime-error blocks: the two exact pre-existing Cryobomb/Forge
+Freeze errors plus **219 new unresolved errors**. They are not allowlisted:
+
+| New diagnostic | Count | Observed log phase |
+| --- | --- | --- |
+| `OP_dec` in `cp_zmb::update_team_door_buy_on_spawn` | 3 | First client identity setup, before its first protected heartbeat/READY |
+| `OP_EvalLocalVariableObjectCached: 0x140c08a57` in `gametype_zombie::is_player_near_interaction_point` | 54 | Between connections and after the final connection |
+| `distancesquared`: `Type undefined is not a vector`, same leaf function | 54 | Same intervals |
+| `OP_less: 0x140c07e82`, same leaf function | 54 | Same intervals |
+| `OP_JumpOnTrue` in `gametype_zombie::get_closest_player_near_interaction_point` | 54 | Same intervals |
+
+The AI stacks continue through the nearest-player function and retail
+`scripts/anim/notetracks_mp.gsc::ai_update`, with unresolved intermediate frames.
+There are 160 AI blocks between the two active witness windows and 56 after the
+second, with none inside those windows. The first AI block is after the first
+owned client's verified closure/restoration (04:28:30 UTC). Log-order/native-tick
+brackets place its first group around 04:28:31–41, and the last around
+04:30:21–31; the error blocks themselves have no timestamp or captured variable
+values. The three spawn errors are bracketed around 04:27:51–04:28:01. Both
+client stdout logs contain zero runtime-error headers; that does not erase the
+server errors. A missing `sounddata/cp/cp_zmb.json` diagnostic is also retained.
+
+Read-only comparison identified a missing candidate prerequisite. Run 3 loaded
+Aurora's `custom_scripts/cp/patches.gsc` and `cp_mp/inspect.gsc` from its retained
+private `cdata`, in addition to project scripts. The reused Doom root had no
+private `iw7-mod/lab-appdata` before adoption. Agent-Lab starts with `-noupdate`
+and does not provision that updater content: Run 4 loaded only the two project
+scripts and lacked the Aurora patch and sound table. Nothing originally present
+in that candidate's private cdata was deleted; the absent-before appdata state
+was restored after the run. The earlier assertion of two *project* scripts was
+insufficient to establish a complete Aurora runtime environment.
+
+The retained Run 3 updater patch and current local Aurora-managed copy match
+SHA-256 `307F03A1427C18CF58A0861E86E2023BE58661338202A1FF246E41A4C7DC02B6`
+(3243 bytes). Its existing replacements guard exactly the failing paths: reject
+an undefined nearest player/interaction before the distance call, and initialize
+door prices for at least one player when a dedicated starts empty. The clean
+local retail reference at `1dd48a78e55ef9c99519fc5221a206168ce2e98a` shows the
+unguarded distance operands and a door initializer with cases 1–4 but no zero
+case, followed by the three unguarded donation decrements at spawn. Reference
+file hashes are recorded separately; no equivalence to the loaded retail
+bytecode was established. This strongly supports the missing updater guards as
+the mechanism, but their restorative effect has not been tested. Candidate root,
+project module selection and updater-data availability changed together, so
+this is not a controlled single-variable A/B. Native and retail map/AI code
+still execute despite the minimal project script profile.
+
+The coordinator separately inspected the two native rejoin before-Use/after-Use
+BMPs: SDK HUD changes from `You:0 Team:1` to `You:1 Team:2`; a dark cube is visible
+in both and `Activate beacon` is readable after. Retail portrait/ammo/cash are
+absent in before-Use and visible after, with a nearby 500 indicator. The cause of
+that HUD timing is unproved. These images do not prove normal texture quality or
+a certain visible rotation. The original `PixelsVerified:false` is preserved;
+the separate visual review is bound to the original BMP hashes.
+
+Restoration completed at 04:30:42 UTC. At 04:31:00, Main was the sole game process
+with unchanged creation/image identity; test ports and resource leases were
+absent. All four owned transactions were independently rechecked at 04:36:36,
+including the candidate's 17 original scripts and absent private appdata.
+Managed restoration and static Main checks pass; no Main bank delta was observed.
+Six native frames plus logs total about 21.33 MiB, below the 128 MiB limit.
+No original result, log or capture was rewritten to change its outcome.
+
+Next: review and bind the required Aurora updater cdata as an explicit candidate
+prerequisite, with preparation refusing incomplete environments. Do not repair
+retail code, widen allowed errors, copy another candidate's identities/bank, or
+retry gameplay under this one-cycle authorization. Any correction/retest needs
+its own reviewed plan and the coordinator's next GO. Overall acceptance remains
+blocked by this recorded runtime incident.
+
+### Issue 149: explicit Aurora data prerequisite before planning or launch
+
+[Issue #149](https://github.com/maxis0191/iw7-paris-server/issues/149) requires
+a protected retest verifying the prerequisite, absence of the new errors and
+restoration. Run 5 below now supplies that bounded technical witness; the two
+older errors remain separately tracked in issue 150. The old adoption checked
+retained stock, marker, native package and SDK inputs; the old DryRun returned before launch staging and never
+inspected updater cdata. A marker and a successful plan therefore did not imply
+a complete runtime. This was a missing preflight contract, not permission to
+remove updater-managed content or replace it with our own retail patches.
+
+`Agent-Lab.ps1` now requires explicit `-UpdaterDataRoot` and
+`-UpdaterDataSHA256` before DryRun can return. The digest binds the entire sorted
+directory/file inventory, relative paths, lengths and raw SHA-256 file hashes;
+it is independent of the machine path and NTFS identities. The helper bounds the
+tree to 512 MiB, 512 files and 128 directories, requires the CP patch, shared
+inspect script and Spaceland sound table, and rejects redirects, foreign top-level
+paths, partial candidates, content drift and candidate/provider hardlink aliases.
+The explicit provider must be outside the candidate. A reviewed digest is an
+input binding, not an independent upstream-release attestation.
+
+The local Aurora-managed provider contains 84 files and 23 subdirectories,
+394,436,292 bytes, with inventory digest
+`2649231856356E5B5BEE4A6D043AA13E547CCC26E3D5F7B8A385E0F1A03F4F6A`.
+Seven updater zone files account for 370,828,272 bytes; scripts, sound tables and
+UI account for the rest. This provider is copied as a complete updater tree;
+no retail game snapshot, identity, bank or parent AppData directory is imported.
+Real provider files were only inventoried, not staged during this correction.
+
+An already identical, independent candidate tree is reused. An absent tree is
+reported as `StagingRequired:true`, `CandidateVerified:false`, with explicit
+copy bytes; it is never called ready by DryRun. During a future admitted run,
+the existing lab-appdata transaction is saved before staging. The helper uses
+the same whole-tree Robocopy flags as reviewed `Isolated-Lab Prepare`, checks
+the source inventory again before and after copying, and verifies every target
+hash and independent file identity. A changed/partial existing tree is refused,
+not overlaid. Normal transaction restoration preserves existing bytes or restores
+the original absence, including after a partial copy. The two project SDK
+scripts remain separate from this Aurora prerequisite.
+
+Before a client may join, the fresh server stdout must also show the Aurora
+patch loaded and its `main` executed; a missing Spaceland sound-table diagnostic
+refuses the join. This load witness accepts no unrelated runtime errors. Existing
+error reporting/acceptance limits, native privacy/protection, the full 12/12 GiB
+reservation and Base/Resource helpers are unchanged.
+
+The new updater suite passes 34 controls using tiny synthetic provider files,
+the actual transaction/Robocopy path and the real Agent-Lab missing-provider
+DryRun refusal. It covers hashes, missing/foreign files, redirects, hardlink
+aliases, provider drift, no-copy reuse, existing-byte/absent-before restoration,
+partial-copy failure and missing/incomplete runtime load witnesses. The 66
+restoration and 145 vertical controls remain passing. That correction checkpoint
+comprised source and file tests only; real provider staging and runtime validation
+follow in Run 5.
+
+### Run 5: Aurora prerequisite verified, no new errors in the closed witness
+
+The single authorized protected retest used clean integrated source
+`40cb54420686b389970a26df2c5c93263451a672`, including updater correction `f891ece`
+and the bounded closed-log auditor. All 308 bound source inputs remained exact
+through closure. The original 1048-byte beacon FF and native executable were
+unchanged. The prepared command and plan hashes are recorded in the
+[sanitized Run 5 receipt](deployments/2026-10-12-sdk-beacon-run5.json).
+An initial local wrapper precheck stopped before invoking Agent-Lab because its
+vacancy helper was not imported; adding that existing import caused no source,
+runtime or data mutation. Only one effective Agent-Lab invocation occurred.
+
+Fresh full admission at 05:06:03 UTC allowed 12 GiB physical plus 12 GiB commit,
+with Main alone, no lease, a vacant base client, free test ports and 66 independent
+bank file identities. Run `20261012-050608-665-1158cf9d` staged all 84 provider files
+(394,436,292 bytes) under the original lab-appdata transaction, then verified their
+inventory and independent identities. Fresh logs show Aurora `patches.gsc` loaded
+and its `main` executed; the missing Spaceland sound-table diagnostic is absent.
+The provider inventory also matches after the run. No new retail patch, game
+stock copy, Main deployment or project module was added.
+
+The targeted scenario passes both real Uses with fresh engine protection and
+private-server telemetry. The same entity 760 and instance 52650 survive the
+controlled client restart. First Use produces team 1 / personal 1; the rejoined
+client starts at team 1 / personal 0 and reaches team 2 / personal 1. Both release
+and abort acknowledgements are retained. The exact cache survives while HTTP is
+closed before rejoin. This is a controlled restart, not an in-process reconnect.
+The original `Passed:true` result and scenario receipts remain unmodified.
+
+After the processes closed, the integrated auditor read all six stdout/stderr
+logs. The server's 83,252-byte stdout contains **two complete known unresolved
+blocks, zero new blocks and zero incomplete blocks**: `init_cryobomb` at lines
+81–85 and `init_forgefreeze` at 86–90. Both client logs and all stderr logs contain
+zero blocks. The 219 new Run 4 blocks do not recur in this witness. This supports
+the missing Aurora prerequisite correction without proving universal gameplay
+or changing error allowances. Overall runtime integrity remains **not passed**:
+the two existing errors remain errors under
+[issue #150](https://github.com/maxis0191/iw7-paris-server/issues/150).
+
+The launcher exits zero with restoration confirmed. At 05:10:09 UTC, Main retains
+its exact process and executable identity; all three owned processes, test ports
+and leases are absent. Four transaction manifests independently match the current
+owned files/profile trees, including restoration of the candidate's absent private
+appdata. Static Main checks pass and no Main bank delta is observed. Six native
+BMPs plus logs total 22,238,271 bytes, below 128 MiB. Their hashes are retained;
+`PixelsVerified:false`, reduced-graphics limits and owner acceptance remain unchanged.
+
+Next: integrate this closed evidence into the central issue/PR record and continue
+the separate issue 150 source investigation. No additional run is authorized by
+the one-cycle Run 5 GO, and no global runtime or material acceptance is implied.
