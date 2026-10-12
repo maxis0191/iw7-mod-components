@@ -294,5 +294,32 @@ pinned local native source. All 63 pure PowerShell controls passed. The new
 [`preparation-b.json`](preparation-b.json) binds the updated test source and a
 Plan B with an absent, distinct runtime output. Resource/deadline profiles and
 the existing helper/DLL/witness pins are unchanged. No helper was loaded and no
-build, reservation or Run followed. The earlier VCTIP drain failure remains a
-separate unresolved qualification issue. Plan B requires review and a new GO.
+build, reservation or Run followed within that source-only preparation. The
+earlier VCTIP drain failure remained a separate qualification issue.
+
+## Authorized Plan B, 2026-10-12: 46 functional passes, pipeline failed
+
+One separately authorized invocation of exact source `617d6a8` and Plan
+`3C56C8E7...8443D6A2` compiled with `/W4 /WX` unchanged. The executable ran all
+46 cases and reported `RESULT 46 passed`; worker exit code was 0. This validates
+the parameter correction and the corrected offline harness cases, not a full
+IW7 build or gameplay.
+
+The original job still contained an observed VCTIP member when the unchanged
+two-second drain deadline expired. The admitted pipeline remains **Failed**.
+Forced termination of only that original job confirmed closure, released read
+guards and the reservation, and left no quarantine. Fresh identity checks found
+no same-original member, other heavy process or lease; Main and both preexisting
+light Python processes retained their identities. The persistent original host
+then exited normally, with absence confirmed at 10:46:07Z.
+
+The 25 artifacts total 2839525 bytes. Exact receipts and hashes are preserved in
+[`native-validation-b-20261012.json`](native-validation-b-20261012.json); Plan A
+and its independent compile/drain failures remain intact. No retry or deadline
+increase followed. Next work is a targeted explanation and legitimate resolution
+of the MSVC VCTIP child; any further native execution requires a separate GO.
+
+The subsequent [read-only VCTIP research](VCTIP-RESEARCH.md) identifies the exact
+installed version, Microsoft's surviving-child explanation and the documented
+VSCEIP opt-out candidate. It distinguishes optional telemetry policy from a
+proven bounded process lifetime. No configuration change or retry was made.
