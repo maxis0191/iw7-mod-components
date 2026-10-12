@@ -36,8 +36,10 @@ namespace paris_test_fixture
         bool private_fixture()
         {
             const auto* password = game::Dvar_FindVar("g_password");
+            const auto* lan = game::Dvar_FindVar("sv_lanOnly");
             return game::environment::is_dedi() && utils::flags::has_flag("paris-server-test") &&
                 game::Com_GameMode_GetActiveGameMode() == game::GAME_MODE_CP &&
+                lan && lan->type == game::DVAR_TYPE_BOOL && lan->current.enabled &&
                 password && password->type == game::DVAR_TYPE_STRING && password->current.string && *password->current.string;
         }
         bool loopback(const game::netadr_s& address)
@@ -124,6 +126,10 @@ namespace paris_test_fixture
             console::info("[Paris test safety] protected=%u native_inactivity=%d script_inactivity_suppressed=%llu tick_ms=%llu\n",
                 count, inactivity && inactivity->type == game::DVAR_TYPE_INT ? inactivity->current.integer : -1,
                 script_inactivity_suppressed, GetTickCount64());
+            const auto* lan = game::Dvar_FindVar("sv_lanOnly");
+            console::info("[Paris test privacy] private=%d lan_only=%d heartbeat_suppressed=1\n",
+                static_cast<int>(private_fixture()),
+                lan && lan->type == game::DVAR_TYPE_BOOL ? static_cast<int>(lan->current.enabled) : -1);
         }
         bool connect_pending = false;
         bool vote_witness_running = false;
