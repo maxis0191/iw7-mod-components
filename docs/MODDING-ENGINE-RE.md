@@ -480,10 +480,21 @@ Static Main changes and corrupt owned backups remain blocking failures.
 Cleanup now attempts exact candidate closure even if a client restoration audit
 has failed. It requires confirmed closure before any later restoration, attempts
 each owned restoration, and releases the reservation only after all stages
-succeed. The new temporary-file/synthetic-lifecycle suite passes 30 controls,
+succeed. The new temporary-file/synthetic-lifecycle suite passes 61 controls,
 including shared bank hardlink/junction rejection, live bank preservation,
 strict-default refusal, static file changes/additions, corrupt owned backups,
 profile/bank overlap, candidate closure following an audit error and lease
 retention on unknown closure or failed restoration. The 139 vertical controls
 and existing Base-Client/context regression suites also pass. This source change
 has not yet been game-tested; no fourth run is claimed.
+
+Independent review then found that the initial bank-overlap guard compared raw
+forward-slash spellings while the restoration resolver also accepts Windows
+backslashes and dot components. The correction resolves every managed target
+and profile to its canonical absolute path before restoration writes. A target
+equal to or below Main bank is forbidden; a profile equal to, above or below it
+is forbidden. Tests use valid backups and unchanged sentinel files to prove the
+guard runs before any write, covering mixed separators, case, dot components,
+trailing separators and ancestor/descendant profiles. A `bank-other` sibling
+still restores normally. The earlier implementation and correction remain
+separate commits; no bank corruption was observed and no game ran between them.
