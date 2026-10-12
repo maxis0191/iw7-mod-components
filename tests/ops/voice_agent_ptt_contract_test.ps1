@@ -83,6 +83,34 @@ try{
     $retainPath=Join-Path $temp 'paris-overlay-receipts/ptt-input-original.bin'
     [IO.File]::WriteAllBytes($inputPath,$crlf)
     [IO.File]::WriteAllBytes($fixturePath,$captureFixture)
+    $boundedPath=Join-Path $temp 'bounded-source.cpp'
+    [IO.File]::WriteAllBytes($boundedPath,[byte[]]::new(64KB))
+    Check-PTTBridge ((Read-IW7PTTBridgeBytes $boundedPath).Length -eq 64KB) 'Ordinary sources must accept the exact 64 KiB boundary.'
+    [IO.File]::WriteAllBytes($boundedPath,[byte[]]::new(64KB+1))
+    Refuse-PTTBridge {Read-IW7PTTBridgeBytes $boundedPath} 'size/type bound refused'
+    # A fixture filename alone must not opt into the larger limit.
+    [IO.File]::WriteAllBytes($fixturePath,[byte[]]::new(64KB+1))
+    Refuse-PTTBridge {Read-IW7PTTBridgeBytes $fixturePath} 'size/type bound refused'
+    Check-PTTBridge ((Read-IW7PTTBridgeBytes $fixturePath -Fixture).Length -eq (64KB+1)) 'Explicit fixture reads must accept bytes above the ordinary bound.'
+    [IO.File]::WriteAllBytes($fixturePath,[byte[]]::new(128KB))
+    Check-PTTBridge ((Read-IW7PTTBridgeBytes $fixturePath -Fixture).Length -eq 128KB) 'Fixture reads must accept the exact 128 KiB boundary.'
+    [IO.File]::WriteAllBytes($fixturePath,[byte[]]::new(128KB+1))
+    Refuse-PTTBridge {Read-IW7PTTBridgeBytes $fixturePath -Fixture} 'size/type bound refused'
+    Refuse-PTTBridge {Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot $temp -BaseInput $clean -IsolatedLab $false -ServerModules $false} 'size/type bound refused'
+    Check-PTTBridge ((Get-IW7PTTBridgeHash ([IO.File]::ReadAllBytes($inputPath))) -ceq (Get-IW7PTTBridgeHash $crlf) -and !(Test-Path -LiteralPath $headerPath) -and !(Test-Path -LiteralPath $retainPath)) 'Oversized fixture must refuse before source or receipt writes.'
+    [IO.File]::WriteAllBytes($fixturePath,[byte[]]::new(0))
+    Refuse-PTTBridge {Read-IW7PTTBridgeBytes $fixturePath -Fixture} 'size/type bound refused'
+    Refuse-PTTBridge {Read-IW7PTTBridgeBytes $temp -Fixture} 'size/type bound refused'
+    # Keep a valid capture prefix while guaranteeing a fixture above 64 KiB,
+    # even if the real source becomes smaller in a later revision.
+    $largeFixture=$encoding.GetBytes($encoding.GetString($captureFixture)+"`n/*"+('x'*[Math]::Max(0,65537-$captureFixture.Length))+"*/`n")
+    [IO.File]::WriteAllBytes($fixturePath,$largeFixture)
+    $largeRead=Read-IW7PTTBridgeBytes $fixturePath -Fixture
+    Check-PTTBridge ($largeRead.Length -gt 64KB -and (Get-IW7PTTBridgeHash $largeRead) -ceq (Get-IW7PTTBridgeHash $largeFixture)) 'Large valid fixture bytes must survive the bounded read exactly.'
+    Check-PTTBridge ($encoding.GetString((Convert-IW7PTTFixtureSource $largeRead)).Contains('#define IW7_PARIS_ISOLATED_PTT_INPUT_BRIDGE 1')) 'Large valid fixture must retain the scoped transform.'
+    Refuse-PTTBridge {Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot $temp -BaseInput $clean -IsolatedLab $true -ServerModules $true} 'not copied from the exact current source'
+    Check-PTTBridge ((Get-IW7PTTBridgeHash ([IO.File]::ReadAllBytes($fixturePath))) -ceq (Get-IW7PTTBridgeHash $largeFixture) -and (Get-IW7PTTBridgeHash ([IO.File]::ReadAllBytes($inputPath))) -ceq (Get-IW7PTTBridgeHash $crlf) -and !(Test-Path -LiteralPath $headerPath) -and !(Test-Path -LiteralPath $retainPath)) 'Larger fixture allowance must not weaken provenance or permit partial writes.'
+    [IO.File]::WriteAllBytes($fixturePath,$captureFixture)
     $outside=Join-Path $temp 'outside';New-Item -ItemType Directory -Path $outside | Out-Null
     $junction=Join-Path $temp 'junction'
     New-Item -ItemType Junction -Path $junction -Target $outside | Out-Null
@@ -108,7 +136,7 @@ try{
     Check-PTTBridge ((Get-IW7PTTBridgeHash ([IO.File]::ReadAllBytes($collision))) -ceq (Get-IW7PTTBridgeHash ([byte[]]@(7,8,9)))) 'CreateNew collision must preserve original bytes.'
     foreach($profile in @(@($false,$false),@($true,$false),@($false,$true))){
         $normalPlan=Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot $temp -BaseInput $clean -IsolatedLab $profile[0] -ServerModules $profile[1] -PlanOnly
-        Check-PTTBridge (!$normalPlan.Compiled -and !$normalPlan.Files.Count -and $normalPlan.InputCopiedSHA256 -ceq (Get-IW7PTTBridgeHash $crlf)) 'Bridge must compile only for both scoped flags.'
+        Check-PTTBridge (!$normalPlan.Compiled -and !$normalPlan.Files.Count -and $normalPlan.InputCopiedSHA256 -ceq (Get-IW7PTTBridgeHash $crlf) -and $normalPlan.FixtureCopiedSHA256 -ceq (Get-IW7PTTBridgeHash $captureFixture)) 'Bridge must compile only for both scoped flags and preserve the exact current fixture bytes.'
     }
     Refuse-PTTBridge {Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot $temp -BaseInput $clean -IsolatedLab $true -ServerModules $true} 'Cannot find path'
     Check-PTTBridge ((Get-IW7PTTBridgeHash ([IO.File]::ReadAllBytes($inputPath))) -ceq (Get-IW7PTTBridgeHash $crlf) -and !(Test-Path -LiteralPath $headerPath) -and !(Test-Path -LiteralPath $retainPath)) 'Missing SDK pins must refuse before any write.'
