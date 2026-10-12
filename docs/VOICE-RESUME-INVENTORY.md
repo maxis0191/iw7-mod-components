@@ -4,7 +4,7 @@ This is a source-only, read-only evidence audit for the coordinated voice work.
 It starts from private `origin/main`
 `21b91e3ebace48fda5ed60024719168064b2cca5`. No game, native build, audio capture,
 ASR, native Add-Type, resource reservation, deployment or deletion was performed.
-Only this document and an ignored local inventory were created. Publication and
+Only this document and ignored local inventories were created. Publication and
 future experiments belong to the parent coordinator; no other chat's files were
 modified. All availability observations below are dated, not launch permission.
 
@@ -205,9 +205,79 @@ Parent supplied C:free203,818,287,104 bytes. A later audit sample was
 203,305,455,616 bytes (about189.34GiB); unrelated concurrent activity prevents
 attributing that change to this task. These values replace neither a fresh
 admission check nor the conservative budget: preparation at most100,000,000 bytes
-per chat/400,000,000 combined; future additional disk use at most10,000,000,000 bytes.
+per chat/1,000,000,000 combined; future additional disk use at most10,000,000,000 bytes.
+The parent's later10-chat modding/voice instruction supersedes the earlier
+400,000,000-byte four-chat preparation cap; all other reuse constraints remain.
 The source tree starts at6,314,902 Git blob bytes; only a small document/JSON are
 added. Disk allowance is not RAM/commit admission.
+
+### Expanded session footprint: modding and voice
+
+The parent broadened the coordinated work to a BO3-like/H1/ZoneTool modding
+platform. This addition inventories only the11 new source worktrees:10 delegated
+lots plus the integration parent. It changes neither the voice evidence above
+nor the prohibition on heavy work in this lot.
+
+The bounded metadata snapshot ran2026-10-12T01:46:15Z through01:46:16Z
+(03:46 Paris). Each selected outer directory was observed created during the
+current session between01:33:51Z and01:40:13Z and appears in Git's worktree list.
+Every row is rooted at `C:/Users/ezvalo/.codex/worktrees/<name>/`; its checkout is
+the `IW7-Paris-Server` child. Sizes include files in that outer root, including
+small ignored outputs and the worktree pointer; they are not just tracked blobs.
+
+| Exact new worktree name | Files | Logical bytes |
+| --- | ---: | ---: |
+| modding-agent-capabilities | 696 | 6,355,568 |
+| modding-animation-ai | 695 | 6,359,984 |
+| modding-content-surfaces | 694 | 6,359,795 |
+| modding-distribution | 697 | 6,390,231 |
+| modding-h1-model-bridge | 698 | 6,365,294 |
+| modding-sdk-contract | 701 | 6,411,111 |
+| voice-acceptance-integration | 693 | 6,341,329 |
+| voice-control-acceptance | 696 | 6,370,246 |
+| voice-final-mix | 693 | 6,349,794 |
+| voice-mp-readiness | 705 | 6,353,870 |
+| voice-resume-inventory | 694 | 6,385,914 |
+| **Total source-worktree roots** | **7,662** | **70,043,136** |
+
+The11 exact separate Git administration directories, resolved with
+`git rev-parse --absolute-git-dir` under the existing shared repository's
+`.git/worktrees/`, add92 files/791,669 bytes. The combined measured file-length
+sum is **70,834,805 bytes (70.83 decimal MB)**. Every worktree is below100MB and
+the measured scope is below the1GB preparation budget. The integration parent's
+6,341,329-byte measurement is consistent with its earlier6.34MB report; file
+counts include outer metadata and source edits underway during this snapshot.
+
+No directory traversal limit was hit (10,000 files per root, depth12); no reparse
+point was followed or encountered. The metadata-only walk did not hash assets,
+read binaries, invoke a build or inspect old runtime trees. It excludes
+`voice-e2e`, `voice-live-diagnosis`, `voice-production-audit`, all older worktrees,
+shared Git object storage, session logs and other applications. Logical file
+lengths are not unique NTFS allocation or an attribution of volume free-space
+change. Concurrent edits also mean this is a bounded snapshot, not an atomic
+volume census. The small audit JSON and this later document update are subsequent
+writes, not silently folded into those snapshot totals.
+
+There is **no observed SDK/game/runtime download or large binary copy** in this
+scope. Five `.exe`-named files in
+`voice-mp-readiness/IW7-Paris-Server/runtime/installer-check-67d8df20facf4efda0cc3caf4f2d407e/`
+are24-43 bytes each,185 bytes combined. They are below the size of a Windows PE
+header, in a test-fixture layout, and do not represent a copied runtime. That
+runtime directory totals1,606 bytes. No new `tools`, `compiled` or `backups`
+tree appears in the selected worktrees at this snapshot; the inventory lot's
+existing ignored voice JSON was30,421 bytes. Existing SDK/helpers/stock/PDB/WAV
+must continue to be reused in place.
+
+Parent's free-C observations were203,818,287,104 then203,000,266,752 bytes.
+This snapshot measured202,883,006,464 bytes. The difference is an unattributed
+system observation; it must not be reported as these worktrees' disk consumption.
+The reproducible per-root totals, exact Git metadata paths, size buckets, largest
+files and bounds are saved in ignored
+`W/runtime/session-worktree-footprint.local.json`. Any later appearance of a
+large SDK/runtime copy or projected budget breach should be reported immediately
+to the coordinator before further preparation; do not delete files to hide it.
+
+### Voice experiment sequence
 
 1. **Unique next experiment: independent listening of the retained final output.**
    Use R19/R20 `voice-witness/receiver.wav` unchanged, plus the existing native
