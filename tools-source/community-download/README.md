@@ -159,18 +159,20 @@ network request. The historical `run_tests.py --native-source ...` entry now onl
 prints an inert Plan notice. The old implicit compile route is removed.
 
 The separate `-Action Run` source requires the exact reviewed plan SHA-256 and an
-already-built, reviewed helper assembly bound to `Download-NativeJob.cs`. Plan has
+already-built, reviewed `IW7.AnimationProbe.NativeJob` assembly bound to the exact
+existing `Probe-NativeJob.cs`, DLL and witness hashes in `job-source.json`. Plan has
 no `Add-Type` or native telemetry. Run may initialize the pinned `ResourceMemory.cs`
 API required by admission, including its minimal `Add-Type` bootstrap before the
-lease decision. No job-helper build or vswhere/vcvars bootstrap occurs there. Preparing
-and qualifying that assembly is a future, separately admitted parent operation;
-supplying matching hashes alone is not qualification of the helper implementation.
+lease decision. No job-helper build or vswhere/vcvars bootstrap occurs there. The
+existing witness is `OwnedJobWitnessPassed`, source commit `908869d6`, with all
+owned trees closed and the lease released. That evidence concerns the helper;
+the new binding and corrected downloader pipeline remain unexecuted.
 
 The prepared Run admits the complete 4 GiB physical / 6 GiB commit group before
 staging or launch. One original job owns the Python worker at process creation;
 its git, compiler/linker and test subprocesses inherit that job. The runner keeps
-the same original job handle after root exit, samples bounded kernel-verified
-member PID/creation/image identities, captures residuals before owned Stop, and
+the same original job handle after root exit, samples kernel-verified
+member PID/creation/image identities, attempts a final sample before owned Stop, and
 requires root exit plus zero job members for CloseConfirmed. Sampled membership
 does not claim an exhaustive event history or unmeasured memory peaks. Root exit
 with residual members after two seconds fails the run even if functional tests
@@ -178,12 +180,27 @@ passed; cleanup does not turn it into success. An unconfirmed closure retains th
 lease, exact original owner and read guards in an AppDomain quarantine entry.
 There is no termination by guessed PID, process name or global sweep.
 
-`Download-NativeJob.cs` is an isolated derivative of the existing original-job
-helper. `job-source.json` binds its base and derived bytes. The additions expose
-root exit and bounded membership snapshots using opened handles checked against
-the retained original job, so PID reuse alone cannot supply attribution. Shared
-helper sources are unchanged. This derived helper and the Run path have not been
-compiled, loaded or executed. The 32 MiB output cap reserves 1 MiB for final
+`Download-NativeJob.cs` preserves the earlier uncompiled derivative for history;
+the current Plan does not select it. No new DLL or native helper is required.
+The small source-bound PowerShell connection retains the existing owner directly,
+using reflection on that exact type for its private root getter, job handle and
+existing membership/identity/termination imports. It never substitutes a job.
+The helper has no public member-list API: observations sample at most 4096 process
+objects within a checked 750ms budget and retain at most 1024 verified identities.
+Access failures, process churn and truncation mean this is explicitly a partial
+sample, not a complete member list; only original-job accounting proves closure.
+An opened process handle stays retained through membership, creation and image
+reads, so a recycled PID alone cannot supply attribution. Foreign processes are
+only queried for membership; there is no global termination or name-based kill.
+
+The existing helper's older `StopAndConfirm` clock is not used. Pure policies
+start timing before its existing job-only termination call, observe `TreeExited`
+and check the deadline before closing, then check again after `CloseConfirmed`.
+Late synchronous calls remain failures, including a late close that already
+closed its handles; the receipt distinguishes owner-reported closure from timely
+qualified closure and retains the owner/guards/lease on unresolved cleanup.
+Shared helper sources are unchanged. Neither this connection nor Run has been
+loaded/executed against the DLL. The 32 MiB output cap reserves 1 MiB for final
 metadata; root/descendant ownership, functional result and admission remain
 separate fields in the planned receipt. Full IW7 build and gameplay are excluded.
 
@@ -213,7 +230,12 @@ Resource-RecorderOwnedProcess, and native/ResourceMemory.cs. Run retains read-on
 file handles for the Plan, local sources, tools, these imports and the original-job
 DLL before importing/loading them. Their guarded hashes close the simple
 hash-to-load replacement window. Guards persist through closure or quarantine.
-The job helper still requires a separately admitted build/witness.
+The reused helper source and its existing witness receipt are also pinned and
+guarded. Their current assembly hash is
+`5F613EBB83019DBF4BFA4F6A93C5329098343729B70ACC2CFA70AA8B64F195F8`;
+source hash `DDEFA72FF2B98286CD585D1178C13E67DCD646BBCF39D51365660901366C5CA8`.
+Plan refuses a mismatched source, DLL or witness. No new helper build is pending;
+the new connection still needs review and a separately authorized admitted run.
 
 A 1MiB metadata file is written and flushed before launch. Payload is watched
 separately against31MiB. Finalization uses that reserve even if payload measurement
@@ -226,5 +248,7 @@ Run the interpreted policy checks only with
 `& tools-source/community-download/tests/Test-HarnessPolicies.ps1`.
 They call the actual lifecycle policies with mock owners/clock, retained real
 small-file guards and bounded receipt fixtures. They compile/load no helper,
-reserve nothing and never enter the runner's Run branch. Native helper, corrected
-downloader46-case execution and admitted pipeline validation remain pending.
+reserve nothing and never enter the runner's Run branch. There are now 63 pure
+checks. Corrected downloader46-case execution and qualification of this binding
+and admitted pipeline remain pending. Keep the future Run in a fresh persistent
+PowerShell7 host so any AppDomain quarantine remains available for recovery.

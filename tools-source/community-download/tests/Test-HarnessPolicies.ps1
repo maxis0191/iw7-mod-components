@@ -11,6 +11,11 @@ if($errors.Count){throw 'Runner source syntax invalid.'}
 $guard=$runner.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Open-DownloadReadGuard'},$true)
 if(!$guard){throw 'Actual retained guard implementation missing.'}
 . ([scriptblock]::Create($guard.Extent.Text))
+foreach($name in @('Hash','Assert-Hash','Assert-DownloadJobBinding')){
+    $definition=$runner.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq $name},$true)
+    if(!$definition){throw "Actual binding function missing: $name"}
+    . ([scriptblock]::Create($definition.Extent.Text))
+}
 $script:Now=0L;$script:Checks=0;$script:Released=0;$script:Disposed=0
 function Get-DownloadMonotonicMs {$script:Now}
 function Check([bool]$Condition,[string]$Message){$script:Checks++;if(!$Condition){throw $Message}}
@@ -23,6 +28,7 @@ function New-Owner {
     $item|Add-Member ScriptMethod RootExited {$script:Now+=$this.RootDelay;return $this.Root}
     $item|Add-Member ScriptMethod TreeExited {$script:Now+=$this.TreeDelay;return $this.Tree}
     $item|Add-Member ScriptMethod StopAndConfirm {param($limit) $this.StopCalls++;$script:Now+=$this.StopDelay;if($this.StopFailure){throw 'Mocked unresolved original tree'};$this.Closed=$true}
+    $item|Add-Member ScriptMethod CloseConfirmed {$this.Closed=$true}
     $item
 }
 $script:Now=179999;$timing=New-Timing;$owner=New-Owner
@@ -73,8 +79,53 @@ Check ($state.LeaseReleased -and $state.ReadGuardsReleased -and $script:Released
 $state=New-State;Complete-DownloadOwnership $owner @() $state $lease {throw 'release refused'}
 Check (!$state.LeaseReleased -and !$state.Passed -and $state.Status -ceq 'Failed') 'Release refusal cannot qualify.'
 
+# Reused DLL has a private root getter and an older cleanup clock. Exercise the
+# actual injected root/termination policies without loading that assembly.
+$script:Now=0;$owner=New-Owner;$owner.Root=$false;$timing=New-Timing
+Check (Observe-DownloadCompletion $owner $timing {0} {} {param($same) Check ([object]::ReferenceEquals($same,$owner)) 'Root adapter must receive original owner.';$true}) 'Injected root read must be honored.'
+Check ($timing.RootExitObservedMs -eq 0) 'Injected private-root observation must start drain.'
+$script:Now=0;$owner=New-Owner
+Refuse {Stop-DownloadOriginalJob $owner {$script:Now=5000} {}} 'Termination delay must count before first tree read.'
+Check (!$owner.Closed) 'Late termination must retain original handles.'
+$script:Now=0;$owner=New-Owner;$owner.TreeDelay=5000
+Refuse {Stop-DownloadOriginalJob $owner {} {}} 'Late zero-active cleanup must be refused.'
+Check (!$owner.Closed) 'Late terminal getter must not close owner.'
+$script:Now=0;$owner=New-Owner;$owner.Tree=$false
+Refuse {Stop-DownloadOriginalJob $owner {} {$script:Now+=5000}} 'Residual tree must exhaust original cleanup deadline.'
+Check (!$owner.Closed) 'Unresolved residual owner must be retained.'
+$script:Now=0;$owner=New-Owner;$owner.TreeDelay=4999
+Stop-DownloadOriginalJob $owner {} {}
+Check $owner.Closed 'Timely reused-owner cleanup must close original owner.'
+$script:Now=0;$owner=New-Owner;$state=New-State;$lease.Token='pure-'+[guid]::NewGuid().ToString('N')
+Complete-DownloadOwnership $owner @() $state $lease {} {param($same) Check ([object]::ReferenceEquals($same,$owner)) 'Stop adapter must receive original owner.';Stop-DownloadOriginalJob $same {} {}}
+Check ($state.OriginalJobClosed -and $state.LeaseReleased -and $owner.StopCalls -eq 0) 'Reused binding must avoid old StopAndConfirm.'
+
 $fixture=Join-Path $root ('.scratch/policy-'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($fixture)|Out-Null
+$repo=[IO.Path]::GetFullPath((Join-Path $root '../..'))
+$bindingSource=Join-Path $fixture 'source.cs';$bindingDll=Join-Path $fixture 'fake-never-loaded.dll';$bindingReceipt=Join-Path $fixture 'witness.json'
+[IO.File]::WriteAllText($bindingSource,'mock source');[IO.File]::WriteAllText($bindingDll,'mock bytes, not a PE')
+$binding=[pscustomobject]@{Schema='iw7.community-download-job-source/2';Type='IW7.AnimationProbe.NativeJob';Source=[IO.Path]::GetRelativePath($repo,$bindingSource);
+    SourceSHA256=(Hash $bindingSource);AssemblySHA256=(Hash $bindingDll);SourceCommit=('a'*40);WitnessSHA256=$null}
+$witness=[ordered]@{Status='OwnedJobWitnessPassed';AllOwnedTreesClosed=$true;LeaseReleased=$true;SourceCommit=$binding.SourceCommit;
+    HelperAssemblySHA256=$binding.AssemblySHA256;SourceSHA256=@{'Probe-NativeJob.cs'=$binding.SourceSHA256}}
+[IO.File]::WriteAllText($bindingReceipt,($witness|ConvertTo-Json));$binding.WitnessSHA256=Hash $bindingReceipt
+Assert-DownloadJobBinding $binding $bindingDll $binding.AssemblySHA256 $binding.SourceSHA256 $bindingReceipt
+Check $true 'Exact source/assembly/witness binding must pass without loading bytes.'
+Refuse {Assert-DownloadJobBinding $binding $bindingDll ('0'*64) $binding.SourceSHA256 $bindingReceipt} 'Unpinned assembly hash must fail.'
+[IO.File]::WriteAllText($bindingSource,'different source')
+Refuse {Assert-DownloadJobBinding $binding $bindingDll $binding.AssemblySHA256 $binding.SourceSHA256 $bindingReceipt} 'Changed helper source must fail.'
+[IO.File]::WriteAllText($bindingSource,'mock source')
+[IO.File]::WriteAllText($bindingDll,'different binary')
+Refuse {Assert-DownloadJobBinding $binding $bindingDll $binding.AssemblySHA256 $binding.SourceSHA256 $bindingReceipt} 'Changed helper binary must fail.'
+[IO.File]::WriteAllText($bindingDll,'mock bytes, not a PE')
+[IO.File]::WriteAllText($bindingReceipt,'{}')
+Refuse {Assert-DownloadJobBinding $binding $bindingDll $binding.AssemblySHA256 $binding.SourceSHA256 $bindingReceipt} 'Changed witness bytes must fail.'
+foreach($field in @('AllOwnedTreesClosed','LeaseReleased')){
+    $witness[$field]=$false;[IO.File]::WriteAllText($bindingReceipt,($witness|ConvertTo-Json));$binding.WitnessSHA256=Hash $bindingReceipt
+    Refuse {Assert-DownloadJobBinding $binding $bindingDll $binding.AssemblySHA256 $binding.SourceSHA256 $bindingReceipt} 'Matching receipt hash cannot qualify failed closure/release.'
+    $witness[$field]=$true
+}
 $inputPath=Join-Path $fixture 'source.txt';[IO.File]::WriteAllText($inputPath,'reviewed')
 $hash=(Get-FileHash -LiteralPath $inputPath).Hash
 $held=Open-DownloadReadGuard $inputPath $hash
@@ -107,5 +158,8 @@ foreach($name in 'ops/Resource-Memory.ps1','ops/Resource-RecorderOwnedProcess.Co
 }
 Check (!$source.Contains('while(!$owner.TreeExited())')) 'Terminal predicate must not precede deadline checks.'
 Check (!$source.Contains('ArtifactBytesBeforeReceipt=Assert-OutputBudget')) 'Failure receipt must not be gated by payload cap.'
-if(('IW7ResourceMemoryV1' -as [type]) -or ('IW7.CommunityDownload.NativeJob' -as [type])){throw 'Native type unexpectedly loaded.'}
+Check ($source.Contains('[IW7.AnimationProbe.NativeJob]::new()')) 'Runner must retain existing witnessed owner directly.'
+Check ($source.Contains('Open-DownloadReadGuard $plan.job_witness_receipt')) 'Existing native witness must be guarded.'
+Check ($source.Contains('MemberObservationComplete=$false')) 'Partial member observations must remain explicit.'
+if(('IW7ResourceMemoryV1' -as [type]) -or ('IW7.CommunityDownload.NativeJob' -as [type]) -or ('IW7.AnimationProbe.NativeJob' -as [type])){throw 'Native type unexpectedly loaded.'}
 "PASS: $script:Checks pure policy checks; no Run, Add-Type, native process or reservation. Fixtures: $fixture"
