@@ -498,3 +498,29 @@ guard runs before any write, covering mixed separators, case, dot components,
 trailing separators and ancestor/descendant profiles. A `bank-other` sibling
 still restores normally. The earlier implementation and correction remain
 separate commits; no bank corruption was observed and no game ran between them.
+
+### Reused Doom candidate: beacon-only source profile
+
+The coordinator selected an existing stopped Doom dedicated for reuse, with a
+durable destination outside managed worktrees. This is a parameter change, not
+a new game copy or an import of another candidate's backup. Read-only inspection
+found 17 original custom CP scripts and the candidate's own bank/configuration;
+bank isolation again checked 66 NTFS file identities with zero shared Main IDs.
+The native package, 1048-byte FF and SDK source hashes still match the inputs
+above. The existing `doom-test.marker` identifies this separate dedicated, but
+the Agent-Lab/native appdata gate requires its exact isolation marker as well.
+No marker was written during this inspection. The old read-only plan remains a
+historical receipt; final parameters must bind the new root to the verified move
+receipt before the separately authorized marker adoption and DryRun.
+
+For vertical mode only, staged CP now contains exactly `sdk_beacon.gsc` and
+`agent_vertical_fixture.gsc`. Both depend on retail utility/native test APIs,
+not other Paris custom scripts. The transaction retains all original candidate
+scripts and restores their exact bytes. This prevents Doom's custom init/clip
+setup, rather than relying solely on `paris_mod_doom=0` to disable its encounter.
+Native protection and the existing native package remain unchanged; no absence
+of compiled Doom components is claimed. All other Agent-Lab modes keep the same
+catalog script selection and ordering. The plan records its two staged scripts.
+The vertical suite now passes 145 controls, including a real temporary-file
+17-to-2-to-17 restoration, duplicate catalog handling and unchanged non-vertical
+selection. No game was launched for this profile change.
