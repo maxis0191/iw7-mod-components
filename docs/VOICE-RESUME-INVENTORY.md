@@ -199,6 +199,98 @@ separate identity/profile; the later reviewed pair can use immutable hardlinks
 with a documented reason. Sequential comparisons reuse the base client. No full
 game, SDK, model, PDB or evidence copy is needed for this inventory.
 
+### Candidate identified from the current admin/network lots
+
+A subsequent targeted source/receipt audit identifies the actual retained
+dedicated used by both original sessions. **CandidateRoot is**
+`C:/Users/ezvalo/.codex/worktrees/take-public/IW7-Paris-Server/runtime/take-test-server`.
+This is backed by both cases' `identity.local.json` image parent and
+`backup/recovery.local.json.GameRoot`, rather than inferred from an old guide.
+
+| Evidence owner | Observed source head | Latest cold case relative to its checkout | Recorded result |
+| --- | --- | --- | --- |
+| `owner-admin-commands`, chat `Ajouter des commandes admin privées` | `4c3095251e9f0f65da6c089048900b5270c1bf31` | `runtime/cold-afk-cold-20261012-014621-242` | Ready=true,Restored=true,Failure=null; recovery transaction Restored=true |
+| `network-rejoin-fire-sale`, chat `Diagnostiquer lags et déconnexions` | `a5ae3dc8871277a115ea31297f6fd723081b696e` | `runtime/cold-afk-cold-20261012-015151-633` | Same |
+
+Both checkout paths are
+`C:/Users/ezvalo/.codex/worktrees/<evidence-owner>/IW7-Paris-Server`.
+Both historical process identities point to the candidate's
+`iw7-canonical-main.exe`, created at01:46:28Z and01:51:59Z respectively on
+2026-10-12. Both cold outputs report Beast/`cp_final`,95 free canonical slots;
+their short server logs contain
+`[Paris test privacy] private=1 lan_only=1 heartbeat_suppressed=1`.
+These are their executed startup/restoration receipts, not tests run by this
+inventory chat. They do not establish voice behavior or current vacancy.
+
+The admin protected-client attempt
+`runtime/owner-test-20261012-014129-796/result.local.json` separately records
+Complete=false,Restored=false and resource-admission refusal before the runtime
+transaction. That result must not be confused with the later successful cold
+case, nor used alone to diagnose an unrestored dedicated. The docs
+`docs/OWNER-COMMANDS.md` and `docs/REJOIN-NETWORK-TESTS.md` retain the respective
+client-test limits. No process, reservation or client has been adopted here.
+
+**StockRoot distinction:** these current one-client/cold helpers accept
+CandidateRoot and GameRoot; they have no independent StockRoot parameter.
+The candidate contains the retail files in place. For a future voice pair,
+the precise proposed `StockRoot` is therefore **the same retained candidate
+root**, subject to the reviewed pair-manifest/content/ownership checks. The
+admin/network cold results are not a validation of peer hardlink preparation.
+There is no newly found separate stock cache and no reason to reconstruct84GB.
+
+Targeted metadata confirms the candidate, its isolated marker, and
+`iw7-mod/lab-appdata/cdata/custom_scripts` still exist. At this observation the
+`agent-peer` subdirectory and `STOCK-ASSETS-REMOVED.json` are absent. Existence of
+cdata does not certify its complete identity-free peer bootstrap contract.
+The base client remains `C:/Users/ezvalo/Desktop/iw_game_files`.
+
+**Ownership versus state:** the physical retained root belongs to the Take
+workspace; the admin and network sessions are its latest observed scenario
+users and remain the coordination owners until the parent releases their slot.
+Their last case receipts say restored. Live process/port/lease ownership and
+availability for the next run were deliberately not queried or claimed here.
+Only the parent may schedule reuse after those sessions finish and fresh normal
+vacancy/admission checks pass. A completed source task alone is not that check.
+
+The relevant existing source helpers, inspected without importing/executing them:
+
+- `ops/Test-AfkRuntime.ps1` (both lots) reuses CandidateRoot in Cold mode,
+  snapshots mutable files/profiles/bank through `Save-IW7BaseTransaction`, and
+  restores them after owned-process closure. It does not prepare retail stock.
+  `ops/Test-OwnerAdmin.ps1` and `ops/Test-RejoinFireSale.ps1` likewise reuse the
+  marked candidate plus a temporary base-client executable; their12GiB runtime
+  scope is separate from the voice pair's20/20GiB scope.
+- `ops/Agent-Pair.Core.ps1` / `ops/Agent-Pair.ps1` in the audited21b91e3 source
+  are unchanged in the inspected network head. `Get-IW7AgentPairStockManifest
+  -InventoryOnly` reads path/length metadata without asset hashes.
+  `Get-IW7AgentPairManifestHash` hashes the small canonical manifest only.
+  `Invoke-IW7AgentPairPrepare` requires exact full admission, base vacancy,
+  reviewed manifest, same-volume NTFS and bounded identity-free retained cdata;
+  it hashes each source once under retained FileShare.Read handles, creates and
+  verifies hardlinks, and copies only the candidate executable/bootstrap bytes.
+  It has no physical-stock-copy fallback. Preparation/restoration is an owned
+  transaction, not an instruction to manually create aliases or a marker.
+- **Correction to interpreting the earlier ReadOnly observation:** the pair
+  helper does not test or set the filesystem ReadOnly attribute. Missing ReadOnly
+  is not itself a launcher refusal. The source/alias handles deny writes during
+  preparation, and are explicitly released before gameplay. Therefore neither
+  that flag nor the short cold tests certify stock immutability for the entire
+  subsequent pair. Preserve shared attributes; apply the existing ownership,
+  source-identity and runtime safeguards, rather than restore attributes or
+  fabricate an additional gate. No stock helper or hash sweep ran in this audit.
+- Network commit `59fc847717c55141d6a4e2e65dc37df99fe8e416` adds `sv_lanOnly 1`
+  before startup and in the voice pair config, plus the native
+  `ops/Apply-TestPrivacyOverlay.ps1` heartbeat suppression used by those cold
+  runs. Parent must integrate that current privacy behavior into its coherent
+  voice helper/build selection; old V alone predates it. Do not mix a new wrapper
+  and old package and call privacy validated. Source hashes/build provenance
+  remain mandatory. These are observed branch revisions, not a new merge claim.
+- Do **not** use `ops/Isolated-Lab.ps1 -Action Prepare` to recover the missing
+  agent-debugger root: its preparation path performs a physical `robocopy` stock
+  snapshot and sets stock attributes before making lab aliases. It is not the
+  reuse operation requested here. No cleanup, restoration, copy, attribute change,
+  whole-disk inventory or asset rehash was performed in this follow-up.
+
 ## Budget and ordered continuation
 
 Parent supplied C:free203,818,287,104 bytes. A later audit sample was
