@@ -1,0 +1,16 @@
+{
+  "schema": "iw7.community-download-tests/1",
+  "upstream_commit": "77e6d4d24e918ee363b3feee3735c3b889dff7d7",
+  "overlay_sha256": "48b0657a3140123d861327dd9f0e2af6c2714bfeec65e9e7c20801e9f3016605",
+  "patch_applied_exactly": true,
+  "harness_sha256": "21a38fc60e1db408084406e4c5e9e522681f661a20395f0860cd5113ee5cff2b",
+  "stubs_sha256": "bcaeffe4d8dcaa3e1be6d139ec1f812c9b9c533ead3ce36ac0ab4e9edb110ff1",
+  "test_count": 43,
+  "passed": true,
+  "tests_log_sha256": "18e39b8e0e648f3b305f8aea204ef51279e4bf146b3c7ebec3f7f130b4d25e5c",
+  "real_windows_file_operations": true,
+  "network": "mocked",
+  "scheduler": "deterministic mock",
+  "full_native_build": false,
+  "gameplay": false
+}

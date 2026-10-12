@@ -1,0 +1,13 @@
+{
+  "schema": "iw7.community-download-source/1",
+  "upstream_commit": "77e6d4d24e918ee363b3feee3735c3b889dff7d7",
+  "upstream_url": "https://github.com/auroramod/iw7-mod",
+  "path": "src/client/component/download.cpp",
+  "patch": "patches/0001-contained-errors-and-verified-publication.patch",
+  "base_sha256": "97e0442b7249dd94f602ba73fb0b5624e453c47d73083e8d6ae0285f9befe6f6",
+  "overlay_sha256": "48b0657a3140123d861327dd9f0e2af6c2714bfeec65e9e7c20801e9f3016605",
+  "patch_sha256": "4398e698b93cdf933154ecf07bd7bb4ada297c3c8eab88568fbe63b1e8a67f45",
+  "full_native_build": false,
+  "runtime_validated": false,
+  "owner_accepted": false
+}
