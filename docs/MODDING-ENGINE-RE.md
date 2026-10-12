@@ -402,7 +402,7 @@ It additionally requires a released server sample strictly after both that
 event and the ACK, at most 1500 ms after ACK, with exact identity and one-step
 counter changes. The runtime wait cannot finish on a pre-event released sample.
 Receipts expose client release, server event lag and server release separately.
-The 138-control pure suite covers +157/+750 ms acceptance, +751 ms rejection,
+The 139-control pure suite covers +157/+750 ms acceptance, +751 ms rejection,
 pre-event/same-tick/late release refusal, and the actual pass driver receiving a
 delayed event after an apparently released pre-input sample. Two otherwise valid
 Use events with distinct record IDs also reject and abort input. No runtime
@@ -410,6 +410,14 @@ outcome is inferred from those synthetic tests. The second before-capture is
 nearly black during the arrival fade and is not a readable visual witness; no
 brightening or retouching was performed. The missing after-capture follows the
 validator failure and does not establish a renderer failure.
+
+The next driver also retains an additional native frame after measured aim
+convergence and before Use. It labels this `before-use-after-aim`, with
+`BeforeGameplayAction:false` and `BeforeUse:true`, and preserves the initial
+frame separately. This avoids relying only on the too-early fade capture without
+altering pixels, changing render settings or claiming that server READY proves
+image readability. Fresh protection/range/aim are rechecked before Use after
+capture; later image inspection still decides what the frame actually proves.
 
 At 03:16:28 UTC, result was `Passed:false`, `Restored:true`, `CleanupError:null`;
 fresh process/resource inspection found no test process or lease, and Main's
