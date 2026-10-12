@@ -525,5 +525,6 @@ if ($EnemyExperiment) {
     $manifest.EnemyAddonNativeSHA256 = (Get-FileHash -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_rhino.cpp").Hash
 }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$output/build-manifest.json" -Encoding UTF8
+Copy-Item -LiteralPath "$output/build-manifest.json" -Destination (Join-Path $symbols 'build-manifest.json') -Force
 Write-Output "Prepared private client/server build: $output"
 }
