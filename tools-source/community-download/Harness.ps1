@@ -4,7 +4,7 @@ param(
     [ValidateSet('Plan','Run')][string]$Action='Plan',
     [string]$NativeSource,[string]$OutputRoot,[string]$PythonExe,
     [string]$VCPath,[string]$WindowsSdkRoot,[string]$WindowsSdkVersion,
-    [string]$JobAssembly,[string]$JobAssemblySHA256,[string]$JobAssemblySourceSHA256,
+    [string]$JobAssembly,[string]$JobAssemblySHA256,[string]$JobAssemblySourceSHA256,[string]$JobWitnessReceipt,
     [string]$PlanPath,[string]$ApprovedPlanSHA256
 )
 $ErrorActionPreference='Stop'
@@ -41,6 +41,17 @@ $sourceNames=@('Harness.ps1','Harness.Core.ps1','run_tests.py','verify_archive.p
     'overlay/src/client/component/download.cpp','patches/0001-contained-errors-and-verified-publication.patch',
     'tests/native_stubs.hpp','tests/test_download.cpp','LICENSE.upstream')
 $resourceNames=@('ops/Resource-Scheduler.Core.ps1','ops/Resource-Memory.ps1','ops/Resource-RecorderOwnedProcess.Core.ps1','ops/native/ResourceMemory.cs')
+function Assert-DownloadJobBinding($Binding,[string]$Assembly,[string]$AssemblyHash,[string]$SourceHash,[string]$Receipt) {
+    if($Binding.Schema -cne 'iw7.community-download-job-source/2' -or $Binding.Type -cne 'IW7.AnimationProbe.NativeJob' -or
+        $AssemblyHash -ine $Binding.AssemblySHA256 -or $SourceHash -ine $Binding.SourceSHA256){throw 'Exact existing witnessed helper binding required.'}
+    Assert-Hash $Assembly $Binding.AssemblySHA256
+    Assert-Hash (Join-Path $repo $Binding.Source) $Binding.SourceSHA256
+    Assert-Hash $Receipt $Binding.WitnessSHA256
+    $witness=Get-Content -LiteralPath $Receipt -Raw | ConvertFrom-Json
+    if($witness.Status -cne 'OwnedJobWitnessPassed' -or !$witness.AllOwnedTreesClosed -or !$witness.LeaseReleased -or
+        $witness.SourceCommit -cne $Binding.SourceCommit -or $witness.HelperAssemblySHA256 -ine $Binding.AssemblySHA256 -or
+        $witness.SourceSHA256.'Probe-NativeJob.cs' -ine $Binding.SourceSHA256){throw 'Existing helper witness differs from the source/assembly binding.'}
+}
 
 if($Action -eq 'Plan'){
     foreach($value in @($NativeSource,$OutputRoot,$PythonExe,$VCPath,$WindowsSdkRoot,$WindowsSdkVersion)){
@@ -61,11 +72,13 @@ if($Action -eq 'Plan'){
     $includes=@((Join-Path $vc 'include'))+@('ucrt','shared','um','winrt' | ForEach-Object {Join-Path $sdk "Include/$WindowsSdkVersion/$_"})
     $libs=@((Join-Path $vc 'lib/x64'),(Join-Path $sdk "Lib/$WindowsSdkVersion/ucrt/x64"),(Join-Path $sdk "Lib/$WindowsSdkVersion/um/x64"))
     foreach($directory in @($includes)+@($libs)){if(!(Test-Path -LiteralPath $directory -PathType Container)){throw "Installed toolchain directory missing: $directory"}}
-    $assemblyBound=$false;$assemblyPath=$null
+    $binding=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'job-source.json') -Raw | ConvertFrom-Json
+    $assemblyBound=$false;$assemblyPath=$null;$receiptPath=$null
     if($JobAssembly){
         $assemblyPath=[IO.Path]::GetFullPath($JobAssembly)
-        Assert-Hash $assemblyPath $JobAssemblySHA256
-        Assert-Hash (Join-Path $PSScriptRoot 'Download-NativeJob.cs') $JobAssemblySourceSHA256
+        if(!$JobWitnessReceipt){throw 'Existing helper witness receipt required.'}
+        $receiptPath=[IO.Path]::GetFullPath($JobWitnessReceipt)
+        Assert-DownloadJobBinding $binding $assemblyPath $JobAssemblySHA256 $JobAssemblySourceSHA256 $receiptPath
         $assemblyBound=$true
     }
     [ordered]@{
@@ -79,10 +92,13 @@ if($Action -eq 'Plan'){
         resource_source_hashes=$resourceHashes
         physical_bytes=4GB;commit_bytes=6GB;artifact_limit_bytes=32MB;metadata_reserve_bytes=1MB
         expected_test_count=46;worker_timeout_seconds=180;root_exit_grace_seconds=2
-        job_assembly=$assemblyPath;job_assembly_sha256=$JobAssemblySHA256;job_source_sha256=$sourceHashes['Download-NativeJob.cs']
+        job_assembly=$assemblyPath;job_assembly_sha256=$binding.AssemblySHA256;job_source_sha256=$binding.SourceSHA256
+        job_type=$binding.Type;job_source=$binding.Source;job_source_commit=$binding.SourceCommit
+        job_witness_receipt=$receiptPath;job_witness_sha256=$binding.WitnessSHA256
         reviewed_prebuilt_job_assembly_bound=$assemblyBound
         original_job_contract='Atomic job-at-create; no breakaway; retain original handle through root exit, member capture, stop if required and ActiveProcesses=0'
-        helper_binding_limit='Source/assembly hashes are review inputs, not proof of a qualified helper build; build/witness must be separately admitted'
+        member_observation_contract='Bounded partial process samples; exact original-job membership checked on retained process handles; never a complete list or closure authority'
+        helper_binding_limit='Existing native-job witness qualifies only the pinned helper; this PowerShell binding and the 46-case admitted pipeline remain unexecuted'
     } | ConvertTo-Json -Depth 8
     return
 }
@@ -102,19 +118,23 @@ $output=Assert-FreshOutput $plan.output_root
 foreach($item in $plan.source_hashes.PSObject.Properties){Assert-Hash (Join-Path $PSScriptRoot $item.Name) $item.Value}
 foreach($label in @('python','compiler','linker')){Assert-Hash $plan.($label+'_path') $plan.($label+'_sha256')}
 Assert-Hash (Join-Path $repo 'ops/Resource-Scheduler.Core.ps1') $plan.resource_helper_sha256
-Assert-Hash (Join-Path $PSScriptRoot 'Download-NativeJob.cs') $plan.job_source_sha256
-Assert-Hash $plan.job_assembly $plan.job_assembly_sha256
-if(('IW7.CommunityDownload.NativeJob' -as [type]) -or ('IW7ResourceMemoryV1' -as [type])){throw 'Fresh PowerShell host required for the reviewed helper and guarded admission telemetry.'}
+$binding=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'job-source.json') -Raw | ConvertFrom-Json
+if($plan.job_type -cne $binding.Type -or $plan.job_source -cne $binding.Source -or
+    $plan.job_source_commit -cne $binding.SourceCommit -or $plan.job_witness_sha256 -ine $binding.WitnessSHA256){throw 'Plan helper metadata differs from binding.'}
+Assert-DownloadJobBinding $binding $plan.job_assembly $plan.job_assembly_sha256 $plan.job_source_sha256 $plan.job_witness_receipt
+if(('IW7.AnimationProbe.NativeJob' -as [type]) -or ('IW7ResourceMemoryV1' -as [type])){throw 'Fresh PowerShell host required for the reviewed helper and guarded admission telemetry.'}
 $guards=[Collections.Generic.List[IO.FileStream]]::new()
 $lease=$null
-$owner=$null;$failure=$null;$members=@{};$timing=$null;$reserve=$null;$policiesLoaded=$false
+$owner=$null;$access=$null;$failure=$null;$members=@{};$timing=$null;$reserve=$null;$policiesLoaded=$false
 $record=[ordered]@{Schema='iw7.community-download-admitted-run/1';Status='Pending';Admitted=$false;Passed=$false;
     ApprovedPlanSHA256=$ApprovedPlanSHA256;AdmissionSnapshot=$null;LeaseToken=$null;
     LauncherPID=$PID;LauncherCreationFileTime=(Get-Process -Id $PID).StartTime.ToUniversalTime().ToFileTimeUtc();
     StartedUtc=[datetime]::UtcNow.ToString('o');JobSourceSHA256=$plan.job_source_sha256;JobAssemblySHA256=$plan.job_assembly_sha256;
     WorkerPID=$null;WorkerCreationFileTime=$null;WorkerImage=$null;ExitCode=$null;ForcedStop=$false;
     OriginalJobClosed=$false;LeaseReleased=$false;HistoricalIncidentRequalified=$false;ObservedMembers=@();MemoryPeaksMeasured=$false;
-    Quarantined=$false;QuarantineKey=$null;ReadGuardsReleased=$false}
+    Quarantined=$false;QuarantineKey=$null;ReadGuardsReleased=$false;
+    JobType=$plan.job_type;JobSourceCommit=$plan.job_source_commit;JobWitnessSHA256=$plan.job_witness_sha256;
+    MemberObservationComplete=$false;MemberSampleCount=0;MemberSampleReadErrors=0;MemberSamplesTruncated=0}
 function Measure-OutputPayload {
     $bytes=0L
     foreach($entry in Get-ChildItem -LiteralPath $output -Recurse -Force){
@@ -128,13 +148,59 @@ function Assert-OutputBudget {
     if($bytes -gt 31MB){throw 'Harness output exceeds budget before final metadata.'}
     $bytes
 }
-function Capture-OriginalMembers {
-    foreach($member in $owner.SnapshotMembers()){
-        $key="$($member.PID):$($member.CreationFileTime)"
-        $members[$key]=[ordered]@{PID=$member.PID;CreationFileTime=$member.CreationFileTime;Image=$member.Image;
-            MembershipVerified=$member.MembershipVerified;Error=$member.Error;ObservedUtc=[datetime]::UtcNow.ToString('o')}
-        if($members.Count -gt 1024){throw 'Historical member observation bound exceeded.'}
+function Get-DownloadJobAccess($Owner) {
+    $type=$Owner.GetType()
+    if($type.FullName -cne 'IW7.AnimationProbe.NativeJob' -or
+        [IO.Path]::GetFullPath($type.Assembly.Location) -ine [IO.Path]::GetFullPath($plan.job_assembly)){throw 'Exact loaded original-job type/location required.'}
+    $instance=[Reflection.BindingFlags]'NonPublic,Instance,DeclaredOnly'
+    $static=[Reflection.BindingFlags]'NonPublic,Static,DeclaredOnly'
+    $result=@{Job=$type.GetField('job',$instance);Root=$type.GetMethod('RootExited',$instance)}
+    foreach($name in @('TerminateJobObject','IsProcessInJob','GetProcessTimes','QueryFullProcessImageNameW')){$result[$name]=$type.GetMethod($name,$static)}
+    if($result.Job.FieldType -ne [Microsoft.Win32.SafeHandles.SafeFileHandle] -or @($result.Values | Where-Object {$null -eq $_}).Count){throw 'Pinned original-job private API differs.'}
+    $result
+}
+function Read-DownloadRoot($JobOwner) { $access.Root.Invoke($JobOwner,@()) }
+function Terminate-DownloadJob($JobOwner) {
+    $job=$access.Job.GetValue($JobOwner)
+    if($null -ne $job -and !$job.IsInvalid){
+        if(!$access.TerminateJobObject.Invoke($null,@($job,[uint32]3758096385))){throw 'Termination of exact original job failed.'}
     }
+}
+function Capture-OriginalMembers {
+    if(!$access -or $owner.Closed){return}
+    $job=$access.Job.GetValue($owner)
+    if($null -eq $job -or $job.IsInvalid){return}
+    # Existing P/Invokes only. No second job/native helper or PID-based kill.
+    # Process inventory is a partial diagnostic sample, never closure evidence.
+    $started=Get-DownloadMonotonicMs;$inventory=[Diagnostics.Process]::GetProcesses()
+    $record.MemberSampleCount++;$seen=0
+    try {
+        foreach($candidate in $inventory){
+            if($seen -ge 4096 -or (Get-DownloadMonotonicMs)-$started -ge 750){$record.MemberSamplesTruncated++;break}
+            $seen++;$safe=$null;$borrowed=$null;$held=$false
+            try {
+                $safe=$candidate.SafeHandle;$safe.DangerousAddRef([ref]$held)
+                $borrowed=[Microsoft.Win32.SafeHandles.SafeFileHandle]::new($safe.DangerousGetHandle(),$false)
+                $inside=[object[]]@($borrowed,$job,$false)
+                if(!$access.IsProcessInJob.Invoke($null,$inside)){throw 'Membership query failed.'}
+                if(!$inside[2]){continue}
+                $times=[object[]]@($borrowed,0L,0L,0L,0L)
+                if(!$access.GetProcessTimes.Invoke($null,$times)){throw 'Member creation identity unavailable.'}
+                $image=[Text.StringBuilder]::new(32768);$imageArgs=[object[]]@($borrowed,[uint32]0,$image,[uint32]32768)
+                if(!$access.QueryFullProcessImageNameW.Invoke($null,$imageArgs)){throw 'Member image unavailable.'}
+                $key="$($candidate.Id):$($times[1])"
+                if(!$members.ContainsKey($key) -and $members.Count -ge 1024){throw 'Historical member observation bound exceeded.'}
+                $members[$key]=[ordered]@{PID=$candidate.Id;CreationFileTime=$times[1];Image=$image.ToString();
+                    MembershipVerified=$true;ObservedUtc=[datetime]::UtcNow.ToString('o')}
+            } catch {$record.MemberSampleReadErrors++}
+            finally {if($borrowed){$borrowed.Dispose()};if($held){$safe.DangerousRelease()}}
+        }
+    } finally {foreach($candidate in $inventory){$candidate.Dispose()}}
+    [GC]::KeepAlive($owner)
+}
+function Stop-DownloadReusedOwner($JobOwner) {
+    if(!$access){$script:access=Get-DownloadJobAccess $JobOwner}
+    Stop-DownloadOriginalJob $JobOwner {param($jobOwner) Terminate-DownloadJob $jobOwner}
 }
 try {
     # Retain critical inputs BEFORE importing sources or loading the DLL. Recheck
@@ -146,6 +212,8 @@ try {
     foreach($name in $resourceNames){$guards.Add((Open-DownloadReadGuard (Join-Path $repo $name) $plan.resource_source_hashes.$name))}
     foreach($label in @('python','compiler','linker')){$guards.Add((Open-DownloadReadGuard $plan.($label+'_path') $plan.($label+'_sha256')))}
     $guards.Add((Open-DownloadReadGuard $plan.job_assembly $plan.job_assembly_sha256))
+    $guards.Add((Open-DownloadReadGuard (Join-Path $repo $plan.job_source) $plan.job_source_sha256))
+    $guards.Add((Open-DownloadReadGuard $plan.job_witness_receipt $plan.job_witness_sha256))
     . (Join-Path $PSScriptRoot 'Harness.Core.ps1');$policiesLoaded=$true
     . (Join-Path $repo 'ops/Resource-Scheduler.Core.ps1')
     $lease=Enter-IW7ResourceLease -Scope $output -Kind Build -Owner 'Community download original-job harness' -PhysicalBytes 4GB -CommitBytes 6GB
@@ -153,7 +221,8 @@ try {
     [IO.Directory]::CreateDirectory($output)|Out-Null
     $reserve=New-DownloadReceiptReserve $output # Allocated before any original-job launch.
     $null=[Reflection.Assembly]::LoadFrom($plan.job_assembly)
-    $owner=[IW7.CommunityDownload.NativeJob]::new() # Retained BEFORE Start, including partial failures.
+    $owner=[IW7.AnimationProbe.NativeJob]::new() # Exact existing owner retained BEFORE Start.
+    $access=Get-DownloadJobAccess $owner
     $ticketPath=Join-Path $output 'worker-ticket.json'
     $ticket=[ordered]@{schema='iw7.community-download-worker/1';launcher_pid=$PID;expires_unix=[DateTimeOffset]::UtcNow.AddMinutes(4).ToUnixTimeSeconds();plan=$plan}
     [IO.File]::WriteAllText($ticketPath,($ticket|ConvertTo-Json -Depth 12),[Text.UTF8Encoding]::new($false))
@@ -170,7 +239,7 @@ try {
     $record.WorkerPID=$owner.PID;$record.WorkerCreationFileTime=$owner.CreationFileTime;$record.WorkerImage=$owner.Image
     Register-DownloadOwner $owner $timing {param($job) Add-IW7ResourceProcess -Token $lease.Token -ProcessId $job.PID}
     while($true){
-        $exited=Observe-DownloadCompletion $owner $timing {Assert-OutputBudget} {Capture-OriginalMembers}
+        $exited=Observe-DownloadCompletion $owner $timing {Assert-OutputBudget} {Capture-OriginalMembers} {param($jobOwner) Read-DownloadRoot $jobOwner}
         if($exited){break}
         Start-Sleep -Milliseconds 100
     }
@@ -188,7 +257,7 @@ finally {
         $record.WorkerPID=$owner.PID;$record.WorkerCreationFileTime=$owner.CreationFileTime;$record.WorkerImage=$owner.Image
         if(!$owner.Closed){try {Capture-OriginalMembers} catch {$record.MemberCaptureError=$_.Exception.Message}}
     }
-    if($policiesLoaded){Complete-DownloadOwnership $owner $guards $record $lease {param($token) Exit-IW7ResourceLease -Token $token}}
+    if($policiesLoaded){Complete-DownloadOwnership $owner $guards $record $lease {param($token) Exit-IW7ResourceLease -Token $token} {param($jobOwner) Stop-DownloadReusedOwner $jobOwner}}
     else {foreach($guard in $guards){$guard.Dispose()};$record.ReadGuardsReleased=$true}
     if($owner -and $owner.Closed){$record.ExitCode=$owner.ExitCode}
     $record.ObservedMembers=@($members.Values)

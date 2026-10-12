@@ -7,13 +7,14 @@ function Assert-DownloadDeadline($Timing) {
     if($now-$Timing.StartedMs -ge 180000){throw 'Original-job global deadline reached.'}
     if($null -ne $Timing.RootExitObservedMs -and $now-$Timing.RootExitObservedMs -ge 2000){throw 'Original-job drain deadline reached.'}
 }
-function Observe-DownloadCompletion($Owner,$Timing,[scriptblock]$Measure,[scriptblock]$Capture) {
+function Observe-DownloadCompletion($Owner,$Timing,[scriptblock]$Measure,[scriptblock]$Capture,
+    [scriptblock]$ReadRoot={param($job) $job.RootExited()}) {
     & $Capture | Out-Null
     & $Measure | Out-Null
     Assert-DownloadDeadline $Timing
     # Timestamp BEFORE getters, never grant a fresh drain after slow observation.
     $beforeRoot=Get-DownloadMonotonicMs
-    $rootExited=$Owner.RootExited()
+    $rootExited=& $ReadRoot $Owner
     if($rootExited -and $null -eq $Timing.RootExitObservedMs){$Timing.RootExitObservedMs=$beforeRoot}
     Assert-DownloadDeadline $Timing
     $treeExited=$Owner.TreeExited()
@@ -37,13 +38,29 @@ function Preserve-DownloadQuarantine([string]$Token,$Owner,$Guards,$State) {
     [AppDomain]::CurrentDomain.SetData($key,@{Owner=$Owner;Guards=$Guards;State=$State})
     $key
 }
-function Complete-DownloadOwnership($Owner,$Guards,$State,$Lease,[scriptblock]$Release) {
+function Stop-DownloadOriginalJob($Owner,[scriptblock]$Terminate,[scriptblock]$Delay={Start-Sleep -Milliseconds 20}) {
+    # The reused helper's old StopAndConfirm starts its own clock after terminate
+    # and does not check a late terminal observation. Keep those checks here.
+    $started=Get-DownloadMonotonicMs
+    & $Terminate $Owner | Out-Null
+    if((Get-DownloadMonotonicMs)-$started -ge 5000){throw 'Original-job termination deadline reached.'}
+    while($true){
+        $done=$Owner.TreeExited()
+        if((Get-DownloadMonotonicMs)-$started -ge 5000){throw 'Original-job cleanup deadline reached.'}
+        if($done){break}
+        & $Delay | Out-Null
+    }
+    $Owner.CloseConfirmed()
+    if((Get-DownloadMonotonicMs)-$started -ge 5000){throw 'Original-job close returned late.'}
+}
+function Complete-DownloadOwnership($Owner,$Guards,$State,$Lease,[scriptblock]$Release,
+    [scriptblock]$Stop={param($job) $job.StopAndConfirm(5000)}) {
     $State.LeaseReleased=$false;$State.OriginalJobClosed=$false;$State.ReadGuardsReleased=$false
     if($Owner){
         if(!$Owner.Closed){
             $State.ForcedStop=$true;$started=Get-DownloadMonotonicMs
             try {
-                $Owner.StopAndConfirm(5000)
+                & $Stop $Owner | Out-Null
                 if((Get-DownloadMonotonicMs)-$started -ge 5000){throw 'Original-job cleanup deadline reached.'}
             } catch {$State.ClosureError=$_.Exception.Message}
         }
