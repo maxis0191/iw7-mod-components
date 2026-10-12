@@ -480,7 +480,7 @@ Static Main changes and corrupt owned backups remain blocking failures.
 Cleanup now attempts exact candidate closure even if a client restoration audit
 has failed. It requires confirmed closure before any later restoration, attempts
 each owned restoration, and releases the reservation only after all stages
-succeed. The new temporary-file/synthetic-lifecycle suite passes 26 controls,
+succeed. The new temporary-file/synthetic-lifecycle suite passes 29 controls,
 including shared bank hardlink/junction rejection, live bank preservation,
 strict-default refusal, static file changes/additions, corrupt owned backups,
 profile/bank overlap, candidate closure following an audit error and lease
