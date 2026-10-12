@@ -524,3 +524,12 @@ catalog script selection and ordering. The plan records its two staged scripts.
 The vertical suite now passes 145 controls, including a real temporary-file
 17-to-2-to-17 restoration, duplicate catalog handling and unchanged non-vertical
 selection. No game was launched for this profile change.
+
+Follow-up source review caught a remaining unconditional bank-script hash read
+in the launch policy receipt, after the minimal stage had removed that script.
+It would stop a real vertical run before process creation; DryRun returns before
+this stage and cannot prove it. The receipt now records `BankScriptStaged:false`
+and a null hash for vertical, while ordinary modes still require and hash the
+staged source. Unexpected source or compiled bank scripts in the minimal stage
+are refused. Five temporary-file checks cover these cases; the restoration
+suite passes 66 controls. No game ran with the incomplete profile.
