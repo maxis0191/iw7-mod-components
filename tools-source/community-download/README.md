@@ -2,7 +2,8 @@
 
 Private source candidate, 2026-10-12. Ownership is limited to this directory and
 the archived `src/client/component/download.cpp` patch. Creator, shared native
-checkouts, voice, Main, builds and runtime deployment are unchanged. The parent
+checkouts, voice, Main and runtime deployment are unchanged. Two local harness
+compilations exceeded the source-only mission; see the incident below. The parent
 integrates the reviewed commit into the central private PR; no upstream PR.
 
 ## Finding and correction
@@ -42,14 +43,13 @@ replacement are not established. Temporary cleanup is best effort on OS refusal.
 If scheduler allocation itself fails, the worker still does not throw or reconnect,
 but cannot guarantee delivery of a UI notification through the unavailable queue.
 
-## Reproduce without IW7 or network
+## Source verification and historical runner
 
 Use the existing local native Git objects; no fetch, clone, native checkout edit,
-game asset, actual HTTP, DLL injection or full game build is performed:
+game asset, actual HTTP, DLL injection or full game build is needed to verify:
 
 ```powershell
 python tools-source/community-download/verify_archive.py --native-source C:/Users/ezvalo/Documents/IW7-Paris-Server/tools/iw7-mod-contrib
-python tools-source/community-download/run_tests.py --native-source C:/Users/ezvalo/Documents/IW7-Paris-Server/tools/iw7-mod-contrib
 ```
 
 `verify_archive.py` checks base/result/patch SHA-256, the complete transformation
@@ -58,7 +58,8 @@ with real `git apply --check`/`git apply` to a one-file scratch fixture and comp
 that exact reconstructed C++ file using installed MSVC, C++20, `/W4 /WX /EHsc`.
 It does not compile a separately reimplemented transaction algorithm.
 
-43 cases pass. They cover missing HTTP/URL, curl refusal, bad status/CRC, standard
+The unadmitted harness reported 43 passing cases. They cover missing HTTP/URL,
+curl refusal, bad status/CRC, standard
 and nonstandard exceptions, create/write/short-write/flush/close/reopen/size/read/
 short-read/corruption/replace failures, real Windows destination locking, first
 install and replacement, cancellation windows, deferred retries, stale callbacks,
@@ -67,7 +68,8 @@ set. HTTP, CRC and scheduler adapters are mocked; CRC uses the independently
 implemented IEEE algorithm and native `123456789 -> 2639F4CB` vector. Files are
 real Windows files, with fault injection around individual Win32 calls.
 
-`validation.json` binds the passing source/harness hashes. Ignored `.scratch/`
+`validation.json` binds the functional source/harness hashes but sets overall
+`passed:false` and `admitted_pipeline_passed:false`. Ignored `.scratch/`
 retains small compile logs, harness executables and temporary fixtures; none is
 part of the source archive. The first archive reconstruction comparison failed
 because local Git converted LF to CRLF. Per-command `core.autocrlf=false` fixed
@@ -75,6 +77,36 @@ the verifier; no global setting changed. The first 40 cases passed before the
 real party stop/start call sequence prompted the serial guard and three added
 regression cases. These are offline component tests, not a full native build,
 rendered UI witness, download over a real server, or owner acceptance.
+
+## Source-only incident: no retrospective admission or closure
+
+The agent incorrectly treated this compiled harness as a permitted lightweight
+test and ran it twice without reservation, original Job Object supervision,
+historical PID/creation identities or descendant accounting. This exceeded the
+source/preparation assignment. The 40-case and 43-case executions were at
+07:37:59--07:38:04Z and 07:40:53--07:40:58Z on 2026-10-12 (09:38 and 09:41 Paris).
+Tool wall times were 4.6880442 and 5.1836618 seconds for the whole Python calls;
+neither compiler-only duration nor memory/commit peaks were measured. The only
+execution bounds were subprocess timeouts of 90 seconds for compile and 30 for
+the harness. Returning zero from those subprocesses did not establish descendants'
+closure. No admission or full native pipeline pass is claimed.
+
+At 07:49:07.911Z a targeted observation retained VCTIP PID29324, reported parent
+PID32792, creation07:38:02.967Z and its image hash. The parent PID was absent.
+This overlaps the first compilation, but no historical compiler identity proves
+the relationship. The earlier zero-match check filtered only paths containing
+this archive; it could miss a pathless descendant and was not a closure proof.
+The residual remains preserved, without guessed attribution or termination.
+The parent's later observation that the unchanged scheduler does not classify
+VCTIP as a builder does not change this uncertainty.
+
+The original command files, logs, EXE/OBJ and receipts remain ignored in
+`.scratch/harness-7dfozczw` (2598031 bytes) and `.scratch/harness-gwstj0b0`
+(2666867 bytes), plus the pre-compilation reconstruction failure (9803 bytes).
+The sanitized record preserves measured times, sizes and hashes without changing
+the original receipts. Future repetition requires reviewed Plan/original-job
+supervision and complete admission; the old direct runner is not an approved
+execution route. No further native invocation was made for this incident report.
 
 ## Review and subsequent build plan (not executed)
 
