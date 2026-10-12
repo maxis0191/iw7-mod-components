@@ -49,7 +49,7 @@ Use the existing local native Git objects; no fetch, clone, native checkout edit
 game asset, actual HTTP, DLL injection or full game build is needed to verify:
 
 ```powershell
-python tools-source/community-download/verify_archive.py --native-source C:/Users/ezvalo/Documents/IW7-Paris-Server/tools/iw7-mod-contrib
+python tools-source/community-download/verify_archive.py --native-source C:/author/iw7-mod-source
 ```
 
 `verify_archive.py` checks base/result/patch SHA-256, the complete transformation
