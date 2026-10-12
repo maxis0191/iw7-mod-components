@@ -6,18 +6,20 @@ checkouts, voice, Main and runtime deployment are unchanged. Two local harness
 compilations exceeded the source-only mission; see the incident below. The parent
 integrates the reviewed commit into the central private PR; no upstream PR.
 
-## Current source-only Plan C: reuse the H1 compiler stage
+## Current Plan C: reuse the H1 compiler stage
 
 The runner now prepares schema 3, following T7 `ba365d4` integrated in main
 `691833c`. Plan B remains **Failed**, with its separately established 46 functional
-passes. No Plan C native execution or successful pipeline qualification is claimed.
-Historical runner descriptions below record their respective source versions.
+passes. The subsequent single authorized Plan C invocation passed its admitted
+offline pipeline; see [the native evidence](native-validation-c-20261012.json).
+Real community join/download and gameplay remain unvalidated. Historical runner
+descriptions below record their respective source versions.
 
 `Harness.Profile.ps1` reuses the unchanged `H1Native.Core.ps1`,
 `H1Native.Compiler.ps1`, `H1Native.JobMembers.cs` and MaterialV2 compiler policy,
 bound in `h1-source.json`. The same witnessed Probe DLL remains the sole job
 owner. No native helper source was copied into this directory or modified.
-Plan reads source/file pins only. A future admitted Run loads the existing DLL
+Plan reads source/file pins only. An admitted Run loads the existing DLL
 and compiles the existing read-only H1 observer, exactly as the T7 runner does;
 neither occurred during this source-only preparation.
 
@@ -68,7 +70,8 @@ Run these source checks with `tests/Test-HarnessPolicies.ps1` and
 `tests/Test-H1Profile.ps1 -Providers <reviewed-main-checkout>`. Plan additionally
 requires `-ProviderRoot <reviewed-main-checkout>` and all existing explicit tool,
 source, fresh output and helper/witness parameters. `preparation-c.json` records
-the inert local plan and its limits. A new explicit GO remains required for Run.
+the original inert preparation and its limits. Its single GO has now been
+consumed and its output exists; no repeat is authorized.
 
 ## Finding and correction
 
@@ -387,3 +390,48 @@ The subsequent [read-only VCTIP research](VCTIP-RESEARCH.md) identifies the exac
 installed version, Microsoft's surviving-child explanation and the documented
 VSCEIP opt-out candidate. It distinguishes optional telemetry policy from a
 proven bounded process lifetime. No configuration change or retry was made.
+
+The subsequent direction explicitly excludes VSCEIP/OS changes and keeps the
+two-second drain. The [Plan C source feasibility study](PLAN-C-PROPOSAL.md)
+compares Sound's guarded residual qualification with this runner. Its native
+collector owner binding and stream-closure proof are not directly compatible;
+the document proposes the bounded prerequisites instead of introducing a new
+framework. No executable Plan C or Run was prepared. Plan B remains Failed.
+
+## Authorized Plan C, 2026-10-12: admitted offline pipeline passed
+
+One invocation of source `1b8b891` and Plan
+`31d87b8693ab18c13cfb298d097c1faea2dd50c26b12360c2d2039705f025a9a`
+completed Prepare, Compile and Tests with exit code 0 and confirmed original-job
+closure for each. The admitted global clock measured 5027.15ms; the existing
+180s global / 2s drain / 5s cleanup limits, 4/6 GiB admission, 32 MiB output cap,
+and `/W4 /WX` were unchanged. No retry was performed.
+
+The compiler root was PID 34900. Two complete original-job captures identified
+the same sole VCTIP member PID 35420, parent 34900, creation
+`2026-10-12T13:14:36.9458518Z`, with exact pinned image bytes. H1 validated the
+compiler exit 0 and guarded EXE/OBJ artifacts, intentionally stopped only that
+original job, then obtained fresh root0/Active0 and an empty complete member list.
+An additional ordinary root0/Active0 observation preceded close. This was the
+explicit qualified compiler path, not a generic residual or failed-cleanup rescue.
+
+The separately owned test program reported exactly the 46 expected cases and
+`RESULT 46 passed`, with empty stderr and natural closure. The EXE SHA-256 is
+`686576041fc7d82ec1a1599b853eac839ccfc0a7dcdb290d13712edc9f585141`.
+The logs were sealed after job closure; no pre-Stop pipe EOF is claimed.
+
+All read guards and the single lease were released, with no quarantine. Fresh
+postflight at 13:16:02Z found no original member, other heavy workload or lease.
+Main retained PID 27784 and its creation/image identity, and continued answering
+on UDP 27016, Spaceland, with two clients before and after. Python 23352 retained
+its identity; Python 6252 was already absent before the attempt and remained
+absent, with no action taken on it.
+
+The persistent PowerShell host checked its own closure/release and absence of an
+AppDomain quarantine before exiting normally. Its absence was confirmed at
+13:17:06Z. The 24 runtime artifacts total 2849147 bytes. Exact receipt, control,
+postflight and host-exit hashes are in
+[`native-validation-c-20261012.json`](native-validation-c-20261012.json).
+Plan A and B remain Failed. No full game build, real client/WAN download, rendered
+error/UI acceptance or gameplay was performed; SDK community join remains the
+next separate acceptance boundary.

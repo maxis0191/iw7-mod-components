@@ -2,11 +2,13 @@
 
 Later source-only continuation: T7 `ba365d4` / main `691833c` revealed an existing
 H1 collector already bound to the same Probe owner. The
-[current runner](README.md#current-source-only-plan-c-reuse-the-h1-compiler-stage)
+[current runner](README.md#current-plan-c-reuse-the-h1-compiler-stage)
 therefore separates the direct compiler root from the test executable and reuses
 H1 unchanged. The Sound-only assessment below is preserved as its earlier
 decision record; its proposed native-helper extension was not implemented.
-The new Plan C remains unexecuted, and Plan B remains Failed.
+At that source-only checkpoint Plan C remained unexecuted. The later single
+authorized [native C witness](native-validation-c-20261012.json) passed; Plan B
+remains Failed. The earlier Sound-only proposal below was not implemented.
 
 Status: proposal only; no implementation, executable Plan C, native load, helper
 build, reservation or Run. Plan B remains **Failed** despite 46 functional passes.
