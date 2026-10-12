@@ -97,10 +97,23 @@ Required launcher bindings are `GameRoot`, `CandidateRoot`, `PackageRoot`,
 `VerticalFFPath`, `VerticalFFSHA256`, `VerticalFFBytes` (1..1,048,576) and
 `VerticalSDKSourceSHA256`. Start with `-ObservationMode vertical -DryRun` against
 the integrated checkout and reviewed artifacts, then seek the parent's runtime
-admission. `-Debugger:$false` disables that runtime service only: the existing
-Modules + IsolatedLab + Debugger package/source manifest still applies. An older
-binary without the PR140 `TestHeartbeatSuppressed=true` and pinned privacy overlay
-is refused; rebuild rather than weakening the manifest check.
+admission. `-Debugger:$false` accepts the complete 34-source Modules + IsolatedLab
+profile; requested debugger/capacity observations still require the 39-source
+debugger profile. Agent input, protection and frame capture are compiled
+independently of that debugger. The package checker requires PowerShell 7.3+,
+the pinned upstream/profile and PR140 privacy overlay, an exact executable hash,
+and every expected source exactly once. An older binary without the native
+privacy overlay is refused.
+
+Source identity is either the exact declared bytes or one uniform LF/CRLF
+substitution whose hash matches exactly. No whitespace trimming, BOM removal,
+mixed-newline repair or missing source is allowed. The evidence preserves both
+raw hashes, the comparison mode and the original `ProjectDirty` value; it never
+rewrites the manifest or attests a clean build. The retained network candidate
+`7862B2A5C21047A8FD4095C6DF2FA96A40B3766F92649FCFFE80ABB193517A97` matches 31 sources
+exactly and three only by this newline rule. Its prepared build directory has
+since been reused, so it is not an intact transformed-source snapshot. Fresh
+native privacy, protection and runtime behavior remain separate required checks.
 
 The binding checker hashes bounded, locked reads of FF and GSC bytes. It verifies
 declared artifact identity, not FF structure, package closure, build provenance or
