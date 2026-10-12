@@ -120,6 +120,17 @@ namespace paris_incident
                 row += ",\"slot\":" + std::to_string(slot);
                 if (slot >= 0) row += ",\"name\":" + quote(client->name, sizeof(client->name)) +
                     ",\"state\":" + std::to_string(client->header.state);
+                if (slot >= 0)
+                {
+                    // Pinned retail reliable counters, captured in the drop call
+                    // before slot cleanup. No command contents or queue mutation.
+                    std::array<int, 3> reliable{};
+                    std::memcpy(reliable.data(), reinterpret_cast<const char*>(client) + 0x41274, sizeof(reliable));
+                    row += ",\"reliable_sequence\":" + std::to_string(reliable[0]) +
+                        ",\"reliable_acknowledge\":" + std::to_string(reliable[1]) +
+                        ",\"reliable_sent\":" + std::to_string(reliable[2]) +
+                        ",\"reliable_pending\":" + std::to_string(static_cast<long long>(reliable[0]) - reliable[1]);
+                }
                 enqueue(row + stack() + "}");
             } catch (...) { ++lost; }
             WSASetLastError(error);
