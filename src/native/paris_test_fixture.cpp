@@ -557,6 +557,186 @@ namespace paris_test_fixture
             return std::format("server_pid={}; client_nonce={}; server_generation={}; slot={}; native_tick_ms={}; protected=1",
                 GetCurrentProcessId(), player.agent_nonce, agent_runtime.server_generation, ent.entnum, now);
         }
+        // PREVIEW ONLY: insert in the existing anonymous namespace, immediately
+        // before agent_client_tick. Release diagnostic; no hook/command/GSC API.
+        void observe_original_sound_on_arm(const iw7::agent::request& request)
+        {
+            static_assert(sizeof(game::SndBank) == 0x160);
+            static_assert(offsetof(game::SndBank, aliasCount) == 32);
+            static_assert(offsetof(game::SndBank, alias) == 40);
+            static_assert(offsetof(game::SndBank, aliasIndex) == 48);
+            static_assert(sizeof(game::SndAliasList) == 32);
+            static_assert(offsetof(game::SndAliasList, head) == 16);
+            static_assert(offsetof(game::SndAliasList, count) == 24);
+            static_assert(sizeof(game::SndAlias) == 200);
+            static_assert(offsetof(game::SndAlias, assetFileName) == 32);
+            static_assert(offsetof(game::SndAlias, id) == 40);
+            static_assert(offsetof(game::SndAlias, assetId) == 52);
+            static_assert(offsetof(game::SndAlias, flags) == 108);
+            static_assert(sizeof(game::SndIndexEntry) == 4);
+            constexpr auto bank_name = "community_original_sound_v1.all";
+            constexpr auto alias_name = "community_original_chime_v1";
+            constexpr auto asset_name = "community/original_chime_v1";
+            constexpr std::uintptr_t length_address = 0x140C9BCE0;
+            const auto readable = [](const void* pointer, std::size_t bytes)
+            {
+                const auto address = reinterpret_cast<std::uintptr_t>(pointer);
+                if (!address || !bytes || bytes > 4096 || address > UINTPTR_MAX - bytes) return false;
+                MEMORY_BASIC_INFORMATION region{};
+                if (VirtualQuery(pointer, &region, sizeof(region)) != sizeof(region) || region.State != MEM_COMMIT ||
+                    (region.Protect & (PAGE_GUARD | PAGE_NOACCESS)) ||
+                    !(region.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
+                        PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) return false;
+                const auto base = reinterpret_cast<std::uintptr_t>(region.BaseAddress);
+                return address >= base && address - base <= region.RegionSize && bytes <= region.RegionSize - (address - base);
+            };
+            const auto snapshot = [&](const void* pointer, void* value, std::size_t bytes)
+            {
+                if (!readable(pointer, bytes)) return false;
+                SIZE_T copied{};
+                // VirtualQuery is a prefilter, not a lifetime lock. Reject a
+                // failed/partial copy before interpreting any destination byte.
+                return ReadProcessMemory(GetCurrentProcess(), pointer, value, bytes, &copied) != FALSE && copied == bytes;
+            };
+            const auto copy = [&](const auto* pointer, auto& value)
+            {
+                return snapshot(pointer, &value, sizeof(value));
+            };
+            const auto same = [&](const char* pointer, const char* literal, bool* all_readable = nullptr)
+            {
+                const auto size = std::strlen(literal) + 1;
+                std::array<char, 64> value{};
+                if (size > value.size() || !snapshot(pointer, value.data(), size))
+                { if (all_readable) *all_readable = false; return false; }
+                return std::memcmp(value.data(), literal, size) == 0;
+            };
+            const auto exact_dvar = [&](const char* key, const char* literal)
+            {
+                game::dvar_t dvar{};
+                return copy(game::Dvar_FindVar(key), dvar) && dvar.type == game::DVAR_TYPE_STRING && same(dvar.current.string, literal);
+            };
+            if (game::environment::is_dedi() || game::base_address != 0x140000000 ||
+                !utils::flags::has_flag("paris-server-client-test") || !utils::flags::has_flag("paris-isolated-lab") ||
+                !agent_runtime.client || request.operation != iw7::agent::action::arm ||
+                !exact_dvar("fs_game", "mods/sdk_original_sound_v1")) return;
+            const auto safe = [&]
+            {
+                const auto* connection = party::get_server_connection_state();
+                game::dvar_t cheats{}, port{};
+                game::clientUIActive_t client_ui{};
+                if (!copy(game::Dvar_FindVar("sv_cheats"), cheats) || !copy(game::Dvar_FindVar("paris_lab_server_port"), port) ||
+                    !copy(static_cast<game::clientUIActive_t*>(game::clientUIActives), client_ui)) return false;
+                int expected_port{};
+                if (port.type == game::DVAR_TYPE_INT) expected_port = port.current.integer;
+                else if (port.type == game::DVAR_TYPE_STRING)
+                {
+                    std::array<char, 6> text{};
+                    if (!snapshot(port.current.string, text.data(), text.size()) || text[5] != '\0') return false;
+                    const auto parsed = std::from_chars(text.data(), text.data() + 5, expected_port);
+                    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + 5) return false;
+                }
+                return iw7::agent::scenario::safe(agent_safety, GetTickCount64()) && agent_safety.map == "cp_zmb" &&
+                    exact_dvar("mapname", "cp_zmb") && exact_dvar("fs_game", "mods/sdk_original_sound_v1") &&
+                    game::Com_GameMode_GetActiveGameMode() == game::GAME_MODE_CP && game::CL_IsGameClientActive(0) &&
+                    client_ui.cgameInitialized && client_ui.connectionState == game::CA_ACTIVE &&
+                    !game::Com_IsAnyLocalServerRunning() && connection && connection->hostDefined && loopback(connection->host) &&
+                    connection->challenge == agent_connection_challenge && !agent_connection_challenge.empty() &&
+                    expected_port >= 27100 && expected_port <= 27999 && ntohs(connection->host.port) == expected_port &&
+                    cheats.type == game::DVAR_TYPE_BOOL && !cheats.current.enabled &&
+                    iw7::agent::nonce_valid(agent_runtime.client_nonce) && iw7::agent::nonce_valid(agent_generation) &&
+                    request.pid == GetCurrentProcessId() && request.nonce == agent_runtime.client_nonce &&
+                    request.sequence == agent_runtime.client->sequence() && request.step == agent_runtime.client->step();
+            };
+            // Exactly one attempt per already-bound connection, including missing
+            // or invalid banks. No delayed retry, timer or secondary input action.
+            static std::string observed_nonce, observed_generation, observed_challenge;
+            const auto begin = GetTickCount64();
+            const char* status = "scope_not_ready";
+            const char* alias_state = "unmeasured";
+            bool bank_present{}, bank_default{}, bank_identity{}, engine_called{};
+            int index_value = -1, index_next = -1, length_raw{};
+            try
+            {
+                if (observed_nonce == agent_runtime.client_nonce && observed_generation == agent_generation &&
+                    observed_challenge == agent_connection_challenge) return;
+                // Allocate all three snapshots before committing the latch.
+                auto nonce = agent_runtime.client_nonce, generation = agent_generation, challenge = agent_connection_challenge;
+                observed_nonce.swap(nonce); observed_generation.swap(generation); observed_challenge.swap(challenge);
+                do
+                {
+                    if (!safe()) break;
+#ifdef _DEBUG
+                    status = "release_required"; break;
+#endif
+                    const auto header = game::DB_FindXAssetHeader(game::ASSET_TYPE_SOUND_BANK, bank_name, 0);
+                    bank_present = header.soundBank != nullptr;
+                    // Missing at arm is an unready/failed load observation, never
+                    // evidence that this alias is absent from the engine globally.
+                    if (!bank_present) { status = "bank_not_observed_load_unproven"; break; }
+                    bank_default = game::DB_IsXAssetDefault(game::ASSET_TYPE_SOUND_BANK, bank_name);
+                    if (bank_default) { status = "default_bank_load_unproven"; break; }
+                    game::SndBank bank{};
+                    if (!copy(header.soundBank, bank)) { status = "bank_unreadable"; break; }
+                    bool bank_strings_readable = true;
+                    bank_identity = same(bank.name, bank_name, &bank_strings_readable) && same(bank.zone, "mod", &bank_strings_readable) &&
+                        same(bank.gameLanguage, "all", &bank_strings_readable) && same(bank.soundLanguage, "all", &bank_strings_readable);
+                    if (!bank_strings_readable) { status = "bank_unreadable"; break; }
+                    if (!bank_identity) { status = "bank_identity_mismatch"; break; }
+                    if (bank.aliasCount == 0) { status = "alias_absent_in_observed_bank"; alias_state = "absent_in_bank"; break; }
+                    if (bank.aliasCount != 1) { status = "alias_count_mismatch"; break; }
+                    game::SndIndexEntry index{};
+                    if (!copy(bank.aliasIndex, index)) { status = "index_unreadable"; break; }
+                    index_value = index.value; index_next = index.next;
+                    if (index.value != 0 || index.next != 65535) { status = "index_mismatch"; break; }
+                    game::SndAliasList list{};
+                    // This is the one-entry closed bank; never follow next or
+                    // dereference a variable index/count from untrusted memory.
+                    if (!copy(bank.alias, list)) { status = "alias_unreadable"; break; }
+                    bool alias_string_readable = true;
+                    const auto alias_matches = same(list.aliasName, alias_name, &alias_string_readable);
+                    if (!alias_string_readable) { status = "alias_unreadable"; break; }
+                    if (!alias_matches || list.id != 1489483025u || list.count != 1)
+                    { status = "alias_identity_mismatch"; break; }
+                    game::SndAlias head{};
+                    if (!copy(list.head, head)) { status = "head_unreadable"; break; }
+                    bool head_strings_readable = true;
+                    const auto head_strings_match = same(head.aliasName, alias_name, &head_strings_readable) &&
+                        same(head.assetFileName, asset_name, &head_strings_readable);
+                    if (!head_strings_readable) { status = "head_unreadable"; break; }
+                    if (!head_strings_match ||
+                        head.id != 1489483025u || head.assetId != 1496246593u || head.flags.type != game::SAT_LOADED ||
+                        head.flags.looping != 0 || !head.flags.precached)
+                    { status = "head_contract_mismatch"; break; }
+                    alias_state = "resolved_in_bank";
+                    MEMORY_BASIC_INFORMATION code{};
+                    if (VirtualQuery(reinterpret_cast<const void*>(length_address), &code, sizeof(code)) != sizeof(code) ||
+                        code.State != MEM_COMMIT || (code.Protect & (PAGE_GUARD | PAGE_NOACCESS)) ||
+                        !(code.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
+                    { status = "engine_entry_unavailable"; break; }
+                    if (!safe()) { status = "protection_expired_before_call"; break; }
+                    engine_called = true;
+                    // Source-proven signature in upstream dedicated.cpp, client
+                    // Release path only. No dedicated sounddata substitution.
+                    length_raw = utils::hook::invoke<int>(length_address, alias_name);
+                    status = length_raw == 0 ? "resolved_zero_length" : length_raw < 0 ? "resolved_negative_length" : "resolved_positive_length";
+                } while (false);
+                const auto end = GetTickCount64();
+                const bool fresh_end = safe();
+                if (!fresh_end) status = "protection_expired";
+                const auto length_text = engine_called ? std::to_string(length_raw) : "unmeasured";
+                console::info("[Paris sound lookup] pid=%lu nonce=%s generation=%s sequence=%llu step=%llu probe_tick_ms=%llu begin_tick_ms=%llu end_tick_ms=%llu protected_end=%d status=%s bank_present=%d bank_default=%d bank_identity=%d alias_state=%s index_value=%d index_next=%d engine_length_called=%d engine_length_raw=%s playback_verified=0\n",
+                    GetCurrentProcessId(), observed_nonce.c_str(), observed_generation.c_str(), request.sequence, request.step,
+                    agent_safety.received, begin, end, static_cast<int>(fresh_end), status, static_cast<int>(bank_present),
+                    static_cast<int>(bank_default), static_cast<int>(bank_identity), alias_state, index_value, index_next,
+                    static_cast<int>(engine_called), length_text.c_str());
+            }
+            catch (const std::exception&)
+            {
+                console::error("[Paris sound lookup] pid=%lu nonce=%s generation=%s sequence=%llu step=%llu status=snapshot_exception evidence_complete=0 playback_verified=0\n",
+                    GetCurrentProcessId(), request.nonce.c_str(), agent_generation.c_str(), request.sequence, request.step);
+            }
+        }
+
         void agent_client_tick()
         {
             if (!agent_runtime.client || !utils::flags::has_flag("paris-isolated-lab")) return;
@@ -644,6 +824,7 @@ namespace paris_test_fixture
             const auto* status = agent_runtime.client->accept(request, GetTickCount64(), agent_safety, agent_binding);
             if (std::strcmp(status, "armed") == 0)
             {
+                observe_original_sound_on_arm(request);
                 // Model READY and the pre-action frame precede runner arm.
                 // Sample after the scene has been referenced, not on its first
                 // protection heartbeat (GPU upload may otherwise be lazy).
