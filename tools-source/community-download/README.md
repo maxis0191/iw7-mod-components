@@ -6,6 +6,70 @@ checkouts, voice, Main and runtime deployment are unchanged. Two local harness
 compilations exceeded the source-only mission; see the incident below. The parent
 integrates the reviewed commit into the central private PR; no upstream PR.
 
+## Current source-only Plan C: reuse the H1 compiler stage
+
+The runner now prepares schema 3, following T7 `ba365d4` integrated in main
+`691833c`. Plan B remains **Failed**, with its separately established 46 functional
+passes. No Plan C native execution or successful pipeline qualification is claimed.
+Historical runner descriptions below record their respective source versions.
+
+`Harness.Profile.ps1` reuses the unchanged `H1Native.Core.ps1`,
+`H1Native.Compiler.ps1`, `H1Native.JobMembers.cs` and MaterialV2 compiler policy,
+bound in `h1-source.json`. The same witnessed Probe DLL remains the sole job
+owner. No native helper source was copied into this directory or modified.
+Plan reads source/file pins only. A future admitted Run loads the existing DLL
+and compiles the existing read-only H1 observer, exactly as the T7 runner does;
+neither occurred during this source-only preparation.
+
+One 4 GiB RAM / 6 GiB commit reservation and one 180-second global clock cover
+three sequential original jobs. The next job cannot start until the previous
+owner confirms closure:
+
+| Phase | Original root | Deadline | Closure |
+| --- | --- | --- | --- |
+| Prepare | Python source reconstruction, local Git only | 45s | Natural root0/empty tree |
+| Compile | Exact pinned `cl.exe`, `/W4 /WX` unchanged | 90s | Natural closure, or H1's exact original compiler/VCTIP qualification |
+| Tests | Guarded `test_download.exe` from that compilation | 30s | Natural root0/empty tree; no telemetry exception |
+
+Every phase retains the two-second drain from its first observed root exit.
+The profile wraps H1's internal checks with the same global clock and drain
+clock, including artifact validation, two residual captures, Stop and fresh
+Active0/member-list0 observations. Registration remains limited to five seconds.
+Failure cleanup still uses the existing downloader's separately timed five-second
+original-job termination and quarantine policies, not the old native helper's
+`StopAndConfirm` clock. The output cap remains 32 MiB including a preallocated
+1 MiB metadata reserve. A late final publication becomes Failed.
+
+This separation matters: H1 requires the retained root to be the compiler and
+the sole VCTIP member's parent PID to match it. It does not accept the old Python
+root with an arbitrary compiler descendant. Compiler output artifacts are
+guarded before intentional Stop and rechecked afterwards. The compiler's regular
+log files are sealed after job closure; this is not a pre-Stop pipe EOF claim.
+The test program starts only after that closure and log sealing. Its exact 46
+ordered case names, single final result line and empty stderr are checked after
+its own natural closure; case names are bound in `tests/expected-cases.json`.
+
+Any other child, incomplete capture, different parent/generation/image/hash,
+changed artifact, late observation or unsealed log fails. Unconfirmed cleanup
+retains the original owner, read guards and lease in the existing host quarantine.
+No machine preference, registry, tool installation, deadline increase, global
+process kill, clone or asset download is part of this change.
+
+Source checks: 63 existing lifecycle controls and 53 new checks exercise the real
+H1 controller/policy with explicit synthetic process observations. They cover
+natural and qualified closure, wrong residual identities, changed pins/artifacts,
+late registration/observation/Stop/close, failed post-Stop zero/root observations,
+global expiry, residual rejection in Tests, exact case output and real file-share
+guards. They load no native types, launch no child, and acquire no reservation.
+These tests do not establish native Plan C closure, a full IW7 build, rendered
+errors, network download, SDK join or owner gameplay acceptance.
+
+Run these source checks with `tests/Test-HarnessPolicies.ps1` and
+`tests/Test-H1Profile.ps1 -Providers <reviewed-main-checkout>`. Plan additionally
+requires `-ProviderRoot <reviewed-main-checkout>` and all existing explicit tool,
+source, fresh output and helper/witness parameters. `preparation-c.json` records
+the inert local plan and its limits. A new explicit GO remains required for Run.
+
 ## Finding and correction
 
 At Aurora pin `77e6d4d24e918ee363b3feee3735c3b889dff7d7`, download errors throw

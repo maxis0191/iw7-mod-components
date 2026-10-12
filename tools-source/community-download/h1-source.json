@@ -1,0 +1,12 @@
+{
+  "SourceRevision": "691833cec4d6087f66f02733cd669855d6dc6f94",
+  "T7Reference": "ba365d4ba100128094d7de821da95f1516516c88",
+  "Providers": {
+    "tools-source/asset-bridge/h1-fixture/H1Native.Core.ps1": "55430822f5251ae58008bc7e15c36831e3481e7dae4cf0961254c633f001e3f5",
+    "tools-source/asset-bridge/h1-fixture/H1Native.Compiler.ps1": "e53af5e007d84db102e3fb740b5a9f91e8ecdb612e10f6cf8475c4fda8bdcb46",
+    "tools-source/asset-bridge/h1-fixture/H1Native.JobMembers.cs": "76e0297e6bededd4edb695240e6aa8aa8f74e9cf5f984c29767df5dea592132c",
+    "tools-source/asset-bridge/surfaces/MaterialV2.Compiler.ps1": "fc024337fdb18c8a759cd6346ad90fe1fb2086d790e4804ade583c30e69d25d6"
+  },
+  "NativeQualified": false,
+  "WholeToolchainHermetic": false
+}

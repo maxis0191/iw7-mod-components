@@ -1,4 +1,4 @@
-"""Default is inert. Native execution is a child phase of the reviewed original-job runner."""
+"""Default is inert. The admitted prepare phase stages sources, never compiles/runs them."""
 import argparse
 import ctypes
 import hashlib
@@ -20,7 +20,7 @@ def require_original_job_ticket(ticket_path):
     if os.name != "nt":
         raise RuntimeError("Windows original-job execution required")
     ticket = json.loads(Path(ticket_path).read_text(encoding="utf-8-sig"))
-    if ticket["schema"] != "iw7.community-download-worker/1" or time.time() > ticket["expires_unix"]:
+    if ticket["schema"] != "iw7.community-download-worker/2" or time.time() > ticket["expires_unix"]:
         raise ValueError("Missing/expired original-job ticket")
     if os.getppid() != ticket["launcher_pid"]:
         raise ValueError("Worker parent differs from the admitted launcher")
@@ -67,31 +67,12 @@ def run_worker(ticket_path):
         stub = include / header
         stub.parent.mkdir(parents=True, exist_ok=True)
         stub.write_text("#pragma once\n", encoding="utf-8")
-    exe = work / "test_download.exe"
-    command = [plan["compiler_path"], "/nologo", "/std:c++20", "/EHsc", "/W4", "/WX", "/Od", "/D_CRT_SECURE_NO_WARNINGS",
-               "/I" + str(include), "/I" + str(target.parent), "/Fe:" + str(exe), "/Fo:" + str(work / "test_download.obj"),
-               str(ROOT / "tests/test_download.cpp")]
-    (work / "compile-command.json").write_text(json.dumps(command, indent=2) + "\n", encoding="utf-8")
-    # All subprocesses inherit the original job. No shell, vcvars or second job.
-    with (work / "compile.stdout.log").open("xb") as out, (work / "compile.stderr.log").open("xb") as err:
-        compiled = subprocess.run(command, cwd=work, timeout=90, stdout=out, stderr=err)
-    if compiled.returncode:
-        raise RuntimeError("Harness compile failed; retained logs identify the failure")
-    with (work / "tests.stdout.log").open("xb") as out, (work / "tests.stderr.log").open("xb") as err:
-        tested = subprocess.run([str(exe)], cwd=work, timeout=30, stdout=out, stderr=err)
-    text = (work / "tests.stdout.log").read_text(encoding="utf-8")
-    expected = plan["expected_test_count"]
-    if tested.returncode or text.count("PASS ") != expected or f"RESULT {expected} passed" not in text:
-        raise RuntimeError("Harness result differs from the reviewed case count")
     for relative, expected_hash in plan["source_hashes"].items():
         if digest(ROOT / relative) != expected_hash.lower():
             raise ValueError("Source changed during the worker: " + relative)
-    receipt = {"schema": "iw7.community-download-functional/1", "functional_passed": True,
-               "test_count": expected, "overlay_sha256": manifest["overlay_sha256"],
-               "executable_sha256": digest(exe), "raw_tests_log_sha256": digest(work / "tests.stdout.log"),
-               "admitted_pipeline_passed": False, "original_job_closure": "Must be established by the retained parent owner",
-               "full_native_build": False, "gameplay": False}
-    (output / "functional-result.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    receipt = {"schema": "iw7.community-download-prepared/1", "overlay_sha256": manifest["overlay_sha256"],
+               "native_compiled": False, "native_executed": False}
+    (output / "prepared-result.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
