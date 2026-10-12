@@ -236,11 +236,13 @@ namespace IW7.CommunityDownload
         {
             if (Closed) return;
             if (timeoutMs < 1 || timeoutMs > 10000) throw new ArgumentOutOfRangeException("timeoutMs");
-            if (job != null && !job.IsInvalid) Check(TerminateJobObject(job, 0xe0000001), "Terminate only our job tree");
             var timer = Stopwatch.StartNew();
-            while (!TreeExited())
+            if (job != null && !job.IsInvalid) Check(TerminateJobObject(job, 0xe0000001), "Terminate only our job tree");
+            while (true)
             {
+                bool exited = TreeExited();
                 if (timer.ElapsedMilliseconds >= timeoutMs) throw new TimeoutException("Owned tree closure unconfirmed; quarantine lease");
+                if (exited) break;
                 Thread.Sleep(20);
             }
             CloseConfirmed();

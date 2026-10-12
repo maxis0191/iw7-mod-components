@@ -159,8 +159,10 @@ network request. The historical `run_tests.py --native-source ...` entry now onl
 prints an inert Plan notice. The old implicit compile route is removed.
 
 The separate `-Action Run` source requires the exact reviewed plan SHA-256 and an
-already-built, reviewed helper assembly bound to `Download-NativeJob.cs`. No
-`Add-Type`, helper build or vswhere/vcvars bootstrap occurs in that route. Preparing
+already-built, reviewed helper assembly bound to `Download-NativeJob.cs`. Plan has
+no `Add-Type` or native telemetry. Run may initialize the pinned `ResourceMemory.cs`
+API required by admission, including its minimal `Add-Type` bootstrap before the
+lease decision. No job-helper build or vswhere/vcvars bootstrap occurs there. Preparing
 and qualifying that assembly is a future, separately admitted parent operation;
 supplying matching hashes alone is not qualification of the helper implementation.
 
@@ -172,8 +174,9 @@ member PID/creation/image identities, captures residuals before owned Stop, and
 requires root exit plus zero job members for CloseConfirmed. Sampled membership
 does not claim an exhaustive event history or unmeasured memory peaks. Root exit
 with residual members after two seconds fails the run even if functional tests
-passed; cleanup does not turn it into success. An unconfirmed closure quarantines
-the lease. There is no termination by guessed PID, process name or global sweep.
+passed; cleanup does not turn it into success. An unconfirmed closure retains the
+lease, exact original owner and read guards in an AppDomain quarantine entry.
+There is no termination by guessed PID, process name or global sweep.
 
 `Download-NativeJob.cs` is an isolated derivative of the existing original-job
 helper. `job-source.json` binds its base and derived bytes. The additions expose
@@ -183,3 +186,45 @@ helper sources are unchanged. This derived helper and the Run path have not been
 compiled, loaded or executed. The 32 MiB output cap reserves 1 MiB for final
 metadata; root/descendant ownership, functional result and admission remain
 separate fields in the planned receipt. Full IW7 build and gameplay are excluded.
+
+## Harness static-review corrections (no native repetition)
+
+The initial original-job preparation still lost its local owner on unresolved
+cleanup, accepted some late terminal observations, left admission imports/DLL
+unguarded, and could suppress an oversized run's failure receipt. These defects
+were found statically; none is reclassified as tested native behavior.
+
+The small `Harness.Core.ps1` policies reuse the existing Recipient/AnimationFF
+AppDomain retention pattern and the reviewed GSC audit's monotonic observation
+rules. On failed cleanup, `IW7.CommunityDownload.Quarantine.<lease-token>` strongly
+roots the exact owner, guards and state after script-local references disappear.
+The entry is never replaced or automatically cleared. This retention lasts for
+the execution host's lifetime: the caller must keep that original host alive for
+recovery. Host exit/kill-on-close is not confirmed closure and never releases the
+quarantined reservation or retroactively attributes the old VCTIP process.
+
+The clock begins before `Start`; global180s, registration5s and observed-root
+drain2s checks run after getters/CIM/measurement, including a terminal zero-member
+observation. A synchronous slow API cannot be preempted by these checks: returning
+late is refused, not counted as timely. The same rule covers cleanup's5s budget.
+
+Plan v2 pins all four current admission inputs: scheduler, Resource-Memory,
+Resource-RecorderOwnedProcess, and native/ResourceMemory.cs. Run retains read-only
+file handles for the Plan, local sources, tools, these imports and the original-job
+DLL before importing/loading them. Their guarded hashes close the simple
+hash-to-load replacement window. Guards persist through closure or quarantine.
+The job helper still requires a separately admitted build/witness.
+
+A 1MiB metadata file is written and flushed before launch. Payload is watched
+separately against31MiB. Finalization uses that reserve even if payload measurement
+throws or exceeds its cap; the record is Failed, and oversized detail becomes a
+compact failure receipt. It does not delete oversized evidence or claim the total
+budget was respected. Unrecoverable filesystem I/O failure may still prevent
+publication; it cannot produce a success claim.
+
+Run the interpreted policy checks only with
+`& tools-source/community-download/tests/Test-HarnessPolicies.ps1`.
+They call the actual lifecycle policies with mock owners/clock, retained real
+small-file guards and bounded receipt fixtures. They compile/load no helper,
+reserve nothing and never enter the runner's Run branch. Native helper, corrected
+downloader46-case execution and admitted pipeline validation remain pending.

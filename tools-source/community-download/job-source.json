@@ -3,11 +3,12 @@
   "BaseSource": "tools-source/asset-bridge/animation/Probe-NativeJob.cs",
   "BaseSHA256": "DDEFA72FF2B98286CD585D1178C13E67DCD646BBCF39D51365660901366C5CA8",
   "DerivedSource": "Download-NativeJob.cs",
-  "DerivedSHA256": "944BAB7B60150AEBA613C3A836EEF80D0FAE92B424CD391DBE5628A45D9A74C1",
+  "DerivedSHA256": "629586DF22262295F9221D7158BC3D5C5DFE56FDBAE31BEC14D4F2958AEDAFE2",
   "Changes": [
     "Private namespace",
     "Public root-exit observation",
-    "Bounded original-job membership identities before owned cleanup"
+    "Bounded original-job membership identities before owned cleanup",
+    "Cleanup clock precedes termination and checks after terminal observation"
   ],
   "Compiled": false,
   "RuntimeQualified": false
