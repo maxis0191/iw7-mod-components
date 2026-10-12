@@ -1,5 +1,11 @@
 # Agent capabilities and the next engine investigation
 
+Current source-only follow-up: the [Material C witness](MATERIAL-C-WITNESS.md)
+binds the new original-image FF, preserves SDK interaction/HUD and prepares an
+explicit optional third ticket observer. Full graphics requires 16/16 GiB with
+debugger disabled. No Material C game launch or rendered/ticket acceptance has
+occurred in this preparation; historical Run 5 below remains unchanged.
+
 Source reconciliation on 2026-10-12, based on private main
 `21b91e3ebace48fda5ed60024719168064b2cca5` and retained historical branch
 `11a2e38c6b2277980192531096f8144795460ef5`. This batch runs pure tests only:
