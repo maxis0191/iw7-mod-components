@@ -150,16 +150,16 @@ foreach($case in @('over-budget','measure-error','metadata-overflow')){
     Check ((Get-Item -LiteralPath $published).Length -le 1MB) 'Failure receipt must fit reserved capacity.'
 }
 $source=$runner.Extent.Text
-Check ($source.IndexOf('$timing=[ordered]') -lt $source.IndexOf('$owner.Start(')) 'Clock must begin before Start.'
-Check ($source.IndexOf('$reserve=New-DownloadReceiptReserve') -lt $source.IndexOf('$owner.Start(')) 'Reserve must precede launch.'
-Check ($source.IndexOf('Open-DownloadReadGuard $plan.job_assembly') -lt $source.IndexOf('[Reflection.Assembly]::LoadFrom')) 'DLL must remain guarded across LoadFrom.'
+Check ($source.IndexOf('$timing=[ordered]') -lt $source.IndexOf('Invoke-DownloadH1Stage $nativePlan')) 'Clock must begin before stages.'
+Check ($source.IndexOf('$reserve=New-DownloadReceiptReserve') -lt $source.IndexOf('Invoke-DownloadH1Stage $nativePlan')) 'Reserve must precede launch.'
+Check ($source.IndexOf('Hold-DownloadPin $plan.job_assembly') -lt $source.IndexOf('[Reflection.Assembly]::LoadFrom')) 'DLL must remain guarded across LoadFrom.'
 foreach($name in 'ops/Resource-Memory.ps1','ops/Resource-RecorderOwnedProcess.Core.ps1','ops/native/ResourceMemory.cs'){
     Check ($source.Contains($name)) "Admission transitive pin missing: $name"
 }
 Check (!$source.Contains('while(!$owner.TreeExited())')) 'Terminal predicate must not precede deadline checks.'
 Check (!$source.Contains('ArtifactBytesBeforeReceipt=Assert-OutputBudget')) 'Failure receipt must not be gated by payload cap.'
-Check ($source.Contains('[IW7.AnimationProbe.NativeJob]::new()')) 'Runner must retain existing witnessed owner directly.'
-Check ($source.Contains('Open-DownloadReadGuard $plan.job_witness_receipt')) 'Existing native witness must be guarded.'
-Check ($source.Contains('MemberObservationComplete=$false')) 'Partial member observations must remain explicit.'
+Check ($source.Contains('Invoke-DownloadH1Stage $nativePlan')) 'Runner must delegate stages to existing H1 owner controller.'
+Check ($source.Contains('Hold-DownloadPin $plan.job_witness_receipt')) 'Existing native witness must be guarded.'
+Check (!$source.Contains('function Capture-OriginalMembers')) 'Partial inventory must not become closure authority.'
 if(('IW7ResourceMemoryV1' -as [type]) -or ('IW7.CommunityDownload.NativeJob' -as [type]) -or ('IW7.AnimationProbe.NativeJob' -as [type])){throw 'Native type unexpectedly loaded.'}
 "PASS: $script:Checks pure policy checks; no Run, Add-Type, native process or reservation. Fixtures: $fixture"
