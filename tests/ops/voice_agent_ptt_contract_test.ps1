@@ -1,3 +1,4 @@
+param([ValidateNotNullOrEmpty()][ValidateScript({[IO.Path]::IsPathFullyQualified($_)})][string]$NativeSdkRoot=(Join-Path $PSScriptRoot '../../tools/iw7-mod-native'))
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/../../ops/voice-agent/PTT-Contract.Core.ps1"
 $snapshot=[pscustomobject]@{ExactProcessIdentity=$true;OwnedSessionMatch=$true;IsolatedBuild=$true;ClientTestFlag=$true;IsolatedFlag=$true;MarkerVerified=$true;EngineProtected=$true;CgameInitialized=$true;NoInputCatchers=$true;VoiceEnabled=$false;VoiceAudioInitialized=$false;CaptureInterfacePresent=$false;NativeAudioProbeActive=$false;PTTActive=$false;Mode='CP';TestPort=27116;SafetyAgeMs=[long]50;TalkKey0=[int]0;TalkKey1=[int]0}
@@ -17,6 +18,9 @@ $snapshot.PSObject.Properties.Remove('CaptureInterfacePresent');Refuse $snapshot
 . "$PSScriptRoot/../../ops/voice-agent/PTT-InputBridge.Core.ps1"
 . "$PSScriptRoot/../../ops/voice-agent/Build-Copy.Core.ps1"
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$localSDK=[IO.Path]::GetFullPath($NativeSdkRoot)
+Assert-IW7PTTBridgeAncestry $localSDK
+if((Test-Path -LiteralPath $localSDK) -and !(Get-Item -LiteralPath $localSDK -Force).PSIsContainer){throw 'NativeSdkRoot must be a directory.'}
 $encoding=[Text.UTF8Encoding]::new($false,$true)
 $bridgeChecks=0
 function Check-PTTBridge([bool]$Value,[string]$Message){$script:bridgeChecks++;if(!$Value){throw $Message}}
@@ -25,6 +29,22 @@ function Refuse-PTTBridge([scriptblock]$Action,[string]$Reason){
     try{& $Action | Out-Null}catch{$caught=$true;Check-PTTBridge ($_.Exception.Message.Contains($Reason)) ('Unexpected refusal: '+$_.Exception.Message)}
     Check-PTTBridge $caught ('Required refusal missing: '+$Reason)
 }
+# Extract only the pure root resolver and the generated command string. Never
+# execute Build-Voice or import its scheduler/toolchain from this source test.
+$buildErrors=$null;$buildTokens=$null
+$buildAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $repo 'ops/Build-Voice.ps1'),[ref]$buildTokens,[ref]$buildErrors)
+Check-PTTBridge (@($buildErrors).Count -eq 0) 'Build-Voice must parse.'
+$rootFunctions=@($buildAst.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Resolve-IW7VoiceBuildNativeRoot'},$true))
+Check-PTTBridge ($rootFunctions.Count -eq 1) 'One pure native root resolver required.'
+. ([scriptblock]::Create($rootFunctions[0].Extent.Text))
+$rootAssignments=@($buildAst.FindAll({param($node)$node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ceq '$root'},$true))
+Check-PTTBridge ($rootAssignments.Count -eq 1 -and $rootAssignments[0].Right.Extent.Text -ceq 'Resolve-IW7VoiceBuildNativeRoot $NativeRoot') 'Every native operation must keep the single validated root.'
+$firstImport=@($buildAst.FindAll({param($node)$node -is [Management.Automation.Language.CommandAst] -and $node.InvocationOperator -eq [Management.Automation.Language.TokenKind]::Dot},$true))[0]
+Check-PTTBridge ($rootAssignments[0].Extent.EndOffset -lt $firstImport.Extent.StartOffset) 'Root validation must precede scheduler import/admission.'
+$rootParameter=@($buildAst.ParamBlock.Parameters | Where-Object {$_.Name.VariablePath.UserPath -ceq 'NativeRoot'})
+Check-PTTBridge ($rootParameter.Count -eq 1 -and $rootParameter[0].DefaultValue.Extent.Text -ceq "(Join-Path `$PSScriptRoot '../tools/iw7-mod-native')") 'Historic default checkout must remain unchanged.'
+$commandTemplates=@($buildAst.FindAll({param($node)$node -is [Management.Automation.Language.ExpandableStringExpressionAst] -and $node.Extent.Text.Contains('voice_agent_ptt_contract_test.ps1')},$true))
+Check-PTTBridge ($commandTemplates.Count -eq 1 -and @($commandTemplates[0].NestedExpressions | Where-Object {$_ -isnot [Management.Automation.Language.VariableExpressionAst]}).Count -eq 0) 'Only a literal command template with variable substitutions may be expanded by this test.'
 $clean=[IO.File]::ReadAllBytes((Join-Path $repo 'ops/voice-agent/PTT-InputBase.inc'))
 $template=[IO.File]::ReadAllBytes((Join-Path $repo 'ops/voice-agent/PTT-InputBridge.inc'))
 $enabled=New-IW7PTTInputBridgeSource $clean $template
@@ -77,6 +97,14 @@ foreach($pin in $pins){Refuse-PTTBridge {Assert-IW7PTTBridgeDependency ([byte[]]
 $temp=[IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('iw7-ptt-bridge-'+[guid]::NewGuid().ToString('N'))))
 try{
     New-Item -ItemType Directory -Path (Join-Path $temp 'src/client/component') -Force | Out-Null
+    $realRoot=Join-Path $temp 'real sdk';New-Item -ItemType Directory -Path $realRoot | Out-Null
+    Check-PTTBridge ((Resolve-IW7VoiceBuildNativeRoot $realRoot) -ceq $realRoot) 'An explicitly supplied real checkout must retain its exact path, including spaces.'
+    $missingRoot=Join-Path $realRoot 'future/checkout'
+    Check-PTTBridge ((Resolve-IW7VoiceBuildNativeRoot $missingRoot) -ceq [IO.Path]::GetFullPath($missingRoot) -and !(Test-Path -LiteralPath $missingRoot)) 'Missing clone destination must validate without creation.'
+    foreach($badRoot in @('', 'relative/sdk', ($realRoot+'%EXPAND%'), ($realRoot+'!EXPAND!'), ($realRoot+'"'), ($realRoot+"`n"))){Refuse-PTTBridge {Resolve-IW7VoiceBuildNativeRoot $badRoot} 'absolute literal directory path'}
+    $generatedCommand=& {param($root,$repo,$runtime,$vcvars,$expression) & ([scriptblock]::Create($expression))} $realRoot $repo $temp 'unused-vcvars' $commandTemplates[0].Extent.Text
+    $pttCommands=@($generatedCommand -split '\r?\n' | Where-Object {$_.Contains('voice_agent_ptt_contract_test.ps1')})
+    Check-PTTBridge ($pttCommands.Count -eq 1 -and $pttCommands[0] -ceq ('pwsh -NoProfile -File "'+$repo+'\tests\ops\voice_agent_ptt_contract_test.ps1" -NativeSdkRoot "'+$realRoot+'"')) 'Generated PTT command must forward the exact selected checkout once, quoted.'
     $inputPath=Join-Path $temp 'src/client/component/input.cpp'
     $fixturePath=Join-Path $temp 'src/client/component/paris_test_fixture.cpp'
     $headerPath=Join-Path $temp 'src/client/component/voice_ptt_guard.hpp'
@@ -85,6 +113,8 @@ try{
     [IO.File]::WriteAllBytes($fixturePath,$captureFixture)
     $boundedPath=Join-Path $temp 'bounded-source.cpp'
     [IO.File]::WriteAllBytes($boundedPath,[byte[]]::new(64KB))
+    Refuse-PTTBridge {Resolve-IW7VoiceBuildNativeRoot $boundedPath} 'only directories'
+    Refuse-PTTBridge {Resolve-IW7VoiceBuildNativeRoot (Join-Path $boundedPath 'child')} 'only directories'
     Check-PTTBridge ((Read-IW7PTTBridgeBytes $boundedPath).Length -eq 64KB) 'Ordinary sources must accept the exact 64 KiB boundary.'
     [IO.File]::WriteAllBytes($boundedPath,[byte[]]::new(64KB+1))
     Refuse-PTTBridge {Read-IW7PTTBridgeBytes $boundedPath} 'size/type bound refused'
@@ -115,6 +145,9 @@ try{
     $junction=Join-Path $temp 'junction'
     New-Item -ItemType Junction -Path $junction -Target $outside | Out-Null
     try{
+        Refuse-PTTBridge {Resolve-IW7VoiceBuildNativeRoot $junction} 'reparse ancestry refused'
+        Refuse-PTTBridge {Resolve-IW7VoiceBuildNativeRoot (Join-Path $junction 'missing/sdk')} 'reparse ancestry refused'
+        Check-PTTBridge ((Resolve-IW7VoiceBuildNativeRoot $outside) -ceq $outside) 'Only the explicitly named real target may validate; never follow the junction.'
         Refuse-PTTBridge {Resolve-IW7PTTBridgePath $temp 'junction/new.cpp'} 'reparse ancestry refused'
         Refuse-PTTBridge {Read-IW7PTTBridgeBytes (Join-Path $junction 'missing.cpp')} 'reparse ancestry refused'
         Refuse-PTTBridge {Write-IW7PTTBridgeOriginalBytes (Join-Path $junction 'new.bin') ([byte[]]@(1,2,3))} 'reparse ancestry refused'
@@ -143,7 +176,6 @@ try{
     # A local SDK, when already present, supplies only these eight small source
     # files to exercise real pins and positive IO. No clone/download is needed
     # for CI's independent transform/transition/adversarial contracts above.
-    $localSDK=Join-Path $repo 'tools/iw7-mod-native'
     if(Test-Path -LiteralPath $localSDK){
         foreach($pin in $pins){
             $source=Read-IW7PTTBridgeBytes (Resolve-IW7PTTBridgePath $localSDK $pin.File)
@@ -169,7 +201,7 @@ try{
         Refuse-PTTBridge {Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot $temp -BaseInput $clean -IsolatedLab $true -ServerModules $true} 'Unknown PTT SDK dependency'
         Check-PTTBridge ((Get-IW7PTTBridgeHash ([IO.File]::ReadAllBytes($inputPath))) -ceq $beforeInput -and !(Test-Path -LiteralPath $headerPath)) 'Unknown dependency must refuse without partially applying overlay.'
         'PASS real eight SDK source pins and temporary-only Plan/Install/Retire; actual SDK untouched.'
-    }
+    }else{'SKIP optional eight SDK source pins and temporary Plan/Install/Retire: selected NativeSdkRoot is absent.'}
     [IO.File]::WriteAllBytes($inputPath,$unknown)
     Refuse-PTTBridge {Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot $temp -BaseInput $clean -IsolatedLab $false -ServerModules $false} 'Unowned input.cpp'
     Check-PTTBridge ((Get-IW7PTTBridgeHash ([IO.File]::ReadAllBytes($inputPath))) -ceq (Get-IW7PTTBridgeHash $unknown)) 'Unknown input must survive refusal.'

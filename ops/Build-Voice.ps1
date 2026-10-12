@@ -1,18 +1,42 @@
 param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
-    [ValidateRange(1,2)][int]$BuildJobs = 1)
+    [ValidateRange(1,2)][int]$BuildJobs = 1,
+    [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
 $ErrorActionPreference = 'Stop'
+function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
+    # Never discover/follow a junction target. The caller must name the actual
+    # checkout explicitly. A missing checkout remains eligible for the existing
+    # clone path, provided every existing ancestor is an ordinary directory.
+    # This path is also embedded in a quoted CMD argument: forbid expansion.
+    if ([string]::IsNullOrWhiteSpace($Path) -or ![IO.Path]::IsPathFullyQualified($Path) -or $Path -match '[\x00-\x1f"%!]') {
+        throw 'NativeRoot must be an absolute literal directory path.'
+    }
+    $full = [IO.Path]::GetFullPath($Path)
+    $current = $full
+    while ($current) {
+        $item = $null
+        try { $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop }
+        catch { if ($_.CategoryInfo.Category -ne [Management.Automation.ErrorCategory]::ObjectNotFound) { throw } }
+        if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'NativeRoot reparse ancestry refused; provide the exact real checkout path.' }
+        if ($item -and !$item.PSIsContainer) { throw 'NativeRoot ancestry must contain only directories.' }
+        $parent = [IO.Directory]::GetParent($current)
+        if (!$parent) { break }
+        $current = $parent.FullName
+    }
+    $full
+}
 if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requires ServerModules and IsolatedLab.' }
 if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
 if ($ServerModules -and ($RhinoExperiment -or $EnemyExperiment)) {
     throw 'ServerModules is incompatible with enemy/Rhino overlays.'
 }
 $repo = Split-Path $PSScriptRoot -Parent
+$root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 # Reserve the complete operation before compiling tests, sanitizer binaries or
 # native sources. TestsOnly uses the same admission and final release path.
 Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
-$root = Join-Path $repo 'tools/iw7-mod-native'
+$null = Resolve-IW7VoiceBuildNativeRoot $root
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
 if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -86,7 +110,7 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\
 if errorlevel 1 exit /b 1
 "$runtime\voice-ptt-guard.exe"
 if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_agent_ptt_contract_test.ps1"
+pwsh -NoProfile -File "$repo\tests\ops\voice_agent_ptt_contract_test.ps1" -NativeSdkRoot "$root"
 if errorlevel 1 exit /b 1
 pwsh -NoProfile -File "$repo\ops\voice-agent\test_fake_build_copy.ps1" -RepoRoot "$repo"
 if errorlevel 1 exit /b 1
@@ -172,11 +196,13 @@ if ($Sanitizers) {
 }
 & "$repo/tests/ops/download_cache_overlay_test.ps1"
 if ($TestsOnly) { return }
+$null = Resolve-IW7VoiceBuildNativeRoot $root
 if (!(Test-Path -LiteralPath "$root/.git")) {
     if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }
     else { git clone --recursive https://github.com/auroramod/iw7-mod.git $root }
     if ($LASTEXITCODE) { throw 'Required IW7-Mod clone failed.' }
 }
+$null = Resolve-IW7VoiceBuildNativeRoot $root
 if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
 git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
