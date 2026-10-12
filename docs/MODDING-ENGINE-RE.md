@@ -708,10 +708,11 @@ blocked by this recorded runtime incident.
 
 ### Issue 149: explicit Aurora data prerequisite before planning or launch
 
-[Issue #149](https://github.com/maxis0191/iw7-paris-server/issues/149) remains
-open until a protected retest has verified the prerequisite, absence of the new
-errors and restoration. The old adoption checked retained stock, marker, native
-package and SDK inputs; the old DryRun returned before launch staging and never
+[Issue #149](https://github.com/maxis0191/iw7-paris-server/issues/149) requires
+a protected retest verifying the prerequisite, absence of the new errors and
+restoration. Run 5 below now supplies that bounded technical witness; the two
+older errors remain separately tracked in issue 150. The old adoption checked
+retained stock, marker, native package and SDK inputs; the old DryRun returned before launch staging and never
 inspected updater cdata. A marker and a successful plan therefore did not imply
 a complete runtime. This was a missing preflight contract, not permission to
 remove updater-managed content or replace it with our own retail patches.
@@ -756,5 +757,57 @@ the actual transaction/Robocopy path and the real Agent-Lab missing-provider
 DryRun refusal. It covers hashes, missing/foreign files, redirects, hardlink
 aliases, provider drift, no-copy reuse, existing-byte/absent-before restoration,
 partial-copy failure and missing/incomplete runtime load witnesses. The 66
-restoration and 145 vertical controls remain passing. These are source and file
-tests only; no real provider was copied and no new game was launched.
+restoration and 145 vertical controls remain passing. That correction checkpoint
+comprised source and file tests only; real provider staging and runtime validation
+follow in Run 5.
+
+### Run 5: Aurora prerequisite verified, no new errors in the closed witness
+
+The single authorized protected retest used clean integrated source
+`40cb54420686b389970a26df2c5c93263451a672`, including updater correction `f891ece`
+and the bounded closed-log auditor. All 308 bound source inputs remained exact
+through closure. The original 1048-byte beacon FF and native executable were
+unchanged. The prepared command and plan hashes are recorded in the
+[sanitized Run 5 receipt](deployments/2026-10-12-sdk-beacon-run5.json).
+An initial local wrapper precheck stopped before invoking Agent-Lab because its
+vacancy helper was not imported; adding that existing import caused no source,
+runtime or data mutation. Only one effective Agent-Lab invocation occurred.
+
+Fresh full admission at 05:06:03 UTC allowed 12 GiB physical plus 12 GiB commit,
+with Main alone, no lease, a vacant base client, free test ports and 66 independent
+bank file identities. Run `20261012-050608-665-1158cf9d` staged all 84 provider files
+(394,436,292 bytes) under the original lab-appdata transaction, then verified their
+inventory and independent identities. Fresh logs show Aurora `patches.gsc` loaded
+and its `main` executed; the missing Spaceland sound-table diagnostic is absent.
+The provider inventory also matches after the run. No new retail patch, game
+stock copy, Main deployment or project module was added.
+
+The targeted scenario passes both real Uses with fresh engine protection and
+private-server telemetry. The same entity 760 and instance 52650 survive the
+controlled client restart. First Use produces team 1 / personal 1; the rejoined
+client starts at team 1 / personal 0 and reaches team 2 / personal 1. Both release
+and abort acknowledgements are retained. The exact cache survives while HTTP is
+closed before rejoin. This is a controlled restart, not an in-process reconnect.
+The original `Passed:true` result and scenario receipts remain unmodified.
+
+After the processes closed, the integrated auditor read all six stdout/stderr
+logs. The server's 83,252-byte stdout contains **two complete known unresolved
+blocks, zero new blocks and zero incomplete blocks**: `init_cryobomb` at lines
+81–85 and `init_forgefreeze` at 86–90. Both client logs and all stderr logs contain
+zero blocks. The 219 new Run 4 blocks do not recur in this witness. This supports
+the missing Aurora prerequisite correction without proving universal gameplay
+or changing error allowances. Overall runtime integrity remains **not passed**:
+the two existing errors remain errors under
+[issue #150](https://github.com/maxis0191/iw7-paris-server/issues/150).
+
+The launcher exits zero with restoration confirmed. At 05:10:09 UTC, Main retains
+its exact process and executable identity; all three owned processes, test ports
+and leases are absent. Four transaction manifests independently match the current
+owned files/profile trees, including restoration of the candidate's absent private
+appdata. Static Main checks pass and no Main bank delta is observed. Six native
+BMPs plus logs total 22,238,271 bytes, below 128 MiB. Their hashes are retained;
+`PixelsVerified:false`, reduced-graphics limits and owner acceptance remain unchanged.
+
+Next: integrate this closed evidence into the central issue/PR record and continue
+the separate issue 150 source investigation. No additional run is authorized by
+the one-cycle Run 5 GO, and no global runtime or material acceptance is implied.
