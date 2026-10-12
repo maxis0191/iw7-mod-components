@@ -8,6 +8,13 @@
   "test_count": 43,
   "passed": false,
   "functional_tests_passed": true,
+  "observed_source_commit": "35bea079780580a0fc49d957168496e50febb1d1",
+  "current_source_has_unexecuted_corrections": true,
+  "unexecuted_review_regressions": [
+    "Main terminal LUI enqueue refusal is contained without reconnect",
+    "A second-thread stop during main LUI enqueue wins before terminal commit",
+    "A second-thread stop after terminal commit cannot retract connect and does not deadlock"
+  ],
   "qualification": "UnadmittedFunctionalObservation",
   "source_only_instruction_followed": false,
   "admitted_pipeline_passed": false,

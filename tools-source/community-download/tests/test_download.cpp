@@ -16,9 +16,11 @@ namespace
     {
         for (auto& queue : scheduler::queues) queue.clear();
         scheduler::reject_queue = false; scheduler::executing = scheduler::main;
+        scheduler::before_enqueue = {};
         fake::fault.clear(); fake::close_calls = fake::move_calls = fake::http_calls = fake::connect_calls = 0;
         fake::errors.clear(); fake::events.clear();
         fake::during_http = fake::during_write = fake::during_read = fake::before_move = {};
+        fake::during_connect = {};
         download::kill_downloads = false;
         download::globals.access([](auto& state) { state = {}; });
         std::filesystem::create_directories("mods/test");
@@ -129,6 +131,44 @@ int main()
         { start(); scheduler::tick(scheduler::async); download::component{}.pre_destroy(); drain(); fake::require(fake::connect_calls == 0 && fake::errors.empty() && fake::events.empty(), "callback after shutdown"); });
         test("scheduler queue failure cannot escape worker", []
         { start(); scheduler::reject_queue = true; scheduler::tick(scheduler::async); scheduler::reject_queue = false; drain(); fake::require(fake::connect_calls == 0 && !download::globals.access<bool>([](auto& s) { return s.active; }), "queue failure left connect/active"); fake::require(read_bytes(destination) == old_bytes, "queue failure changed file"); });
+        test("main terminal LUI enqueue refusal cannot escape or reconnect", []
+        {
+            start(); scheduler::tick(scheduler::async);
+            scheduler::reject_queue = true; scheduler::tick(scheduler::main); scheduler::reject_queue = false;
+            drain();
+            fake::require(fake::connect_calls == 0 && fake::errors.size() == 1, "main enqueue refusal did not fail closed");
+            fake::require(download::globals.access<bool>([](auto& s) { return s.abort && !s.active; }), "main enqueue failure left operation active");
+            fake::require(read_bytes(destination) == payload, "verified file lost after terminal enqueue refusal");
+            fake::require(std::count(fake::events.begin(), fake::events.end(), "mod_download_done") == 0, "refused enqueue was delivered");
+            no_temporary_files();
+        });
+        test("concurrent cancel during main LUI enqueue wins before terminal commit", []
+        {
+            start(); scheduler::tick(scheduler::async);
+            scheduler::before_enqueue = [](scheduler::pipeline destination)
+            {
+                if (scheduler::executing == scheduler::main && destination == scheduler::lui)
+                {
+                    // Run the actual stop on a second thread while main is in its
+                    // enqueue, then join before allowing the final decision.
+                    std::thread cancel([] { download::stop_download(); }); cancel.join();
+                }
+            };
+            scheduler::tick(scheduler::main); scheduler::before_enqueue = {};
+            failed(false);
+            fake::require(read_bytes(destination) == payload, "committed file changed on late cancellation");
+        });
+        test("stop after terminal commit does not retract connect or deadlock", []
+        {
+            fake::during_connect = []
+            {
+                fake::require(!download::globals.access<bool>([](auto& s) { return s.active; }), "connect before terminal commit");
+                // This would deadlock if the production path held globals across connect.
+                std::thread cancel([] { download::stop_download(); }); cancel.join();
+            };
+            start(); drain();
+            fake::require(fake::connect_calls == 1 && fake::errors.empty(), "post-commit stop incorrectly rewound completion");
+        });
         test("stale LUI completion cannot dismiss a newer download", []
         {
             start(); scheduler::tick(scheduler::async); scheduler::tick(scheduler::main);

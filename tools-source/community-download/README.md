@@ -129,3 +129,20 @@ that experiment. No reservation, full build or game run is included here.
 
 The base source remains governed by the exact retained `LICENSE.upstream`.
 No license claim is added for unrelated private scripts or game assets.
+
+## Static review corrections after the unadmitted runs
+
+The parent's review identified an uncaught second-stage LUI enqueue inside the
+main callback, and an early `active=false` permitting a concurrent Lua stop to
+miss cancellation before reconnect. The source now contains that callback's
+exceptions and keeps active through the fallible enqueue. Its final mutex-protected
+decision is the explicit completion linearization point: a stop acquiring that
+mutex first cancels; a stop after terminal commit cannot retract the connection.
+No queue/UI work separates that decision from connect, and no globals lock is held
+across the reentrant game API. This is a source contract, not a concurrency witness.
+
+Three regression cases are added: second-stage enqueue refusal, a real second-thread
+stop joined during enqueue, and a second-thread stop inside the connect adapter
+after commit (also checking absence of a held mutex). The resulting 46-case source
+has **not been compiled or executed**. The historical 43-case result remains bound
+to `35bea079780580a0fc49d957168496e50febb1d1`, not these reviewed corrections.

@@ -29,6 +29,7 @@ namespace download
 		constexpr auto network_message = "The mod could not be downloaded. Please try again.";
 		constexpr auto integrity_message = "The downloaded mod could not be verified. Please try again.";
 		constexpr auto storage_message = "The mod could not be saved. Check available space and folder permissions.";
+		constexpr auto completion_message = "The download could not be completed. Please try again.";
 
 		bool current(const uint64_t generation)
 		{
@@ -136,22 +137,47 @@ namespace download
 		void finish(const uint64_t generation, const game::netadr_s target, const char* message)
 		{
 			// Com_SetLocalizedErrorMessage and party::connect follow party.cpp's main-thread path.
-			scheduler::once([=]
+			scheduler::once([=]() noexcept
 			{
-				if (!current(generation)) return;
-				const auto aborted = globals.access<bool>([=](globals_t& state)
+				try
 				{
-					const auto requested = state.abort;
-					state.abort = state.abort || message != nullptr;
-					state.active = false;
-					return requested;
-				});
-				scheduler::once([=]
+					if (!current(generation)) return;
+					scheduler::once([=]
+					{
+						if (current(generation)) ui_scripting::notify("mod_download_done", {});
+					}, scheduler::pipeline::lui);
+					enum class completion { obsolete, cancelled, failed, connect };
+					const auto decision = globals.access<completion>([=](globals_t& state)
+					{
+						if (kill_downloads || state.generation != generation || !state.active) return completion::obsolete;
+						const auto aborted = state.abort;
+						state.abort = state.abort || message != nullptr;
+						// Linearization point shared with stop_download: active stays true
+						// through all fallible enqueue work. A stop winning this mutex first
+						// cancels; a stop after this terminal commit cannot retract connect.
+						state.active = false;
+						return aborted ? completion::cancelled : message ? completion::failed : completion::connect;
+					});
+					// No queue or UI work between the decision and connect; no globals
+					// mutex held across reentrant party/game APIs.
+					if (decision == completion::connect) party::connect(target);
+					else if (decision == completion::cancelled) game::shared::menu_error(cancelled_message);
+					else if (decision == completion::failed) game::shared::menu_error(message);
+				}
+				catch (...)
 				{
-					if (current(generation)) ui_scripting::notify("mod_download_done", {});
-				}, scheduler::pipeline::lui);
-				if (aborted || message) game::shared::menu_error(aborted ? cancelled_message : message);
-				else party::connect(target);
+					// The main callback runs later, outside finish_noexcept's enqueue catch.
+					// If its LUI enqueue fails, stop here: never connect or escape main.
+					try
+					{
+						globals.access([=](globals_t& state)
+						{
+							if (state.generation == generation) { state.abort = true; state.active = false; }
+						});
+						if (current(generation)) game::shared::menu_error(completion_message);
+					}
+					catch (...) {}
+				}
 			}, scheduler::pipeline::main);
 		}
 

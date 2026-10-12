@@ -17,6 +17,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 using namespace std::chrono_literals;
 
@@ -27,8 +28,10 @@ namespace scheduler
     inline pipeline executing = main;
     inline std::deque<std::function<void()>> queues[count];
     inline bool reject_queue = false;
+    inline std::function<void(pipeline)> before_enqueue;
     inline void once(const std::function<void()>& callback, pipeline type = async, std::chrono::milliseconds = 0ms)
     {
+        if (before_enqueue) before_enqueue(type);
         if (reject_queue) throw std::bad_alloc();
         queues[type].push_back(callback);
     }
@@ -54,6 +57,7 @@ namespace fake
     inline unsigned close_calls = 0, move_calls = 0, http_calls = 0, connect_calls = 0;
     inline std::vector<std::string> errors, events;
     inline std::function<void()> during_http, during_write, during_read, before_move;
+    inline std::function<void()> during_connect;
 
     inline HANDLE create(const wchar_t* name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa, DWORD action, DWORD flags, HANDLE templ)
     {
@@ -112,7 +116,7 @@ namespace game
 namespace party
 {
     inline void connect(const game::netadr_s&)
-    { fake::require(scheduler::executing == scheduler::main, "connect outside main"); ++fake::connect_calls; }
+    { fake::require(scheduler::executing == scheduler::main, "connect outside main"); if (fake::during_connect) fake::during_connect(); ++fake::connect_calls; }
 }
 namespace ui_scripting
 {
