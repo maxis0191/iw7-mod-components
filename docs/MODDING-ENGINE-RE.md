@@ -79,32 +79,80 @@ successful asset lookup cannot establish those closures.
 
 ## Smallest useful import → Use → HUD → rejoin vertical
 
-The completed vertical does not yet exist. `Agent-Lab` currently selects model
-or HUD fixtures exclusively; model mode accepts only wait/capture. The actions
-observer proves a Use bit, and its first-client intro readiness is not a general
-late-join observer. Concatenating their PASS strings would manufacture evidence.
+The new opt-in `Agent-Lab -ObservationMode vertical` supplies the joint observer
+and controlled rejoin driver. It has source and synthetic test evidence only.
+Existing model/HUD modes remain separate. The SDK owns `sdk_beacon.gsc`, the rigid
+cube, real `script_model` trigger, counters and private GSC HUD. The fixture only
+protects, observes and emits records; it never increments SDK state, synthesizes
+the accepted trigger, changes player origin/angles or forces stock intro flags.
 
-After the parent integrates the asset/package work, use one existing candidate,
-one base client and one small versioned package. Keep the previously visible rigid
-cube as a control beside the new licensed/source-owned asset. Bind one real usable
-trigger to the exact imported entity and show that package's version in the HUD.
+The SDK contract is version 0.1.0, source SHA-256
+`8BA85B3F5B3014D0C4D02B0E71F49BF617959B486502E4C63243B065ABC2A0B6`,
+at `sdk/modding/examples/beacon/sdk_beacon.gsc` (SDK commit `1041195`). Integrate
+that source before this scenario's DryRun. The SDK source preparation receipt is
+not a compiled FF. Build a new **named sdk_beacon zone** under the separately
+admitted builder; an old `paris_model_probe` FF is not a substitute.
 
-1. Require fresh cache/download hash, DB/fixture readiness, native protection,
-   and a fresh frame. Inspect the new asset and control at two fixed fixture poses.
-2. Observe an initially released Use, publish bounded ordinary Use, require its
-   release ACK and a *target-owned retail interaction* tied to the exact entity,
-   player and generation. Observe the resulting HUD state and inspect its pixels.
-3. Disconnect/rejoin sequentially through the existing owned lifecycle. Require
-   the same package hash/version, a fresh playable/protected generation, exactly
-   one UI/trigger owner, retained expected state and no duplicate callback. Repeat
-   a single interaction and capture; then restore original files and release.
+Required launcher bindings are `GameRoot`, `CandidateRoot`, `PackageRoot`,
+`VerticalFFPath`, `VerticalFFSHA256`, `VerticalFFBytes` (1..1,048,576) and
+`VerticalSDKSourceSHA256`. Start with `-ObservationMode vertical -DryRun` against
+the integrated checkout and reviewed artifacts, then seek the parent's runtime
+admission. `-Debugger:$false` disables that runtime service only: the existing
+Modules + IsolatedLab + Debugger package/source manifest still applies. An older
+binary without the PR140 `TestHeartbeatSuppressed=true` and pinned privacy overlay
+is refused; rebuild rather than weakening the manifest check.
 
-The missing work is that thin joint observer plus a rejoin readiness predicate,
-not a new native input stack. Do not force the stock intro flags or count a Use
-ACK as interaction. A first bounded run can omit rejoin and explicitly report
-only the first two stages; full vertical acceptance still requires stage 3.
-Current package requirement (`ServerModules` + `IsolatedLab` + `Debugger` source
-manifest) remains even for `-Debugger:$false` runtime input-only mode.
+The binding checker hashes bounded, locked reads of FF and GSC bytes. It verifies
+declared artifact identity, not FF structure, package closure, build provenance or
+rendering. Receipts therefore retain `DeclaredArtifactBinding=true`,
+`CommunityPackageValidated=false`, `OfflineBuildProofValidated=false` and
+`PixelsVerified=false`. The SDK package validator owns offline package acceptance.
+
+1. The existing complete resource group, vacant owner client, private candidate,
+   scoped backups and stock reuse guards run before staging. Cache and shadow
+   paths are snapshotted; foreign files/subdirectories and Lua shadows are refused.
+   A loopback-only bounded HTTP worker serves exactly `/mods/sdk_beacon/mod.ff`.
+   HUD/model routes keep their previous 1,600-byte limits; only beacon allows 1 MiB.
+2. Before **each** connection, require challenge-bound UDP `cp_zmb`, running,
+   private and zero clients plus a **new append** of native private/LAN/heartbeat
+   suppression telemetry. Old log text is insufficient. The same launch-owned log
+   is held against replacement throughout that observation. Random password,
+   startup/config `sv_lanOnly=1` and loopback binding remain in force.
+3. Wait for actual engine protection, stock intro completion, unfrozen/live/grounded
+   player, stable origin and one SDK model/HUD owner. Bind records to server PID,
+   generation, client nonce, slot, connection, entity and instance. Native stamps
+   must be fresh; partial/replayed/malformed/unprotected records cannot authorize
+   input. Original source and downloaded FF hashes are checked.
+4. Capture before, aim with the existing bounded keyboard feedback helper, then
+   hold real Use for 400 ms. The SDK must emit its accepted `sdk_beacon_used` event
+   while Use is pressed and inside the acknowledged input window. Require one
+   team increment, personal 1, model yaw +30 degrees and matching HUD settext
+   intent, followed by a fresh released sample. An input bit or ACK alone fails.
+   Capture after and request an acknowledged abort even on failure.
+5. Close HTTP **before** the first `Stop-IW7BaseClient` restores its profile.
+   Preserve the exact downloaded FF under the outer transaction. Require 30 s
+   empty private UDP and another fresh native privacy witness; then restart only
+   the owned base client with a new nonce. The exact entity/instance/server
+   generation and origin must survive, team remains 1 and personal resets to 0.
+   Repeat one real Use to reach team 2/personal 1/yaw 60 and capture again. HTTP
+   stays closed for this retained-cache rejoin. This proves neither an in-process
+   reconnect nor a second fresh download. A failed second launch retains its
+   context for the outer cleanup rather than restoring underneath a live process.
+
+Source scope is `Agent-Vertical.Core/Runtime/Tests.ps1`, the GSC fixture, minimal
+Agent-Lab and HTTP route changes, and the data-only capability plan. No new native
+TU or input implementation is needed. Existing Base-Client/Agent-Scenario/native
+capture helpers retain ownership, abort, crash and restoration behavior.
+
+Limits remain explicit: no runtime attempt, FF build or C# compilation occurred
+in this batch. Before/after captures are collected for human/agent pixel review;
+settext/angles are intent, not visible quality. The rigid original cube is the
+first control; a different imported textured/animated asset, fixed second viewing
+pose, seeded package update, simultaneous clients and map rotation are later
+witnesses. Natural spawn movement over 2 units, a rejoin outside the 120-unit Use
+range or bounded aim envelope fails safely; this driver does not teleport or
+fabricate a convenient spawn. Runtime/admitted follow-up may extend ordinary
+movement only after preserving that failure evidence.
 
 Proposed execution ceiling: reduced 12/12 GiB, no stock copy, existing pinned
 tools, package under 1 MiB for the rigid control and at most 128 MiB new retained
@@ -216,9 +264,34 @@ All three PowerShell files parse; whitespace checks pass. These are source/model
 checks, not native compilation, GSC runtime or fresh pixels. The source-only
 checkout totals about 6.4 MB, safely below the 100 MB preparation allocation.
 
-Only `ops/modding/Agent-Capabilities*` and this document belong to this change.
+The initial capability batch owns `ops/modding/Agent-Capabilities*` and this document.
 The parent integrates the coherent local commit, updates shared STATE/BUGS/
 CHANGELOG/VALIDATION/PLAN once, and coordinates private PR/exact-head CI/merge.
 No runtime or Main promotion is part of this delivery. Next action is integration
 of the recovered PASS evidence and the small joint vertical observer; the 48
 startup attribution remains a separate, centrally admitted experiment.
+
+### Joint observer follow-up (2026-10-12, source only)
+
+The initial capability batch above was followed by the vertical source described
+in this document. Its pure suite passes **97 controls** using the real record
+parser, bounded aim/pass driver and rejoin orchestration with simulated wire,
+process and capture adapters. It checks missing real events, stale/future/replayed
+records, entity/session/counter/angle drift, privacy denials, protection loss,
+input abort, HTTP-before-profile closure and failed-rejoin ownership retention.
+The pass-driver test exposed and corrected a clock ordering bug: timestamp after
+reading newly appended log text, rather than rejecting a record written during
+that read as if it came from the future. Synthetic transport behavior is not
+native input, HTTP delivery, gameplay, teardown or pixel proof.
+The fixture also passes GSC Tool 1.5.1.359 parse (not runtime compilation), all
+changed PowerShell sources pass AST parsing, and whitespace checks pass. The 38
+capability controls (including existing combat/revive pure suites) and 33 Python
+debugger tests were rerun successfully. C# HTTP route compilation is still pending
+the parent's admitted validation; no `Add-Type` was executed locally.
+
+The parent integrates this coherent local follow-up after the SDK source commit,
+adds the pure suite to its CI owner files, and completes private PR/exact-head
+CI/merge plus shared STATE/BUGS/CHANGELOG/VALIDATION/PLAN updates. The first next
+action is the separately admitted named-zone/native build; only a later explicit
+runtime admission may run this fixture. Main27016 and existing runtime files
+remain untouched by this source work.
