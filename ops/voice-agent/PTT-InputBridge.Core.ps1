@@ -119,10 +119,13 @@ function Resolve-IW7PTTBridgePath([string]$Root,[string]$Relative) {
     Assert-IW7PTTBridgeAncestry $path
     $path
 }
-function Read-IW7PTTBridgeBytes([string]$Path) {
+function Read-IW7PTTBridgeBytes([string]$Path,[switch]$Fixture) {
     Assert-IW7PTTBridgeAncestry $Path
     $item=Get-Item -LiteralPath $Path
-    if($item.PSIsContainer -or $item.Length -le 0 -or $item.Length -gt 65536){throw 'PTT source size/type bound refused.'}
+    # Only the explicit fixture reads need the larger bound; SDK/input/header
+    # sources and original-byte receipts retain the 64 KiB limit.
+    $maxBytes=if($Fixture){128KB}else{64KB}
+    if($item.PSIsContainer -or $item.Length -le 0 -or $item.Length -gt $maxBytes){throw 'PTT source size/type bound refused.'}
     ,[IO.File]::ReadAllBytes($item.FullName)
 }
 function Write-IW7PTTBridgeOriginalBytes([string]$Path,[byte[]]$Bytes) {
@@ -151,12 +154,12 @@ function Set-IW7PTTInputBridgeBuildCopy {
     $headerHash=Get-IW7PTTBridgeHash $headerBytes
     if((Test-Path -LiteralPath $headerTarget) -and (Get-IW7PTTBridgeHash (Read-IW7PTTBridgeBytes $headerTarget)) -cne $headerHash){throw 'Unowned PTT guard header; preserve source.'}
     $fixturePath=Resolve-IW7PTTBridgePath $NativeRoot 'src/client/component/paris_test_fixture.cpp'
-    $fixtureBytes=Read-IW7PTTBridgeBytes $fixturePath
+    $fixtureBytes=Read-IW7PTTBridgeBytes $fixturePath -Fixture
     $nextFixture=$fixtureBytes
     $dependencies=@()
     if($enabled){
         . (Resolve-IW7PTTBridgePath $RepoRoot 'ops/voice-agent/Build-Copy.Core.ps1')
-        $sourceFixture=Read-IW7PTTBridgeBytes (Resolve-IW7PTTBridgePath $RepoRoot 'src/native/paris_test_fixture.cpp')
+        $sourceFixture=Read-IW7PTTBridgeBytes (Resolve-IW7PTTBridgePath $RepoRoot 'src/native/paris_test_fixture.cpp') -Fixture
         $expectedFixture=[Text.UTF8Encoding]::new($false).GetBytes((Convert-IW7IsolatedVoiceSource ([Text.UTF8Encoding]::new($false,$true).GetString($sourceFixture))))
         if((Get-IW7PTTBridgeHash $fixtureBytes) -cne (Get-IW7PTTBridgeHash $expectedFixture)){throw 'PTT fixture was not copied from the exact current source.'}
         $nextFixture=Convert-IW7PTTFixtureSource $fixtureBytes
