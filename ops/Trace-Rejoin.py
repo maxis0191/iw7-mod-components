@@ -5,6 +5,7 @@ by Trace-LateJoin. No memory writes, names, endpoints or packet bodies are read.
 Sequential process reads are not an atomic client/server snapshot.
 """
 import argparse
+from datetime import datetime, timezone
 import importlib.util
 import hashlib
 import json
@@ -68,7 +69,8 @@ def main():
                 output.write(json.dumps(row, allow_nan=False) + '\n')
                 output.flush()
             emit({'type': 'header', 'schema': 'iw7.paired-rejoin/1', 'server': server.identity,
-                  'client': client.identity, 'limits': 'Asynchronous reads; reduced test is not normal-quality FPS acceptance.'})
+                  'client': client.identity, 'utc': datetime.now(timezone.utc).isoformat(),
+                  'limits': 'Asynchronous reads; reduced test is not normal-quality FPS acceptance.'})
             start = time.monotonic()
             samples = 0
             try:
@@ -82,6 +84,7 @@ def main():
                         row['last_packet_time'] = trace.Fields(server.read).i32(ptr + 0x9EFB8)
                         row['delta_message'] = trace.Fields(server.read).i32(ptr + 0x410C8)
                     emit({'type': 'sample', 'elapsed_ms': round((begin - start) * 1000),
+                          'utc': datetime.now(timezone.utc).isoformat(),
                           'read_duration_ms': round((time.monotonic() - begin) * 1000, 3),
                           'server': authoritative, 'prediction': predicted})
                     samples += 1

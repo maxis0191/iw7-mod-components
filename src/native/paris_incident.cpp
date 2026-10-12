@@ -7,7 +7,7 @@
 #include <utils/flags.hpp>
 #include <fstream>
 #include <deque>
-#include <utils/hook.hpp>
+#include <MinHook.h>
 #include <utils/cryptography.hpp>
 
 namespace paris_incident
@@ -35,7 +35,34 @@ namespace paris_incident
             std::array<std::atomic<unsigned>, 256> opcodes{};
         };
         std::array<counters, 4> clients;
-        utils::hook::detour packet_hook, move_hook, text_hook, binary_hook;
+        // Own only successfully created hooks. The common detour wrapper sets
+        // its address before MH_CreateHook succeeds, so clearing a failed
+        // duplicate could otherwise remove another component's hook.
+        struct observer_hook
+        {
+            void* address{};
+            void* original{};
+            void create(std::uintptr_t location, void* target)
+            {
+                auto* requested = reinterpret_cast<void*>(location);
+                if (MH_CreateHook(requested, target, &original) != MH_OK)
+                    throw std::runtime_error("Network observer hook creation failed");
+                address = requested;
+                if (MH_QueueEnableHook(address) != MH_OK)
+                    throw std::runtime_error("Network observer hook enable failed");
+            }
+            void clear() noexcept
+            {
+                if (address) MH_RemoveHook(address);
+                address = original = nullptr;
+            }
+            template <typename T = void, typename... Args> T invoke(Args... args)
+            {
+                return reinterpret_cast<T(*)(Args...)>(original)(args...);
+            }
+            ~observer_hook() { clear(); }
+        };
+        observer_hook packet_hook, move_hook, text_hook, binary_hook;
 
         int field(const void* client, std::size_t offset)
         {
