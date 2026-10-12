@@ -354,7 +354,14 @@ no second input is sent from an ACK without observed effect. No-effect expiry
 still fails, and other scenarios retain zero extra grace by default. Pure
 tests replay these delayed observations and reject expired, stale, unprotected,
 moved-origin, cross-axis and excessive-angle samples. The vertical suite passes
-118 controls; this correction still requires a fresh admitted runtime attempt.
+127 controls; this correction still requires a fresh admitted runtime attempt.
+Independent review caught a defect in the initial grace implementation: a first
+effect arriving at +900 ms could restart the stability filter and become accepted
+at +1100 ms. The correction records the first actual effect on every fresh
+post-release sample before stability filtering and rejects a late arrival. The
+new replay also checks that this witness resets for each pulse. The initial
+implementation and its correction remain separate commits; no game was run
+between them.
 
 Final result records `Passed:false`, `Restored:true`, `CleanupError:null`.
 Fresh process/resource inspection at 03:02:14 UTC found no test process and no
