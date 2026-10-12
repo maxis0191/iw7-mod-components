@@ -22,6 +22,11 @@ pwsh -NoProfile -File ops/modding/Agent-Capabilities.Tests.ps1
 objects. `CurrentCheckoutMatches=false` exposes missing/stale evidence in the
 checkout; it does not mean the historical test failed. An unavailable historical
 object refuses Check; do not silently relabel the corresponding capability.
+CI's short checkout need not contain those experimental commits: the regression
+suite exercises the real evidence checker against an owned tiny synthetic Git
+repository, including missing-reference refusal and changed current contents.
+It still checks all actual source paths. No command fetches history implicitly;
+synthetic checks never promote historical runtime status or bypass local Check.
 The catalog retains claims and their limits separately. It does not automatically
 parse a historical PASS into a present runtime certification.
 
@@ -203,7 +208,7 @@ with those owners; no new map compiler or universal H1 importer is claimed here.
 
 ## This batch's validation and handoff
 
-Executed on 2026-10-12: catalog Check/Demo, 36 adapter checks including missing
+Executed on 2026-10-12: catalog Check/Demo, 38 portable adapter checks including missing
 source/evidence refusal, existing combat/revive regression suites, and 33 existing
 Python debugger tests (`python -B tests/ops/debugger_test.py`, no bytecode cache).
 Actions/aim parse at 20,600/20,800ms worst-case with 8/9 assertions respectively.
