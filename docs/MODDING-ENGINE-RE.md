@@ -308,3 +308,60 @@ CI/merge plus shared STATE/BUGS/CHANGELOG/VALIDATION/PLAN updates. The first nex
 action is the separately admitted named-zone/native build; only a later explicit
 runtime admission may run this fixture. Main27016 and existing runtime files
 remain untouched by this source work.
+
+### Admitted beacon runtime attempt and delayed feedback correction (2026-10-12)
+
+The admitted run `20261012-025611-746-c01d8ac6` used fixed source
+`22da0494912be6a23d9a082f40aebedbee418b72`, one 12 GiB physical / 12 GiB
+commit reservation, the base client, retained candidate stock, and `Debugger:false`.
+No native build, stock copy or Main deployment occurred. Pinned inputs:
+
+| Input | SHA-256 |
+| --- | --- |
+| Native executable (6,090,240 bytes) | `7862B2A5C21047A8FD4095C6DF2FA96A40B3766F92649FCFFE80ABB193517A97` |
+| Beacon FF (1,048 bytes) | `76ED0701DC1480C501604DB04999F300394C65877AA24A70DFE7AFC2CD662D4A` |
+| SDK GSC source | `8BA85B3F5B3014D0C4D02B0E71F49BF617959B486502E4C63243B065ABC2A0B6` |
+| Passive vertical fixture | `2186E99A6F95F91AE8E272F589DA0E69E9C16A524B558B9B4039F9ABDFA1441A` |
+
+The exact HTTP GET delivered the FF. Fresh UDP getInfo reported **protocol 2**,
+`fs_game=mods/sdk_beacon`, `mod_hash=7B685062`, private running `cp_zmb`.
+The first Use was accepted by the actual SDK trigger, observed 78 ms later, and
+fell inside the acknowledged input window. Team/personal became 1/1 on the
+same entity/instance; model yaw became 30 degrees. Native 1280x720 BMP hashes
+before/after were `87F7BC2E90456702E6709E19DED39D62EEE5C0AFAA35DD8A546B701A3B51C19C`
+and `66CC52046A724DEE1C4092D095799281E516C6DB53E4933351785CF465890F62`.
+PNG format conversions preserve the original BMPs. Image inspection confirmed
+the rendered BEACON counter changing from YOU 0 / TEAM 0 to YOU 1 / TEAM 1,
+the Activate beacon hint and a dark cube. Exact rotation is telemetry evidence;
+the camera changed too. Picmip/bump/spec were reduced to 2: material identity,
+normal visual quality and owner acceptance remain unproved. Native package
+source inventory/newline provenance does not attest a pristine build snapshot.
+
+After the first owned client closed, HTTP was closed and the same FF cache was
+retained. The second client connected with a new nonce; the same server
+generation, entity, instance and target origin retained TEAM 1, with YOU reset
+to 0. Its second Use **was not reached**. The controller rejected an unchanged
+angle after client release ACK: fresh server samples at +93/+187/+297 ms still
+reported pitch 0, whereas the first actual change arrived at +390 ms and
+settled to -2.31262 degrees at +500 ms. The run therefore remains **failed**:
+`Feedback pulse has no bounded observed effect.` This is measured feedback
+latency, not proof of a missing input or a validated full rejoin scenario.
+
+The follow-up correction opts the vertical into at most 750 ms of waiting for
+an actual angular effect after release ACK. Existing identity, protection,
+freshness (500 ms), position, angle and post-effect stability checks still run;
+no second input is sent from an ACK without observed effect. No-effect expiry
+still fails, and other scenarios retain zero extra grace by default. Pure
+tests replay these delayed observations and reject expired, stale, unprotected,
+moved-origin, cross-axis and excessive-angle samples. The vertical suite passes
+118 controls; this correction still requires a fresh admitted runtime attempt.
+
+Final result records `Passed:false`, `Restored:true`, `CleanupError:null`.
+Fresh process/resource inspection at 03:02:14 UTC found no test process and no
+lease. Only Main remained, with its pre-run creation identity, command line and
+binary hash unchanged. Restoration verifies managed-file/profile hashes;
+the existing profile/cache backups are retained. Native privacy and protection
+were observed on both connections: engine godmode, inactivity 0 and cheats 0.
+Retail initialization errors in `init_cryobomb` / `init_forgefreeze` remain
+open and are not attributed to the beacon. Raw logs, identifiers and machine
+paths stay in ignored runtime evidence; this record is sanitized.
