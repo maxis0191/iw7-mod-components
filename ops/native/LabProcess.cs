@@ -24,6 +24,10 @@ public static class IW7LabProcess
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool CreatePipe(out SafeFileHandle read, out SafeFileHandle write, ref SecurityAttributes security, uint size);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool WriteFile(SafeFileHandle file, byte[] bytes, uint count, out uint written, IntPtr overlapped);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     static extern bool CreateProcessW(string exe, StringBuilder cmd, IntPtr processAttributes, IntPtr threadAttributes,
         bool inherit, uint flags, IntPtr environment, string cwd, ref StartupInfo startup, out ProcessInfo info);
@@ -48,8 +52,15 @@ public static class IW7LabProcess
     public sealed class OwnedProcess : IDisposable
     {
         IntPtr handle;
+        SafeFileHandle consoleInput;
+        readonly bool consoleDedicated;
+        string consoleNonce;
+        readonly object consoleLock = new object();
+        readonly System.Collections.Generic.HashSet<string> consoleSent = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
         public int Id { get; private set; }
         internal OwnedProcess(IntPtr value, int id) { handle=value; Id=id; }
+        internal OwnedProcess(IntPtr value, int id, SafeFileHandle input, bool dedicated) : this(value,id) { consoleInput=input; consoleDedicated=dedicated; }
+        public bool OriginalRigConsoleEnabled { get { CheckOpen(); return consoleInput!=null && !consoleInput.IsClosed; } }
         void CheckOpen() { if (handle==IntPtr.Zero) throw new ObjectDisposedException("OwnedProcess"); }
         public bool WaitForExit(int milliseconds) {
             CheckOpen();
@@ -87,7 +98,60 @@ public static class IW7LabProcess
                 if (!HasExited) throw new Win32Exception(error,"Owned process termination failed");
             }
         }
-        public void Dispose() { if (handle!=IntPtr.Zero) { CloseHandle(handle); handle=IntPtr.Zero; } }
+        // The pipe is private to the creating owner. A byte-write receipt is
+        // not engine consumption, an asset lookup result or gameplay proof.
+        public int WriteOriginalRigCommand(string command, string expectedImage, long expectedCreation, string nonce, long safetyPublicationTick)
+        {
+            lock(consoleLock) {
+            CheckOpen();
+            if (!IsOriginalRigCommand(command)) throw new ArgumentException("Only the eight fixed original-rig commands are allowed.");
+            if (!OriginalRigConsoleEnabled) throw new InvalidOperationException("Original-rig console input was not enabled at creation.");
+            if (!consoleDedicated && command.StartsWith("set ",StringComparison.Ordinal)) throw new InvalidOperationException("Rig play/stop controls belong to the dedicated process only.");
+            if (!System.Text.RegularExpressions.Regex.IsMatch(nonce ?? "", "\\A[a-f0-9]{32}\\z")) throw new ArgumentException("Current native client nonce required.");
+            var identity=ReadIdentity();
+            if (identity.CreationFileTime!=expectedCreation || !String.Equals(identity.Image,expectedImage,StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Original console process identity differs.");
+            long now=Environment.TickCount64;
+            if (safetyPublicationTick<=0 || now<safetyPublicationTick || now-safetyPublicationTick>250)
+                throw new InvalidOperationException("Current native safety publication expired before console write.");
+            if (consoleNonce!=null && !String.Equals(consoleNonce,nonce,StringComparison.Ordinal))
+                throw new InvalidOperationException("Native client nonce changed; console input refused.");
+            if (consoleSent.Contains(command)) throw new InvalidOperationException("Each fixed rig command may be written once per owned process.");
+            // At most eight short ASCII lines, below this pipe's 4096-byte
+            // capacity even if the engine never reads. Never flush/wait here.
+            byte[] bytes=Encoding.ASCII.GetBytes(command+"\n");
+            uint written;
+            consoleNonce=nonce; consoleSent.Add(command);
+            if (!WriteFile(consoleInput,bytes,(uint)bytes.Length,out written,IntPtr.Zero) || written!=bytes.Length)
+                throw new Win32Exception(Marshal.GetLastWin32Error(),"Owned rig stdin write failed or was incomplete.");
+            return (int)written;
+            }
+        }
+        public void Dispose() {
+            lock(consoleLock) {
+            if (handle!=IntPtr.Zero) {
+                // Closing stdin while getline is alive would leave the official
+                // wincon EOF loop spinning. Preserve both handles until exit.
+                if (consoleInput!=null && !HasExited) throw new InvalidOperationException("Close the exact owned console process before disposing its input.");
+                if (consoleInput!=null) { consoleInput.Dispose(); consoleInput=null; }
+                CloseHandle(handle); handle=IntPtr.Zero;
+            }
+            }
+        }
+    }
+    public static bool IsOriginalRigCommand(string command)
+    {
+        switch (command) {
+            case "listassetpool 8 paris_doom_skin_two_bone_first_a":
+            case "listassetpool 8 paris_doom_skin_two_bone_second_a":
+            case "listassetpool 7 paris_doom_skin_two_bone_first_a_lod0":
+            case "listassetpool 7 paris_doom_skin_two_bone_second_a_lod0":
+            case "listassetpool 6 paris_original_probe_bend":
+            case "listassetpool 10 mopw/character_park_clown_zombie_shoes":
+            case "set sdk_original_rig_probe_play 1":
+            case "set sdk_original_rig_probe_stop 1": return true;
+            default: return false;
+        }
     }
     public static OwnedProcess OpenOwned(int pid, string expectedImage, long expectedCreation)
     {
@@ -137,16 +201,38 @@ public static class IW7LabProcess
     // kernel handle without waiting for a GUI idle state or rejecting fast exit.
     public static OwnedProcess StartOwned(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName, bool waitForInputIdle)
     {
+        return StartOwned(exe,arguments,cwd,stdout,stderr,desktopName,waitForInputIdle,false);
+    }
+    public static OwnedProcess StartOwned(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName, bool waitForInputIdle, bool originalRigConsole)
+    {
         if (exe.Contains("\"") || !System.Text.RegularExpressions.Regex.IsMatch(desktopName, "^IW7ParisLab_[a-f0-9]{32}$"))
             throw new ArgumentException("Invalid executable/desktop name.");
+        bool consoleDedicated=false;
+        if (originalRigConsole) {
+            var tokens=arguments.Split(new [] {' ','\t','\r','\n'},StringSplitOptions.RemoveEmptyEntries);
+            var flags=new System.Collections.Generic.HashSet<string>(tokens,StringComparer.Ordinal);
+            bool dedicated=flags.Contains("-dedicated");
+            consoleDedicated=dedicated;
+            if (!flags.Contains("-wincon") || !flags.Contains("-paris-isolated-lab") ||
+                flags.Contains("-noconsole") || flags.Contains("-syscon") || flags.Contains("-terminal") ||
+                (dedicated ? (!flags.Contains("-paris-server-test") || flags.Contains("-paris-server-client-test")) :
+                    (!flags.Contains("-paris-server-client-test") || flags.Contains("-paris-server-test"))))
+                throw new ArgumentException("Rig stdin requires explicit isolated server/client test flags and wincon.");
+        }
         var security = new SecurityAttributes {length=Marshal.SizeOf(typeof(SecurityAttributes)), inherit=true};
         IntPtr desktop = CreateDesktopW(desktopName, IntPtr.Zero, IntPtr.Zero, 0, 0x10000000, ref security);
         if (desktop == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateDesktop failed");
         try {
             using (var output = new FileStream(stdout, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite))
             using (var error = new FileStream(stderr, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite))
-            using (var input = CreateFileW("NUL", 0x80000000, 3, IntPtr.Zero, 3, 0, IntPtr.Zero)) {
-                if (input.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error(), "NUL input failed");
+            {
+                SafeFileHandle input=null,writer=null;
+                try {
+                if (originalRigConsole) {
+                    if (!CreatePipe(out input,out writer,ref security,4096)) throw new Win32Exception(Marshal.GetLastWin32Error(),"Rig stdin pipe creation failed.");
+                    if (!SetHandleInformation(writer.DangerousGetHandle(),1,0)) throw new Win32Exception(Marshal.GetLastWin32Error(),"Rig stdin writer inheritance refusal failed.");
+                } else input=CreateFileW("NUL",0x80000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
+                if (input.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error(), "Owned input failed");
                 foreach (var handle in new [] {output.SafeFileHandle, error.SafeFileHandle, input})
                     if (!SetHandleInformation(handle.DangerousGetHandle(), 1, 1)) throw new Win32Exception(Marshal.GetLastWin32Error());
                 var startup = new StartupInfo {cb=Marshal.SizeOf(typeof(StartupInfo)), desktop="WinSta0\\" + desktopName,
@@ -163,11 +249,13 @@ public static class IW7LabProcess
                         if (WaitForSingleObject(process.process, 0) == 0 && GetExitCodeProcess(process.process, out code))
                             throw new InvalidOperationException("Child exited with code 0x" + code.ToString("X8"));
                     }
-                    var owned=new OwnedProcess(process.process,(int)process.pid);
+                    var owned=new OwnedProcess(process.process,(int)process.pid,writer,consoleDedicated);
+                    writer=null;
                     process.process=IntPtr.Zero;
                     return owned;
                 }
                 finally { CloseHandle(process.thread); if (process.process!=IntPtr.Zero) CloseHandle(process.process); }
+                } finally { if(input!=null)input.Dispose(); if(writer!=null)writer.Dispose(); }
             }
         } finally { CloseDesktop(desktop); }
     }
