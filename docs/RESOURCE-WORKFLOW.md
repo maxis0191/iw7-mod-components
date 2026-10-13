@@ -62,6 +62,14 @@ telemetry failures still confirm its closure. The native ABI and 100 actual
 GetPerformanceInfo reads pass. These are source/process lifecycle tests; no
 game, retail extraction, Main deployment or owner gameplay is claimed.
 
+The composed candidate's 46 declared source groups are locally qualified: 45
+passed in the complete run, then the final Java resolver group passed after
+using the existing portable JDK21 on the command-local PATH. The initial Java
+invocation did not start (WinError2); its failure log is retained. The rerun
+acquired/released the shared lease and exited zero. CLI Status/Measure also
+retained fresh native samples with the new policy. Exact-head CI is recorded in
+the linked PR; a job with runner_id=0 and no steps is unexecuted, never a pass.
+
 `ops/Resource-Scheduler.Core.ps1` is the common admission API. Every worktree uses
 the same account-wide registry under `%LOCALAPPDATA%/IW7Paris/ResourceScheduler`.
 A file handle opened with no sharing serializes snapshot/check/reserve/write.
