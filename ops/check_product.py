@@ -24,7 +24,7 @@ def main():
     for check in config['checks']:
         if args.only and check['id'] not in args.only:
             continue
-        command = [v.replace('{workspace}', str(args.workspace.resolve())) for v in check['command']]
+        command = [v.replace('{workspace}', str(args.workspace.resolve())).replace('{run}', str(args.output.resolve())) for v in check['command']]
         if command[0] == 'python': command[0] = sys.executable
         started = time.monotonic()
         log = args.output / (check['id'] + '.log')

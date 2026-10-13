@@ -386,17 +386,6 @@
       ]
     },
     {
-      "id": "voice_pair_recorder_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_pair_recorder_test.ps1"
-      ]
-    },
-    {
       "id": "voice_pair_source_options_test",
       "command": [
         "pwsh",
@@ -487,6 +476,20 @@
         "-B",
         "tests/ops/source_workspace_test.py"
       ]
+    }
+  ],
+  "retained_checks": [
+    {
+      "id": "voice_pair_recorder_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/voice_pair_recorder_test.ps1"
+      ],
+      "reason": "Requires an explicitly qualified native WorkerPath; not part of the previous source-only CI and not run by this refactoring."
     }
   ]
 }
