@@ -43,7 +43,29 @@ def ordinary(path, *, missing=False):
             raise ValueError('Redirected source or output ancestry refused: ' + str(part))
     return path
 
-def prepare(project, revision, bindings, output):
+def cached_source(dependency, cache):
+    """Fetch one immutable source revision into a new cache entry, never reset."""
+    ident, revision, url = dependency['id'], dependency['revision'], dependency['repository']
+    if not re.fullmatch('[a-z0-9-]+', ident) or not re.fullmatch('[0-9a-f]{40}', revision):
+        raise ValueError('Invalid source cache identity')
+    if url != 'https://github.com/maxis0191/' + ident + '.git':
+        raise ValueError('Only the explicitly owned private product source is supported')
+    root = ordinary(Path(cache) / ident / revision, missing=True)
+    if root.exists():
+        if git(root, 'remote', 'get-url', 'origin') != url or git(root, 'rev-parse', 'HEAD') != revision:
+            raise ValueError('Existing dependency cache identity differs; preserve it and use a fresh cache')
+        return root
+    root.mkdir(parents=True)
+    for command in (
+        ['init', '-q'], ['remote', 'add', 'origin', url],
+        ['fetch', '--depth=1', '--no-tags', 'origin', revision], ['checkout', '--detach', 'FETCH_HEAD'],
+    ):
+        subprocess.run(['git', '-C', str(root), *command], check=True)
+    if git(root, 'rev-parse', 'HEAD') != revision:
+        raise ValueError('Fetched source revision differs')
+    return root
+
+def prepare(project, revision, bindings, output, cache=None):
     project = ordinary(project)
     output = ordinary(output, missing=True)
     if output.exists():
@@ -56,7 +78,9 @@ def prepare(project, revision, bindings, output):
     requests = [{'id': product['id'], 'revision': revision, 'files': product['exports'], 'root': project}]
     for dependency in product['dependencies']:
         if dependency['id'] not in bindings:
-            raise ValueError('Missing dependency binding: ' + dependency['id'])
+            if cache is None:
+                raise ValueError('Missing dependency binding: ' + dependency['id'])
+            bindings[dependency['id']] = cached_source(dependency, cache)
         requests.append(dict(dependency, root=ordinary(bindings[dependency['id']])))
     entries, seen, total, revisions = [], set(), 0, {}
     for source in requests:
@@ -83,7 +107,11 @@ def prepare(project, revision, bindings, output):
             size = file.stat().st_size
             if size > MAX_FILE or total + size > MAX_TOTAL:
                 raise ValueError('Source composition byte budget exceeded')
-            raw = file.read_bytes()
+            # Export committed content with Git's checkout filters. Reading the
+            # object instead of mutable worktree bytes prevents a change/read/
+            # restore race from forging the recorded revision. The physical
+            # checkout is still required clean and checked again below.
+            raw = subprocess.check_output(['git', '-C', str(root), 'cat-file', '--filters', commit + ':' + relative])
             raw.decode('utf-8-sig')
             if b'\x00' in raw or len(raw) != size:
                 raise ValueError('Non-text or changing source input refused')
@@ -128,6 +156,7 @@ def main():
     parser.add_argument('--project', type=Path)
     parser.add_argument('--revision')
     parser.add_argument('--source', action='append', default=[], metavar='PRODUCT=CHECKOUT')
+    parser.add_argument('--cache', type=Path, help='Explicit source-only cache; missing bindings are fetched at exact revisions')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--verify', action='store_true')
     args = parser.parse_args()
@@ -143,7 +172,7 @@ def main():
                 if not separator or name in bindings:
                     raise ValueError('Unique PRODUCT=CHECKOUT bindings required')
                 bindings[name] = value
-            result = prepare(args.project, args.revision, bindings, args.output)
+            result = prepare(args.project, args.revision, bindings, args.output, args.cache)
         print(json.dumps(dict(ok=True, product=result['product'], files=len(result['files']), bytes=result['bytes'], output=str(args.output))))
     except (ValueError, OSError, subprocess.SubprocessError, KeyError) as error:
         print(json.dumps(dict(ok=False, error=str(error))), file=sys.stderr)
