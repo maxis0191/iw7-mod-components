@@ -1,5 +1,36 @@
 # Agent capabilities and the next engine investigation
 
+## Independent client protection snapshot — 2026-10-13, source checks
+
+`paris_test_fixture::client_protection()` returns `client_test_protection` by
+value on scheduler main. It requires the isolated client-test flags, a live
+remote CP client, the current loopback endpoint/expected test port and a challenge
+matching the existing agent connection. It reuses the same server-confirmed
+protection ACK, nonce and generation; it sends no handshake or input and grants
+no capture permission. Voice flags/macros are unnecessary. Invalid state returns
+an empty value. The original voice capture API and protocol stay unchanged.
+
+The value contains PID, actual/expected port, query/observation ticks, nonce,
+generation, connection challenge and observed server map. Its pure
+`client_protection_current(value, now)` check retains the existing 500 ms query
+age and five-map CP scope. Both ticks and `now` use the `GetTickCount64` domain.
+An independent atomic thread marker rejects off-thread callers before reading
+the main-owned agent state. Consumers must obtain a fresh main-thread value;
+copied strings are not a world lifetime, physics epoch or pre-reset callback.
+No qualified `CL_ShutdownCGame`/client-world pre-reset hook was found in the
+existing pin. Collision client activation remains separately unqualified.
+The frozen native958/caccd698 image, manifest and source snapshot are unchanged.
+
+Corrected candidate `34cfdb7706b29baddea7b73fa2cb5e9fb241f87a` passes one MSVC
+C++17 `/W4 /WX /Od /RTC1` compilation and real fixture execution: 20 snapshot
+assertions plus the existing 200,000-packet seeded voice fuzz (29 canonical).
+The original root exits zero in 3,165 ms; its owned job tree closes and its lease
+is released. An earlier orchestration attempt refused child registration before
+Resume and ran no compiler; its failed receipt is retained separately from the
+successful retry. The native getter adapter itself is not compiled by this pure
+fixture. Full native compilation, runtime behavior and client-world lifetime
+qualification remain future witnesses.
+
 ## Current engine interfaces after the product split — 2026-10-13
 
 The native editing repository is `iw7-mod-components`. Compose its declared
