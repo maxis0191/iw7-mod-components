@@ -22,6 +22,32 @@ int main()
     }
     check(!allow_inactivity_exception(safe,"EXE_PLAYERKICKED") && !allow_inactivity_exception(safe,"GAME_DROPPEDFORINACTIVITY") &&
         !allow_inactivity_exception(safe,"EXE_PLAYERKICKED_INACTIVE "),"unrelated kick was bypassed");
+    client_test_protection client{true,true,42,27116,27116,1000,1010,std::string(32,'a'),std::string(32,'b'),"connection-challenge","cp_zmb"};
+    check(client_protection_current(client,1010) && client_protection_current(client,1500),"fresh client snapshot rejected");
+    check(!client_protection_current(client,1501) && !client_protection_current(client,1009),"stale/future client snapshot accepted");
+    check(!client_protection_current({},1010),"empty client protection accepted");
+    for (int i=0; i<12; ++i)
+    {
+        auto invalid=client;
+        switch(i)
+        {
+        case 0: invalid.protected_now=false; break;
+        case 1: invalid.current_loopback=false; break;
+        case 2: invalid.pid=0; break;
+        case 3: invalid.expected_port=27016; break;
+        case 4: invalid.expected_port=28000; break;
+        case 5: invalid.port=27117; break;
+        case 6: invalid.query_tick=0; break;
+        case 7: invalid.observed_tick=999; break;
+        case 8: invalid.nonce[0]='z'; break;
+        case 9: invalid.generation.pop_back(); break;
+        case 10: invalid.challenge.clear(); break;
+        case 11: invalid.map="cp_frontend"; break;
+        }
+        check(!client_protection_current(invalid,1010),"invalid client protection identity/scope accepted");
+    }
+    for(const auto* map : {"cp_zmb","cp_rave","cp_disco","cp_town","cp_final"})
+    {auto current=client;current.map=map;check(client_protection_current(current,1010),"supported CP map rejected");}
     w::packet p, decoded;
     p.type = w::kind::hello; p.token = 0xFEDCBA9876543210ull;
     check(w::decode(w::encode(p), decoded) && decoded.token == p.token, "hello roundtrip");

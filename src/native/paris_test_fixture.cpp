@@ -10,6 +10,7 @@
 #include <utils/hook.hpp>
 #include <utils/cryptography.hpp>
 #include <format>
+#include <atomic>
 #include <cstring>
 #include "command.hpp"
 #include "party.hpp"
@@ -153,6 +154,7 @@ namespace paris_test_fixture
         iw7::agent::safety agent_safety{};
         std::string agent_generation;
         DWORD capture_main_tid{};
+        std::atomic<DWORD> client_protection_main_tid{0};
         unsigned capture_protected_slot=4;
         bool capture_slot_correlated{};
         std::string agent_connection_challenge;
@@ -742,6 +744,7 @@ namespace paris_test_fixture
             if (!agent_runtime.client || !utils::flags::has_flag("paris-isolated-lab")) return;
             const auto now = GetTickCount64();
             capture_main_tid=GetCurrentThreadId();
+            client_protection_main_tid.store(GetCurrentThreadId(), std::memory_order_relaxed);
             const auto* connection = party::get_server_connection_state();
             const auto* port = game::Dvar_FindVar("paris_lab_server_port");
             const int expected_port = port && port->type == game::DVAR_TYPE_STRING && port->current.string ? std::atoi(port->current.string) :
@@ -1040,6 +1043,32 @@ namespace paris_test_fixture
             utils::io::write_file("iw7-mod/paris-server-client.response", request);
             console::info("[Paris module client] Request %s dispatched and returned.\n", action.c_str());
         }
+    }
+    client_test_protection client_protection()
+    {
+        client_test_protection result{};
+        const auto main_tid = client_protection_main_tid.load(std::memory_order_relaxed);
+        if (!main_tid || GetCurrentThreadId() != main_tid) return result;
+        if (!agent_runtime.client ||
+            game::environment::is_dedi() || !utils::flags::has_flag("paris-isolated-lab") ||
+            !utils::flags::has_flag("paris-server-client-test")) return result;
+        const auto now = GetTickCount64();
+        if (!iw7::agent::scenario::safe(agent_safety, now)) return result;
+        const auto* connection = party::get_server_connection_state();
+        if (!connection || !connection->hostDefined || !loopback(connection->host) ||
+            connection->challenge != agent_connection_challenge || game::Com_IsAnyLocalServerRunning() ||
+            game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP || !game::CL_IsGameClientActive(0) ||
+            game::clientUIActives[0].connectionState != game::CA_ACTIVE) return result;
+        const auto* port = game::Dvar_FindVar("paris_lab_server_port");
+        const int expected_port = port && port->type == game::DVAR_TYPE_STRING && port->current.string ? std::atoi(port->current.string) :
+            port && port->type == game::DVAR_TYPE_INT ? port->current.integer : 0;
+        if (expected_port < 27100 || expected_port > 27999 || ntohs(connection->host.port) != expected_port) return result;
+        result.protected_now = true; result.current_loopback = true;
+        result.pid = GetCurrentProcessId(); result.port = ntohs(connection->host.port); result.expected_port = static_cast<unsigned>(expected_port);
+        result.query_tick = agent_safety.received; result.observed_tick = now;
+        result.nonce = agent_runtime.client_nonce; result.generation = agent_generation;
+        result.challenge = connection->challenge; result.map = agent_safety.map;
+        return client_protection_current(result, GetTickCount64()) ? result : client_test_protection{};
     }
 #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
     client_capture_protection capture_protection() {
