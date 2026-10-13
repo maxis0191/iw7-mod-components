@@ -10,6 +10,7 @@
 #include <utils/hook.hpp>
 #include <utils/cryptography.hpp>
 #include <format>
+#include <atomic>
 #include <cstring>
 #include "command.hpp"
 #include "party.hpp"
@@ -153,6 +154,7 @@ namespace paris_test_fixture
         iw7::agent::safety agent_safety{};
         std::string agent_generation;
         DWORD capture_main_tid{};
+        std::atomic<DWORD> client_protection_main_tid{0};
         unsigned capture_protected_slot=4;
         bool capture_slot_correlated{};
         std::string agent_connection_challenge;
@@ -742,6 +744,7 @@ namespace paris_test_fixture
             if (!agent_runtime.client || !utils::flags::has_flag("paris-isolated-lab")) return;
             const auto now = GetTickCount64();
             capture_main_tid=GetCurrentThreadId();
+            client_protection_main_tid.store(GetCurrentThreadId(), std::memory_order_relaxed);
             const auto* connection = party::get_server_connection_state();
             const auto* port = game::Dvar_FindVar("paris_lab_server_port");
             const int expected_port = port && port->type == game::DVAR_TYPE_STRING && port->current.string ? std::atoi(port->current.string) :
@@ -1044,7 +1047,9 @@ namespace paris_test_fixture
     client_test_protection client_protection()
     {
         client_test_protection result{};
-        if (!capture_main_tid || GetCurrentThreadId() != capture_main_tid || !agent_runtime.client ||
+        const auto main_tid = client_protection_main_tid.load(std::memory_order_relaxed);
+        if (!main_tid || GetCurrentThreadId() != main_tid) return result;
+        if (!agent_runtime.client ||
             game::environment::is_dedi() || !utils::flags::has_flag("paris-isolated-lab") ||
             !utils::flags::has_flag("paris-server-client-test")) return result;
         const auto now = GetTickCount64();

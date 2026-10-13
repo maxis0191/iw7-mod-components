@@ -13,7 +13,9 @@ an empty value. The original voice capture API and protocol stay unchanged.
 The value contains PID, actual/expected port, query/observation ticks, nonce,
 generation, connection challenge and observed server map. Its pure
 `client_protection_current(value, now)` check retains the existing 500 ms query
-age and five-map CP scope. Consumers must obtain a fresh main-thread value;
+age and five-map CP scope. Both ticks and `now` use the `GetTickCount64` domain.
+An independent atomic thread marker rejects off-thread callers before reading
+the main-owned agent state. Consumers must obtain a fresh main-thread value;
 copied strings are not a world lifetime, physics epoch or pre-reset callback.
 No qualified `CL_ShutdownCGame`/client-world pre-reset hook was found in the
 existing pin. Collision client activation remains separately unqualified.
