@@ -5,6 +5,13 @@
 int main()
 {
     using namespace collision_provider;
+    // A ready recycled client world must still be refused. Readiness and launch
+    // flags cannot establish its private connection or allocation generation.
+    for (int world = -1; world <= 9; ++world)
+    {
+        assert(!world_permitted(false, world));
+        assert(world_permitted(true, world) == (world == 0 || world == 1));
+    }
     const auto floor = make_box({-256, -192, -16}, {256, 192, 0});
     assert((floor.origin == point{0, 0, -8}));
     assert((floor.half == point{256, 192, 8}));

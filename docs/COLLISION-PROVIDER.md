@@ -48,14 +48,21 @@ bound to `127.0.0.1`, password protected and `sv_lanOnly=1` before creation.
 Use the existing heartbeat-suppressed private test profile and complete shared
 resource ownership. Main UDP27016 and an occupied owner client are preserved.
 
-This first API uses static boxes in existing worlds. It does not replicate
-colliders automatically. Server world 0 and the client worlds needed by the
-actual movement path must each be qualified. The current GSC method creates
-world 0 only; console commands permit explicit worlds 0/1 on the dedicated
-and 2/3/4 on the rendering client. These IDs are not evidence that every player
-query has been covered. Explicitly clear a model's boxes before deleting it.
-The dedicated's existing pre-shutdown callback also clears owned instances.
-Client teardown and map transitions remain part of the required engine test.
+This first API permits dedicated worlds 0/1 only; the current GSC method
+creates world 0. Client activation returns before bindings/hooks/commands and
+client creation is also refused by the allocation policy. A ready client world
+and launch flags cannot establish its current private endpoint or generation.
+Independent review found that the server VM pre-shutdown callback would leave
+client records containing IDs and asset pointers across disconnect/map reset.
+Clearing those against a recycled world could destroy somebody else's body.
+The correction refuses clients while the real pre-reset client lifecycle and
+loopback/private connection are investigated. It does not clear stale pointers
+or treat a server callback as client cleanup.
+
+It does not replicate colliders automatically or prove player prediction.
+Explicitly clear a model's boxes before deleting it. The dedicated's existing
+pre-shutdown callback also clears owned instances. Server/client reset lifetime
+and epoch validation remain required before any claim of persistent map support.
 
 ## Creator interface
 
@@ -102,7 +109,9 @@ Compile the pure geometry test and the provider against pinned upstream
 workload slot. Do not reuse native958's executable or runtime evidence.
 First create one elevated box in a zero-client private dedicated and inspect
 real engine traces plus removal. Keep the point fraction 0.5 and the AABB
-oracle 44/60 as expectations, not measured outcomes. Then mirror the box into
-the protected rendering client, establish fresh engine godmode/inactivity0/
-sv_cheats0 and observe standing, falling, contact and movement. Preserve any
-failed build/run and update this record with the exact candidate and results.
+oracle 44/60 as expectations, not measured outcomes. Qualify the actual client
+pre-reset lifecycle, generation binding and loopback/private endpoint before
+reenabling client creation. Then mirror the box into the protected rendering
+client, establish fresh engine godmode/inactivity0/sv_cheats0 and observe standing,
+falling, contact and movement. Preserve any failed build/run and update this
+record with the exact candidate and results.

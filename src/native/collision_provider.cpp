@@ -63,16 +63,14 @@ namespace collision_provider
 
         bool world_ready(int world)
         {
-            if (world < 0 || world > 4 || (game::environment::is_dedi() ? world > 1 : world < 2)) return false;
+            if (!world_permitted(game::environment::is_dedi(), world)) return false;
             const auto location = reinterpret_cast<void**>(0x144BDF5A0 + static_cast<std::uintptr_t>(world) * 0x358 + 0x30);
             return readable(location, sizeof(void*)) && readable(*location, sizeof(void*));
         }
 
         bool session_ready()
         {
-            if (!game::environment::is_dedi())
-                return game::CL_IsGameClientActive(0) && game::clientUIActives[0].cgameInitialized &&
-                    game::clientUIActives[0].connectionState == game::CA_ACTIVE;
+            if (!game::environment::is_dedi()) return false;
             const auto* lan = game::Dvar_FindVar("sv_lanOnly");
             const auto* password = game::Dvar_FindVar("g_password");
             const auto* bind = game::Dvar_FindVar("net_ip");
@@ -267,6 +265,11 @@ namespace collision_provider
         {
             if (!utils::flags::has_flag("paris-collision-provider")) return;
             if (!utils::flags::has_flag("paris-isolated-lab")) throw std::runtime_error("Collision provider requires the isolated laboratory flag");
+            if (!game::environment::is_dedi())
+            {
+                console::info("[Collision provider] client creation disabled until private endpoint and pre-reset world lifetime are qualified\n");
+                return;
+            }
             verify_bindings();
             capsule_factory_hook.create(0x140574550, capsule_factory);
             command::add("collision_box_create", [](const command::params& args)

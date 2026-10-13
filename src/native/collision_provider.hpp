@@ -24,6 +24,12 @@ namespace collision_provider
     };
     static_assert(sizeof(strided_vertices) == 16);
 
+    inline bool world_permitted(bool dedicated, int world)
+    {
+        // Remote-client privacy and pre-reset lifetime have not been qualified.
+        return dedicated && (world == 0 || world == 1);
+    }
+
     struct box
     {
         point minimum, maximum, origin, half;
