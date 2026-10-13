@@ -53,6 +53,13 @@ post-exit/disposed refusal. Existing base-client context, behavior, original
 exit-race and owned-process lifecycle tests also pass. PowerShell parsing,
 diff whitespace and product ownership pass. No native build or game was run.
 
+CI for code candidate `4ac4bfa8e6f8a4bb2c52accfeb0bd22f4d692aef` did
+not start: runs `38479556499` / `38479489861`, checks `115578516426` /
+`115578296025`, report the account payment/spending admission refusal. Both
+actual jobs have `runner_id=0` and no steps. No CI test passed or executed;
+the existing owner exception applies only to this pre-run refusal, with the
+real local checks and independent review retained.
+
 ## Independent client protection snapshot — 2026-10-13, source checks
 
 `paris_test_fixture::client_protection()` returns `client_test_protection` by
