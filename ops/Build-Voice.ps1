@@ -1,4 +1,4 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger, [switch]$CollisionProvider,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
@@ -27,6 +27,7 @@ function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
 }
 if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requires ServerModules and IsolatedLab.' }
 if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
+if ($CollisionProvider -and (!$ServerModules -or !$IsolatedLab)) { throw 'CollisionProvider requires ServerModules and IsolatedLab.' }
 if ($ServerModules -and ($RhinoExperiment -or $EnemyExperiment)) {
     throw 'ServerModules is incompatible with enemy/Rhino overlays.'
 }
@@ -53,6 +54,10 @@ $testCmd = Join-Path $runtime 'compile-voice-tests.cmd'
 @"
 @echo off
 call "$vcvars" >nul
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\collision_provider_test.cpp" /Fe:"$runtime\collision-provider-test.exe" /Fo:"$runtime\collision-provider-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\collision-provider-test.exe"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\afk_inactivity_test.cpp" /Fe:"$runtime\afk-inactivity-test.exe" /Fo:"$runtime\afk-inactivity-test.obj"
 if errorlevel 1 exit /b 1
@@ -264,6 +269,20 @@ else {
         }
     }
 }
+# Collision provider source selection; do not leave its TU in a disabled build.
+if ($CollisionProvider) { $nativeSources += @('collision_provider.cpp','collision_provider.hpp') }
+else {
+    foreach ($file in @('collision_provider.cpp','collision_provider.hpp')) {
+        $target=Join-Path $root ('src/client/component/' + $file)
+        if (Test-Path -LiteralPath $target) {
+            if ((Get-FileHash -LiteralPath $target).Hash -ne (Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $file))).Hash) {
+                throw 'Unowned collision provider overlay; preserve it and use a separate native source checkout.'
+            }
+            Remove-Item -LiteralPath $target
+        }
+    }
+}
+# End collision provider source selection.
 . "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1"
 # Debugger already requires IsolatedLab+ServerModules (pinned CP SDK).
 # Main/nondebugger profiles contain no capacity watcher translation unit.
@@ -499,6 +518,7 @@ Copy-Item -LiteralPath "$output/iw7-paris-voice.exe" -Destination (Join-Path $sy
 Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.pdb" -Destination (Join-Path $symbols 'iw7-mod.pdb') -Force
 $manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
 $manifest.Debugger = [bool]$Debugger
+$manifest.CollisionProvider = [bool]$CollisionProvider
 $manifest.FakeCaptureBuild=$fakeCaptureBuild
 $manifest.PTTInputBridgeBuild=$pttInputBridgeBuild
 $manifest.FakeCaptureBuildHelperSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/voice-agent/Fake-BuildCopy.Core.ps1").Hash
