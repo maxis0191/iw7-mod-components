@@ -1,6 +1,6 @@
 # Agent capabilities and the next engine investigation
 
-## Independent client protection snapshot — 2026-10-13, source candidate
+## Independent client protection snapshot — 2026-10-13, source checks
 
 `paris_test_fixture::client_protection()` returns `client_test_protection` by
 value on scheduler main. It requires the isolated client-test flags, a live
@@ -20,6 +20,16 @@ copied strings are not a world lifetime, physics epoch or pre-reset callback.
 No qualified `CL_ShutdownCGame`/client-world pre-reset hook was found in the
 existing pin. Collision client activation remains separately unqualified.
 The frozen native958/caccd698 image, manifest and source snapshot are unchanged.
+
+Corrected candidate `34cfdb7706b29baddea7b73fa2cb5e9fb241f87a` passes one MSVC
+C++17 `/W4 /WX /Od /RTC1` compilation and real fixture execution: 20 snapshot
+assertions plus the existing 200,000-packet seeded voice fuzz (29 canonical).
+The original root exits zero in 3,165 ms; its owned job tree closes and its lease
+is released. An earlier orchestration attempt refused child registration before
+Resume and ran no compiler; its failed receipt is retained separately from the
+successful retry. The native getter adapter itself is not compiled by this pure
+fixture. Full native compilation, runtime behavior and client-world lifetime
+qualification remain future witnesses.
 
 ## Current engine interfaces after the product split — 2026-10-13
 
