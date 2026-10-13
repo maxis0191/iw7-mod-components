@@ -13,9 +13,10 @@ function Test-IW7ResourceBudget($Snapshot, [long]$PhysicalBytes, [long]$CommitBy
         $Snapshot.PhysicalAvailable -lt 0 -or $Snapshot.PhysicalAvailable -gt $Snapshot.PhysicalTotal -or
         $Snapshot.Committed -lt 0 -or $Snapshot.Committed -gt $Snapshot.CommitLimit -or
         $PhysicalBytes -lt 0 -or $CommitBytes -lt 0) { throw 'Invalid resource snapshot or reservation.' }
-    # Owner decision 2026-10-06: no fixed or percentage RAM reserve.
+    # Owner decisions 2026-10-06 / 2026-10-13: no fixed or percentage reserve.
+    # Both complete estimates must fit the actual available capacity.
     $physicalReserve = 0L
-    $commitReserve = [math]::Max(4GB, $Snapshot.CommitLimit * 0.20)
+    $commitReserve = 0L
     [pscustomobject]@{
         Allowed = (($Snapshot.PhysicalAvailable - $PhysicalBytes) -ge $physicalReserve -and
             ($Snapshot.CommitLimit - $Snapshot.Committed - $CommitBytes) -ge $commitReserve)
@@ -25,7 +26,7 @@ function Test-IW7ResourceBudget($Snapshot, [long]$PhysicalBytes, [long]$CommitBy
         CommitReserve = [long]$commitReserve
         AdditionalPhysical = $PhysicalBytes
         AdditionalCommit = $CommitBytes
-        HighWater = ($Snapshot.Committed -gt $Snapshot.CommitLimit * 0.85)
+        HighWater = ($Snapshot.Committed -ge $Snapshot.CommitLimit)
     }
 }
 function Get-IW7ResourceProcesses {
@@ -169,7 +170,7 @@ function Enter-IW7ResourceLease {
         }
         $budget = Test-IW7ResourceBudget (Get-IW7ResourceSnapshot) ([math]::Max(0L,$PhysicalBytes-$resident)) ([math]::Max(0L,$CommitBytes-$committed))
         if (!$budget.Allowed -or $budget.HighWater) {
-            throw "Resource budget refuses admission: physical=$($budget.PhysicalUsedPercent)%, commit=$($budget.CommitUsedPercent)%; estimated workload must fit available RAM (no reserve) and leave configured commit headroom."
+            throw "Resource budget refuses admission: physical=$($budget.PhysicalUsedPercent)%, commit=$($budget.CommitUsedPercent)%; complete estimated workload must fit available RAM and commit capacity (no reserve)."
         }
         if (!$same.Count) {
             $identity = @($processes | Where-Object PID -EQ $PID)[0]

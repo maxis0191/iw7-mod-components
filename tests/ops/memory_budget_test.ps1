@@ -5,8 +5,8 @@ $sample = [pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=16GB;CommitLimi
 $result = Test-IW7MemoryBudget $sample 8GB 8GB
 Check ($result.PhysicalFits -and $result.CommitFits -and !$result.HighWater) 'Expected bounded reduced-client headroom.'
 $result = Test-IW7MemoryBudget $sample 12GB 12GB
-Check ($result.PhysicalFits -and !$result.CommitFits) 'RAM has no margin; commit still has its independent reserve.'
-$sample.PhysicalAvailable = 24GB; $sample.Committed = 39GB
+Check ($result.PhysicalFits -and $result.CommitFits) 'Neither RAM nor commit has an artificial reserve.'
+$sample.PhysicalAvailable = 24GB; $sample.Committed = 43GB
 $result = Test-IW7MemoryBudget $sample 8GB 8GB
 Check ($result.PhysicalFits -and !$result.CommitFits) 'Paging/trimmed resident use must not hide committed pressure.'
 $sample.PhysicalAvailable = 7GB; $sample.Committed = 20GB
@@ -18,7 +18,11 @@ $sample.PhysicalAvailable = 1GB
 Check ((Test-IW7MemoryBudget $sample 1GB 0).PhysicalFits) 'Exact available RAM must fit without a reserve.'
 Check (!(Test-IW7MemoryBudget $sample (1GB+1) 0).PhysicalFits) 'Do not reserve more RAM than is actually available.'
 $sample.PhysicalAvailable = 20GB; $sample.Committed = 43GB
-Check ((Test-IW7MemoryBudget $sample).HighWater) 'Committed high-water mark must stop tests independently.'
+Check (!(Test-IW7MemoryBudget $sample).HighWater) 'Commit use above 85 percent must not stop tests.'
+Check ((Test-IW7MemoryBudget $sample 0 7GB).CommitFits) 'Exact available commit capacity must fit.'
+Check (!(Test-IW7MemoryBudget $sample 0 (7GB+1)).CommitFits) 'Actual commit capacity must not be exceeded.'
+$sample.Committed=50GB
+Check ((Test-IW7MemoryBudget $sample).HighWater) 'Actual commit exhaustion remains observable.'
 $sample.PhysicalAvailable = 8GB; $sample.Committed = 40GB
 $result = Test-IW7MemoryBudget $sample
 Check ($result.PhysicalFits -and $result.CommitFits -and !$result.HighWater) 'Exact reservation boundaries should fit without a new allocation.'

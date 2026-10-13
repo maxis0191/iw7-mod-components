@@ -22,7 +22,14 @@ $snapshot=Get-IW7ResourceSnapshot
 Assert (Test-IW7ResourceBudget $snapshot 28GB 26.4GB).Allowed 'All available RAM can be reserved without a margin.'
 Assert ((Test-IW7ResourceBudget $snapshot 20GB 1GB).PhysicalReserve -eq 0) 'A fixed RAM reserve must not survive.'
 Assert (!(Test-IW7ResourceBudget $snapshot (28GB+1) 1GB).Allowed) 'An estimate exceeding actual available RAM must fail.'
-Assert (!(Test-IW7ResourceBudget $snapshot 1GB 27GB).Allowed) 'Commit reserve must be independent.'
+Assert ((Test-IW7ResourceBudget $snapshot 1GB 36GB).Allowed) 'All actually available commit capacity can be reserved.'
+Assert ((Test-IW7ResourceBudget $snapshot 1GB 1GB).CommitReserve -eq 0) 'No artificial commit reserve remains.'
+Assert (!(Test-IW7ResourceBudget $snapshot 1GB (36GB+1)).Allowed) 'An estimate exceeding actual commit capacity must fail.'
+$commitBusy=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=8GB;CommitLimit=48GB;Committed=44GB}
+$commitBudget=Test-IW7ResourceBudget $commitBusy 1GB 4GB
+Assert ($commitBudget.Allowed -and !$commitBudget.HighWater) 'High commit usage with enough actual capacity must not refuse or stop work.'
+$commitBusy.Committed=48GB
+Assert ((Test-IW7ResourceBudget $commitBusy 0 0).HighWater) 'Actual commit exhaustion remains observable.'
 $ramBusy=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=1GB;CommitLimit=48GB;Committed=12GB}
 $busyBudget=Test-IW7ResourceBudget $ramBusy 1GB 1GB
 Assert ($busyBudget.Allowed -and !$busyBudget.HighWater) 'High RAM use alone must neither refuse nor stop work.'

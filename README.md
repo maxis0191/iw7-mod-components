@@ -69,3 +69,21 @@ Run an authorized operation from the generated package, or use
 are editing locations; operations requiring another product must use prepared
 inputs. Older commands in dated documents refer to their original frozen layout.
 Do not reuse an old runtime receipt for a newly composed input.
+
+## Owner policy and gameplay fixture update - 2026-10-13
+
+The owner removed artificial commit headroom (20%/4 GiB) and the 85% stop rule,
+matching the already removed RAM reserve. Complete estimates must still fit
+actual available RAM and commit; exclusive leases, live process identity and
+occupied owner-client protections remain. This supersedes dated reserve values.
+
+The private gameplay fixture can protect and clean up engine test bots only
+while a protected local player is present on an explicitly isolated, private,
+LAN-only CP dedicated with cheats disabled. It exposes no admin chat commands,
+owner authentication, identity overrides or ban storage. The owner cancelled
+all admin commands; do not reintroduce them. The helper enabled a protected
+Spaceland shared-weapon witness, independently of owner gameplay acceptance.
+
+The server's retained pre-migration tree carries identical compatibility copies
+for its current build/tests. The canonical implementations are these exports;
+server migration must consume this revision instead of restoring foreign trees.
