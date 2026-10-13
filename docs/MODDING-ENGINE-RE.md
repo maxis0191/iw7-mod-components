@@ -1,5 +1,49 @@
 # Agent capabilities and the next engine investigation
 
+## Current engine interfaces after the product split — 2026-10-13
+
+The native editing repository is `iw7-mod-components`. Compose its declared
+inputs with `bootstrap.ps1`; the generated directory is an operation input,
+not an editing checkout. The server owns `Agent-Lab.ps1`, its scenarios and
+`Agent-NativePackage.Core.ps1`; the asset product owns fastfile writers and the
+SDK owns reusable author examples. Commands and relative links in the dated
+sections below refer to their original server layout. Use the owning product's
+composed package for a new run. The resource policy is telemetry-only; consume
+its merged source pin before an operational package is prepared.
+
+For a private demonstration, the existing path already provides:
+
+| Operation | Existing interface | Required observation |
+| --- | --- | --- |
+| Join the retained test dedicated from the free base client | `New-IW7BaseClientPlan`, then `Start-IW7BaseClient`; Start sends `connect` | Exact owned server/client identities and a fresh protected session |
+| Protect a player | GSC `player paris_test_protect()` and `player paris_test_safety_snapshot()` | `protected=1`, `bound=1`, engine `godmode=1`, `inactivity=0`, `cheats=0`, `failed=0` |
+| Capture the rendering client | `Send-IW7BaseRequest $session 'capture'`; server helper `Save-IW7AgentPreActionFrame` validates the result | Fresh acknowledged 1280×720 BMP, nonce/PID binding and a new graphics tick |
+| Dispatch Use or Fire | Server helper `Invoke-IW7AgentScenario` | A gameplay effect; the input acknowledgement alone proves dispatch |
+| Place a custom prop | `precachemodel("paris_model_probe")`, `spawn("script_model", origin)`, then `entity setmodel("paris_model_probe")` | The non-default asset and its pixels, after the fastfile and model NetConstStrings load |
+
+`Start-IW7BaseClient` requires an already reserved scenario, a retained server
+identity, the private password and an image inside the base installation. Its
+transaction restores the existing profile/mailboxes. Preserve an occupied
+owner client and Main UDP27016. A snapshot preceding exposure to enemies and
+continuous protection during the encounter remain necessary.
+
+The existing model diagnostic is fixed to `mods/paris_model_probe`. The first
+successful agent arm samples the named model, LOD0 mesh and model NetConstStrings
+once per nonce/generation/connection. It records readable CPU fields and buffer
+presence; it does not prove an allocation lifetime, loader invocation, valid
+GPU resource, draw or rendered skinning. Later provenance extensions are not
+implicitly present in an older native image. When reusing such an image, verify
+all of its declared source files and executable against its exact historical
+build separately from the current scenario/helper identity; never ignore a
+source mismatch or rewrite its manifest.
+
+An imported rig still needs its custom animation precache/NetConstStrings and
+actual deformation qualified. The retail prop route is `precachempanim` plus
+`scriptmodelplayanim`; its existence is not a completed custom rig. The native
+source exposes `fx::PhysicsQuery_LegacyTrace`, but no static-box authoring API or
+`SV_LinkEntity` binding is qualified here. GSC names `solid`, `setcontents` and
+physics queries alone do not establish an original world collider.
+
 The [exact source-tip runtime mode](SOURCE-TIP-RUNTIME.md) now separates a
 zero-client compile/load/init test from protected first-spawn captures, using the
 retained native package with all 34 historical source entries pinned. Source
