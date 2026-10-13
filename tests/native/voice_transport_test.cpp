@@ -143,6 +143,71 @@ int main()
         require(duplicate.a.roster().speakers[0].generation == generation,
                 "duplicate confirm rotated generation");
 
+        // Network duplication must not spend the quota reserved for fresh
+        // speech. Sustain 50 new frames/sec beyond the initial token burst.
+        fixture uplink_duplicates;
+        uplink_duplicates.join(0, uplink_duplicates.a);
+        uplink_duplicates.join(1, uplink_duplicates.b);
+        w::message prior_uplink;
+        for (unsigned i = 0; i < 400; ++i)
+        {
+            uplink_duplicates.time += 20;
+            if (i)
+            {
+                std::vector<t::delivery> ignored;
+                require(!uplink_duplicates.server.receive(
+                            0, roundtrip(prior_uplink),
+                            static_cast<unsigned>(w::encode(prior_uplink).size()),
+                            uplink_duplicates.time, ignored) && ignored.empty(),
+                        "duplicate uplink was relayed");
+            }
+            const auto fresh = uplink_duplicates.a.audio("fresh uplink speech");
+            const auto output = uplink_duplicates.up(0, fresh);
+            require(output.size() == 1 &&
+                        uplink_duplicates.down(uplink_duplicates.b, output[0].data).audio,
+                    "duplicated uplinks throttled fresh speech");
+            prior_uplink = fresh;
+        }
+        fixture downlink_duplicates;
+        downlink_duplicates.join(0, downlink_duplicates.a);
+        downlink_duplicates.join(1, downlink_duplicates.b);
+        w::message prior_downlink;
+        for (unsigned i = 0; i < 400; ++i)
+        {
+            downlink_duplicates.time += 20;
+            if (i)
+                require(!downlink_duplicates.down(downlink_duplicates.b, prior_downlink).accepted,
+                        "duplicate downlink was accepted");
+            const auto output = downlink_duplicates.up(
+                0, downlink_duplicates.a.audio("fresh downlink speech"));
+            require(output.size() == 1 &&
+                        downlink_duplicates.down(downlink_duplicates.b, output[0].data).audio,
+                    "duplicated downlinks throttled fresh speech");
+            prior_downlink = output[0].data;
+        }
+        // Exempting rejected replays must not relax the fresh-frame burst limit.
+        fixture uplink_burst;
+        uplink_burst.join(0, uplink_burst.a);
+        uplink_burst.join(1, uplink_burst.b);
+        w::message downstream;
+        for (unsigned i = 0; i < 120; ++i)
+        {
+            const auto fresh = uplink_burst.a.audio("burst");
+            std::vector<t::delivery> output;
+            const bool accepted = uplink_burst.server.receive(
+                0, roundtrip(fresh), static_cast<unsigned>(w::encode(fresh).size()),
+                uplink_burst.time, output);
+            require(accepted == (i < 100), "fresh uplink burst quota changed");
+            if (i == 0) downstream = output[0].data;
+            if (!accepted) require(output.empty(), "throttled uplink was relayed");
+        }
+        for (unsigned i = 0; i < 120; ++i)
+        {
+            downstream.sequence = i + 1;
+            require(uplink_burst.down(uplink_burst.b, downstream).audio == (i < 100),
+                    "fresh downlink burst quota changed");
+        }
+
         // Lost challenge/welcome and expired challenge recover by retry/new nonce.
         fixture loss;
         auto lost_hello = loss.a.tick(loss.time)[0];
@@ -287,7 +352,8 @@ int main()
                     !no_refill.accept(1, std::numeric_limits<std::uint64_t>::max()),
                 "zero refill rate created tokens");
         std::cout << "PASS: v2 handshake loss/replay/expiry, bidirectional audio, speaker/listener "
-                     "reconnect, slot/server reset, bounded wire and 200000 seeded mutations.\n";
+                     "reconnect, slot/server reset, sustained duplicated speech/fresh quotas, "
+                     "bounded wire and 200000 seeded mutations.\n";
         return 0;
     }
     catch (const std::exception& error)

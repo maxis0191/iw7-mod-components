@@ -6,7 +6,8 @@ if (!$TestRoot) { $TestRoot=Join-Path ([IO.Path]::GetTempPath()) ('iw7-resource-
 [IO.Directory]::CreateDirectory($TestRoot) | Out-Null
 # Tests never change the production global registry or launch a game.
 function Get-IW7ResourceRoot { Join-Path $TestRoot 'registry' }
-function Get-IW7ResourceSnapshot { [pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=28GB;CommitLimit=48GB;Committed=12GB} }
+$script:fakeSnapshot=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=28GB;CommitLimit=48GB;Committed=12GB}
+function Get-IW7ResourceSnapshot { $script:fakeSnapshot }
 $self=Get-Process -Id $PID
 $script:fakeProcesses=@([pscustomobject]@{PID=$PID;ParentPID=0;CreatedUtc=$self.StartTime.ToUniversalTime().ToString('o');Image=$self.Path;Name='pwsh.exe';Lab=$false;Heavy=$false;WorkingSet=100MB;PrivateBytes=100MB})
 function Get-IW7ResourceProcesses { $script:fakeProcesses }
@@ -19,38 +20,44 @@ if ($Contender) {
     return
 }
 $snapshot=Get-IW7ResourceSnapshot
-Assert (Test-IW7ResourceBudget $snapshot 28GB 26.4GB).Allowed 'All available RAM can be reserved without a margin.'
-Assert ((Test-IW7ResourceBudget $snapshot 20GB 1GB).PhysicalReserve -eq 0) 'A fixed RAM reserve must not survive.'
-Assert (!(Test-IW7ResourceBudget $snapshot (28GB+1) 1GB).Allowed) 'An estimate exceeding actual available RAM must fail.'
-Assert ((Test-IW7ResourceBudget $snapshot 1GB 36GB).Allowed) 'All actually available commit capacity can be reserved.'
-Assert ((Test-IW7ResourceBudget $snapshot 1GB 1GB).CommitReserve -eq 0) 'No artificial commit reserve remains.'
-Assert (!(Test-IW7ResourceBudget $snapshot 1GB (36GB+1)).Allowed) 'An estimate exceeding actual commit capacity must fail.'
-$commitBusy=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=8GB;CommitLimit=48GB;Committed=44GB}
-$commitBudget=Test-IW7ResourceBudget $commitBusy 1GB 4GB
-Assert ($commitBudget.Allowed -and !$commitBudget.HighWater) 'High commit usage with enough actual capacity must not refuse or stop work.'
-$commitBusy.Committed=48GB
-Assert ((Test-IW7ResourceBudget $commitBusy 0 0).HighWater) 'Actual commit exhaustion remains observable.'
-$ramBusy=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=1GB;CommitLimit=48GB;Committed=12GB}
-$busyBudget=Test-IW7ResourceBudget $ramBusy 1GB 1GB
-Assert ($busyBudget.Allowed -and !$busyBudget.HighWater) 'High RAM use alone must neither refuse nor stop work.'
+Assert (Test-IW7ResourceBudget $snapshot 96GB 96GB).Allowed 'An estimate above available RAM/commit must not refuse authorized work.'
+$observed=Test-IW7ResourceBudget $snapshot 20GB 1GB
+Assert ($observed.Policy -eq 'TelemetryOnly' -and $observed.PhysicalReserve -eq 0 -and $observed.CommitReserve -eq 0) 'No fixed RAM or commit reserve may survive.'
+Assert ($observed.AdditionalPhysical -eq 20GB -and $observed.AdditionalCommit -eq 1GB) 'Whole-workload estimates remain visible as telemetry.'
+$script:fakeSnapshot=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=0;CommitLimit=48GB;Committed=48GB}
+$busyBudget=Test-IW7ResourceBudget (Get-IW7ResourceSnapshot) 96GB 96GB
+Assert ($busyBudget.Allowed -and !$busyBudget.HighWater -and $busyBudget.PhysicalUsedPercent -eq 100 -and $busyBudget.CommitUsedPercent -eq 100) 'No use percentage or estimated headroom may refuse or stop work; actual percentages remain visible.'
 $bad=[pscustomobject]@{PhysicalTotal=0;PhysicalAvailable=0;CommitLimit=0;Committed=0}
 $rejected=$false; try { Test-IW7ResourceBudget $bad 0 0 } catch { $rejected=$true }; Assert $rejected 'Missing telemetry must refuse.'
 $scope=Join-Path $TestRoot 'lab-a'
+$validSnapshot=$script:fakeSnapshot
+$script:fakeSnapshot=$bad
+$rejected=$false; try { Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 14GB -CommitBytes 16GB -Owner 'invalid telemetry' } catch { $rejected=$true }; Assert $rejected 'Invalid telemetry must still block actual admission.'
+Assert (@((Read-IW7ResourceState).Leases).Count -eq 0) 'Failed telemetry must not create a lease.'
+$script:fakeSnapshot=$validSnapshot
 $lease=Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 14GB -CommitBytes 16GB -Owner 'test-a'
+Assert ($lease.MemoryObservation.Snapshot.PhysicalAvailable -eq 0 -and $lease.MemoryObservation.Budget.Allowed) 'Real admission must accept low headroom and retain the fresh observation.'
 $rejected=$false; try { Enter-IW7ResourceLease -Scope (Join-Path $TestRoot 'lab-b') -Kind Runtime -PhysicalBytes 1GB -CommitBytes 1GB -Owner 'test-b' } catch { $rejected=$true }
-Assert $rejected 'Different worktrees must not double spend RAM.'
+Assert $rejected 'A different holder must still block even though memory estimates never refuse.'
+$script:fakeSnapshot=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=1MB;CommitLimit=48GB;Committed=(48GB-1MB)}
 $again=Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 10GB -CommitBytes 10GB -Owner 'test-a'
 Assert ($again.Token -eq $lease.Token -and $again.PhysicalBytes -eq 14GB) 'Reservation must be idempotent and cannot shrink.'
+Assert ($again.MemoryObservation.Snapshot.PhysicalAvailable -eq 1MB -and (Read-IW7ResourceState).Leases[0].MemoryObservation.Snapshot.PhysicalAvailable -eq 1MB) 'Re-entry must persist a fresh observation rather than reuse earlier admission telemetry.'
 $child=[pscustomobject]@{PID=12345;ParentPID=$PID;CreatedUtc='2026-10-04T10:00:00Z';Image=(Join-Path $scope 'iw7-paris-lab.exe');Name='iw7-paris-lab.exe';Lab=$true;Heavy=$true;WorkingSet=8GB;PrivateBytes=10GB}
 $script:fakeProcesses += $child
 Add-IW7ResourceProcess -Token $lease.Token -ProcessId 12345
 $rejected=$false; try { Exit-IW7ResourceLease -Token $lease.Token } catch { $rejected=$true }; Assert $rejected 'Live child must retain reservation.'
 $child.Image=$null
 $rejected=$false; try { Exit-IW7ResourceLease -Token $lease.Token } catch { $rejected=$true }; Assert $rejected 'Unreadable child must retain reservation.'
+$rejected=$false; try { Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 14GB -CommitBytes 16GB -Owner 'test-a' } catch { $rejected=$true }; Assert $rejected 'Unknown attached identity must still block re-entry with low headroom.'
 $child.Image='C:\Windows\unrelated.exe'; $child.CreatedUtc='2026-10-04T11:00:00Z'; $child.Lab=$false
 Exit-IW7ResourceLease -Token $lease.Token
 Assert (@((Get-IW7ResourceStatus).Leases).Count -eq 0) 'Reused PID must not be targeted or retain an old lease.'
 $script:fakeProcesses=@($script:fakeProcesses | Where-Object PID -EQ $PID)
+$launcherImage=$script:fakeProcesses[0].Image
+$script:fakeProcesses[0].Image=$null
+$rejected=$false; try { Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 14GB -CommitBytes 16GB -Owner 'unknown launcher' } catch { $rejected=$true }; Assert $rejected 'Unknown launcher identity must still block first admission.'
+$script:fakeProcesses[0].Image=$launcherImage
 # The base client is an explicitly declared executable outside the server lab.
 # Only its scoped fixture flags permit attachment; normal owner clients cannot
 # be adopted, and the declaration/whole-scenario budget stay immutable.
@@ -107,5 +114,5 @@ $remaining=(Get-IW7ResourceStatus).Leases
 Assert (@($remaining).Count -eq 1) 'Orphan build must remain quarantined.'
 Exit-IW7ResourceLease -Token $remaining[0].Token
 Assert (@((Get-IW7ResourceStatus).Leases).Count -eq 0) 'Proven closed orphan can be released.'
-Write-Output 'Resource scheduler passed: memory boundaries, unknown telemetry/identity, idempotency, PID reuse, failure cleanup and cross-process contention.'
+Write-Output 'Resource scheduler passed: telemetry-only memory admission, unknown telemetry/identity, idempotency, PID reuse, failure cleanup and real cross-process contention.'
 Write-Output "Test evidence retained: $TestRoot"

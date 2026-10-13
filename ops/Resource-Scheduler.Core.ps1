@@ -13,20 +13,19 @@ function Test-IW7ResourceBudget($Snapshot, [long]$PhysicalBytes, [long]$CommitBy
         $Snapshot.PhysicalAvailable -lt 0 -or $Snapshot.PhysicalAvailable -gt $Snapshot.PhysicalTotal -or
         $Snapshot.Committed -lt 0 -or $Snapshot.Committed -gt $Snapshot.CommitLimit -or
         $PhysicalBytes -lt 0 -or $CommitBytes -lt 0) { throw 'Invalid resource snapshot or reservation.' }
-    # Owner decisions 2026-10-06 / 2026-10-13: no fixed or percentage reserve.
-    # Both complete estimates must fit the actual available capacity.
-    $physicalReserve = 0L
-    $commitReserve = 0L
+    # Owner decision 2026-10-13: memory is fresh telemetry, not numeric admission.
+    # Keep these compatibility fields for existing launchers/watchdogs. Ownership
+    # and lifecycle checks below still serialize the complete heavy-workload group.
     [pscustomobject]@{
-        Allowed = (($Snapshot.PhysicalAvailable - $PhysicalBytes) -ge $physicalReserve -and
-            ($Snapshot.CommitLimit - $Snapshot.Committed - $CommitBytes) -ge $commitReserve)
+        Policy = 'TelemetryOnly'
+        Allowed = $true
         PhysicalUsedPercent = [math]::Round(100 * (1 - $Snapshot.PhysicalAvailable / $Snapshot.PhysicalTotal), 2)
         CommitUsedPercent = [math]::Round(100 * $Snapshot.Committed / $Snapshot.CommitLimit, 2)
-        PhysicalReserve = [long]$physicalReserve
-        CommitReserve = [long]$commitReserve
+        PhysicalReserve = 0L
+        CommitReserve = 0L
         AdditionalPhysical = $PhysicalBytes
         AdditionalCommit = $CommitBytes
-        HighWater = ($Snapshot.Committed -ge $Snapshot.CommitLimit)
+        HighWater = $false
     }
 }
 function Get-IW7ResourceProcesses {
@@ -168,10 +167,8 @@ function Enter-IW7ResourceLease {
                 $resident += $p.WorkingSet; $committed += $p.PrivateBytes
             }
         }
-        $budget = Test-IW7ResourceBudget (Get-IW7ResourceSnapshot) ([math]::Max(0L,$PhysicalBytes-$resident)) ([math]::Max(0L,$CommitBytes-$committed))
-        if (!$budget.Allowed -or $budget.HighWater) {
-            throw "Resource budget refuses admission: physical=$($budget.PhysicalUsedPercent)%, commit=$($budget.CommitUsedPercent)%; complete estimated workload must fit available RAM and commit capacity (no reserve)."
-        }
+        $snapshot = Get-IW7ResourceSnapshot
+        $budget = Test-IW7ResourceBudget $snapshot ([math]::Max(0L,$PhysicalBytes-$resident)) ([math]::Max(0L,$CommitBytes-$committed))
         if (!$same.Count) {
             $identity = @($processes | Where-Object PID -EQ $PID)[0]
             if (!$identity.Image -or !$identity.CreatedUtc) { throw 'Launcher identity unavailable.' }
@@ -181,6 +178,8 @@ function Enter-IW7ResourceLease {
             $state.Leases = @($state.Leases) + $lease
         }
         $lease.PhysicalBytes=$PhysicalBytes; $lease.CommitBytes=$CommitBytes
+        Add-Member -InputObject $lease -NotePropertyName MemoryObservation -NotePropertyValue (
+            [pscustomobject]@{Snapshot=$snapshot;Budget=$budget}) -Force
         Save-IW7ResourceState $state
         $lease
     }
