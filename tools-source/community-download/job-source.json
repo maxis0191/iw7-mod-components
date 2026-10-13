@@ -1,0 +1,20 @@
+{
+  "Schema": "iw7.community-download-job-source/2",
+  "Type": "IW7.AnimationProbe.NativeJob",
+  "Source": "tools-source/asset-bridge/animation/Probe-NativeJob.cs",
+  "SourceCommit": "908869d6acc16a4750e1842481f43bb6150998cb",
+  "SourceSHA256": "DDEFA72FF2B98286CD585D1178C13E67DCD646BBCF39D51365660901366C5CA8",
+  "AssemblySHA256": "5F613EBB83019DBF4BFA4F6A93C5329098343729B70ACC2CFA70AA8B64F195F8",
+  "WitnessSHA256": "CF07725DC8293A65617DC62CC481B0F187B76ECE46E671B63B0AF2872DBDA1CB",
+  "ExistingWitnessStatus": "OwnedJobWitnessPassed",
+  "ExistingWitnessFinishedUtc": "2026-10-12T03:04:43.7431209Z",
+  "ExistingWitnessAllOwnedTreesClosed": true,
+  "ExistingWitnessLeaseReleased": true,
+  "BindingRuntimeQualified": false,
+  "HistoricalUnusedDerivative": {
+    "Source": "Download-NativeJob.cs",
+    "SHA256": "629586DF22262295F9221D7158BC3D5C5DFE56FDBAE31BEC14D4F2958AEDAFE2",
+    "Compiled": false,
+    "SelectedByPlan": false
+  }
+}

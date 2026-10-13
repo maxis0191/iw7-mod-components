@@ -1,0 +1,13 @@
+/tools/
+/runtime/
+/backups/
+/compiled/
+/disassembled/
+*.log
+*.cgsc
+*.gscbin
+.env*
+settings.local.json
+__pycache__/
+*.pyc
+/.wrangler/

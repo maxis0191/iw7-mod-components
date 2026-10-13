@@ -1,0 +1,9 @@
+# Prochaine passe admise : huit owners complets, aucune leaf sans pdata.
+sv_memory_count_caller,140C56A90
+sv_memory_reservation,140C56BE0
+server_fixed_memory_size,140B205A0
+agent_reference_encode,140449600
+agent_entity_index_consumer,140445FE0
+server_entity_recycle_consumer,140B213F0
+pointer_reference_restore,1400BA830
+pointer_reference_store,1400BB710

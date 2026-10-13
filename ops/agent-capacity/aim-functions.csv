@@ -1,0 +1,4 @@
+# Racines UI confirmées ; aucune ABI de deltas de visée certifiée.
+# Réutiliser DecompileSelected et ses unions unwind, sans analyse globale.
+mouse_cursor_ui_owner,140615A50
+mouse_cursor_coordinate_conversion,140601170

@@ -1,0 +1,147 @@
+{
+  "Schema": "iw7.community-download-native-validation-c/1",
+  "SourceCommit": "1b8b891d275cc1e52df8f7780b45f27ae77006b2",
+  "PlanSHA256": "31d87b8693ab18c13cfb298d097c1faea2dd50c26b12360c2d2039705f025a9a",
+  "Authorization": "One explicit coordinator GO after independent review; no repeat",
+  "Invocations": 1,
+  "StartedUtc": "2026-10-12T13:14:33.1423403Z",
+  "FinishedUtc": "2026-10-12T13:14:38.9643192Z",
+  "Result": "FunctionalAndOriginalJobsClosed",
+  "Passed": true,
+  "GlobalClockElapsedMs": 5027.148599982262,
+  "PhysicalBytes": 4294967296,
+  "CommitBytes": 6442450944,
+  "GlobalSeconds": 180,
+  "DrainSeconds": 2,
+  "CleanupSeconds": 5,
+  "OutputLimitBytes": 33554432,
+  "MetadataReserveBytes": 1048576,
+  "Stages": [
+    {
+      "Stage": "Prepare",
+      "RootPID": 31560,
+      "RootCreatedUtc": "2026-10-12T13:14:34.0645263Z",
+      "ExitCode": 0,
+      "TreeClosureConfirmed": true,
+      "ElapsedMs": 319.099799990654,
+      "TelemetryQualified": false,
+      "StdoutBytes": 0,
+      "StderrBytes": 0
+    },
+    {
+      "Stage": "Compile",
+      "RootPID": 34900,
+      "RootCreatedUtc": "2026-10-12T13:14:34.4714175Z",
+      "ExitCode": 0,
+      "TreeClosureConfirmed": true,
+      "ElapsedMs": 3324.7071999907494,
+      "TelemetryQualified": true,
+      "StdoutBytes": 19,
+      "StderrBytes": 0
+    },
+    {
+      "Stage": "Tests",
+      "RootPID": 21724,
+      "RootCreatedUtc": "2026-10-12T13:14:37.8206610Z",
+      "ExitCode": 0,
+      "TreeClosureConfirmed": true,
+      "ElapsedMs": 900.9952000081539,
+      "TelemetryQualified": false,
+      "StdoutBytes": 1512,
+      "StderrBytes": 0
+    }
+  ],
+  "FunctionalCasesPassed": 46,
+  "ExactOrderedCasesVerified": true,
+  "WarningsAsErrorsPreserved": true,
+  "ExecutableSHA256": "686576041fc7d82ec1a1599b853eac839ccfc0a7dcdb290d13712edc9f585141",
+  "ObjectSHA256": "bdd6a65cd96ac2cc562e94d4b5341ab610284e3c0349eaba5359e3dc2112cf7d",
+  "CompilerClosure": {
+    "Mode": "StopOriginalJobAfterVerifiedCompilerAndTelemetry",
+    "CompilerRootExitCode": 0,
+    "CompilerRootPID": 34900,
+    "VctipPID": 35420,
+    "VctipParentPID": 34900,
+    "VctipCreatedUtc": "2026-10-12T13:14:36.9458518Z",
+    "TwoCompleteSingleMemberCaptures": true,
+    "ExactMembershipAndGeneration": true,
+    "FirstCaptureUtc": "2026-10-12T13:14:37.7114548Z",
+    "SecondCaptureUtc": "2026-10-12T13:14:37.7786038Z",
+    "FreshRoot0Active0Utc": "2026-10-12T13:14:37.7866361Z",
+    "FreshEmptyMemberListUtc": "2026-10-12T13:14:37.7871632Z",
+    "FinalOrdinaryRoot0Active0Utc": "2026-10-12T13:14:37.7934022Z",
+    "ArtifactsGuardedAcrossStopAndRechecked": true,
+    "LogsSealedAfterClosure": true,
+    "PreStopPipeEOFClaimed": false,
+    "OtherResidualAccepted": false,
+    "TestsTelemetryExceptionUsed": false
+  },
+  "OriginalJobsClosed": true,
+  "ForcedFailureCleanupUsed": false,
+  "LeaseReleased": true,
+  "ReadGuardsReleased": true,
+  "Quarantined": false,
+  "SameHostQuarantineObjectPresent": false,
+  "LeaseToken": "5c0f187aa11b47a39e9a2b028dae8579",
+  "OutputFileCount": 24,
+  "OutputBytes": 2849147,
+  "PostflightUtc": "2026-10-12T13:16:02.2198677Z",
+  "OriginalMembersStillPresent": 0,
+  "OtherHeavyCount": 0,
+  "LeaseCount": 0,
+  "PersistentHostPID": 8168,
+  "HostExitedAfterOwnClosureCheck": true,
+  "HostExitCode": 0,
+  "HostAbsenceConfirmedUtc": "2026-10-12T13:17:06.9585971Z",
+  "MainPID": 27784,
+  "MainCreationUtc": "2026-10-12T00:52:28.7133740Z",
+  "MainIdentityPreserved": true,
+  "MainUDP27016RespondedBeforeAndAfter": true,
+  "MainMap": "cp_zmb",
+  "MainClientsBefore": 2,
+  "MainClientsAfter": 2,
+  "Python23352IdentityPreserved": true,
+  "Python6252AbsentBeforeAndAfter": true,
+  "Python6252StartedOrStopped": false,
+  "OldPlanAStatus": "Failed",
+  "OldPlanBStatus": "Failed",
+  "HistoricalIncidentRequalified": false,
+  "MemoryPeaksMeasured": false,
+  "NativeFullGameBuild": false,
+  "CommunityJoinValidated": false,
+  "RealNetworkDownloadValidated": false,
+  "RenderedUIValidated": false,
+  "GameplayAcceptance": false,
+  "Ready": false,
+  "Proofs": {
+    "RunReceipt": {
+      "FileName": "run-receipt.json",
+      "SHA256": "91a5d4343cfab4b4305a8441a478280c22d410908290e9c7d6589f620785ab29"
+    },
+    "Control": {
+      "FileName": "authorized-run-plan-c-1b8b891-control.json",
+      "SHA256": "3fe19aa59f3ef8ab1f76929972fe9f3951e6bd88b596e4d0e5a37ace48eaf8f0"
+    },
+    "Postflight": {
+      "FileName": "authorized-run-plan-c-1b8b891-postflight.json",
+      "SHA256": "2f1d06bd82908176f22dde22958c7adcb18f238e3d402b26bee4853cd0311bcc"
+    },
+    "HostClosed": {
+      "FileName": "authorized-run-plan-c-1b8b891-host-closed.json",
+      "SHA256": "5de8cd0b4986437db00b1a4342be8ed49f1d91e6c450a1f093e7455bd35e37fb"
+    },
+    "HostAbsent": {
+      "FileName": "authorized-run-plan-c-1b8b891-host-absent.json",
+      "SHA256": "fe064d82571ff7eb104ef01265b0a9ae8067be665aa4b7130214b3136ee1238c"
+    },
+    "TestsStdout": {
+      "FileName": "stdout.log",
+      "SHA256": "620c9b5b866ee86b5d843c144221f0ae8c15572ccaa0bf3db058b0a1f91cf6b0"
+    },
+    "CompileStdout": {
+      "FileName": "stdout.log",
+      "SHA256": "83975abe736048f7837a7cb56eed914163af2a6d13e4a25f4b06261c26b5c639"
+    }
+  },
+  "Next": "Integrate this sanitized evidence; retain real SDK community join/download and rendered error acceptance as separate gates."
+}

@@ -1,0 +1,35 @@
+voice_batch,14037D5C0
+voice_recipients,14037B050
+voice_share_channel,1409C3EF0
+voice_recipient_eligible,14099E210
+voice_recipient_route,14037B490
+voice_send,14037BFF0
+voice_direct_send,14037C1A0
+voice_receive,14037CFF0
+voice_incoming,140D59620
+# 140C721D0 is a leaf getter without an unwind record; inspect with Capstone.
+voice_address_reference,140D92790
+voice_register_remote,140D59D10
+session_register_remote,140C733E0
+session_unregister_remote,140C73970
+session_voice_session,140D32740
+server_direct_connect,140C4EBD0
+server_drop_client,140C4FBA0
+voice_encoded_queue,14037D960
+voice_capture_pcm,140B79D30
+voice_decode_pcm,140B79310
+voice_encode_pcm,140B794F0
+voice_enqueue_pcm,140B79B60
+# 140B796D0 is a leaf jump to voice_enqueue_pcm; inspect with Capstone.
+voice_shutdown,140D59E80
+# 140D59AFC is an unwind fragment of the frame function beginning at 140D59AD0.
+voice_frame_fragment,140D59AFC
+voice_playback_update,140B799C0
+# 140B797A0 adjusts frequency by +/-1 percent via tail calls; use Capstone.
+voice_playback_stop,140B79860
+voice_playback_reset,140B79B00
+voice_decoder_init,140B79260
+voice_encoder_init,140B79450
+voice_codec_setting,140B79580
+# Observed through the live native encoder's mode encoder_ctl pointer.
+voice_narrowband_control,14122A990

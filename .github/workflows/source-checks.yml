@@ -1,0 +1,45 @@
+name: Source checks
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Prepare exact private source inputs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./bootstrap.ps1 -Output "$PWD/runtime/ci sources"
+      - name: Product ownership and source regressions
+        shell: pwsh
+        run: |
+          git diff --check HEAD^ HEAD
+          if ($LASTEXITCODE) { throw 'Committed whitespace errors' }
+          ./checks.ps1 -Workspace "$PWD/runtime/ci sources" -Output "$PWD/runtime/ci checks"
+      - name: Compile pure native protocol and sanitizer checks
+        shell: pwsh
+        run: |
+          & './runtime/ci sources/ops/Build-Voice.ps1' -TestsOnly -Sanitizers
+          . './runtime/ci sources/ops/Resource-Scheduler.Core.ps1'
+          Invoke-IW7ResourceJob -Scope "$PWD/runtime/ci sources" -Owner 'Pure render helper CI' -PhysicalBytes 1GB -CommitBytes 2GB -Body {
+            & './runtime/ci sources/ops/voice-agent/Build-Render.ps1' -OutputRoot "$PWD/runtime/ci sources/runtime/render tools"
+          }
