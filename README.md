@@ -44,3 +44,28 @@ Preserve upstream notices and per-file provenance. No blanket license is granted
 to all private adaptations by this extraction. Public distribution requires its
 own license/privacy review and owner decision. Commercial game assets, dumps,
 installed SDKs, PDBs, executables, credentials and player data are excluded.
+
+## Reproduce the source checks
+
+Prerequisites: Git, authenticated GitHub CLI with read access to this private
+repository, PowerShell 7.4+, Python 3.12 and Node.js 22. Native source checks also
+use Java 21; pure native compilation requires the existing VS2022 C++ toolchain.
+Asset image tests use the hash-pinned Pillow requirement in ops/doom-textures.
+
+```powershell
+./bootstrap.ps1 -Output "$PWD/runtime/source inputs"
+./checks.ps1 -Workspace "$PWD/runtime/source inputs"
+```
+
+Bootstrap downloads only the immutable source dependency archive named in
+`dependency-package.json` from this repository's private release. Its SHA-256,
+length, members, owners and commits are checked. It needs no cross-repository
+CI secret. Offline use: supply `-DependencyArchive <downloaded dependencies.zip>`.
+The archive contains selected text sources, never tools, game data or binaries.
+A missing archive fails clearly; no fallback version is selected.
+
+Run an authorized operation from the generated package, or use
+`bootstrap.ps1 -Entry ops/<entry>.ps1 -Arguments @(...)`. Canonical repositories
+are editing locations; operations requiring another product must use prepared
+inputs. Older commands in dated documents refer to their original frozen layout.
+Do not reuse an old runtime receipt for a newly composed input.

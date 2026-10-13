@@ -476,6 +476,16 @@
         "-B",
         "tests/ops/source_workspace_test.py"
       ]
+    },
+    {
+      "id": "decompile_owner_ranges",
+      "command": [
+        "python",
+        "-B",
+        "ops/agent-capacity/test_decompile_owner_ranges.py",
+        "--java",
+        "java"
+      ]
     }
   ],
   "retained_checks": [
