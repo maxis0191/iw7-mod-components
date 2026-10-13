@@ -1,9 +1,11 @@
 import importlib.util
 import json
+import hashlib
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import zipfile
 
 spec = importlib.util.spec_from_file_location('workspace', Path(__file__).parents[2] / 'ops/source_workspace.py')
 w = importlib.util.module_from_spec(spec)
@@ -101,6 +103,49 @@ class WorkspaceTests(unittest.TestCase):
         (out / 'hello.py').unlink()
         with self.assertRaises(FileNotFoundError):
             w.verify(out)
+
+    def dependency_archive(self):
+        dep = self.root / 'dependency source'
+        dep.mkdir()
+        (dep / 'helper.py').write_bytes(b'print("dependency")\n')
+        for args in [('init','-q'), ('add','.'), ('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','-qm','Dependency fixture')]:
+            subprocess.run(['git','-C',str(dep),*args], check=True, capture_output=True)
+        revision = w.git(dep, 'rev-parse', 'HEAD')
+        self.contract['dependencies'] = [dict(id='dependency', revision=revision, files=['helper.py'])]
+        commit = self.commit()
+        stage = self.root / 'qualified inputs'
+        w.prepare(self.repo, commit, {'dependency': dep}, stage)
+        archive = self.root / 'dependencies.zip'
+        lock = w.pack_dependencies(stage, archive)
+        (self.repo / 'dependency-package.json').write_text(json.dumps(lock))
+        commit = self.commit()
+        return archive, lock, commit
+
+    def test_dependency_archive_restores_exact_sources_without_credentials(self):
+        archive, _, commit = self.dependency_archive()
+        out = self.root / 'from archive'
+        result = w.prepare(self.repo, commit, {}, out, package=archive)
+        self.assertEqual((out/'helper.py').read_bytes(), b'print("dependency")\n')
+        self.assertEqual(len(result['files']), 2)
+        self.assertFalse(result['runtime_qualified'])
+
+    def test_dependency_archive_corruption_is_refused_before_output(self):
+        archive, _, commit = self.dependency_archive()
+        raw = bytearray(archive.read_bytes()); raw[-1] ^= 1; archive.write_bytes(raw)
+        with self.assertRaisesRegex(ValueError, 'archive digest differs'):
+            w.prepare(self.repo, commit, {}, self.root/'rejected', package=archive)
+        self.assertFalse((self.root/'rejected').exists())
+
+    def test_correct_archive_digest_does_not_hide_missing_declared_sources(self):
+        archive, lock, _ = self.dependency_archive()
+        with zipfile.ZipFile(archive, 'w') as package:
+            package.writestr('dependencies.json', json.dumps(dict(schema='iw7.source-dependencies/1',files=[])))
+        lock.update(bytes=archive.stat().st_size, sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
+        (self.repo/'dependency-package.json').write_text(json.dumps(lock))
+        commit = self.commit()
+        with self.assertRaisesRegex(ValueError, 'Incomplete'):
+            w.prepare(self.repo, commit, {}, self.root/'rejected', package=archive)
+        self.assertFalse((self.root/'rejected').exists())
 
 if __name__ == '__main__':
     unittest.main()
