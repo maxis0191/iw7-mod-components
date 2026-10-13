@@ -42,7 +42,7 @@ $exitCode=$observer.ExitCode
 foreach($slot in $slots) { & $helper -Action Verify -ClientSlot $slot }
 $after=Snapshot
 $measurement=Read-Shared $output
-$record=[ordered]@{Label=$Label;Sender=$Sender;ClientSlots=$slots;Map=$state.Map;SourceCommit=$state.SourceCommit;HelperCommit=(git -C $repo rev-parse HEAD);SHA256=$state.Build.SHA256;ObserverSHA256=(Get-FileHash "$repo/runtime/audio-output-probe.exe").Hash;Probe=$Probe;Expected=$Expected;ObserverExit=$exitCode;Output=$measurement.Trim();Before=$before;After=$after}
+$record=[ordered]@{Label=$Label;Sender=$Sender;ClientSlots=$slots;Map=$state.Map;SourceCommit=$state.SourceCommit;HelperCommit=(& (Join-Path $repo 'ops/Get-SourceIdentity.ps1') -Root $repo).Commit;SHA256=$state.Build.SHA256;ObserverSHA256=(Get-FileHash "$repo/runtime/audio-output-probe.exe").Hash;Probe=$Probe;Expected=$Expected;ObserverExit=$exitCode;Output=$measurement.Trim();Before=$before;After=$after}
 $record | ConvertTo-Json -Depth 7 | Set-Content "$repo/runtime/voice-control-$Label.json"
 Write-Output $measurement.Trim()
 if($exitCode -gt 1 -or ($Expected -eq 'Present' -and $exitCode -ne 0) -or ($Expected -eq 'Absent' -and $exitCode -ne 1)) {throw 'Output presence/absence expectation failed; preserve the measurement.'}

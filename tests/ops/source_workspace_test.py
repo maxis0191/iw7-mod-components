@@ -41,6 +41,34 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual((output / 'hello.py').read_bytes(), (self.repo / 'hello.py').read_bytes())
         self.assertEqual(w.verify(output)['revisions'], {'fixture': sha})
 
+    def test_identity_refuses_parent_git_revision(self):
+        self.commit()
+        child = self.repo / 'nested'
+        child.mkdir()
+        helper = Path(__file__).parents[2] / 'ops/Get-SourceIdentity.ps1'
+        run = subprocess.run(['pwsh', '-NoProfile', '-File', str(helper), '-Root', str(child)], capture_output=True)
+        self.assertNotEqual(run.returncode, 0)
+
+    def test_identity_uses_composition_product_revision(self):
+        for name in ('Get-SourceIdentity.ps1', 'source_workspace.py'):
+            target = self.repo / 'ops' / name
+            target.parent.mkdir(exist_ok=True)
+            target.write_bytes((Path(__file__).parents[2] / 'ops' / name).read_bytes())
+            self.contract['exports'].append('ops/' + name)
+        sha = self.commit()
+        output = self.root / 'source package identity'
+        w.prepare(self.repo, sha, {}, output)
+        command = "& $args[0] -Root $args[1] | ConvertTo-Json -Depth 5"
+        # Use a script adapter so paths are literal arguments, never code.
+        adapter = self.root / 'identity.ps1'
+        adapter.write_text(command)
+        raw = subprocess.check_output(['pwsh', '-NoProfile', '-File', str(adapter), str(output/'ops/Get-SourceIdentity.ps1'), str(output)], text=True)
+        identity = json.loads(raw)
+        self.assertEqual(identity['Commit'], sha)
+        self.assertEqual(identity['Revisions'], {'fixture':sha})
+        self.assertFalse(identity['Dirty'])
+        self.assertEqual(len(identity['ReceiptSHA256']), 64)
+
     def test_dirty_source_refused_before_output(self):
         sha = self.commit()
         (self.repo / 'hello.py').write_text('changed input\n')

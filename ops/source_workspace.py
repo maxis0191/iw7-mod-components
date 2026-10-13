@@ -113,7 +113,12 @@ def pack_dependencies(workspace, output):
     entries = [e for e in data['files'] if e['owner'] != data['product']]
     metadata = dict(schema='iw7.source-dependencies/1', files=entries, runtime_qualified=False)
     with output.open('xb') as destination, zipfile.ZipFile(destination, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-        members = [(e['path'], (Path(workspace) / e['path']).read_bytes()) for e in entries]
+        members = []
+        for entry in entries:
+            raw = ordinary(Path(workspace) / entry['path']).read_bytes()
+            if len(raw) != entry['bytes'] or hashlib.sha256(raw).hexdigest() != entry['sha256']:
+                raise ValueError('Dependency source changed while packing')
+            members.append((entry['path'], raw))
         members.append(('dependencies.json', (json.dumps(metadata, sort_keys=True, indent=2)+'\n').encode()))
         for name, raw in sorted(members):
             info = zipfile.ZipInfo(name, date_time=(2026, 10, 13, 0, 0, 0))
@@ -207,11 +212,18 @@ def verify(output):
     data = json.loads((output / 'source-workspace.json').read_text(encoding='utf-8'))
     if data.get('schema') != 'iw7.source-workspace/1':
         raise ValueError('Unknown source workspace')
+    seen, total = set(), 0
     for entry in data['files']:
         safe_relative(entry['path'])
+        if entry['path'].casefold() in seen or entry['commit'] != data['revisions'].get(entry['owner']):
+            raise ValueError('Duplicate or inconsistent source identity')
+        seen.add(entry['path'].casefold())
         raw = ordinary(output / entry['path']).read_bytes()
         if len(raw) != entry['bytes'] or hashlib.sha256(raw).hexdigest() != entry['sha256']:
             raise ValueError('Generated source changed: ' + entry['path'])
+        total += len(raw)
+    if total != data['bytes'] or total > MAX_TOTAL:
+        raise ValueError('Generated source total differs')
     return data
 
 def main():

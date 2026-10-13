@@ -105,7 +105,7 @@ switch ($Action) {
             Python=(Get-Command python -ErrorAction SilentlyContinue).Source;CDB=$cdb;CDBError=$cdbError;
             WPR=(Get-Command wpr -ErrorAction SilentlyContinue).Source;
             Elevated=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);
-            SourceCommit=(git -C $repo rev-parse HEAD);PhysicalPercent=$status.Budget.PhysicalUsedPercent;CommitPercent=$status.Budget.CommitUsedPercent;
+            SourceCommit=(& (Join-Path $repo 'ops/Get-SourceIdentity.ps1') -Root $repo).Commit;PhysicalPercent=$status.Budget.PhysicalUsedPercent;CommitPercent=$status.Budget.CommitUsedPercent;
             HeavyHolders=@($status.Leases | Select-Object Kind,Owner,Scope);Commands=@('Identity','Observe','Snapshot','AnalyzeDump','Etw','Decompile');
             Limits='No always-on service, no automatic deployment/restarts. Raw dumps/ETL can contain private data and remain local.'})
     }

@@ -486,9 +486,11 @@ Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.exe" -Destination "$
 $manifestSources = @($nativeSources)
 if ($IsolatedLab) { $manifestSources += 'paris_lab_properties.cpp' }
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
-$manifest.ProjectCommit = (git -C $repo rev-parse HEAD)
+$sourceIdentity = & (Join-Path $repo 'ops/Get-SourceIdentity.ps1') -Root $repo
+$manifest.ProjectCommit = $sourceIdentity.Commit
+$manifest.SourceIdentity = $sourceIdentity
 $manifest.DownloadCacheOverlay = $downloadCacheOverlay
-$manifest.ProjectDirty = [bool](git -C $repo status --porcelain)
+$manifest.ProjectDirty = $sourceIdentity.Dirty
 # Retain matching symbols before the next rebuild replaces them. These local
 # files enable reliable crash stacks and must never be added to Git.
 $symbols = Join-Path $runtime ('voice-symbols/' + $manifest.SHA256)
