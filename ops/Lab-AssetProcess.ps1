@@ -41,9 +41,9 @@ function Invoke-IW7LabAssetProcess {
             $remaining = [long]$TimeoutSeconds * 1000 - $clock.ElapsedMilliseconds
             if ($remaining -le 0) { throw "$Phase exceeded its time budget; diagnostics: $stdout" }
             if ($owned.WaitForExit([int][math]::Min($PollMilliseconds, $remaining))) { break }
-            if ((Test-IW7MemoryBudget (Get-IW7MemorySnapshot)).HighWater) {
-                throw "$Phase exceeded its memory budget; diagnostics: $stdout"
-            }
+            # Fresh telemetry still validates; numeric memory pressure is not a
+            # stop policy. Time, process handles and confirmed cleanup stay guarded.
+            Test-IW7MemoryBudget (Get-IW7MemorySnapshot) | Out-Null
         }
         [pscustomobject]@{Phase=$Phase;ExitCode=$owned.ExitCode;ProcessId=$owned.Id;Stdout=$stdout;Stderr=$stderr}
     } finally {

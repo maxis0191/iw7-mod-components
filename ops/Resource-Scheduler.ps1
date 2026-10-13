@@ -63,5 +63,5 @@ try {
     [pscustomobject]@{OutputPath=[IO.Path]::GetFullPath($OutputPath);Samples=$samples;
         PeakPhysicalPercent=$maxPhysical;PeakCommitPercent=$maxCommit;
         MaxPagesInputPerSecond=$maxInput;MaxPagesOutputPerSecond=$maxOutput;
-        Meaning='Observation only. Paging input includes mapped files; this is not a frametime or gameplay acceptance test.'}
+        Meaning='Observation only; RAM/commit estimates and percentages do not refuse admission or stop work. Paging input includes mapped files; this is not a frametime or gameplay acceptance test.'}
 } finally { $writer.Dispose() }

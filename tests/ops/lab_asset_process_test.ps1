@@ -8,12 +8,14 @@ $script:registration = 'normal'
 $script:monitor = 'normal'
 $script:witness = $null
 $script:registeredId = 0
+$script:observations = 0
 
 function Assert-True($value, [string]$message) { if (!$value) { throw $message } }
 # Inject only scheduler/telemetry dependencies. Native launch, process handles,
 # waiting, exit codes and termination are real; no game or asset tool is used.
 function Assert-IW7MemoryHeadroom { param($Physical, $Commit) }
 function Get-IW7MemorySnapshot {
+    $script:observations++
     if ($script:monitor -eq 'throws') { throw 'Injected telemetry unavailable.' }
     [pscustomobject]@{HighWater=($script:monitor -eq 'high')}
 }
@@ -64,9 +66,9 @@ try {
     Assert-True ($result.ExitCode -eq 7 -and $script:cleanup.Confirmed) 'Confirmed exit during missing CIM identity was lost.'
 } finally { Close-TestWitness; $script:registration='normal' }
 
-foreach ($failure in @('registration','timeout','telemetry','high-water')) {
+foreach ($failure in @('registration','timeout','telemetry')) {
     $script:registration = if ($failure -eq 'registration') { 'throws' } else { 'normal' }
-    $script:monitor = if ($failure -eq 'telemetry') { 'throws' } elseif ($failure -eq 'high-water') { 'high' } else { 'normal' }
+    $script:monitor = if ($failure -eq 'telemetry') { 'throws' } else { 'normal' }
     $script:registeredId = 0
     $caught = $null
     $elapsed = [Diagnostics.Stopwatch]::StartNew()
@@ -84,6 +86,14 @@ foreach ($failure in @('registration','timeout','telemetry','high-water')) {
     } finally { Close-TestWitness; $elapsed.Stop() }
 }
 $script:registration='normal'; $script:monitor='normal'
+# A real owned process survives the old numeric watchdog signal, exits on its
+# own, and still supplies fresh samples. No memory is allocated to force pressure.
+$script:monitor='high'; $script:observations=0
+try {
+    $result=Invoke-TestChild 'Start-Sleep -Milliseconds 1200; exit 0' 'numeric-pressure' 10
+    Assert-True ($result.ExitCode -eq 0 -and $script:cleanup.Confirmed) 'Numeric pressure terminated authorized work.'
+    Assert-True ($script:observations -gt 0) 'Removing the numeric stop must not remove fresh observation.'
+} finally { Close-TestWitness; $script:monitor='normal' }
 # A CreateProcess failure creates no child and permits releasing the lease.
 $cleanup = [pscustomobject]@{Confirmed=$true}
 $caught = $false
@@ -92,4 +102,4 @@ try {
         -LogDirectory $scratch -Phase 'launch-failure' -LeaseToken 'synthetic-lease' -CleanupState $cleanup -TimeoutSeconds 1
 } catch { $caught=$true }
 Assert-True ($caught -and $cleanup.Confirmed) 'Pre-child launch failure incorrectly retained an active child.'
-Write-Output "PASS: original launch handles; exits 0/7/259; CIM exit race; registration/timeout/telemetry/high-water cleanup; unique logs. Diagnostics: $scratch"
+Write-Output "PASS: original launch handles; exits 0/7/259; numeric pressure observation without termination; CIM exit race; registration/timeout/telemetry cleanup; unique logs. Diagnostics: $scratch"
