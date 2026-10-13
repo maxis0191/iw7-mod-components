@@ -1,5 +1,11 @@
 # Agent capabilities and the next engine investigation
 
+The [exact source-tip runtime mode](SOURCE-TIP-RUNTIME.md) now separates a
+zero-client compile/load/init test from protected first-spawn captures, using the
+retained native package with all 34 historical source entries pinned. Source
+and transaction tests pass; neither phase has run in the engine. This route
+reuses Agent-Lab and does not require a new native build or client clone.
+
 Current source-only follow-up: the [Material C witness](MATERIAL-C-WITNESS.md)
 binds the new original-image FF, preserves SDK interaction/HUD and prepares an
 explicit optional third ticket observer. Full graphics requires 16/16 GiB with
