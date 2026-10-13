@@ -210,11 +210,16 @@ namespace voice::transport
                 output.push_back({slot, snapshot(slot, false)});
                 return true;
             }
+            // Rejected replays must not consume the fresh-speech quota. Keep
+            // sequence admission provisional until both budgets also pass.
+            auto sequence = peer.sequence;
             if (message.type != wire::kind::audio_up || message.frames.empty() ||
                 message.frames.size() > wire::max_frames ||
+                !sequence.accept(message.sequence) ||
                 !peer.frames.accept(static_cast<unsigned>(message.frames.size()), time) ||
-                !peer.bytes.accept(bytes, time) || !peer.sequence.accept(message.sequence))
+                !peer.bytes.accept(bytes, time))
                 return false;
+            peer.sequence = sequence;
             peer.seen = time;
             for (unsigned target = 0; target < state::max_speakers; ++target)
             {
@@ -412,16 +417,18 @@ namespace voice::transport
                 result.accepted = true;
                 return result;
             }
+            auto candidate = state_;
             if (!ready() || message.type != wire::kind::audio_down || message.slot == slot_ ||
                 message.slot >= state::max_speakers || message.frames.empty() ||
                 message.frames.size() > wire::max_frames || message.server != server_ ||
                 message.recipient != recipient_ ||
                 !state_.current_roster().speakers[message.slot].present ||
                 state_.current_roster().speakers[message.slot].generation != message.generation ||
-                !rates_[message.slot].accept(static_cast<unsigned>(message.frames.size()), time) ||
-                !state_.accept_audio(message.server, message.recipient, message.slot,
-                                     message.generation, message.sequence))
+                !candidate.accept_audio(message.server, message.recipient, message.slot,
+                                        message.generation, message.sequence) ||
+                !rates_[message.slot].accept(static_cast<unsigned>(message.frames.size()), time))
                 return result;
+            state_ = candidate;
             result.accepted = result.audio = true;
             return result;
         }
