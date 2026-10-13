@@ -1,0 +1,1733 @@
+{
+  "schema": 1,
+  "source_repository": "maxis0191/iw7-paris-server",
+  "source_commit": "5e47dc2299fde638f31af6c026c0e17ee9ddb8ef",
+  "imported_tip": "0c7b8294e4e96410d255dfcc3402e3a546efd526",
+  "tool": "git-filter-repo 2.47.0",
+  "tool_distribution_sha256": "2cd04929b9024e83e65db571cbe36aec65ead0cb5f9ec5abe42158654af5ad83",
+  "files": [
+    {
+      "path": "docs/AGENT-CAPACITY.md",
+      "blob": "c70e69d98c947f103c25d3d6a5b62f3d999035b1",
+      "bytes": 66128,
+      "mode": "100644",
+      "destination": "docs/AGENT-CAPACITY.md"
+    },
+    {
+      "path": "docs/DEBUGGER.md",
+      "blob": "be06d890f2972a9f915e32b3e39d7e342a11c3ed",
+      "bytes": 13958,
+      "mode": "100644",
+      "destination": "docs/DEBUGGER.md"
+    },
+    {
+      "path": "docs/MODDING-ENGINE-RE.md",
+      "blob": "cbe7964671f366b1eadb24a25404b5f6a7114885",
+      "bytes": 56981,
+      "mode": "100644",
+      "destination": "docs/MODDING-ENGINE-RE.md"
+    },
+    {
+      "path": "docs/RESOURCE-WORKFLOW.md",
+      "blob": "f2d35654262ef967f305a41e1f814fae1151080b",
+      "bytes": 21121,
+      "mode": "100644",
+      "destination": "docs/RESOURCE-WORKFLOW.md"
+    },
+    {
+      "path": "docs/VOICE-AGENT-PLAN.md",
+      "blob": "6820966af304cab0ec29c3cc49e005e8c359607e",
+      "bytes": 50199,
+      "mode": "100644",
+      "destination": "docs/VOICE-AGENT-PLAN.md"
+    },
+    {
+      "path": "docs/VOICE-BASE-RUNBOOK.md",
+      "blob": "7b720536ed9f127fb96f02ce00270edf03a5ffaa",
+      "bytes": 6328,
+      "mode": "100644",
+      "destination": "docs/VOICE-BASE-RUNBOOK.md"
+    },
+    {
+      "path": "docs/VOICE-CONTRIBUTION.md",
+      "blob": "16e0c9fbccc617aa183d8458ce8ce0cea64da7f9",
+      "bytes": 15596,
+      "mode": "100644",
+      "destination": "docs/VOICE-CONTRIBUTION.md"
+    },
+    {
+      "path": "docs/VOICE-E2E-RECOVERY.md",
+      "blob": "599605915fd56dd1dedd6dadb950311665dda29a",
+      "bytes": 7061,
+      "mode": "100644",
+      "destination": "docs/VOICE-E2E-RECOVERY.md"
+    },
+    {
+      "path": "docs/VOICE-LIVE-DIAGNOSIS-2026-10-05.md",
+      "blob": "f444195ba392a026d3ff3c0a8bb7eb4220d6770e",
+      "bytes": 3571,
+      "mode": "100644",
+      "destination": "docs/VOICE-LIVE-DIAGNOSIS-2026-10-05.md"
+    },
+    {
+      "path": "docs/VOICE-MP-READINESS.md",
+      "blob": "a2ad9f51f671d3135fb4ee0317507a37fab277c8",
+      "bytes": 21967,
+      "mode": "100644",
+      "destination": "docs/VOICE-MP-READINESS.md"
+    },
+    {
+      "path": "docs/VOICE-NATIVE-TRACE.md",
+      "blob": "df865e14ccbf677b606556025e3c93a9b24209a0",
+      "bytes": 39510,
+      "mode": "100644",
+      "destination": "docs/VOICE-NATIVE-TRACE.md"
+    },
+    {
+      "path": "docs/VOICE-PLAYER-STARTUP.md",
+      "blob": "10a906af30b7a55bb97922d1773dd7aaf5277616",
+      "bytes": 7435,
+      "mode": "100644",
+      "destination": "docs/VOICE-PLAYER-STARTUP.md"
+    },
+    {
+      "path": "docs/VOICE-PLAYER.md",
+      "blob": "b8d485498810782092a554a0dc88ad180d6adc8d",
+      "bytes": 1174,
+      "mode": "100644",
+      "destination": "docs/VOICE-PLAYER.md"
+    },
+    {
+      "path": "docs/VOICE-RELAY.md",
+      "blob": "0a5060c0bb5be307f54f04485b1fc8535c031a56",
+      "bytes": 7922,
+      "mode": "100644",
+      "destination": "docs/VOICE-RELAY.md"
+    },
+    {
+      "path": "docs/VOICE-RESUME-INVENTORY.md",
+      "blob": "3d56c131816a468d007e8f421ade87fbda5f1ba3",
+      "bytes": 30224,
+      "mode": "100644",
+      "destination": "docs/VOICE-RESUME-INVENTORY.md"
+    },
+    {
+      "path": "docs/VOICE-SPEECH-WITNESS-2026-10-11.md",
+      "blob": "d78b2c41bb5ee54f0b0bebbd06b3534b73114b2d",
+      "bytes": 29450,
+      "mode": "100644",
+      "destination": "docs/VOICE-SPEECH-WITNESS-2026-10-11.md"
+    },
+    {
+      "path": "docs/VOICE-TRANSPORT.md",
+      "blob": "f4cba51afdeaf37f3fcde6bd39ace8176d1ed1e7",
+      "bytes": 10036,
+      "mode": "100644",
+      "destination": "docs/VOICE-TRANSPORT.md"
+    },
+    {
+      "path": "docs/VOICE.md",
+      "blob": "0fcf6b313a586341715ffa5d957b4a0fc7b940ba",
+      "bytes": 8931,
+      "mode": "100644",
+      "destination": "docs/VOICE.md"
+    },
+    {
+      "path": "ops/Apply-DebuggerOverlay.ps1",
+      "blob": "fb6e3c0a553ce97b4ae4f865639a9a3b9c15e8bc",
+      "bytes": 3502,
+      "mode": "100644",
+      "destination": "ops/Apply-DebuggerOverlay.ps1"
+    },
+    {
+      "path": "ops/Apply-DownloadCacheOverlay.ps1",
+      "blob": "cab8b3f95b340cfb47d82338c185a9949710cb87",
+      "bytes": 1642,
+      "mode": "100644",
+      "destination": "ops/Apply-DownloadCacheOverlay.ps1"
+    },
+    {
+      "path": "ops/Apply-IncidentOverlay.ps1",
+      "blob": "df266283ac1520bbffeeb24e8e84cc3ea3daeb2c",
+      "bytes": 3216,
+      "mode": "100644",
+      "destination": "ops/Apply-IncidentOverlay.ps1"
+    },
+    {
+      "path": "ops/Apply-TestPrivacyOverlay.ps1",
+      "blob": "1a7138f459209fb9856f6e3d52733633063816f6",
+      "bytes": 1171,
+      "mode": "100644",
+      "destination": "ops/Apply-TestPrivacyOverlay.ps1"
+    },
+    {
+      "path": "ops/Base-Client.Core.ps1",
+      "blob": "1efcdaf3bb093008e2af59722f0e379a3c909f09",
+      "bytes": 30177,
+      "mode": "100644",
+      "destination": "ops/Base-Client.Core.ps1"
+    },
+    {
+      "path": "ops/Base-Client.ps1",
+      "blob": "df3922b55a4967fff88f25103782186243705bc4",
+      "bytes": 2601,
+      "mode": "100644",
+      "destination": "ops/Base-Client.ps1"
+    },
+    {
+      "path": "ops/Build-Voice.ps1",
+      "blob": "c2de9676eea19c9253e675d2f352470f984e4651",
+      "bytes": 43650,
+      "mode": "100644",
+      "destination": "ops/Build-Voice.ps1"
+    },
+    {
+      "path": "ops/Debug-Server.ps1",
+      "blob": "55532e635dc0db74f79cbe9452ff9efc9b95967f",
+      "bytes": 14485,
+      "mode": "100644",
+      "destination": "ops/Debug-Server.ps1"
+    },
+    {
+      "path": "ops/Debug-Session.ps1",
+      "blob": "14b586c637d3d26efa4ece7b91567c992c1bb7dc",
+      "bytes": 6854,
+      "mode": "100644",
+      "destination": "ops/Debug-Session.ps1"
+    },
+    {
+      "path": "ops/Download-CacheOverlay.Core.ps1",
+      "blob": "6d84287f3549b7512283127d8d95363c0c640984",
+      "bytes": 1387,
+      "mode": "100644",
+      "destination": "ops/Download-CacheOverlay.Core.ps1"
+    },
+    {
+      "path": "ops/Get-ServerInfo.ps1",
+      "blob": "7c1429e5c7d21190cc33a441c14900498df89a64",
+      "bytes": 1074,
+      "mode": "100644",
+      "destination": "ops/Get-ServerInfo.ps1"
+    },
+    {
+      "path": "ops/Invoke-LabAssetTool.ps1",
+      "blob": "a9cfc194b230f8695e7b8bc353f0227ea3d1ccf8",
+      "bytes": 2206,
+      "mode": "100644",
+      "destination": "ops/Invoke-LabAssetTool.ps1"
+    },
+    {
+      "path": "ops/Invoke-VoiceAnalysis.ps1",
+      "blob": "202642fb2a9de36a4f6fd970303ca7c66c3e771e",
+      "bytes": 2463,
+      "mode": "100644",
+      "destination": "ops/Invoke-VoiceAnalysis.ps1"
+    },
+    {
+      "path": "ops/Lab-AssetProcess.ps1",
+      "blob": "90da98ca1e54160f888cbd56bfc070cf951169cd",
+      "bytes": 3299,
+      "mode": "100644",
+      "destination": "ops/Lab-AssetProcess.ps1"
+    },
+    {
+      "path": "ops/Lab-Evidence.ps1",
+      "blob": "1d62dec6d9c684c218f0b843ff43f6c33a1e6cae",
+      "bytes": 3179,
+      "mode": "100644",
+      "destination": "ops/Lab-Evidence.ps1"
+    },
+    {
+      "path": "ops/Lab-Lifecycle.ps1",
+      "blob": "797f7e1a0cdc59efafcd9f94714ec33579f05c7a",
+      "bytes": 1018,
+      "mode": "100644",
+      "destination": "ops/Lab-Lifecycle.ps1"
+    },
+    {
+      "path": "ops/Lab-Paths.ps1",
+      "blob": "6ce848f79ac63ce58c193b59306a16d4ad590498",
+      "bytes": 969,
+      "mode": "100644",
+      "destination": "ops/Lab-Paths.ps1"
+    },
+    {
+      "path": "ops/Lab-RunPlan.ps1",
+      "blob": "4daba988543ab219542c4e2fa11642adc6d5b1d6",
+      "bytes": 1795,
+      "mode": "100644",
+      "destination": "ops/Lab-RunPlan.ps1"
+    },
+    {
+      "path": "ops/Lab-State.ps1",
+      "blob": "a4a1d72e2211c330f1e06fbcc60dee277fd4cd17",
+      "bytes": 885,
+      "mode": "100644",
+      "destination": "ops/Lab-State.ps1"
+    },
+    {
+      "path": "ops/Measure-AgentGroup.Core.ps1",
+      "blob": "e2901b1840278a3141f607a94509108c02e73edf",
+      "bytes": 4024,
+      "mode": "100644",
+      "destination": "ops/Measure-AgentGroup.Core.ps1"
+    },
+    {
+      "path": "ops/Measure-AgentGroup.ps1",
+      "blob": "760a6ef1217dff2de7ee2642d3e088c4335e0714",
+      "bytes": 4251,
+      "mode": "100644",
+      "destination": "ops/Measure-AgentGroup.ps1"
+    },
+    {
+      "path": "ops/Measure-VoiceOutput.ps1",
+      "blob": "217336b0e75f44150a91c24d5643da3b412f75fe",
+      "bytes": 3814,
+      "mode": "100644",
+      "destination": "ops/Measure-VoiceOutput.ps1"
+    },
+    {
+      "path": "ops/Memory-Budget.ps1",
+      "blob": "61e1ff55fb94bf2aa1fd59e5b6ccc363670e4b17",
+      "bytes": 1634,
+      "mode": "100644",
+      "destination": "ops/Memory-Budget.ps1"
+    },
+    {
+      "path": "ops/RenderDoc-Capture.py",
+      "blob": "cc66731dff22a7a89aba8f4b486d819e9c7c9215",
+      "bytes": 1747,
+      "mode": "100644",
+      "destination": "ops/RenderDoc-Capture.py"
+    },
+    {
+      "path": "ops/RenderDoc-Fixture.py",
+      "blob": "dde2fbdef460d1a93666c7a2b7b0345a2934d85b",
+      "bytes": 1632,
+      "mode": "100644",
+      "destination": "ops/RenderDoc-Fixture.py"
+    },
+    {
+      "path": "ops/Resource-Memory.ps1",
+      "blob": "e5d91c535a6f7cebf4b51cde9ae7b3c156ec0821",
+      "bytes": 607,
+      "mode": "100644",
+      "destination": "ops/Resource-Memory.ps1"
+    },
+    {
+      "path": "ops/Resource-RecorderOwnedProcess.Core.ps1",
+      "blob": "e15b7a95da98e33c81eb94d4a352d9730370b2dc",
+      "bytes": 18951,
+      "mode": "100644",
+      "destination": "ops/Resource-RecorderOwnedProcess.Core.ps1"
+    },
+    {
+      "path": "ops/Resource-Scheduler.Core.ps1",
+      "blob": "27259870735c80eee80d683b907accb150250ba1",
+      "bytes": 15143,
+      "mode": "100644",
+      "destination": "ops/Resource-Scheduler.Core.ps1"
+    },
+    {
+      "path": "ops/Resource-Scheduler.ps1",
+      "blob": "26c5e5e8602df5fc9410c56685daab75ce9952b6",
+      "bytes": 4372,
+      "mode": "100644",
+      "destination": "ops/Resource-Scheduler.ps1"
+    },
+    {
+      "path": "ops/Send-ServerCommand.py",
+      "blob": "17e2f23493cbc710234e53a769d9294213b4f0d5",
+      "bytes": 2671,
+      "mode": "100644",
+      "destination": "ops/Send-ServerCommand.py"
+    },
+    {
+      "path": "ops/Trace-LateJoin.py",
+      "blob": "eda943528243a877e2a9a091489a530d0e3ed01e",
+      "bytes": 11573,
+      "mode": "100644",
+      "destination": "ops/Trace-LateJoin.py"
+    },
+    {
+      "path": "ops/Trace-Rejoin.py",
+      "blob": "63037a9a50b04c1c799d6fc8839b4ef2ed5cd1e5",
+      "bytes": 5377,
+      "mode": "100644",
+      "destination": "ops/Trace-Rejoin.py"
+    },
+    {
+      "path": "ops/agent-capacity/Apply-WatchCheckpointOverlay.ps1",
+      "blob": "7d49b42edf2fd4507bc1b087aa61013d52c04cf5",
+      "bytes": 3219,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/Apply-WatchCheckpointOverlay.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/Build-Copy.Core.ps1",
+      "blob": "c5adf8f2db7047ee23b71055533d4a5ec79f35c4",
+      "bytes": 2062,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/Build-Copy.Core.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/Capture-CodePages.ps1",
+      "blob": "94fc01377eeb8a080538faaea5efc7d4997d5f28",
+      "bytes": 4503,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/Capture-CodePages.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/Checkpoint-Overlay.Core.ps1",
+      "blob": "5cdec57be4d046a4b157586a9d9145572780594f",
+      "bytes": 4301,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/Checkpoint-Overlay.Core.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/CodePages.Core.ps1",
+      "blob": "46d5e53e45cc6ff3c16dc7800cca2acf3391d6f8",
+      "bytes": 4503,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/CodePages.Core.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/CodePages.cs",
+      "blob": "077e920a67448c407c8f2b704f7328746c7d1d2c",
+      "bytes": 8044,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/CodePages.cs"
+    },
+    {
+      "path": "ops/agent-capacity/Invoke-XrefAnalysis.ps1",
+      "blob": "6bcb4d6a6cca57da17474888cd7e528dbdb04c89",
+      "bytes": 1824,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/Invoke-XrefAnalysis.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/Watch-Runtime.Core.ps1",
+      "blob": "42628f3b2d887c3c9783ddf20f31f9a41da0ba5d",
+      "bytes": 14459,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/Watch-Runtime.Core.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/Watch-Server.ps1",
+      "blob": "e49ef9783d0eadad1d95cd0ff0bf87714b4675b3",
+      "bytes": 10294,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/Watch-Server.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/aim-functions.csv",
+      "blob": "3098447e21374210b2e05cc5758d69f7139be419",
+      "bytes": 223,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/aim-functions.csv"
+    },
+    {
+      "path": "ops/agent-capacity/allocator-functions.csv",
+      "blob": "6c76b90ff937637219c198c7882e4b78ad9f693a",
+      "bytes": 515,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/allocator-functions.csv"
+    },
+    {
+      "path": "ops/agent-capacity/code_pages.py",
+      "blob": "73e252dc5e6ff99f906f649985b1497a2e0d3525",
+      "bytes": 7529,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/code_pages.py"
+    },
+    {
+      "path": "ops/agent-capacity/functions.csv",
+      "blob": "4c32063ae7e078046e2683c7fc90a6251631110a",
+      "bytes": 516,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/functions.csv"
+    },
+    {
+      "path": "ops/agent-capacity/indirect-producer-functions.csv",
+      "blob": "618ca0f65501cb9433d7c4e33170cc6c5650f26f",
+      "bytes": 114,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/indirect-producer-functions.csv"
+    },
+    {
+      "path": "ops/agent-capacity/inspect_retained.py",
+      "blob": "b73ad83d459a9034d021ea07d741e78e65241e6d",
+      "bytes": 4304,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/inspect_retained.py"
+    },
+    {
+      "path": "ops/agent-capacity/inventory.json",
+      "blob": "bd94cd3d33d1b94d8620f89a1ab6fdde0a21dff6",
+      "bytes": 42070,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/inventory.json"
+    },
+    {
+      "path": "ops/agent-capacity/pool-caller-functions.csv",
+      "blob": "c8e2345e29c850d51c7e8a04d278e234bacee2a1",
+      "bytes": 355,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/pool-caller-functions.csv"
+    },
+    {
+      "path": "ops/agent-capacity/pool-lifecycle-functions.csv",
+      "blob": "6ce1a7bf9d0ff33a260eea2e59f1f8b39d0da03e",
+      "bytes": 301,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/pool-lifecycle-functions.csv"
+    },
+    {
+      "path": "ops/agent-capacity/producer-diagnostic-plan.json",
+      "blob": "9287cf6eb01802218b9412cc09ae1c0f4877a46f",
+      "bytes": 5700,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/producer-diagnostic-plan.json"
+    },
+    {
+      "path": "ops/agent-capacity/recipe.json",
+      "blob": "f7a1f9c0a61b8b7476b72a4d9bdb460d13988306",
+      "bytes": 35075,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/recipe.json"
+    },
+    {
+      "path": "ops/agent-capacity/reset-caller-functions.csv",
+      "blob": "1f174e046908cddfd1c4e610b061c8ce51756556",
+      "bytes": 264,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/reset-caller-functions.csv"
+    },
+    {
+      "path": "ops/agent-capacity/reset-entry-plan.json",
+      "blob": "76fad31ef5ab8e1c87133caf1ba24fc0ae56ee91",
+      "bytes": 1135,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/reset-entry-plan.json"
+    },
+    {
+      "path": "ops/agent-capacity/test_build_copy.ps1",
+      "blob": "227dd8970cc48c542252868717c818ad0688dc03",
+      "bytes": 1520,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/test_build_copy.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/test_code_pages.py",
+      "blob": "268e7ef9053ee7cd306351995c1d44c7f7201750",
+      "bytes": 9405,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/test_code_pages.py"
+    },
+    {
+      "path": "ops/agent-capacity/test_decompile_owner_ranges.py",
+      "blob": "4515b3c7be00902105efd3199e3cca5676a81455",
+      "bytes": 5379,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/test_decompile_owner_ranges.py"
+    },
+    {
+      "path": "ops/agent-capacity/test_watch_runtime.ps1",
+      "blob": "fa0885a90cf8bb9192e4176f8b97df92162f31a6",
+      "bytes": 6685,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/test_watch_runtime.ps1"
+    },
+    {
+      "path": "ops/agent-capacity/test_xref_owners.py",
+      "blob": "70341070c54ca4266cbb32d19fce363d4b06029f",
+      "bytes": 5974,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/test_xref_owners.py"
+    },
+    {
+      "path": "ops/agent-capacity/xref_owners.py",
+      "blob": "c7a02d7af94e56720dec2a5233f3d1c7b60d286d",
+      "bytes": 12197,
+      "mode": "100644",
+      "destination": "ops/agent-capacity/xref_owners.py"
+    },
+    {
+      "path": "ops/ghidra/DecompileSelected.java",
+      "blob": "55578e76c64da61449a90c4e15fc5b59bab925a5",
+      "bytes": 9731,
+      "mode": "100644",
+      "destination": "ops/ghidra/DecompileSelected.java"
+    },
+    {
+      "path": "ops/ghidra/voice-functions.csv",
+      "blob": "57b496e3d80e526b4edabf8e2bb4bf80813c6cf5",
+      "bytes": 1262,
+      "mode": "100644",
+      "destination": "ops/ghidra/voice-functions.csv"
+    },
+    {
+      "path": "ops/iw7_capture.py",
+      "blob": "a48ed6909c6f6ce9992f6b19ce6bc46177174aed",
+      "bytes": 12804,
+      "mode": "100644",
+      "destination": "ops/iw7_capture.py"
+    },
+    {
+      "path": "ops/iw7_debugger.py",
+      "blob": "61df3f148fa70b02c006972acaa2839f457e5f6d",
+      "bytes": 33734,
+      "mode": "100644",
+      "destination": "ops/iw7_debugger.py"
+    },
+    {
+      "path": "ops/iw7_watch.py",
+      "blob": "e85b1ad48e67b9cc6480a0d2aa8117536a53585b",
+      "bytes": 19594,
+      "mode": "100644",
+      "destination": "ops/iw7_watch.py"
+    },
+    {
+      "path": "ops/native/LabProcess.cs",
+      "blob": "e36cf196b74e31bcd5bb399b832d136e6ba5d6c3",
+      "bytes": 11875,
+      "mode": "100644",
+      "destination": "ops/native/LabProcess.cs"
+    },
+    {
+      "path": "ops/native/ResourceMemory.cs",
+      "blob": "516be0098a457684a906da76be44d3e892c8211d",
+      "bytes": 2008,
+      "mode": "100644",
+      "destination": "ops/native/ResourceMemory.cs"
+    },
+    {
+      "path": "ops/voice-agent/Analyze-WAV.cs",
+      "blob": "9e3a6ed7dbed171f1e050c0023b1d7868f7b7ad0",
+      "bytes": 7484,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Analyze-WAV.cs"
+    },
+    {
+      "path": "ops/voice-agent/Build-Copy.Core.ps1",
+      "blob": "b48df7c088ddee302464aaaec4e9acb2f6cbbb2f",
+      "bytes": 625,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Build-Copy.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Build-Render.ps1",
+      "blob": "39378dec961f9aba7964f27249af00906e3fa80a",
+      "bytes": 3265,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Build-Render.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Cable-Execute.Core.ps1",
+      "blob": "6711b4ada8052606fc688461d05422bb6a93ac64",
+      "bytes": 6329,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Cable-Execute.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Cable-Transaction.Core.ps1",
+      "blob": "90f3ef051425b3417997cb20b8e9c6227c3dfcde",
+      "bytes": 4306,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Cable-Transaction.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Cable-Transaction.ps1",
+      "blob": "02b0c03f2bee3c4348026a9bb7c656cc59841aa6",
+      "bytes": 6579,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Cable-Transaction.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Capture-Route.Core.ps1",
+      "blob": "f81729624be3c5023487a621e9e835aad1d55ac6",
+      "bytes": 1808,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Capture-Route.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/CaptureAdapterPolicy.hpp",
+      "blob": "96a12447e5f52e583d85ad49d8324df34828a1c2",
+      "bytes": 118,
+      "mode": "100644",
+      "destination": "ops/voice-agent/CaptureAdapterPolicy.hpp"
+    },
+    {
+      "path": "ops/voice-agent/CoreAudioInventory.cs",
+      "blob": "430ecaf47a793a83d28c5989afcf1c6e9a74d95b",
+      "bytes": 8342,
+      "mode": "100644",
+      "destination": "ops/voice-agent/CoreAudioInventory.cs"
+    },
+    {
+      "path": "ops/voice-agent/Execute-Cable.ps1",
+      "blob": "ad6d1ac1d9048355f3898b5534b4213bfffe7df5",
+      "bytes": 6996,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Execute-Cable.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Fake-BuildCopy.Core.ps1",
+      "blob": "c241382ffeb28c4a978ae726a7807fed0a7436ec",
+      "bytes": 2048,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Fake-BuildCopy.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Install-Whisper.ps1",
+      "blob": "20017bf41307576c73d8ceede429784516bd2cd6",
+      "bytes": 4365,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Install-Whisper.ps1"
+    },
+    {
+      "path": "ops/voice-agent/New-ShortSpeech.ps1",
+      "blob": "0a82b10e4861d25d4b630bf0f2bb47bec635abb9",
+      "bytes": 3945,
+      "mode": "100644",
+      "destination": "ops/voice-agent/New-ShortSpeech.ps1"
+    },
+    {
+      "path": "ops/voice-agent/OwnedProbe.cs",
+      "blob": "c630365c9fdcc039dc0dd30668b08e0d963ecd88",
+      "bytes": 4873,
+      "mode": "100644",
+      "destination": "ops/voice-agent/OwnedProbe.cs"
+    },
+    {
+      "path": "ops/voice-agent/PTT-Contract.Core.ps1",
+      "blob": "8d35caca3650a52cbacea2c5ef18f32cc8eb071b",
+      "bytes": 2646,
+      "mode": "100644",
+      "destination": "ops/voice-agent/PTT-Contract.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/PTT-InputBase.inc",
+      "blob": "a7764904a49747258d52bf1dc92d150b653967ca",
+      "bytes": 5547,
+      "mode": "100644",
+      "destination": "ops/voice-agent/PTT-InputBase.inc"
+    },
+    {
+      "path": "ops/voice-agent/PTT-InputBridge.Core.ps1",
+      "blob": "51b6c2985b5997d16da9a3426b952f930a2fba44",
+      "bytes": 14411,
+      "mode": "100644",
+      "destination": "ops/voice-agent/PTT-InputBridge.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/PTT-InputBridge.inc",
+      "blob": "60db20eefae0a71dcd8a13beec1a17c0b6ad06ed",
+      "bytes": 9460,
+      "mode": "100644",
+      "destination": "ops/voice-agent/PTT-InputBridge.inc"
+    },
+    {
+      "path": "ops/voice-agent/Play-Source.ps1",
+      "blob": "7516b716df7307131fb63e288f34ac78cab45aa0",
+      "bytes": 3289,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Play-Source.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Prepare-VirtualCable.ps1",
+      "blob": "56e26b5ae6d0f820fec91758b705255463718e45",
+      "bytes": 6721,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Prepare-VirtualCable.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Providers.Core.ps1",
+      "blob": "21986244649151f0b9abbd9df2936f1eb65d0c0a",
+      "bytes": 33859,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Providers.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/README.md",
+      "blob": "b756ddfbe8883a45d18e496cd014b893c3f3f685",
+      "bytes": 4427,
+      "mode": "100644",
+      "destination": "ops/voice-agent/README.md"
+    },
+    {
+      "path": "ops/voice-agent/Record-Receiver.ps1",
+      "blob": "dd0f86172976ac7e2557c222d54231f96ad93615",
+      "bytes": 4142,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Record-Receiver.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Recorder-Probe.cs",
+      "blob": "fa650f473623ff689bdbfb5f9d39f86264c3e3c0",
+      "bytes": 45561,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Recorder-Probe.cs"
+    },
+    {
+      "path": "ops/voice-agent/Recorder.Core.ps1",
+      "blob": "819327167a4483b133d3ab00f114a453728a92c1",
+      "bytes": 40922,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Recorder.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Recording.Core.ps1",
+      "blob": "7c84eb3b8ec1dc2a4b00204b37261093406e304f",
+      "bytes": 1454,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Recording.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Render.Core.ps1",
+      "blob": "7b5028e03b7255e2baf6441b3a43bf6e28fd23ea",
+      "bytes": 3616,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Render.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/RenderWave.hpp",
+      "blob": "0d7feb340bcdd353e7bfb27c86ae55dc28a2e1d7",
+      "bytes": 3262,
+      "mode": "100644",
+      "destination": "ops/voice-agent/RenderWave.hpp"
+    },
+    {
+      "path": "ops/voice-agent/Select-Capture.ps1",
+      "blob": "2894887e8255045a8088b218b6a1d644b754eae2",
+      "bytes": 260,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Select-Capture.ps1"
+    },
+    {
+      "path": "ops/voice-agent/TokenInventory.cs",
+      "blob": "5d3b91be7359b0fc6285fbfe23b636689e0e379f",
+      "bytes": 1378,
+      "mode": "100644",
+      "destination": "ops/voice-agent/TokenInventory.cs"
+    },
+    {
+      "path": "ops/voice-agent/Voice-Fixture.ps1",
+      "blob": "663aaced5a835b614a40b36790cde8ce4a2263f1",
+      "bytes": 5977,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Voice-Fixture.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Voice-Pair.Core.ps1",
+      "blob": "11b43d66fcaec3a38860f6a01b57c3d6d0470879",
+      "bytes": 16752,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Voice-Pair.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/Voice-Source.Core.ps1",
+      "blob": "4ede5b21c54828fd86f2340c1d466034a33b44cb",
+      "bytes": 6065,
+      "mode": "100644",
+      "destination": "ops/voice-agent/Voice-Source.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/capture_adapter_test.cpp",
+      "blob": "96f8f46e2f3fd5d5e4253a1d5be5d20b9558426a",
+      "bytes": 5728,
+      "mode": "100644",
+      "destination": "ops/voice-agent/capture_adapter_test.cpp"
+    },
+    {
+      "path": "ops/voice-agent/fake-Source.Core.ps1",
+      "blob": "3239be3c23f649a1657ac2fc93894089dc1b4c6b",
+      "bytes": 1707,
+      "mode": "100644",
+      "destination": "ops/voice-agent/fake-Source.Core.ps1"
+    },
+    {
+      "path": "ops/voice-agent/render_wave.cpp",
+      "blob": "75400690ca1d3072f9729d34616241e18be45589",
+      "bytes": 7594,
+      "mode": "100644",
+      "destination": "ops/voice-agent/render_wave.cpp"
+    },
+    {
+      "path": "ops/voice-agent/render_wave_test.cpp",
+      "blob": "d24dce620cd061a56b1904b6e5e20f1e990e9589",
+      "bytes": 1661,
+      "mode": "100644",
+      "destination": "ops/voice-agent/render_wave_test.cpp"
+    },
+    {
+      "path": "ops/voice-agent/test_fake_build_copy.ps1",
+      "blob": "78334d9917b7e60f500b587ceee5a4dcd0bdd5ec",
+      "bytes": 2448,
+      "mode": "100644",
+      "destination": "ops/voice-agent/test_fake_build_copy.ps1"
+    },
+    {
+      "path": "src/native/agent_scenario.hpp",
+      "blob": "4e33dd3d575ae6a4ba3aa251835c9d1fe805a967",
+      "bytes": 13367,
+      "mode": "100644",
+      "destination": "src/native/agent_scenario.hpp"
+    },
+    {
+      "path": "src/native/debugger_stats.hpp",
+      "blob": "f07de1e9cb3a4faf8a4ab5469af6a9b975eefa36",
+      "bytes": 2989,
+      "mode": "100644",
+      "destination": "src/native/debugger_stats.hpp"
+    },
+    {
+      "path": "src/native/dvar_metadata.hpp",
+      "blob": "959ce33ee7a0dfc96424dd58a523f51b87f19a06",
+      "bytes": 1739,
+      "mode": "100644",
+      "destination": "src/native/dvar_metadata.hpp"
+    },
+    {
+      "path": "src/native/paris_capacity_watch.cpp",
+      "blob": "27269d9f6bd3bafd7d84d11a7c4a13d551924037",
+      "bytes": 25388,
+      "mode": "100644",
+      "destination": "src/native/paris_capacity_watch.cpp"
+    },
+    {
+      "path": "src/native/paris_capacity_watch.hpp",
+      "blob": "287f69f66af0a534d98b281422d643beb39eed1f",
+      "bytes": 3869,
+      "mode": "100644",
+      "destination": "src/native/paris_capacity_watch.hpp"
+    },
+    {
+      "path": "src/native/paris_debugger.cpp",
+      "blob": "fc57ccf2739a308d1a63a8460f2ceb2c2040b7c8",
+      "bytes": 10124,
+      "mode": "100644",
+      "destination": "src/native/paris_debugger.cpp"
+    },
+    {
+      "path": "src/native/paris_debugger.hpp",
+      "blob": "59a17d664f9306cb358d21d6fb2cbe2166dc41e0",
+      "bytes": 575,
+      "mode": "100644",
+      "destination": "src/native/paris_debugger.hpp"
+    },
+    {
+      "path": "src/native/paris_incident.cpp",
+      "blob": "93fff326aa01f6b2e2ce1a5d352f70a6fbbce4cf",
+      "bytes": 21733,
+      "mode": "100644",
+      "destination": "src/native/paris_incident.cpp"
+    },
+    {
+      "path": "src/native/paris_incident.hpp",
+      "blob": "7c0f2bd7550ee183d2ee3b636f12564b5aefc965",
+      "bytes": 500,
+      "mode": "100644",
+      "destination": "src/native/paris_incident.hpp"
+    },
+    {
+      "path": "src/native/paris_lab_properties.cpp",
+      "blob": "e1858b78f0a28b2c7856c347e8ac2a6726739b55",
+      "bytes": 1243,
+      "mode": "100644",
+      "destination": "src/native/paris_lab_properties.cpp"
+    },
+    {
+      "path": "src/native/paris_model_diagnostics.cpp",
+      "blob": "b5a0fa6ac79d33308b884113187fb4a4a6c41277",
+      "bytes": 15791,
+      "mode": "100644",
+      "destination": "src/native/paris_model_diagnostics.cpp"
+    },
+    {
+      "path": "src/native/paris_model_diagnostics.hpp",
+      "blob": "88c7b8892dc2fcbcedbe5026219271fa5f36649f",
+      "bytes": 819,
+      "mode": "100644",
+      "destination": "src/native/paris_model_diagnostics.hpp"
+    },
+    {
+      "path": "src/native/paris_test_fixture.cpp",
+      "blob": "33fab904a6661155d5dd2984baec1d329adffced",
+      "bytes": 76498,
+      "mode": "100644",
+      "destination": "src/native/paris_test_fixture.cpp"
+    },
+    {
+      "path": "src/native/paris_test_safety.hpp",
+      "blob": "b4cdbc10a4fa82e24f12d6d6ce370cea9d3ae20d",
+      "bytes": 1276,
+      "mode": "100644",
+      "destination": "src/native/paris_test_safety.hpp"
+    },
+    {
+      "path": "src/native/paris_voice.cpp",
+      "blob": "ec8d37aecccf5328af752517bfcb5da7358134ee",
+      "bytes": 72825,
+      "mode": "100644",
+      "destination": "src/native/paris_voice.cpp"
+    },
+    {
+      "path": "src/native/paris_voice_protocol.hpp",
+      "blob": "1675fbf6863fe21679b59eb6a3150c85568e1812",
+      "bytes": 4871,
+      "mode": "100644",
+      "destination": "src/native/paris_voice_protocol.hpp"
+    },
+    {
+      "path": "src/native/paris_voice_test_capture.cpp",
+      "blob": "8a36c82112540b7ac3d9d182cb5ac92c6c389358",
+      "bytes": 40575,
+      "mode": "100644",
+      "destination": "src/native/paris_voice_test_capture.cpp"
+    },
+    {
+      "path": "src/native/paris_voice_test_capture.hpp",
+      "blob": "569745faf7b859892e1bd4e73c308b4e44d97c58",
+      "bytes": 645,
+      "mode": "100644",
+      "destination": "src/native/paris_voice_test_capture.hpp"
+    },
+    {
+      "path": "src/native/voice_capture_adapter.hpp",
+      "blob": "454f98703d7eb1f5c1a9fd94be80b3ace525e3fe",
+      "bytes": 5963,
+      "mode": "100644",
+      "destination": "src/native/voice_capture_adapter.hpp"
+    },
+    {
+      "path": "src/native/voice_capture_wire.hpp",
+      "blob": "f5a4e52953a28b1b08285a93f4abb62f84ec1489",
+      "bytes": 2562,
+      "mode": "100644",
+      "destination": "src/native/voice_capture_wire.hpp"
+    },
+    {
+      "path": "src/native/voice_inbox.hpp",
+      "blob": "c2aca915176172250a568234b3125a1ef760276c",
+      "bytes": 3388,
+      "mode": "100644",
+      "destination": "src/native/voice_inbox.hpp"
+    },
+    {
+      "path": "src/native/voice_pcm_witness.hpp",
+      "blob": "6e1aaf7cfc454950b180a30e2ccad01b48f89705",
+      "bytes": 4291,
+      "mode": "100644",
+      "destination": "src/native/voice_pcm_witness.hpp"
+    },
+    {
+      "path": "src/native/voice_ptt_guard.hpp",
+      "blob": "ac97167b266974eb8be49baf5b1b2cebf9db514a",
+      "bytes": 14381,
+      "mode": "100644",
+      "destination": "src/native/voice_ptt_guard.hpp"
+    },
+    {
+      "path": "src/native/voice_relay.cpp",
+      "blob": "107b0e1a954d22c45d1f0b7178e10af893ba54fb",
+      "bytes": 29791,
+      "mode": "100644",
+      "destination": "src/native/voice_relay.cpp"
+    },
+    {
+      "path": "src/native/voice_relay.hpp",
+      "blob": "d7d3df849ae35d5940960fdf918211abea4c5c67",
+      "bytes": 1601,
+      "mode": "100644",
+      "destination": "src/native/voice_relay.hpp"
+    },
+    {
+      "path": "src/native/voice_state.hpp",
+      "blob": "cdf78f3ee7a67d076c358c16ce55e1ccdb10dbb0",
+      "bytes": 5393,
+      "mode": "100644",
+      "destination": "src/native/voice_state.hpp"
+    },
+    {
+      "path": "src/native/voice_test_binding.hpp",
+      "blob": "a1e7cc46e1a3fce645a335df4e609d29fea9c143",
+      "bytes": 5593,
+      "mode": "100644",
+      "destination": "src/native/voice_test_binding.hpp"
+    },
+    {
+      "path": "src/native/voice_test_capture.cpp",
+      "blob": "540b3d4386659377e344c0eba020708ddf2c1bb1",
+      "bytes": 18771,
+      "mode": "100644",
+      "destination": "src/native/voice_test_capture.cpp"
+    },
+    {
+      "path": "src/native/voice_test_capture.hpp",
+      "blob": "a04ba6fff083ada7281361da8501368a18b1d850",
+      "bytes": 3064,
+      "mode": "100644",
+      "destination": "src/native/voice_test_capture.hpp"
+    },
+    {
+      "path": "src/native/voice_transport.hpp",
+      "blob": "826ae6c14806f60a022ed6ccb7794a35e9ad7e4c",
+      "bytes": 17925,
+      "mode": "100644",
+      "destination": "src/native/voice_transport.hpp"
+    },
+    {
+      "path": "src/native/voice_wire.hpp",
+      "blob": "94f048cfbce061e3b536d00840e865a1594b5f42",
+      "bytes": 9149,
+      "mode": "100644",
+      "destination": "src/native/voice_wire.hpp"
+    },
+    {
+      "path": "tests/native/agent_scenario_test.cpp",
+      "blob": "79d5ff307b7198027765a7f58e93531327b843b7",
+      "bytes": 14720,
+      "mode": "100644",
+      "destination": "tests/native/agent_scenario_test.cpp"
+    },
+    {
+      "path": "tests/native/audio_output_probe.cpp",
+      "blob": "012aad08e475b1150c24b4fb08873de4c58a4826",
+      "bytes": 32778,
+      "mode": "100644",
+      "destination": "tests/native/audio_output_probe.cpp"
+    },
+    {
+      "path": "tests/native/audio_probe_worker_test.cpp",
+      "blob": "b7d51d200c0e8945491a09c47f400cb8be821d2d",
+      "bytes": 740,
+      "mode": "100644",
+      "destination": "tests/native/audio_probe_worker_test.cpp"
+    },
+    {
+      "path": "tests/native/audio_recording.hpp",
+      "blob": "62de212e389fa92275ddb62fc0fee75a18d9711e",
+      "bytes": 4643,
+      "mode": "100644",
+      "destination": "tests/native/audio_recording.hpp"
+    },
+    {
+      "path": "tests/native/capacity_checkpoint_publication_test.cpp",
+      "blob": "6e6a43805c608256a35fc94fd04022f0754790f6",
+      "bytes": 1826,
+      "mode": "100644",
+      "destination": "tests/native/capacity_checkpoint_publication_test.cpp"
+    },
+    {
+      "path": "tests/native/capacity_watch_test.cpp",
+      "blob": "0ffa392683e7140f91f8cd957d13203379bffca0",
+      "bytes": 2046,
+      "mode": "100644",
+      "destination": "tests/native/capacity_watch_test.cpp"
+    },
+    {
+      "path": "tests/native/debugger_stats_test.cpp",
+      "blob": "969b502be6c588807327d3eedb7e923c6965c9d6",
+      "bytes": 1959,
+      "mode": "100644",
+      "destination": "tests/native/debugger_stats_test.cpp"
+    },
+    {
+      "path": "tests/native/dvar_metadata_test.cpp",
+      "blob": "ff13fb0c95f7465cf117663f2902285cf7f9dddc",
+      "bytes": 3247,
+      "mode": "100644",
+      "destination": "tests/native/dvar_metadata_test.cpp"
+    },
+    {
+      "path": "tests/native/kernel_image_alias_regression_test.cs",
+      "blob": "a12afdeb2b7e6143b0d1137b7515e933e2ed5387",
+      "bytes": 6518,
+      "mode": "100644",
+      "destination": "tests/native/kernel_image_alias_regression_test.cs"
+    },
+    {
+      "path": "tests/native/voice_capture_wire_test.cpp",
+      "blob": "24e030b6c06cce66cb5dc95ea91203659a31fb33",
+      "bytes": 1130,
+      "mode": "100644",
+      "destination": "tests/native/voice_capture_wire_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_inbox_test.cpp",
+      "blob": "e0e269c94603640f63f922b13e22a0e709c70c67",
+      "bytes": 5609,
+      "mode": "100644",
+      "destination": "tests/native/voice_inbox_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_launch_test.cpp",
+      "blob": "24035abe6a3babe7df416f57ca5f2519fb27d654",
+      "bytes": 1207,
+      "mode": "100644",
+      "destination": "tests/native/voice_launch_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_pair_recorder_worker_test.cpp",
+      "blob": "5e5900f2ffc17ac31b780dad5129d161cbf6fe27",
+      "bytes": 1852,
+      "mode": "100644",
+      "destination": "tests/native/voice_pair_recorder_worker_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_pcm_witness_test.cpp",
+      "blob": "704cbcd7d73d270d25059ebc744d3267fb99d062",
+      "bytes": 4575,
+      "mode": "100644",
+      "destination": "tests/native/voice_pcm_witness_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_protocol_test.cpp",
+      "blob": "8fdbc6b85e7d23692594af0c4e85b96110f049bc",
+      "bytes": 4522,
+      "mode": "100644",
+      "destination": "tests/native/voice_protocol_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_ptt_guard_test.cpp",
+      "blob": "f784f52b0ae8b6fea70d1d0840747579da552bfc",
+      "bytes": 11676,
+      "mode": "100644",
+      "destination": "tests/native/voice_ptt_guard_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_ptt_protocol_test.cpp",
+      "blob": "4278a4140272cd9a4dde71ed46bc8f1398387ea7",
+      "bytes": 2529,
+      "mode": "100644",
+      "destination": "tests/native/voice_ptt_protocol_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_simulation_test.cpp",
+      "blob": "26260b6bb4db0ccbc39644dfd8872afb3cba7f28",
+      "bytes": 6315,
+      "mode": "100644",
+      "destination": "tests/native/voice_simulation_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_state_test.cpp",
+      "blob": "ba82862b1a0a9e1150e30de3533e9a8ff65dd6cd",
+      "bytes": 7073,
+      "mode": "100644",
+      "destination": "tests/native/voice_state_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_test_binding_test.cpp",
+      "blob": "fa790553216f2d66890ac117b0506c12d3c71379",
+      "bytes": 6071,
+      "mode": "100644",
+      "destination": "tests/native/voice_test_binding_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_test_capture_test.cpp",
+      "blob": "e93f21c4fe867d89266c028dbdec718671de5eba",
+      "bytes": 14423,
+      "mode": "100644",
+      "destination": "tests/native/voice_test_capture_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_transport_test.cpp",
+      "blob": "0e4aaf1ac4100fda3c36e6f41684fe646475caed",
+      "bytes": 14631,
+      "mode": "100644",
+      "destination": "tests/native/voice_transport_test.cpp"
+    },
+    {
+      "path": "tests/native/voice_wan_test.cpp",
+      "blob": "202b4a1935dc21b399c73749f512be9adc4d3677",
+      "bytes": 10314,
+      "mode": "100644",
+      "destination": "tests/native/voice_wan_test.cpp"
+    },
+    {
+      "path": "tests/ops/base_client_context_test.ps1",
+      "blob": "6d90fbd662f5f88d8a853ffb1b7ef5eda8a9ba95",
+      "bytes": 3185,
+      "mode": "100644",
+      "destination": "tests/ops/base_client_context_test.ps1"
+    },
+    {
+      "path": "tests/ops/base_client_exit_test.ps1",
+      "blob": "342cdfaa7e9f4a478c3363d0a059bd30ed978acd",
+      "bytes": 6141,
+      "mode": "100644",
+      "destination": "tests/ops/base_client_exit_test.ps1"
+    },
+    {
+      "path": "tests/ops/base_client_test.ps1",
+      "blob": "059be035e838fb57ee5c69d25b4bd8bba471c099",
+      "bytes": 14589,
+      "mode": "100644",
+      "destination": "tests/ops/base_client_test.ps1"
+    },
+    {
+      "path": "tests/ops/capacity_checkpoint_overlay_test.ps1",
+      "blob": "9922d5af8083a3cd7d6b2d5e880e3b4e9d79a49a",
+      "bytes": 4118,
+      "mode": "100644",
+      "destination": "tests/ops/capacity_checkpoint_overlay_test.ps1"
+    },
+    {
+      "path": "tests/ops/debugger_operations_test.ps1",
+      "blob": "c0286da9deb9938e1a688af96fbddd1cb26f2c60",
+      "bytes": 6030,
+      "mode": "100644",
+      "destination": "tests/ops/debugger_operations_test.ps1"
+    },
+    {
+      "path": "tests/ops/debugger_test.py",
+      "blob": "ea327ec7e9fa088598bf3eae70b9866dcc7ff8ae",
+      "bytes": 16590,
+      "mode": "100644",
+      "destination": "tests/ops/debugger_test.py"
+    },
+    {
+      "path": "tests/ops/download_cache_overlay_test.ps1",
+      "blob": "3d864db13e431cb39c4f656e420758102c7b776c",
+      "bytes": 4666,
+      "mode": "100644",
+      "destination": "tests/ops/download_cache_overlay_test.ps1"
+    },
+    {
+      "path": "tests/ops/kernel_image_alias_regression_test.ps1",
+      "blob": "8b8fea2896eddf1bc4f7b49e074bae852daa69d8",
+      "bytes": 1000,
+      "mode": "100644",
+      "destination": "tests/ops/kernel_image_alias_regression_test.ps1"
+    },
+    {
+      "path": "tests/ops/lab_asset_process_test.ps1",
+      "blob": "48ea9d7b3addeb693113e6e71dfbb53c2a57157b",
+      "bytes": 5724,
+      "mode": "100644",
+      "destination": "tests/ops/lab_asset_process_test.ps1"
+    },
+    {
+      "path": "tests/ops/lab_evidence_test.ps1",
+      "blob": "7700bf11ef7ee16fefe466d06a196d6c614ffffc",
+      "bytes": 2276,
+      "mode": "100644",
+      "destination": "tests/ops/lab_evidence_test.ps1"
+    },
+    {
+      "path": "tests/ops/lab_paths_test.ps1",
+      "blob": "0b5a1e078dc869e977191713fe35e0280430abae",
+      "bytes": 1266,
+      "mode": "100644",
+      "destination": "tests/ops/lab_paths_test.ps1"
+    },
+    {
+      "path": "tests/ops/lab_process_test.ps1",
+      "blob": "f115be87c5a3647c8b7d6a80656163f09d8477b7",
+      "bytes": 5742,
+      "mode": "100644",
+      "destination": "tests/ops/lab_process_test.ps1"
+    },
+    {
+      "path": "tests/ops/lab_run_plan_test.ps1",
+      "blob": "35d22fd0299044672a1f5498ce3aa95a2e874985",
+      "bytes": 2833,
+      "mode": "100644",
+      "destination": "tests/ops/lab_run_plan_test.ps1"
+    },
+    {
+      "path": "tests/ops/lab_state_test.ps1",
+      "blob": "01a27755413895695742a94b6afe12c0274d3797",
+      "bytes": 1405,
+      "mode": "100644",
+      "destination": "tests/ops/lab_state_test.ps1"
+    },
+    {
+      "path": "tests/ops/late_join_trace_test.py",
+      "blob": "76ec46c1c8c71f5c20158fb810b3e38320c8eab9",
+      "bytes": 5628,
+      "mode": "100644",
+      "destination": "tests/ops/late_join_trace_test.py"
+    },
+    {
+      "path": "tests/ops/measure_agent_group_test.ps1",
+      "blob": "f4c735973b4e71ac2850533f2cfddd4d737bc28f",
+      "bytes": 3592,
+      "mode": "100644",
+      "destination": "tests/ops/measure_agent_group_test.ps1"
+    },
+    {
+      "path": "tests/ops/memory_budget_test.ps1",
+      "blob": "96f7c773a55d93bf12c0359f88198c35a2b2393d",
+      "bytes": 2529,
+      "mode": "100644",
+      "destination": "tests/ops/memory_budget_test.ps1"
+    },
+    {
+      "path": "tests/ops/model_diagnostics_source_test.py",
+      "blob": "d4bd3842bfc14f0b4647719bffc2127ad28cbefc",
+      "bytes": 9282,
+      "mode": "100644",
+      "destination": "tests/ops/model_diagnostics_source_test.py"
+    },
+    {
+      "path": "tests/ops/rejoin_trace_test.py",
+      "blob": "e6f975bd33b66851ca934bbfd8657bc3e02afa9a",
+      "bytes": 4137,
+      "mode": "100644",
+      "destination": "tests/ops/rejoin_trace_test.py"
+    },
+    {
+      "path": "tests/ops/resource_memory_test.ps1",
+      "blob": "03b271475b97612dc4beba9adea688519500af2d",
+      "bytes": 1257,
+      "mode": "100644",
+      "destination": "tests/ops/resource_memory_test.ps1"
+    },
+    {
+      "path": "tests/ops/resource_recorder_owned_process_test.ps1",
+      "blob": "1fe45ec81f34b066bb68086d163b10416ac16c2b",
+      "bytes": 16084,
+      "mode": "100644",
+      "destination": "tests/ops/resource_recorder_owned_process_test.ps1"
+    },
+    {
+      "path": "tests/ops/resource_scheduler_test.ps1",
+      "blob": "a02522382ec2ce24e54081556d9615d7fe0e02d3",
+      "bytes": 9235,
+      "mode": "100644",
+      "destination": "tests/ops/resource_scheduler_test.ps1"
+    },
+    {
+      "path": "tests/ops/test_privacy_overlay_test.ps1",
+      "blob": "1109289419afabfe23fa4fff31f0ee5570708da6",
+      "bytes": 2405,
+      "mode": "100644",
+      "destination": "tests/ops/test_privacy_overlay_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_agent_build_copy_test.ps1",
+      "blob": "27be8d00644cadfa3e45139318156d05c3dd1ef0",
+      "bytes": 1126,
+      "mode": "100644",
+      "destination": "tests/ops/voice_agent_build_copy_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_agent_cable_execute_test.ps1",
+      "blob": "7fba769de0ba66378752ed6652a17c557fddb58e",
+      "bytes": 5473,
+      "mode": "100644",
+      "destination": "tests/ops/voice_agent_cable_execute_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_agent_cable_transaction_test.ps1",
+      "blob": "1d876ffdcbd08a765c3da3c6848ea14a379a1f90",
+      "bytes": 3532,
+      "mode": "100644",
+      "destination": "tests/ops/voice_agent_cable_transaction_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_agent_capture_route_test.ps1",
+      "blob": "c64f1be9b91d56917185fd01d80c17270d6e40af",
+      "bytes": 1996,
+      "mode": "100644",
+      "destination": "tests/ops/voice_agent_capture_route_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_agent_fixture_test.ps1",
+      "blob": "fdacb2aa07b0b13e83214d75be79d6ff46e57617",
+      "bytes": 6320,
+      "mode": "100644",
+      "destination": "tests/ops/voice_agent_fixture_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_agent_ptt_contract_test.ps1",
+      "blob": "f9b63b1d46abe1d33664e3bffa661a18f45f78f5",
+      "bytes": 24900,
+      "mode": "100644",
+      "destination": "tests/ops/voice_agent_ptt_contract_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_agent_recorder_test.ps1",
+      "blob": "33ca305b5c6daa4cb7a12997d7249595bbb2bebd",
+      "bytes": 5276,
+      "mode": "100644",
+      "destination": "tests/ops/voice_agent_recorder_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_agent_render_test.ps1",
+      "blob": "ddd376314e35a036e6a8c44e0926de7b5abba25c",
+      "bytes": 2853,
+      "mode": "100644",
+      "destination": "tests/ops/voice_agent_render_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_fake_source_test.ps1",
+      "blob": "9275cc8e0591c304a6af261f0bc28b85b60fbe2d",
+      "bytes": 1911,
+      "mode": "100644",
+      "destination": "tests/ops/voice_fake_source_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_pair_arm_pin_test.ps1",
+      "blob": "2af76a4266c9bc5739d186affae4198896a98c1c",
+      "bytes": 4606,
+      "mode": "100644",
+      "destination": "tests/ops/voice_pair_arm_pin_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_pair_envelope_test.ps1",
+      "blob": "d33a7618d1e9dc0f44d39749606827e833a2cff1",
+      "bytes": 4442,
+      "mode": "100644",
+      "destination": "tests/ops/voice_pair_envelope_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_pair_provider_test.ps1",
+      "blob": "b64ffadfdb4d999f07582ad2536d5e0e5adae8fc",
+      "bytes": 13189,
+      "mode": "100644",
+      "destination": "tests/ops/voice_pair_provider_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_pair_recorder_cleanup_test.ps1",
+      "blob": "9d826bc593aa8735c15c3f36ba0aa93575d86f27",
+      "bytes": 32790,
+      "mode": "100644",
+      "destination": "tests/ops/voice_pair_recorder_cleanup_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_pair_recorder_test.ps1",
+      "blob": "b7a121b1b6b6f33e6a7fc92cb1954a5d331a62b9",
+      "bytes": 18332,
+      "mode": "100644",
+      "destination": "tests/ops/voice_pair_recorder_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_pair_source_options_test.ps1",
+      "blob": "3fb082cd24944a6cbc91c8864240c8cc95721086",
+      "bytes": 7070,
+      "mode": "100644",
+      "destination": "tests/ops/voice_pair_source_options_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_pair_witness_test.ps1",
+      "blob": "1eb5296b2157f21740e16dc84114b7d89b449c44",
+      "bytes": 15096,
+      "mode": "100644",
+      "destination": "tests/ops/voice_pair_witness_test.ps1"
+    },
+    {
+      "path": "tests/ops/voice_received_pcm_test.ps1",
+      "blob": "1011d1c8852bea13731b0e7c02cda1e91c678cc1",
+      "bytes": 3909,
+      "mode": "100644",
+      "destination": "tests/ops/voice_received_pcm_test.ps1"
+    },
+    {
+      "path": "tools-source/community-download/.gitattributes",
+      "blob": "e810a801216a9927d77fce71e7702071b2c8eb59",
+      "bytes": 139,
+      "mode": "100644",
+      "destination": "tools-source/community-download/.gitattributes"
+    },
+    {
+      "path": "tools-source/community-download/.gitignore",
+      "blob": "d701f51ac9b67975989fdff9e90875dccf14a0e1",
+      "bytes": 23,
+      "mode": "100644",
+      "destination": "tools-source/community-download/.gitignore"
+    },
+    {
+      "path": "tools-source/community-download/Download-NativeJob.cs",
+      "blob": "f2f236e32cbb97c8dd6cef2154006f23b7e7a59c",
+      "bytes": 18291,
+      "mode": "100644",
+      "destination": "tools-source/community-download/Download-NativeJob.cs"
+    },
+    {
+      "path": "tools-source/community-download/Harness.Core.ps1",
+      "blob": "bd7fa178470a1141fc11a0d42bf4812587f92624",
+      "bytes": 6541,
+      "mode": "100644",
+      "destination": "tools-source/community-download/Harness.Core.ps1"
+    },
+    {
+      "path": "tools-source/community-download/Harness.Profile.ps1",
+      "blob": "171856e8214e980f077699adb54f8bc9013d3af3",
+      "bytes": 4407,
+      "mode": "100644",
+      "destination": "tools-source/community-download/Harness.Profile.ps1"
+    },
+    {
+      "path": "tools-source/community-download/Harness.ps1",
+      "blob": "7a20ff2400d75d55978015efa5b7e3c852a3ece9",
+      "bytes": 23567,
+      "mode": "100644",
+      "destination": "tools-source/community-download/Harness.ps1"
+    },
+    {
+      "path": "tools-source/community-download/LICENSE.upstream",
+      "blob": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+      "bytes": 35149,
+      "mode": "100644",
+      "destination": "tools-source/community-download/LICENSE.upstream"
+    },
+    {
+      "path": "tools-source/community-download/PLAN-C-PROPOSAL.md",
+      "blob": "4714ef670a23bd59a7568e5f66258084011da125",
+      "bytes": 9849,
+      "mode": "100644",
+      "destination": "tools-source/community-download/PLAN-C-PROPOSAL.md"
+    },
+    {
+      "path": "tools-source/community-download/README.md",
+      "blob": "30773b43769f76293a4248ada15759fd724af3b1",
+      "bytes": 27965,
+      "mode": "100644",
+      "destination": "tools-source/community-download/README.md"
+    },
+    {
+      "path": "tools-source/community-download/VCTIP-RESEARCH.md",
+      "blob": "8ec91e1b3c499e30f74fa822241e85cb6feaab70",
+      "bytes": 5448,
+      "mode": "100644",
+      "destination": "tools-source/community-download/VCTIP-RESEARCH.md"
+    },
+    {
+      "path": "tools-source/community-download/h1-source.json",
+      "blob": "2f288fbbb5903d010e06b0765e667a92e20d9c1d",
+      "bytes": 745,
+      "mode": "100644",
+      "destination": "tools-source/community-download/h1-source.json"
+    },
+    {
+      "path": "tools-source/community-download/job-source.json",
+      "blob": "d407d738aff94d03629a3581061de23cb21476e9",
+      "bytes": 938,
+      "mode": "100644",
+      "destination": "tools-source/community-download/job-source.json"
+    },
+    {
+      "path": "tools-source/community-download/manifest.json",
+      "blob": "b17964a4eecd7ad2423c85075cfdc2a2d56ebd79",
+      "bytes": 641,
+      "mode": "100644",
+      "destination": "tools-source/community-download/manifest.json"
+    },
+    {
+      "path": "tools-source/community-download/native-validation-20261012.json",
+      "blob": "2d72c77b290460c862632d3f970269ba78fa5e7c",
+      "bytes": 2654,
+      "mode": "100644",
+      "destination": "tools-source/community-download/native-validation-20261012.json"
+    },
+    {
+      "path": "tools-source/community-download/native-validation-b-20261012.json",
+      "blob": "d7f3d974cd326d0525f5c3234f1a99c968bf78d8",
+      "bytes": 2885,
+      "mode": "100644",
+      "destination": "tools-source/community-download/native-validation-b-20261012.json"
+    },
+    {
+      "path": "tools-source/community-download/native-validation-c-20261012.json",
+      "blob": "11716641ce8d899152e124ab1d8e2681621c86eb",
+      "bytes": 5297,
+      "mode": "100644",
+      "destination": "tools-source/community-download/native-validation-c-20261012.json"
+    },
+    {
+      "path": "tools-source/community-download/overlay/src/client/component/download.cpp",
+      "blob": "cbc5e3ecdfa404684dbf3edf6fe3a65baa526638",
+      "bytes": 11226,
+      "mode": "100644",
+      "destination": "tools-source/community-download/overlay/src/client/component/download.cpp"
+    },
+    {
+      "path": "tools-source/community-download/patches/0001-contained-errors-and-verified-publication.patch",
+      "blob": "025b243ae3c5489d2e8edf523875c65d80ec84d1",
+      "bytes": 16211,
+      "mode": "100644",
+      "destination": "tools-source/community-download/patches/0001-contained-errors-and-verified-publication.patch"
+    },
+    {
+      "path": "tools-source/community-download/preparation-b.json",
+      "blob": "c8447ba69247992b216a10489814c2c2bc2d202f",
+      "bytes": 2635,
+      "mode": "100644",
+      "destination": "tools-source/community-download/preparation-b.json"
+    },
+    {
+      "path": "tools-source/community-download/preparation-c.json",
+      "blob": "ab5e09acbe4c545d2926b8c0c31407bc1360d4ed",
+      "bytes": 3537,
+      "mode": "100644",
+      "destination": "tools-source/community-download/preparation-c.json"
+    },
+    {
+      "path": "tools-source/community-download/preparation.json",
+      "blob": "818313ffed126502ab964affc4ecb9c12e82e82c",
+      "bytes": 2160,
+      "mode": "100644",
+      "destination": "tools-source/community-download/preparation.json"
+    },
+    {
+      "path": "tools-source/community-download/run_tests.py",
+      "blob": "970a0c67a41081c2d3c093b01eccfd533b977ee2",
+      "bytes": 4493,
+      "mode": "100644",
+      "destination": "tools-source/community-download/run_tests.py"
+    },
+    {
+      "path": "tools-source/community-download/tests/Test-H1Profile.ps1",
+      "blob": "7f79d836cea3e12505ca1d1d05cbc7c8bc05249e",
+      "bytes": 9052,
+      "mode": "100644",
+      "destination": "tools-source/community-download/tests/Test-H1Profile.ps1"
+    },
+    {
+      "path": "tools-source/community-download/tests/Test-HarnessPolicies.ps1",
+      "blob": "aa91fa183faa504979b3ab3760269d940bc1203d",
+      "bytes": 14223,
+      "mode": "100644",
+      "destination": "tools-source/community-download/tests/Test-HarnessPolicies.ps1"
+    },
+    {
+      "path": "tools-source/community-download/tests/expected-cases.json",
+      "blob": "94dd613d638ca75000af7753ae966c80e6f68633",
+      "bytes": 1451,
+      "mode": "100644",
+      "destination": "tools-source/community-download/tests/expected-cases.json"
+    },
+    {
+      "path": "tools-source/community-download/tests/native_stubs.hpp",
+      "blob": "377bfe4236cbcbdaa411044e8f13308703a6b218",
+      "bytes": 7590,
+      "mode": "100644",
+      "destination": "tools-source/community-download/tests/native_stubs.hpp"
+    },
+    {
+      "path": "tools-source/community-download/tests/test_download.cpp",
+      "blob": "c311c5134e906bb45f5f2def910a0089dc3a285c",
+      "bytes": 12131,
+      "mode": "100644",
+      "destination": "tools-source/community-download/tests/test_download.cpp"
+    },
+    {
+      "path": "tools-source/community-download/validation.json",
+      "blob": "0727d95a538b4c0359522de05ae46f606ed01ef3",
+      "bytes": 4684,
+      "mode": "100644",
+      "destination": "tools-source/community-download/validation.json"
+    },
+    {
+      "path": "tools-source/community-download/verify_archive.py",
+      "blob": "e5a764b075957e62f8ef3cf1362a08c1402a6f21",
+      "bytes": 1854,
+      "mode": "100644",
+      "destination": "tools-source/community-download/verify_archive.py"
+    }
+  ],
+  "policy": "Source remains published unchanged; destination history extraction preserves authors and messages. Runtime evidence remains tied to its original input identities."
+}
