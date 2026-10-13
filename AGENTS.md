@@ -10,11 +10,19 @@ Extend an explicit interface/dependency rather than copying implementations.
 Keep author/license notices and exact upstream pins. Never force-push history.
 
 Preserve unrelated work, ignored evidence and frozen plans. Historical results
-do not qualify relocated input identities. Existing features, experiments,
-workers and heartbeat remain paused; refactoring/source tests do not authorize
-game, server, extraction or deployment. Main UDP27016 remains untouched.
-Heavy native builds need complete shared resource admission. Do not delete a
-lease or lower an estimate to bypass refusal. Never archive a live worktree.
+do not qualify relocated input identities. The owner resumed authorized IW7 work
+on 2026-10-13; respect each task's scope. Refactoring/source tests alone do not
+authorize game, server, extraction or deployment. Main UDP27016 stays protected.
+Heavy native builds need complete shared resource admission. Owner update
+2026-10-13 removes all fixed RAM/commit/headroom minima, projected-memory
+refusals and percentage stop thresholds. Estimates and fresh native snapshots
+are telemetry only; keep the account-wide lock, exact process identities,
+ownership, leases, heavy-workload serialization and guarded teardown. Unknown
+identity/invalid telemetry still requires diagnosis. Never delete a holder's
+lease, adopt an occupied client or archive a live worktree. If actual exhaustion
+is observed, reduce the valid scenario or close only your own identified work;
+do not substitute a new numeric barrier, RAM cleaner, arbitrary kill, oversized
+swap or kernel change. Read docs/RESOURCE-WORKFLOW.md for consumer pin routing.
 
 Use coherent codex/* commits, owner-private PRs, exact-head checks and merge
 commits. Inspect actual CI jobs. Only the existing account quota refusal before

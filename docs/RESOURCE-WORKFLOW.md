@@ -1,9 +1,33 @@
-# Concurrent agent work on a bounded workstation
+# Concurrent agent work and resource telemetry
 
-Owner update, 2026-10-06: remove the RAM reserve entirely, including the former
-25%/4 GiB minimum and 80% runtime stop threshold. This supersedes those numbers
-in dated evidence and older runbooks. RAM admission compares the full estimated
-workload directly with available RAM. Commit accounting remains independent.
+Owner update, 2026-10-13: skip all RAM/commit/headroom minima and fixed estimated
+memory ceilings that prevent authorized E2E tests. No estimate-versus-available
+comparison, commit reserve or memory-use percentage may refuse admission or
+stop a scenario. This supersedes the former 25%/4 GiB RAM reserve, 20%/4 GiB
+commit reserve, 80%/85% stop thresholds and dated workload minima. Other fixed
+1 GiB/10 GiB/4 GiB allocation policies are not permission to defer an authorized
+test; their implementation belongs to their own consumer, outside this scheduler.
+
+Fresh RAM/commit and process telemetry remains required, along with the atomic
+lock, lease ownership, exact identities, one heavy workload group and guarded
+teardown. Missing/impossible telemetry and unknown identities require diagnosis;
+they are not a memory-capacity refusal. Successful admission does not establish
+safe unlimited allocation. On observed real exhaustion, reduce the valid scenario
+or close only its own identified processes. Do not replace the removed policy
+with another numeric barrier, RAM cleaner, arbitrary process kill, oversized
+swap or kernel changes. Preserve Main27016, banks/config and occupied clients.
+
+The canonical implementation is now private
+[iw7-mod-components](https://github.com/maxis0191/iw7-mod-components).
+Consumers must advance their explicit product dependency pin and regenerate a
+verified source package before using this policy. Do not edit generated inputs
+or silently repin a frozen plan/receipt. The compatibility fields `Allowed=true`,
+`PhysicalReserve=0`, `CommitReserve=0`, `HighWater=false` apply to valid telemetry;
+`Policy=TelemetryOnly` identifies this decision. `Memory-Budget.ps1` uses the
+same policy through its legacy assertion API, and `Lab-AssetProcess.ps1` observes
+fresh telemetry without a percentage stop. Timeouts, original creation handles,
+registration failure, confirmed teardown and quarantine are preserved. No other
+export/artifact guard is changed by this resource policy update.
 
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
@@ -11,9 +35,9 @@ Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE
 supersedes older systematic client-copy requirements and launch recipes below.
 Dated test results remain historical evidence.
 
-Current decision, 2026-10-04: agents may develop, review and run light tests in
-parallel. This 32 GiB workstation admits **one heavy workload group at a time**:
-one isolated gameplay scenario (server and its explicitly budgeted client(s)),
+Agents may develop, review and run light tests in parallel. Preserve the account-wide
+**one heavy workload group at a time** policy:
+one isolated gameplay scenario (server and its explicitly declared client(s)),
 one native build, one asset extraction, or one reverse-engineering analysis.
 Each chat keeps its own sources, files and test identity. A private desktop or a
 Git worktree does not supply additional RAM, VRAM or CPU capacity.
@@ -26,6 +50,26 @@ inferred from successful source tests or a short resource observation.
 
 ## Admission, ownership and lifecycle
 
+2026-10-13 source validation: resource scheduler, memory assertion, real owned
+asset-process and native memory suites pass. Synthetic zero RAM/commit headroom
+and estimates greater than machine totals are admitted without allocating that
+memory. Fresh re-entry observations persist, while a competing holder, unknown
+launcher/child identity, malformed state and unavailable telemetry still refuse.
+The real two-process admission race has one winner, PID reuse stays safe and
+orphan/failed-job teardown remains guarded. A real small PowerShell child runs
+to exit zero despite the old high-water signal; registration, timeout and
+telemetry failures still confirm its closure. The native ABI and 100 actual
+GetPerformanceInfo reads pass. These are source/process lifecycle tests; no
+game, retail extraction, Main deployment or owner gameplay is claimed.
+
+The composed candidate's 46 declared source groups are locally qualified: 45
+passed in the complete run, then the final Java resolver group passed after
+using the existing portable JDK21 on the command-local PATH. The initial Java
+invocation did not start (WinError2); its failure log is retained. The rerun
+acquired/released the shared lease and exited zero. CLI Status/Measure also
+retained fresh native samples with the new policy. Exact-head CI is recorded in
+the linked PR; a job with runner_id=0 and no steps is unexecuted, never a pass.
+
 `ops/Resource-Scheduler.Core.ps1` is the common admission API. Every worktree uses
 the same account-wide registry under `%LOCALAPPDATA%/IW7Paris/ResourceScheduler`.
 A file handle opened with no sharing serializes snapshot/check/reserve/write.
@@ -33,13 +77,17 @@ The atomic JSON replacement retains one previous version for diagnosis. Registry
 content is local operational state, not source and not a security boundary.
 
 Reserve the **complete planned scenario before starting its first process**.
-RAM and commit budgets are independent. There is no fixed or percentage RAM
-reserve. Leave 20% of the commit limit free after projection (minimum 4 GiB). Baseline
-usage includes Windows, Codex, browsers and the owner's running game/server.
-Do not subtract a working-set trim from commit, shrink a live reservation or
+RAM and commit estimates are separate observations, without reserves or an
+estimate-based launch refusal. Baseline usage includes Windows, Codex, browsers
+and the owner's running game/server. Record the complete planned scenario with
+positive estimates; these describe intent, not a minimum amount that must be
+available or a memory cap. Do not shrink a live lease to conceal planned work or
 assume a process has reached its peak just because startup uses little RAM.
+Every successful admission/re-entry retains its fresh `MemoryObservation` in the
+lease; Status and Measure still read current native telemetry.
 
-The initial estimates are conservative admission values, not measured maxima:
+The following historical estimates are planning references, not admission
+requirements, measured maxima or supported-client-count limits:
 
 | Workload | Physical estimate | Commit estimate | Qualification |
 | --- | ---: | ---: | --- |
@@ -49,11 +97,10 @@ The initial estimates are conservative admission values, not measured maxima:
 | One full-quality client | 12 GiB | 12 GiB | Required for unqualified texture/material evidence |
 | Isolated dedicated | 2-4 GiB | 2-4 GiB | Use the greater profile-specific estimate, add it to client budgets |
 
-Full-quality pair admission can legitimately fail while ordinary Windows and
-the owner's server are running. Keep useful light work moving, retain the test
-plan and wait for capacity; do not quietly lower estimates to make the gate green.
+Low estimated headroom does not refuse a full-quality pair or defer an authorized
+test. Choose the scenario that answers the question and observe actual behavior.
 Two reduced voice clients require both clients plus the dedicated in one group.
-Four local clients are not supported by the present capacity evidence.
+The historical samples do not establish four-client performance acceptance.
 
 ```powershell
 ./ops/Resource-Scheduler.ps1 -Action Status
@@ -68,10 +115,10 @@ Exit-IW7ResourceLease -Token $lease.Token
 ```
 
 Runtime re-entry for the same lab is idempotent and may increase its total
-budget; its local state lock must serialize launches within that lab. Registered
+estimate; its local state lock must serialize launches within that lab. Registered
 resident/private allocations are already in the live snapshot, so re-entry
-budgets only the remaining projected growth. This is an estimate, not a kernel
-memory cap. Unregistered labs, compilers, ZoneTool and Java analysis also block
+records the remaining projected growth as telemetry. There is no kernel memory
+cap or projected-headroom gate. Unregistered labs, compilers, ZoneTool and Java analysis also block
 new heavy admission. Existing owner processes are never stopped by this API.
 
 For a separate dedicated using the base client, declare the exact absolute client
@@ -92,11 +139,10 @@ a possible heavy child remains. There is no TTL that silently frees a live game.
 Never delete the registry to bypass contention.
 
 The scheduler itself never kills or suspends any game. The lab watchdog retains
-responsibility for sustained pressure, fresh godmode/inactivity, diagnostic
+responsibility for observed real exhaustion, fresh godmode/inactivity, diagnostic
 capture and identity-checked orderly stop. Admission cannot prevent a user from
-launching another unrelated application afterwards. The committed-memory pressure
-threshold is 85%; there is no RAM-use stop or automatic performance invalidation
-threshold. Record physical use as telemetry.
+launching another unrelated application afterwards. There is no fixed RAM/commit
+use percentage that stops or invalidates a run. Record both as telemetry.
 
 Use `ops/Isolated-Lab.ps1` for the test dedicated. New sessions use the base game
 client under [INSTANCE-WORKFLOW.md](INSTANCE-WORKFLOW.md); separate clients
@@ -180,7 +226,8 @@ replay even though measured RAM/commit stayed below the limits. Both admission a
 the watchdog now read fresh RAM/commit through Windows GetPerformanceInfo. Page
 counts are converted with the returned page size, with checked arithmetic and
 snapshot validation. Native failure still refuses admission; there is no cached
-fallback and all reservation/headroom thresholds stay unchanged. Process identity
+fallback. The original admission thresholds were retained at that checkpoint;
+the 2026-10-13 decision above supersedes them. Process identity
 remains independently checked. Paging rates unavailable through this API are null.
 The Windows ABI and 100 real reads pass in CI's operations test.
 [Microsoft API](https://learn.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-getperformanceinfo),
@@ -273,8 +320,10 @@ cloud provisioning, hardware purchase nor remote-agent setup happened here.
 
 ## Durable project context and rollout
 
-The private [iw7-paris-server repository](https://github.com/bigmangeekf/iw7-paris-server)
-is the central source/workflow/decision/evidence index. Public owner forks
+The private [iw7-paris-server repository](https://github.com/maxis0191/iw7-paris-server)
+owns server integration decisions/evidence. Each split product owns its source;
+the scheduler and this policy belong to iw7-mod-components. The older central
+index wording below is superseded by the 2026-10-13 product migration. Public owner forks
 [iw7-mod](https://github.com/bigmangeekf/iw7-mod) and
 [x64-zt](https://github.com/bigmangeekf/x64-zt) contain only suitable generic source
 contributions. No private project config, proprietary assets or credentials may

@@ -8,19 +8,22 @@ function Test-IW7MemoryBudget($Snapshot, [long]$AdditionalPhysical = 0, [long]$A
         $AdditionalPhysical -lt 0 -or $AdditionalCommit -lt 0) { throw 'Invalid memory-budget inputs.' }
     $physicalUse = 1 - $Snapshot.PhysicalAvailable / $Snapshot.PhysicalTotal
     $commitUse = $Snapshot.Committed / $Snapshot.CommitLimit
+    # Owner decision 2026-10-13: compatibility API for telemetry only.
+    # Complete leases, ownership and teardown are enforced by Resource-Scheduler.
     [pscustomobject]@{
+        Policy = 'TelemetryOnly'
         PhysicalUsedPercent = [Math]::Round(100 * $physicalUse, 2)
         CommitUsedPercent = [Math]::Round(100 * $commitUse, 2)
-        PhysicalFits = ($Snapshot.PhysicalAvailable - $AdditionalPhysical) -ge 0
-        CommitFits = ($Snapshot.CommitLimit - $Snapshot.Committed - $AdditionalCommit) -ge ($Snapshot.CommitLimit * 0.20)
-        HighWater = ($commitUse -ge 0.85)
+        AdditionalPhysical = $AdditionalPhysical
+        AdditionalCommit = $AdditionalCommit
+        PhysicalFits = $true
+        CommitFits = $true
+        HighWater = $false
     }
 }
 
 function Assert-IW7MemoryHeadroom([long]$AdditionalPhysical, [long]$AdditionalCommit) {
     $budget = Test-IW7MemoryBudget (Get-IW7MemorySnapshot) $AdditionalPhysical $AdditionalCommit
-    if ($budget.HighWater -or !$budget.PhysicalFits -or !$budget.CommitFits) {
-        throw "Memory budget refuses launch: physical=$($budget.PhysicalUsedPercent)%, commit=$($budget.CommitUsedPercent)%; estimated workload must fit available RAM (no reserve) and leave 20% commit headroom."
-    }
+    # Preserve fresh snapshot validation; no estimated headroom may refuse work.
     $budget
 }
