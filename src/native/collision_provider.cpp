@@ -28,7 +28,6 @@ namespace collision_provider
         game::symbol<bool(unsigned int, int, game::PhysicsAsset*, unsigned int, unsigned int,
             const float*, const float*, bool, bool, bool, float, float, int, int, bool)> instantiate_capsule{0x14054FBD0};
         game::symbol<void(int, unsigned int, int)> set_contents{0x140550EC0};
-        game::symbol<unsigned int(int, int, int)> make_reference{0x140550830};
         game::symbol<bool(unsigned int, void*, const float*, const float*, const game::Bounds*, int,
             int, int, int, void*, int)> legacy_trace{0x14055C9E0};
 
@@ -158,7 +157,9 @@ namespace collision_provider
             const std::array<float, 4> rotation{0, 0, 0, 1};
             {
                 replacement_scope scope(request);
-                created = instantiate_capsule(id, world, *asset_slot, 0, make_reference(2, 0, entity),
+                // Reference system 0 is decoded to world entity 2046 by
+                // 54F040's switch table. The script entity owns teardown.
+                created = instantiate_capsule(id, world, *asset_slot, 0, 0,
                     geometry.origin.data(), rotation.data(), true, true, false, 1.0f, 1.0f, 1, 0, false);
             }
             if (!created || request.consumed != 1)
@@ -253,7 +254,6 @@ namespace collision_provider
             check(0x14054E750, {0xe9,0x2b,0x80,0x02,0x00});
             check(0x14055C9E0, {0x4c,0x8b,0xdc,0x48,0x83,0xec,0x78});
             check(0x140550EC0, {0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c});
-            check(0x140550830, {0x0f,0xbe,0xc1,0xc1,0xe0,0x08});
             static_assert(sizeof(game::PhysicsAsset) == 0x50);
             static_assert(offsetof(game::PhysicsAsset, physicsUsageCounter) == 0x40);
             static_assert(sizeof(game::trace_t) <= 112);

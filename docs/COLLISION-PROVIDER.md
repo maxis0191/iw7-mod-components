@@ -14,6 +14,12 @@ The code converts local corners by the wrapper's observed 1/32 scale. The
 capsule body path preserves the returned shape's allocation header and uses
 the normal body creation, world insertion and reference-release code.
 
+The retained trace decoder's exact switch table maps reference system 0 to
+world entity 2046. The body therefore uses world reference 0 in both server
+and client worlds. The script-model number is a teardown owner, not the hit
+or prediction reference. This avoids a guessed server/client entity-ref ABI;
+fresh traces and movement still have to qualify the result.
+
 Twelve pure PowerShell checks pass: profile refusal before admission, exact
 source selection, removal of an unchanged disabled overlay and preservation
 of an independently edited overlay. The C++ geometry test is prepared but has
