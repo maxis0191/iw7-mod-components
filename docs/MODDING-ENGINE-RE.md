@@ -1,5 +1,24 @@
 # Agent capabilities and the next engine investigation
 
+## Independent client protection snapshot — 2026-10-13, source candidate
+
+`paris_test_fixture::client_protection()` returns `client_test_protection` by
+value on scheduler main. It requires the isolated client-test flags, a live
+remote CP client, the current loopback endpoint/expected test port and a challenge
+matching the existing agent connection. It reuses the same server-confirmed
+protection ACK, nonce and generation; it sends no handshake or input and grants
+no capture permission. Voice flags/macros are unnecessary. Invalid state returns
+an empty value. The original voice capture API and protocol stay unchanged.
+
+The value contains PID, actual/expected port, query/observation ticks, nonce,
+generation, connection challenge and observed server map. Its pure
+`client_protection_current(value, now)` check retains the existing 500 ms query
+age and five-map CP scope. Consumers must obtain a fresh main-thread value;
+copied strings are not a world lifetime, physics epoch or pre-reset callback.
+No qualified `CL_ShutdownCGame`/client-world pre-reset hook was found in the
+existing pin. Collision client activation remains separately unqualified.
+The frozen native958/caccd698 image, manifest and source snapshot are unchanged.
+
 ## Current engine interfaces after the product split — 2026-10-13
 
 The native editing repository is `iw7-mod-components`. Compose its declared
