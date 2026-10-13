@@ -22,9 +22,31 @@ fresh traces and movement still have to qualify the result.
 
 Twelve pure PowerShell checks pass: profile refusal before admission, exact
 source selection, removal of an unchanged disabled overlay and preservation
-of an independently edited overlay. The C++ geometry test is prepared but has
-not been compiled. No provider executable, fresh engine trace, sweep, player
-collision, client prediction or lifecycle acceptance has been obtained yet.
+of an independently edited overlay. On 2026-10-13, the C++ geometry/admission
+test, the required native regression suite and the complete Release image
+compiled and passed in one serialized build. The original command exited 0;
+its exact process tree and resource lease were subsequently absent. No fresh
+engine trace, sweep, player collision, client prediction or lifecycle
+acceptance has been obtained yet.
+
+The separately composed build input is commit
+`c32c1ff245e0357dfb8778afb2bbd215eda49a5c`, including the reviewed observational
+client-protection API from PR7. Its 309-file, 2,853,818-byte source package
+verified unchanged after building against upstream `77e6d4d`. The manifest
+declares `CollisionProvider=true`, 36 native sources and a clean source
+identity. The executable SHA-256 is
+`2C8205B579A357EC3A96FA81958BFCD56F2AF65CD26F2E59CD6EC9BE3064455C`;
+the retained matching PDB SHA-256 is
+`D2CF71FDC4A98B70EAD318CBA522560D1353D7FCA1023C602DBE3DB460D1CC06`.
+This qualifies compilation only. The provider and protection getter have not
+been activated in a game process, and the historical native958 image remains
+unchanged.
+
+Exact-head CI for `c32c1ff` was inspected through the backend and actual jobs.
+Runs `38461029590` / `38461025992`, checks `115515923187` / `115515913589`,
+both have `runner_id=0`, no steps and the account payment/spending-limit
+admission annotation. No CI test executed; the owner's conditional admission
+exception does not turn those checks into passes or waive runtime acceptance.
 
 The earlier proposed sphere-body adapter was rejected during source review:
 it rewrites a 128-byte allocation header, which is unsuitable for a variable
@@ -104,9 +126,8 @@ and margin must be identified before comparing it to World's AABB oracle.
 
 ## Next decisive test
 
-Compile the pure geometry test and the provider against pinned upstream
-77e6d4d, then build a separately identified candidate under the parent's heavy
-workload slot. Do not reuse native958's executable or runtime evidence.
+Use the separately identified compiled candidate under the next coordinated
+heavy workload slot. Do not reuse native958's executable or runtime evidence.
 First create one elevated box in a zero-client private dedicated and inspect
 real engine traces plus removal. Keep the point fraction 0.5 and the AABB
 oracle 44/60 as expectations, not measured outcomes. Qualify the actual client
