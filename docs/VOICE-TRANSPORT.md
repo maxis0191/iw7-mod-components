@@ -1,5 +1,28 @@
 # Generic voice transport core
 
+## Delayed duplicate quota correction - 2026-10-13
+
+The server and listener previously charged their frame budgets before rejecting
+an old or duplicated audio sequence. A delayed copy arriving just before the next
+fresh packet could therefore consume its token and drop new speech. The focused
+regression reproduces the server failure on native-product baseline `20d33d6d`,
+then the listener failure with only the server correction applied. The initial
+test with immediate copies after fresh frames passed the baseline; that ordering
+does not demonstrate this loss and its local source/logs are retained separately.
+
+Both paths now validate the sequence on provisional receive state before charging
+audio budgets, and publish the sequence only after quota admission. The version-2
+wire format, session/generation checks, frame/byte limits and bounded callback
+inbox are unchanged. This exempts rejected replays from fresh-speech quotas; it
+does not make the transport a raw-UDP flood defense.
+
+MSVC warnings-as-errors/runtime checks and optimized AddressSanitizer pass:
+400 fresh frames at 50 frames/sec with a delayed duplicate before each next frame,
+in each direction, plus rejection above the 100-frame burst limit. The existing
+300-second four-speaker simulation and twelve deterministic WAN cases also pass.
+These are pure transport tests with synthetic frames. No game, physical microphone,
+final playback, real WAN or owner acceptance is established by this correction.
+
 ## Latest native limits
 
 The [current bounded checkpoint](deployments/2026-10-04-voice-bounded-native.json)
@@ -148,7 +171,8 @@ optimized AddressSanitizer builds. CI runs the same command. Tests cover both
 audio directions, no self echo, delayed/duplicate/reordered frames, a surviving
 listener during speaker reconnect, accepted-game incarnation changes, slot reuse,
 server reset, stale roster rollback, duplicate confirm, retired hello/guessed
-confirm, handshake loss and expiry, lease expiry, wire bounds and 200000 seeded
+confirm, handshake loss and expiry, lease expiry, sustained delayed duplicates
+without loss of fresh speech, fresh-frame burst quotas, wire bounds and 200000 seeded
 mutations. Failures are nonzero exits. Test users/IDs are synthetic constants.
 
 A separate deterministic simulation exercises five minutes of four simultaneous
