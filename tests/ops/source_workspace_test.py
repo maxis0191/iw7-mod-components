@@ -107,6 +107,7 @@ class WorkspaceTests(unittest.TestCase):
     def dependency_archive(self):
         dep = self.root / 'dependency source'
         dep.mkdir()
+        (dep / '.gitattributes').write_bytes(b'* text eol=lf\n')
         (dep / 'helper.py').write_bytes(b'print("dependency")\n')
         for args in [('init','-q'), ('add','.'), ('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','-qm','Dependency fixture')]:
             subprocess.run(['git','-C',str(dep),*args], check=True, capture_output=True)

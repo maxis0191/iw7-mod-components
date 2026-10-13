@@ -176,9 +176,9 @@ def prepare(project, revision, bindings, output, cache=None, package=None):
             # checkout is still required clean and checked again below.
             raw = subprocess.check_output(['git', '-C', str(root), 'cat-file', '--filters', commit + ':' + relative])
             raw.decode('utf-8-sig')
-            if b'\x00' in raw or len(raw) != size:
-                raise ValueError('Non-text or changing source input refused')
-            total += size
+            if b'\x00' in raw or len(raw) > MAX_FILE or total + len(raw) > MAX_TOTAL:
+                raise ValueError('Non-text or oversized filtered source input refused')
+            total += len(raw)
             entries.append((relative, raw, dict(path=relative, owner=source['id'], commit=commit,
                             blob=tree[relative], bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())))
         # Batch Git's own attribute/filter-aware hash calculation: preserve CRLF
