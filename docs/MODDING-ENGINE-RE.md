@@ -1,5 +1,76 @@
 # Agent capabilities and the next engine investigation
 
+## Original rig console transport — 2026-10-14
+
+The private launcher normally assigns `NUL` to stdin. The pinned official
+`terminal.cpp` reads that exact `GetStdHandle(STD_INPUT_HANDLE)` through
+`ReadConsoleInput`; writing to an attached `CONIN$` does not prove consumption.
+The existing `-wincon` route instead reads `std::getline(std::cin)` and submits
+the line to `Cbuf_AddText` after unpack. It is already in the frozen native958
+profile; no new native API, game binary or asset lookup implementation is needed.
+
+`New-IW7BaseClientPlan -OriginalRigConsole` explicitly selects `-wincon` and the
+owned anonymous stdin pipe. For the dedicated, the consumer calls
+`IW7LabProcess.StartOwned(..., waitForInputIdle, originalRigConsole: true)` with
+its existing isolated dedicated-test flags plus `-wincon`. Absent opt-in retains
+the existing NUL path. The owner retains the noninheritable write end alongside
+the original process handle. Only six exact pool queries and the dedicated-only
+rig play/stop dvars are accepted, once each per process; total bytes stay below
+the pipe capacity. Input disposal while the process is alive is refused to
+avoid the official wincon EOF loop. Cleanup waits/terminates the same owned
+process, then closes the pipe; it never reopens a PID for sending.
+
+The consumer retains that dedicated handle and calls
+`Send-IW7OriginalRigConsoleCommand` from `ops/Original-RigConsole.Core.ps1` for
+either identity in its protected session. This checks the live lease, private
+single-client UDP state, original identities, actual native session/safety files,
+unchanged client nonce and current bound/godmode/inactivity/cheats heartbeat.
+Both native safety publication and heartbeat must be at most 250 ms old; the
+pipe writer rechecks publication age after its kernel identity read. The frozen
+safety wire publishes its observation time, not the query time; its underlying
+ACK predicate retains the native 500 ms window. No protection JSON or
+caller-supplied success flag substitutes for those publications.
+
+Official `fastfiles.cpp` registers `listassetpool`: it enumerates
+`DB_EnumXAssets` and prints `DB_GetXAssetName`. The fixed types are 6 (xanim),
+7 (xmodel surfaces), 8 (xmodel), and 10 (material). The two model names, two
+surface names, one animation name and one material name remain an explicit
+rig test contract. A write receipt means bytes written only. Fresh client and
+dedicated outputs must independently prove the exact expected names; an empty
+result remains empty. Play is sent only after the consumer's neutral capture,
+and its real GSC/native animation return and subsequent pixels remain separate
+evidence. Historical DISPLAY attempts and frozen source/manifests stay intact.
+
+The Windows transport fixture is an isolated PowerShell echo child. It tests
+eight real line reads, scope/command/identity/nonce/age refusals, unchanged NUL
+EOF, and exact-handle cleanup of a blocked reader. It runs no game and cannot
+qualify asset pools, native wincon consumption, engine protection or animation.
+Those witnesses require a new reviewed consumer composition and separately
+authorized game run.
+
+The actual Windows fixture passes 48 checks, including eight consumed lines and
+post-exit/disposed refusal. Existing base-client context, behavior, original
+exit-race and owned-process lifecycle tests also pass. PowerShell parsing,
+diff whitespace and product ownership pass. No native build or game was run.
+
+CI for code candidate `4ac4bfa8e6f8a4bb2c52accfeb0bd22f4d692aef` did
+not start: runs `38479556499` / `38479489861`, checks `115578516426` /
+`115578296025`, report the account payment/spending admission refusal. Both
+actual jobs have `runner_id=0` and no steps. No CI test passed or executed;
+the existing owner exception applies only to this pre-run refusal, with the
+real local checks and independent review retained.
+
+Independent review found that the first caller used the nonexistent
+`Assert-IW7BaseLeaseOwnership`. The pipe-only fixture had not covered that
+path. The correction reads the current scheduler status, refuses absent,
+duplicate or non-running runtime tokens, and calls the existing
+`Assert-IW7BaseLease(lease, plan, serverIdentity)` before protection or input.
+Caller errors are terminating even when the host uses Continue. The targeted
+caller fixture uses synthetic reservation metadata in its own directory with
+the real scheduler reader/lock and lease assertion; it deliberately stops
+before any engine protection or process-input operation.
+All five targeted caller checks pass; the 48 real transport checks still pass.
+
 ## Independent client protection snapshot — 2026-10-13, source checks
 
 `paris_test_fixture::client_protection()` returns `client_test_protection` by
