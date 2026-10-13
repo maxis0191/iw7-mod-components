@@ -12,6 +12,7 @@ import re
 import stat
 import subprocess
 import sys
+import zipfile
 
 MAX_TOTAL = 32 * 1024 * 1024
 MAX_FILE = 1024 * 1024
@@ -65,7 +66,66 @@ def cached_source(dependency, cache):
         raise ValueError('Fetched source revision differs')
     return root
 
-def prepare(project, revision, bindings, output, cache=None):
+def read_dependencies(project, revision, product, archive):
+    lock = json.loads(git(project, 'show', revision + ':dependency-package.json'))
+    archive = ordinary(archive)
+    if archive.stat().st_size != lock['bytes'] or lock['bytes'] > MAX_TOTAL:
+        raise ValueError('Dependency source archive length differs')
+    if hashlib.sha256(archive.read_bytes()).hexdigest() != lock['sha256']:
+        raise ValueError('Dependency source archive digest differs')
+    expected = {(d['id'], d['revision'], p) for d in product['dependencies'] for p in d['files']}
+    entries, seen, total = [], set(), 0
+    with zipfile.ZipFile(archive) as package:
+        infos = package.infolist()
+        if len(infos) != len(expected) + 1 or len({i.filename.casefold() for i in infos}) != len(infos):
+            raise ValueError('Incomplete or duplicate dependency archive')
+        manifest_info = package.getinfo('dependencies.json')
+        if manifest_info.file_size > MAX_FILE:
+            raise ValueError('Dependency manifest too large')
+        manifest = json.loads(package.read(manifest_info))
+        if manifest.get('schema') != 'iw7.source-dependencies/1':
+            raise ValueError('Unknown dependency source archive')
+        for entry in manifest['files']:
+            relative = entry['path']
+            safe_relative(relative)
+            identity = (entry['owner'], entry['commit'], relative)
+            if identity not in expected or relative.casefold() in seen:
+                raise ValueError('Unexpected dependency owner, revision or path')
+            seen.add(relative.casefold())
+            info = package.getinfo(relative)
+            if info.file_size > MAX_FILE or info.file_size != entry['bytes'] or stat.S_ISLNK(info.external_attr >> 16):
+                raise ValueError('Invalid dependency source member')
+            total += info.file_size
+            if total > MAX_TOTAL:
+                raise ValueError('Dependency source budget exceeded')
+            raw = package.read(info)
+            raw.decode('utf-8-sig')
+            if b'\x00' in raw or hashlib.sha256(raw).hexdigest() != entry['sha256']:
+                raise ValueError('Dependency source member digest differs')
+            entries.append((relative, raw, entry))
+        if len(entries) != len(expected):
+            raise ValueError('Missing dependency source member')
+    return entries
+
+def pack_dependencies(workspace, output):
+    data = verify(workspace)
+    output = ordinary(output, missing=True)
+    entries = [e for e in data['files'] if e['owner'] != data['product']]
+    metadata = dict(schema='iw7.source-dependencies/1', files=entries, runtime_qualified=False)
+    with output.open('xb') as destination, zipfile.ZipFile(destination, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        members = [(e['path'], (Path(workspace) / e['path']).read_bytes()) for e in entries]
+        members.append(('dependencies.json', (json.dumps(metadata, sort_keys=True, indent=2)+'\n').encode()))
+        for name, raw in sorted(members):
+            info = zipfile.ZipInfo(name, date_time=(2026, 10, 13, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o100644 << 16
+            archive.writestr(info, raw)
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    return dict(schema='iw7.source-dependency-package/1', name='dependencies.zip',
+                tag='source-deps-' + digest[:16], sha256=digest, bytes=output.stat().st_size, files=len(entries),
+                description='Exact source-only dependency exports; private build input, not a gameplay release.')
+
+def prepare(project, revision, bindings, output, cache=None, package=None):
     project = ordinary(project)
     output = ordinary(output, missing=True)
     if output.exists():
@@ -76,13 +136,16 @@ def prepare(project, revision, bindings, output, cache=None):
     if product.get('schema') != 'iw7.product/1':
         raise ValueError('Unknown product contract')
     requests = [{'id': product['id'], 'revision': revision, 'files': product['exports'], 'root': project}]
-    for dependency in product['dependencies']:
+    for dependency in ([] if package else product['dependencies']):
         if dependency['id'] not in bindings:
             if cache is None:
                 raise ValueError('Missing dependency binding: ' + dependency['id'])
             bindings[dependency['id']] = cached_source(dependency, cache)
         requests.append(dict(dependency, root=ordinary(bindings[dependency['id']])))
-    entries, seen, total, revisions = [], set(), 0, {}
+    entries = read_dependencies(project, revision, product, package) if package else []
+    seen = {e[0].casefold() for e in entries}
+    total = sum(len(e[1]) for e in entries)
+    revisions = {e[2]['owner']: e[2]['commit'] for e in entries}
     for source in requests:
         root, commit = source['root'], source['revision']
         if not re.fullmatch('[0-9a-f]{40}', commit) or git(root, 'rev-parse', 'HEAD') != commit:
@@ -157,10 +220,15 @@ def main():
     parser.add_argument('--revision')
     parser.add_argument('--source', action='append', default=[], metavar='PRODUCT=CHECKOUT')
     parser.add_argument('--cache', type=Path, help='Explicit source-only cache; missing bindings are fetched at exact revisions')
+    parser.add_argument('--dependency-package', type=Path, help='Private source archive verified against the committed dependency lock')
+    parser.add_argument('--pack-dependencies', type=Path, help='Write a deterministic source-only dependency archive from --output workspace')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--verify', action='store_true')
     args = parser.parse_args()
     try:
+        if args.pack_dependencies:
+            print(json.dumps(pack_dependencies(args.output, args.pack_dependencies), indent=2))
+            return 0
         if args.verify:
             result = verify(args.output)
         else:
@@ -172,7 +240,7 @@ def main():
                 if not separator or name in bindings:
                     raise ValueError('Unique PRODUCT=CHECKOUT bindings required')
                 bindings[name] = value
-            result = prepare(args.project, args.revision, bindings, args.output, args.cache)
+            result = prepare(args.project, args.revision, bindings, args.output, args.cache, args.dependency_package)
         print(json.dumps(dict(ok=True, product=result['product'], files=len(result['files']), bytes=result['bytes'], output=str(args.output))))
     except (ValueError, OSError, subprocess.SubprocessError, KeyError) as error:
         print(json.dumps(dict(ok=False, error=str(error))), file=sys.stderr)
