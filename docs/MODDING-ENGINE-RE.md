@@ -60,6 +60,17 @@ actual jobs have `runner_id=0` and no steps. No CI test passed or executed;
 the existing owner exception applies only to this pre-run refusal, with the
 real local checks and independent review retained.
 
+Independent review found that the first caller used the nonexistent
+`Assert-IW7BaseLeaseOwnership`. The pipe-only fixture had not covered that
+path. The correction reads the current scheduler status, refuses absent,
+duplicate or non-running runtime tokens, and calls the existing
+`Assert-IW7BaseLease(lease, plan, serverIdentity)` before protection or input.
+Caller errors are terminating even when the host uses Continue. The targeted
+caller fixture uses synthetic reservation metadata in its own directory with
+the real scheduler reader/lock and lease assertion; it deliberately stops
+before any engine protection or process-input operation.
+All five targeted caller checks pass; the 48 real transport checks still pass.
+
 ## Independent client protection snapshot — 2026-10-13, source checks
 
 `paris_test_fixture::client_protection()` returns `client_test_protection` by

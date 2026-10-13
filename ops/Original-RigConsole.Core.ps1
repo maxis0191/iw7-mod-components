@@ -1,4 +1,5 @@
 # Scoped transport for eight fixed commands. Engine output is a separate witness.
+. "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 function Read-IW7OriginalRigConsoleWire([string]$Path) {
     $stream=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
     try {
@@ -13,6 +14,7 @@ function Read-IW7OriginalRigConsoleWire([string]$Path) {
 function Send-IW7OriginalRigConsoleCommand {
     param([Parameter(Mandatory)]$Session,[Parameter(Mandatory)]$TargetHandle,
         [Parameter(Mandatory)]$TargetIdentity,[Parameter(Mandatory)][string]$Command)
+    $ErrorActionPreference='Stop'
     if(!('IW7LabProcess' -as [type]) -or ![IW7LabProcess]::IsOriginalRigCommand($Command)){
         throw 'Only the eight fixed original-rig commands are accepted.'
     }
@@ -26,7 +28,13 @@ function Send-IW7OriginalRigConsoleCommand {
     if($Command.StartsWith('set ',[StringComparison]::Ordinal) -and $TargetIdentity.PID -ne $Session.Server.PID){
         throw 'Original-rig play/stop controls require the dedicated original handle.'
     }
-    $null=Assert-IW7BaseLeaseOwnership $Session.Server $Session.LeaseToken
+    if($Session.LeaseToken -cnotmatch '\A[a-f0-9]{32}\z'){throw 'Current runtime reservation token required.'}
+    $status=Get-IW7ResourceStatus
+    $leases=@($status.Leases|Where-Object {$_.Token -ceq $Session.LeaseToken})
+    if($leases.Count -ne 1 -or $leases[0].Kind -cne 'Runtime' -or $leases[0].Phase -cne 'Running'){
+        throw 'Unique current running runtime reservation required.'
+    }
+    Assert-IW7BaseLease $leases[0] $Session.Plan $Session.Server
     $sample=Update-IW7BaseClient $Session
     if(!$sample.Protected -or !$Session.Protected -or $Session.Failed){throw 'Current protected original-rig client required.'}
     Assert-IW7BaseIdentity $TargetIdentity $TargetHandle
