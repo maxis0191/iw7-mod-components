@@ -2,6 +2,10 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "collision_provider_build_test",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_provider_build_test.ps1"]
+    },
+    {
       "id": "base_client_context_test",
       "command": [
         "pwsh",
