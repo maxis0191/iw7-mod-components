@@ -104,6 +104,34 @@ original PTY exited0, owned job active count was0 before disposal, and a fresh
 check found all75 observed tree identities absent and registry0. No engine
 process/client or Main deployment occurred. Native14/B/A remain intact.
 
+The first Native16 engine probe C subsequently ran with compiled source8f1/
+EXE `A47E4F6464D208D612DE85E40D77E5FD106D3CB092B9029E9C4B83844C6FB7CD`
+and consumer `ccfb2f2a3111cc7c5d4d344fd43fd849afd269a1`. Private loopback
+protocol2/clients0/cp_zmb,32-byte arm and token-bound SAFETY/before traces were
+observed. The raw owner diagnostic matched B's script_model/SDK172/raw172/
+global2080=172/no-change174, contents0x2080 and linked1. A native fatal error
+followed before any successful created/query/destroy or inside/after receipt.
+The absence of those success receipts does not prove that no earlier native
+allocation occurred.
+
+The fresh dump/dialog correlated with the original executable, PID and creation
+identity. Its already-produced JSON recorded C0000005 at0x14057BA84, read
+target0x60. The retained57B9C0 code has `mov rcx,[rsi+0x60]` at that exact site;
+RSI receives the preceding0x140578C00 lookup return. This locates the immediate
+null-base candidate, not a proven argument/asset-registration root cause. The
+parsed JSON exposes a thread count, not registers, and explicitly requires
+matching-symbol unwinding for a real stack. No further opaque dump/PE/PDB/CDB
+analysis follows from this source-only evidence.
+
+Existing correlated-fatal recovery preserved the dump/parser result, checked
+bank backups, and terminated the exact dedicated with3758096385/0xE0000001.
+Strict probe result was false; its surfaced Receive timeout remains distinct
+from the native fatal context. Candidate files/bank restored, Main static audit
+unchanged/bank delta false, then the original NoExit host exited1. Fresh exact
+host/parent/dedicated and test port were absent and registry0. Raw A/B/C,
+original result, fatal recovery and separate closure witness remain intact.
+No functional body/query/sweep/removal, player or owner acceptance is claimed.
+
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
 `fx/update.cpp` supplies its brush mask in that position and provides the larger
