@@ -70,6 +70,13 @@ try{
     $case.Owner.FailAfterLinks=-1
     $undo=Undo-IW7StockLinkTransaction $context
     Check ($undo.RollbackClosed -and $undo.SourcePreserved -and $undo.TargetAbsent) 'Partial apply could not recover exact owned links'
+    $case=New-Case 'journal-close-failure';$context=New-Transaction $case;$case.Owner.FailAfterLinks=1
+    Refuse {Invoke-IW7StockLinkApply $context} 'Injected caller failure'
+    $count=$context.Guards.Count;$context.JournalStream.Dispose() # Owned-fixture fault injection only.
+    try{
+        Refuse {Close-IW7StockLinkGuards $context} 'closed|unavailable'
+        Check ($context.Guards.Count -eq $count -and @($context.Guards|Where-Object IsClosed).Count -eq 0) 'Journal query failure closed original recovery guards'
+    }finally{$context.JournalStream=$null} # Fixture alone owns this deliberately invalidated writer.
     $case=New-Case 'source-missing';$context=New-Transaction $case;$null=Invoke-IW7StockLinkApply $context
     $path=$context.Sources[0].Path;$h=[IW7StockLinksV1.Ntfs]::OpenOwnedDelete($path);try{[IW7StockLinksV1.Ntfs]::UnlinkByHandle($h)}finally{$h.Dispose()}
     Refuse {Undo-IW7StockLinkTransaction $context} 'Open stock metadata'

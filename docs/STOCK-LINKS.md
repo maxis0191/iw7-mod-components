@@ -90,6 +90,12 @@ clear shared attributes, recursively remove directories, or release on unknown
 identity. This exposes the existing small filesystem primitives, not a new
 process controller.
 
+Guard closure first captures the original journal metadata while every stock
+guard is still live. If that query fails, all original guards remain retained.
+The owned-temp fault injection closes only its synthetic journal writer and
+proves that the failing query does not close any recovery guard. Production
+callers must never invalidate that writer or force cleanup on unknown state.
+
 ## Identity and shared metadata
 
 Each object is identified by full volume serial plus 128-bit NTFS file ID.
