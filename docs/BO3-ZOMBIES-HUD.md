@@ -3,7 +3,7 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Version0.1.1 implements the first essential slice;
+weapons, quests and states. Version0.2.0 implements the first essential slice;
 the coverage matrix below remains the completion contract.
 
 ## Ownership and loading
@@ -20,13 +20,68 @@ callbacks. This prototype needs no new CPP hook or FF. Its namespace/bounds and
 transaction differ from both the old 1600-byte HUD lab and immutable BO3Static.
 Never overwrite updater-owned cdata or use global cg_draw2D suppression.
 
-Two client-config strings must both be1: `bo3_zombies_hud_enable` and
-`bo3_zombies_hud_private`. Defaults are off. The active scene must be nonfrontend
-with ui_gametype zombie. A scoped constructor dispatcher catches lazy-loaded
-retail factories; unrelated constructors and stock CPHUD/ZMHUD classes are left
-intact. Shutdown restores the dispatcher only if it is still our function.
+The existing private recipient profile is the explicit opt-in authority: the
+fixed file `iw7-mod/bo3_zombies_hud_lab.cfg` must contain exactly the two lines
+`set bo3_zombies_hud_enable 1` and `set bo3_zombies_hud_private 1`, each followed
+by LF, UTF-8 without BOM. It is 59 bytes, SHA256
+`C14B18C6193C7864CED9C6F5B3A5C3ABEC8C24EE13263A7781CA671C14F68C8A`.
+Absent or changed bytes prevent new binding; no other file is read by this gate.
+The module never writes dvars/models. At source77e, startup +set for an absent
+dvar only queues an on_register callback; neither HUD opt-in has a native
+registrar. Thus startup arguments alone cannot qualify the raw engine values.
+Those actual values/types are diagnostic, separate from private profile approval.
+
+The active scene must be nonfrontend and Engine.IsAliensMode, as the actual
+HudManager selects its Zombies classes. A private dispatcher installs immediately,
+also retries after table/function replacement, and an owned CreateHud hook runs
+after the original constructor. Already built roots are visited through their
+actual wrapper `_widget` leaves. Stock subscriptions and visibility parents,
+unrelated constructors and CPHUD/ZMHUD classes stay intact. Shutdown restores
+only hooks that are still ours. Cosmetic nodes retain references for the stock
+callbacks while detached; normal VM teardown owns their final disposal.
 Existing instantiated widgets require normal HUD/VM teardown; no hot-reload
 restoration claim. Close the owned client before file/profile rollback.
+
+## First real HKS failure and source correction
+
+The first frozen native903/caller255 V2 test loaded the module in the real VM,
+reported no HKS/factory error, and completed protected fire/reload/restoration.
+Root and the caller owner independently inspected three authentic frames and
+found the stock IW7 HUD only. Loading is qualified; replacement pixels are not.
+
+Source review confirms native HKS startup calls the original before custom
+scripts, while the old module installed only a deferred, future-factory hook.
+It had no path to restyle already-created essential leaves. Retail AddWidget
+also returns a wrapper whose `_widget` is the actual container. Shrinking the
+round wrapper incorrectly resizes its full-screen canvas. Version0.2.0 adds
+immediate/post-construction/live-root paths and changes the round leaf only.
+The raw engine opt-in values in that failed run were not measured; their absence
+is not asserted as an observed runtime fact. The native registrar gap is source
+evidence. Version0.2.0 still needs a new reviewed capsule and real pixel evidence;
+native903 and its failed frames remain unchanged.
+
+## Bounded binding diagnostics
+
+Every module initialization emits `module version=0.2.0 instance=... initialized=1`.
+The alphanumeric instance tag is local to the module object; it is not a globally
+unique native VM identifier. Reset the parser epoch at every module delimiter,
+even if an address/tag is reused. All later markers carry the same instance.
+
+- `gate`: exact profile approval, frontend/CP booleans and raw engine values/types;
+  `empty` encodes an empty string. A frontend/cp0/profile0 gate is not fatal.
+- `hook`: `kind=dispatch|create_hud installed=1`, proving assignment only.
+- `root`: a real allowlisted root id, actual controller and positive `root_seq`.
+  The counter identifies that root object within this module epoch.
+- `bind`: same root/controller/sequence, `round=1 ammo=1 portrait=1` and the actual
+  count of perk icons styled. Existing subscriptions are retained. This proves
+  completed style calls, never pixels; every marker says `pixels=unverified`.
+- `binding_failure` / `factory_fallback`: bounded reason and `retry=1`; transient
+  missing leaves may recover. A binding failure clears prior bind evidence and
+  recovery emits a fresh bind. Require the latest valid CP gate and concordant
+  root/bind before capture; do not aggregate an older VM/root's markers.
+
+Markers emit only on state changes; startup polling remains bounded. No player
+names, balances, GUIDs or credentials are emitted by these diagnostics.
 
 ## Source references and implemented essentials
 
@@ -95,12 +150,16 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-32 source controls cover default-off/private opt-in/frontend/MP, controller1,
+59 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
 both unresolved melee/dual classification and their return to known akimbo
-state. This is not HKS,
+state. Additional controls construct the retail wrapper/leaf hierarchy before
+module load, retain live round/ammo subscriptions and critical children, verify
+post-CreateHud return values, root identity, transient failure/recovery, hook
+replacement, exact profile refusal and absence of duplicate cosmetic nodes.
+This is not HKS,
 render or gameplay evidence. An early test setup artificially cleared the module
 global without destroying old scheduled callbacks; it was corrected to test the
 actual same-VM duplicate-load guard rather than claim a fresh VM.
