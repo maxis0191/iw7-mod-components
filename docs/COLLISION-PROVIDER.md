@@ -179,8 +179,8 @@ C remains failed evidence, not a measured successful body/query/destruction.
 Native19 subsequently completed the full Release build and all required fixtures,
 including the new name-to-object routing and early-refusal cases. The compiled
 source is merged revision `f2e5362fe8c1536396d56ee14f55735374384091`, approved
-code head `13473e02471d28bb027679fb161a40b9f9818c3d`, upstream77e6d4d. Its318
-declared text files total3,010,349 bytes;36 selected native sources include34
+code head `13473e02471d28bb027679fb161a40b9f9818c3d`, upstream revision77e6d4d.
+Its 318 declared text files total 3,010,349 bytes; 36 selected native sources include 34
 unchanged from Native16 and only the collision provider CPP/HPP changed.
 The actual output tuple was observed inside the original build reservation:
 EXE `4E8885EACBF01ACBCE57F8A3EB05A8347F06CB2A515B78516AF8FB39D37E3E9F`
@@ -189,14 +189,14 @@ EXE `4E8885EACBF01ACBCE57F8A3EB05A8347F06CB2A515B78516AF8FB39D37E3E9F`
 (55,291,904 bytes), build manifest
 `070A50C7670CD0FE3243C8BF8451F6EA857E7DD1DD7AB4BB76BF0DF1E605E649`
 (16,536 bytes). No output executable or PDB was rehashed after release.
-Pre-compiler preservation recorded37 available managed files. The original
-owned job and PTY exited0, Active0 was observed before disposal, and a fresh
-closure witness found all original/observed identities absent and registry0.
+Pre-compiler preservation recorded 37 available managed files. The original
+owned job and PTY exited 0, Active=0 was observed before disposal, and a fresh
+closure witness found all original/observed identities absent and registry=0.
 An auxiliary UTC-string-versus-JSON-DateTime comparison initially refused;
 normalizing both creation instants to exact UTC FILETIME corrected the witness
 without changing the original metadata or relaxing process identity checks.
 No game, Main deployment, native creation/query/destruction or owner acceptance
-is claimed by this compilation. Issue8 remains open; the next evidence needed
+is claimed by this compilation. Issue #8 remains open; the next evidence needed
 is a separately admitted zero-client engine probe on this exact output tuple.
 
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
