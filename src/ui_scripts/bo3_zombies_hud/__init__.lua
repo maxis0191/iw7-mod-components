@@ -114,6 +114,7 @@ local function build_ammo(menu, args)
     local right = source("inGame.player.currentWeapon.clipAmmoRightDisplay")
     local left = source("inGame.player.currentWeapon.clipAmmoLeftDisplay")
     local reserve = source("inGame.player.currentWeapon.stockAmmoDisplay")
+    local stock_ammo = source("inGame.player.currentWeapon.stockAmmo")
     local name = source("inGame.player.currentWeapon.displayNameMultiline")
     local ammo_alpha = source("inGame.player.currentWeapon.ammoInfoAlpha")
     local reserve_alpha = source("inGame.player.currentWeapon.ammoReserveAlpha")
@@ -132,6 +133,15 @@ local function build_ammo(menu, args)
     bind_text(clip, right, index)
     bind_text(clip_left, left, index)
     bind_text(stock, reserve, index)
+    assert(SWATCHES and SWATCHES.HUD and SWATCHES.HUD.warning, "Actual reserve warning color required")
+    local function update_stock_color()
+        local value = stock_ammo:GetValue(index)
+        if type(value) ~= "number" then return end
+        if value <= 0 then stock:SetRGBFromTable(SWATCHES.HUD.warning, 0)
+        else stock:SetRGBFromInt(12566463, 0) end
+    end
+    stock:SubscribeToModel(stock_ammo:GetModel(index), update_stock_color)
+    update_stock_color()
     bind_text(title, name, index, function(value) return Engine.Localize(value) end)
     local weapon = DataSources.inGame.player.currentWeapon
     if weapon.altModeDisplayName and weapon.altModeDisplayName.GetModel and weapon.altModeDisplayName.GetValue then

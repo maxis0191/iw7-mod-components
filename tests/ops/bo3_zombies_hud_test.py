@@ -22,6 +22,7 @@ profilePayload="set bo3_zombies_hud_enable 1\nset bo3_zombies_hud_private 1\n"
 io={readfile=function(path) assert(path=="iw7-mod/bo3_zombies_hud_lab.cfg");return profileText end}
 scheduler={once=function(fn) pending[#pending+1]=fn end}
 FONTS={MainBold={File="stock-bold"},GetFont=function(value) return value end}
+SWATCHES={HUD={warning={r=1,g=0.25,b=0}}}
 RegisterMaterial=function(value) return value end
 function node()
  local n={children={},alpha=1,closed=false}
@@ -30,6 +31,7 @@ function node()
  function n:SetFontSize(value) self.size=value end
  function n:SetAlignment(value) end
  function n:SetRGBFromInt(value) self.color=value end
+ function n:SetRGBFromTable(value) self.color=value end
  function n:SetYRotation(value) end
  function n:SetZRotation(value) end
  function n:SetAlpha(value) self.alpha=value end
@@ -236,6 +238,10 @@ lua.execute('models["inGame.player.currentWeapon.stockAmmo"]:set(0);tick()')
 check('existing.wonderCard._widget.ZomWeaponInfo.weaponinfoZM.TextStockAmmo.color==0xFF8800')
 lua.execute('models["inGame.player.currentWeapon.stockAmmo"]:set(24);tick()')
 check('existing.wonderCard._widget.ZomWeaponInfo.weaponinfoZM.TextStockAmmo.color==0x999999')
+lua.execute('fresh=MenuBuilder.BuildRegisteredType("weaponinfoZM",{controllerIndex=1});existing.wonderCard._widget.ZomWeaponInfo.weaponinfoZM=fresh;models["inGame.player.currentWeapon.stockAmmo"]:set(0);tick()')
+check('child(fresh,"BO3Reserve").color==SWATCHES.HUD.warning')
+lua.execute('models["inGame.player.currentWeapon.stockAmmo"]:set(24);tick()')
+check('child(fresh,"BO3Reserve").color==12566463')
 lua.execute('before=#existing.waveNumber._widget.WaveNumber.children;tick();tick()')
 check('#existing.waveNumber._widget.WaveNumber.children==before')
 check('string.find(BO3ZombiesHUD.messages["bind:ZMHUD:1"],"perks=2",1,true)~=nil')

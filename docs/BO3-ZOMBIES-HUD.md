@@ -150,7 +150,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-63 source controls cover default-off/private opt-in/frontend/MP, controller1,
+65 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -169,6 +169,11 @@ color was overwritten on every style poll. That color now stays retail-owned;
 numeric zero/positive-reserve callbacks followed by each next poll retain their
 retail warning/normal colors. The new late-runtime fixture initially omitted
 the numeric stock model, failed setup, and was corrected before qualification.
+Peer review caught the complementary fresh-factory path: its custom reserve
+count had no numeric warning subscription. It now follows the pinned retail
+colors, SWATCHES.HUD.warning at zero and RGB12566463 at positive reserve, through
+the real numeric stock model. Fresh construction plus zero/positive updates
+and subsequent root polls preserve those exact colors in source controls.
 This is not HKS,
 render or gameplay evidence. An early test setup artificially cleared the module
 global without destroying old scheduled callbacks; it was corrected to test the
