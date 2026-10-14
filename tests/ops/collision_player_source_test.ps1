@@ -42,12 +42,14 @@ if(!$ready.Ready -or $ready.Generation -cne $generation -or ($ready.Anchor -join
 $readyRefusals=0
 foreach($case in @($wire.TrimEnd("`n"),$wire.Replace('native_tick_ms=1400','native_tick_ms=1099'),$wire.Replace('native_tick_ms=1400','native_tick_ms=1501'),
     $wire.Replace('client_nonce='+$nonce,'client_nonce=cccccccccccccccccccccccccccccccc'),$wire.Replace('slot=0','slot=1'),$wire.Replace('protected=1','protected=0'))){
-    if((Read-IW7CollisionPlayerReady $case $token 42 $nonce 1100 1500).Ready){throw 'Partial/stale/future/foreign/unprotected readiness accepted.'};$readyRefusals++
+    try{$r=Read-IW7CollisionPlayerReady $case $token 42 $nonce 1100 1500}catch{$readyRefusals++;continue}
+    if($r.Ready){throw 'Partial/stale/future/foreign/unprotected readiness accepted.'};$readyRefusals++
 }
 if((Read-IW7CollisionPlayerReady $wire $token 42 $nonce 1100 1901).Ready){throw 'Expired readiness accepted.'};$readyRefusals++
 $poseRefusals=0
 foreach($case in @($wire.Replace('; anchor_x=10; anchor_y=20; anchor_z=30',''),$wire.Replace('anchor_x=10','anchor_x=NaN'))){
-    if((Read-IW7CollisionPlayerReady $case $token 42 $nonce 1100 1500).Ready){throw 'Missing/nonfinite anchor accepted.'};$poseRefusals++
+    try{$r=Read-IW7CollisionPlayerReady $case $token 42 $nonce 1100 1500}catch{$poseRefusals++;continue}
+    if($r.Ready){throw 'Missing/nonfinite anchor accepted.'};$poseRefusals++
 }
 foreach($value in @('30001','1e309')){
     try{$null=Read-IW7CollisionPlayerReady ($wire.Replace('anchor_x=10','anchor_x='+$value)) $token 42 $nonce 1100 1500}catch{$poseRefusals++;continue};throw 'Out-of-range/nonfinite pose accepted.'
@@ -59,6 +61,9 @@ foreach($change in @('expired','generation','pose')){
     $current=$ready.PSObject.Copy()
     switch($change){'expired'{$current.Ready=$false}'generation'{$current.Generation='cccccccccccccccccccccccccccccccc'}'pose'{$current.Anchor=@(11,20,30)}}
     try{Assert-IW7CollisionPlayerFrozenReady $ready $current}catch{$poseRefusals++;continue};throw 'Frozen pose/generation/readiness changed before arm.'
+}
+foreach($badLast in @($wire.Replace('anchor_x=10','anchor_x=NaN'),$wire.Replace('client_nonce='+$nonce,'client_nonce=cccccccccccccccccccccccccccccccc'))){
+    try{$null=Read-IW7CollisionPlayerReady ($wire+$badLast) $token 42 $nonce 1100 1500}catch{$poseRefusals++;continue};throw 'Earlier good publication hid a malformed/foreign later pose.'
 }
 # Only the real GSC fixture reads retail intro/control state. These fixtures
 # verify the publication transport/freshness; they never fabricate that state.

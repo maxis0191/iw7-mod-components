@@ -135,6 +135,6 @@ pose before either journaled placement. A spawn area which cannot pass the audit
 refuses the experiment; source tests never fabricate its location/terrain. The
 operator writes a local actual-anchor plan before arm for the original caller's
 evidence. Optional explicit `-Anchor` remains pure preview; live invocation omits
-it. Seven ownership, seven readiness and eight pose transport/freeze refusals,
+it. Seven ownership, seven readiness and ten pose transport/freeze refusals,
 plus existing movement tests, check the source contract without qualifying a game
 location or player movement.
