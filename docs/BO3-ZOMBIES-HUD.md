@@ -3,7 +3,7 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Version0.1.0 implements the first essential slice;
+weapons, quests and states. Version0.1.1 implements the first essential slice;
 the coverage matrix below remains the completion contract.
 
 ## Ownership and loading
@@ -48,6 +48,14 @@ current VM/runtime ABI. No decompiled body is copied into tracked implementation
 | Perks | CP.zombies.perks.activePerks/activePerkBits; element data.icon | New CPPerkIcon, dynamic runtime image; original toggle-list/order/lifetime retained |
 | Offhands | primaryPower/secondaryPower charge, icon, color and alpha models | Original ZomWeaponInfo children retained, not hidden by replacing the ammo leaf |
 
+Version0.1.1 requires an explicit non-melee classification before showing the
+left akimbo count: dual must be true and melee must be false. The prior source
+treated an unresolved melee value as non-melee. The pinned retail weaponinfoZM
+flow requires explicit false; this source correction covers nil-to-known model
+transitions without inferring ammoInfoAlpha semantics or changing engine data.
+It remains separate from the frozen native903/source-cbd5 tuple assigned to the
+first future HKS capsule; that capsule must not silently adopt this evolution.
+
 The first appearance uses native rectangles and IW7 runtime images. BO3 retail
 HUD/perk/weapon image names/pixels are currently unqualified. No ImageGen asset
 is necessary for this functional slice. If a real gap survives asset inventory,
@@ -87,10 +95,12 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-28 source controls cover default-off/private opt-in/frontend/MP, controller1,
+32 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
-dispatcher remaining inert after shutdown. This is not HKS,
+dispatcher remaining inert after shutdown. Added readiness controls exercise
+both unresolved melee/dual classification and their return to known akimbo
+state. This is not HKS,
 render or gameplay evidence. An early test setup artificially cleared the module
 global without destroying old scheduled callbacks; it was corrected to test the
 actual same-VM duplicate-load guard rather than claim a fresh VM.
