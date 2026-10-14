@@ -258,10 +258,35 @@ capsule is separate, and `PhysicsWorldResetVerified` stays false.
 
 The pure transcript fixtures retain D's narrower result and reject incomplete,
 reordered, obstructed or interfered lifecycle samples. New C++ helper fixtures
-cover counter deltas, underflow/overflow and failed observations after destruction,
-but have not been compiled or run yet. No new executable tuple exists. The runner
-still pins Native19; a separately reviewed build and actual tuple consumer update
-are required before any lifecycle engine run. Source tests do not qualify E.
+cover counter deltas, underflow/overflow and failed observations after destruction.
+At initial source review they had not been compiled or run. The runner still
+pins Native19; an actual tuple consumer update and separate engine admission are
+required before any lifecycle engine run. Source tests do not qualify E.
+
+Native23 subsequently completed every required fixture and the full Release build
+on the approved candidate `d2b73923de9e21fca7446ad5bad4a8742d0c8468`. This includes
+the new causal counter/destroy cases and the two source-review corrections:
+nonnull world-marker validation, and quarantine on any fallible cleanup
+observation so a retry cannot replace the original destruction-counter baseline.
+Its 318 declared text files total 3,043,339 bytes; all 36 selected native source
+pins match the prepared candidate. The actual outputs were hashed inside the
+original build reservation before release: EXE
+`5F1BF0569FF109A46CF23997E2A2EDF551FE6FD525B1F2B341BC8BEB91287006`
+(6,148,608 bytes), PDB
+`405679CA12EB89BE85D9FA11522CDD2CEF606520429880DE22676924022B2360`
+(55,341,056 bytes), manifest
+`A713670040A9932AD47A195F91F714FF39DA88AB8C73EFAD81D5527156299A32`
+(16,536 bytes). [Sanitized build evidence](evidence/2026-10-14-native23-build.json)
+records the qualification without local paths, process identities or raw logs.
+
+Pre-compiler preservation verified 37 managed files. The parent identity was
+captured before the original NoExit caller, then the caller before dot-source.
+The owned build job exited 0 with Active=0 before disposal; the actual caller PTY
+also exited 0. Fresh original/observed process absence and registry=0 were
+confirmed separately. Original intermediate receipts and Native19/D evidence
+remain unchanged; no executable/PDB was rehashed after release. This is a build
+and fixture result only: no lifecycle engine run, consumer pin, Main deployment,
+physical-reset qualification, player movement or owner acceptance is implied.
 
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
