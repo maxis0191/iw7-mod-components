@@ -2,6 +2,10 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "bo3_zombies_hud_source",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "ops/Test-BO3HUDSource.ps1"]
+    },
+    {
       "id": "collision_player_result_test",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_player_result_test.ps1"]
     },
