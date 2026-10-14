@@ -157,9 +157,12 @@ function New-IW7StockOwnedDirectory($Context,[string]$Path) {
     Write-IW7StockLinkJournal $Context @{Event='DirectoryCreated';Path=$Path;Identity=$record.Identity}
 }
 function Close-IW7StockLinkGuards($Context) {
+    # Any fallible journal query must complete while all original stock guards
+    # are still live. Unknown journal state must not silently close those guards.
+    if($Context.JournalStream){$Context.JournalMetadata=[IW7StockLinksV1.Ntfs]::Inspect($Context.JournalStream.SafeFileHandle)}
     foreach($guard in $Context.Guards){if($guard -and !$guard.IsClosed){$guard.Dispose()}}
     $Context.Guards.Clear()
-    if($Context.JournalStream){$Context.JournalMetadata=[IW7StockLinksV1.Ntfs]::Inspect($Context.JournalStream.SafeFileHandle);$Context.JournalStream.Dispose();$Context.JournalStream=$null}
+    if($Context.JournalStream){$Context.JournalStream.Dispose();$Context.JournalStream=$null}
 }
 function Invoke-IW7StockLinkApply($Context) {
     Assert-IW7StockLinkContext $Context
