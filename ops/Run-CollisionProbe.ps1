@@ -180,7 +180,7 @@ set sv_mapRotationCurrent ""
     $deadline=[Environment]::TickCount64+15000
     do{
         Assert-CollisionOriginal;$null=Read-CollisionPrivateInfo
-        $measurement=Read-IW7CollisionProbeResult (Read-IW7BaseLog $stdout) $token
+        $measurement=Read-IW7CollisionProbeResult (Read-IW7BaseLog $stdout) $token -RequireLifecycle
         if($measurement.Complete){break}
         Start-Sleep -Milliseconds 100
     }while([Environment]::TickCount64 -lt $deadline)

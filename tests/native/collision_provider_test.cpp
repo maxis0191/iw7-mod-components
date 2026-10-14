@@ -7,6 +7,54 @@
 int main()
 {
     using namespace collision_provider;
+    const usage_counts usage{4, 2, 3}, contributed{5, 2, 3};
+    assert(usage_episode_restored(usage, usage, contributed, contributed, contributed, usage));
+    assert(!usage_episode_restored(usage, contributed, contributed, contributed, contributed, usage));
+    assert(!usage_episode_restored(usage, usage, contributed, contributed, usage, usage));
+    assert(!usage_episode_restored(usage, usage, contributed, usage_counts{6, 2, 3}, contributed, usage));
+    assert(!usage_episode_restored(usage, usage, contributed, contributed, contributed, usage_counts{4, 3, 3}));
+    assert(!manual_increment_permitted(usage_counts{-1, 0, 0}));
+    assert(!manual_increment_permitted(usage_counts{0, -1, 0}));
+    assert(!manual_increment_permitted(usage_counts{std::numeric_limits<int>::max(), 0, 0}));
+    assert(manual_decrement_permitted(contributed, contributed));
+    assert(!manual_decrement_permitted(contributed, usage)); // Still positive: never double a native decrement.
+    assert(!manual_decrement_permitted(usage_counts{0, 0, 0}, usage_counts{0, 0, 0}));
+    assert(!manual_decrement_permitted(contributed, usage_counts{5, 3, 3}));
+    bool alive = true, destroying = false;
+    int destroy_calls = 0;
+    destroy_owned_once(alive, destroying, [&] { ++destroy_calls; });
+    // A later observation throws after the effect was committed. Retrying the
+    // owned cleanup must not call the native destroy for the retired ID again.
+    try { throw std::runtime_error("post-destroy observation failed"); } catch (const std::exception&) {}
+    destroy_owned_once(alive, destroying, [&] { ++destroy_calls; });
+    assert(!alive && !destroying && destroy_calls == 1);
+    alive = true;
+    try { destroy_owned_once(alive, destroying, [&] { ++destroy_calls; throw std::runtime_error("native return unresolved"); }); }
+    catch (const std::exception&) {}
+    try { destroy_owned_once(alive, destroying, [&] { ++destroy_calls; }); }
+    catch (const std::exception&) {}
+    assert(alive && destroying && destroy_calls == 2); // No second call for the unresolved attempt.
+    bool quarantine = false;
+    alive = true; destroying = false;
+    int shared_counter = 5, manual_decrements = 0;
+    try
+    {
+        quarantine_on_failure(quarantine, [&] {
+            const auto before_destroy = shared_counter;
+            destroy_owned_once(alive, destroying, [&] { ++destroy_calls; --shared_counter; });
+            assert(before_destroy == 5 && shared_counter == 4); // Delta remains positive.
+            throw std::runtime_error("post-destroy sample logger failed before its guard returned");
+        });
+    }
+    catch (const std::exception&) {}
+    if (!quarantine)
+    {
+        // This is the unsafe retry: a refreshed 4->4 baseline could authorize
+        // another decrement. The quarantine must make this path unreachable.
+        destroy_owned_once(alive, destroying, [&] { ++destroy_calls; });
+        --shared_counter; ++manual_decrements;
+    }
+    assert(quarantine && !alive && shared_counter == 4 && manual_decrements == 0 && destroy_calls == 3);
     // The real name must be resolved before its object can be used as the
     // exact-pointer lookup key; null/invalid stages must stop the call sequence.
     struct fixture_asset { int marker; } resolved{42};

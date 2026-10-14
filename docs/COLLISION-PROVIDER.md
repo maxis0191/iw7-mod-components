@@ -230,6 +230,64 @@ deployment, accepted tag or owner gameplay acceptance is claimed. Issue #8
 stays open for those next controls and a separately authorized protected player
 contact test.
 
+The next same-world lifecycle controls are source preparation only. An optional
+observed create mode samples native point/actor baselines before inserting the
+body; explicit `collision_clearboxprobe()` retains only a CPU query zone, clears
+the native body, then queries while its script owner is still alive. The retired
+ID is a log label and is never reused as a native handle. The fixture deletes
+the owner only after those queries. Exact actor shape/margin, static/sensor
+semantics, player movement and physical world reset remain outside this step.
+
+Observed template counters include all three shared SDK ints at before-create,
+after-native-create, after-manual-increment, before-native-destroy,
+after-native-destroy before decrement, and after-manual-decrement. Any observed
+delta across native creation/destruction refuses the corresponding manual write,
+including a still-positive value. INT_MAX/nonpositive guards prevent overflow
+or a blind second decrement; no shared counter is assigned a saved baseline.
+Fresh name resolution must match the current object/context, module VM episode
+and world marker before reads/writes. These are consistency checks within the
+synchronous episode, not proof against a native physical-generation ABA.
+
+Partial allocation/creation and manual contribution states are retained before
+fallible observations. Destruction and manual release commit before post-effect
+reads; retries cannot repeat a retired ID or released contribution. Unknown
+context or interrupted VM episodes quarantine their records and block reuse.
+Queued operations capture the VM episode. The existing VM shutdown callback
+is reused; no new engine binding or detour is added. A future level-transition
+capsule is separate, and `PhysicsWorldResetVerified` stays false.
+
+The pure transcript fixtures retain D's narrower result and reject incomplete,
+reordered, obstructed or interfered lifecycle samples. New C++ helper fixtures
+cover counter deltas, underflow/overflow and failed observations after destruction.
+At initial source review they had not been compiled or run. The runner still
+pins Native19; an actual tuple consumer update and separate engine admission are
+required before any lifecycle engine run. Source tests do not qualify E.
+
+Native23 subsequently completed every required fixture and the full Release build
+on the approved candidate `d2b73923de9e21fca7446ad5bad4a8742d0c8468`. This includes
+the new causal counter/destroy cases and the two source-review corrections:
+nonnull world-marker validation, and quarantine on any fallible cleanup
+observation so a retry cannot replace the original destruction-counter baseline.
+Its 318 declared text files total 3,043,339 bytes; all 36 selected native source
+pins match the prepared candidate. The actual outputs were hashed inside the
+original build reservation before release: EXE
+`5F1BF0569FF109A46CF23997E2A2EDF551FE6FD525B1F2B341BC8BEB91287006`
+(6,148,608 bytes), PDB
+`405679CA12EB89BE85D9FA11522CDD2CEF606520429880DE22676924022B2360`
+(55,341,056 bytes), manifest
+`A713670040A9932AD47A195F91F714FF39DA88AB8C73EFAD81D5527156299A32`
+(16,536 bytes). [Sanitized build evidence](evidence/2026-10-14-native23-build.json)
+records the qualification without local paths, process identities or raw logs.
+
+Pre-compiler preservation verified 37 managed files. The parent identity was
+captured before the original NoExit caller, then the caller before dot-source.
+The owned build job exited 0 with Active=0 before disposal; the actual caller PTY
+also exited 0. Fresh original/observed process absence and registry=0 were
+confirmed separately. Original intermediate receipts and Native19/D evidence
+remain unchanged; no executable/PDB was rehashed after release. This is a build
+and fixture result only: no lifecycle engine run, consumer pin, Main deployment,
+physical-reset qualification, player movement or owner acceptance is implied.
+
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
 `fx/update.cpp` supplies its brush mask in that position and provides the larger
