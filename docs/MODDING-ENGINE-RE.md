@@ -34,9 +34,19 @@ reference/read failure and unreadable data produce `NoSceneObservation`.
 Successful data is explicitly `SceneModelTableObserved`: raw entnum12,
 renderFlags14, typed draw-info fields, DObj pointer presence and placement
 quat/origin/scale/radius. Output contains no addresses, process/player identity
-or nonce. Requested/sample-start/sample-end/published local ticks permit later
-sequence checks. Consumers must compare creation against sample start; a later
-sample-end timestamp alone cannot prove every read followed creation.
+or nonce. Requested/sample-start/sample-end/published ticks all come from the
+client process's Windows `GetTickCount64` uptime clock. GSC `gettime`/level-time
+and the server witness's `time_ms` have an unqualified clock domain; no numeric
+comparison with client uptime is allowed without independent clock proof.
+
+The consumer must first read the fresh `WITNESS_CREATED` marker bound to the
+same server/run, then send the new ARM/CAPTURE requests. That controller order
+establishes the temporal prerequisite. Within the single native uptime domain,
+require sample start at or after request, before the one-second request expiry,
+and valid publication; reject backwards/wrapped or expired intervals rather
+than extending freshness. A later sample-end/publication time cannot replace
+sample start. This observer performs no cross-clock comparison and does not
+by itself prove freshness or provenance of the server marker.
 
 Zero matches means only `not_observed_in_this_scene_model_table`. The separate
 opaque sceneDObj table is not inspected. Count stability is not an atomic
@@ -63,6 +73,11 @@ cancel/expiry/count/filter cases; it has not been compiled for this candidate.
 Source review and an independently admitted CPP/full build precede any runtime
 qualification. Main27016, immutable native958, the prior compiled4377 image,
 SDK49f/FF and banks remain outside this source-only work.
+
+Independent Architecture source review approved exact C++ candidate
+`8a5da90bacbc11fd72c99ae4f7dde1baaa1fe26a`. The clock-domain clarification above
+is documentation only; its approved C++ bytes remain frozen pending the next
+separately admitted full build and the 27 prepared fixture assertions.
 
 ## Original rig typed asset snapshot — compiled candidate, 2026-10-14
 
