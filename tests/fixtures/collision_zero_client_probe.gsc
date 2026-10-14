@@ -39,6 +39,7 @@ collision_probe()
     if (!isdefined(instance))
     {
         println("[Collision probe] FAIL token=" + token + " reason=create_refused");
+        floor collision_clearboxes();
         floor delete();
         return;
     }
