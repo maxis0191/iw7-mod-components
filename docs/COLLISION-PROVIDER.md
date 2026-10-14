@@ -38,7 +38,7 @@ The pinned packed SDK declaration instead places its `classname` member at
 not qualify that layout. The diagnostic records the SDK member/offset and the
 producer's raw compared word separately, without renaming either as the other.
 
-The Native14 source candidate preserves the current admission guard. It logs raw
+The Native14 source candidate retained the pre-correction admission guard. It logs raw
 contents/link/class IDs before refusal and reads the producer's two runtime
 class-ID globals only after checking their exact RIP-relative instruction
 signatures. It also verifies the link-byte producer. This read-only diagnostic
@@ -76,21 +76,33 @@ preserving strict test failure. Fresh exact host/parent/dedicated and port
 observations were absent and the registry held0 leases. The raw result, logs
 and separate original-host closure witness remain intact; A was not rewritten.
 
-The next source correction preserves linked bit1 admission and adds only the
+The Native16 source correction preserves linked bit1 admission and adds only the
 exact observed retail script_model case: linked byte1, contents exactly0x2080,
 producer raw class matching both the SDK script_model ID and the current
 nonzero mask0x2080 global, with a
 separate nonzero no-change global. Dedicated/static script_model classification,
 producer signatures/readability, ready world, loopback/password/LAN-only and
-all allocation/teardown checks stay in force. Other even/nonzero/partial masks,
+all allocation/teardown checks stay in force. For this new exception, other even/nonzero/partial masks,
 foreign/no-change class IDs and missing/ambiguous globals are rejected. No
 numeric172/174 VM ID is compiled into the predicate. The owner contents are
 not overwritten. The generated body's existing contents1 and mask1 native
 queries remain separate; admitting an owner does not prove body collision.
 Native regression cases cover that exact B input and refusal boundaries, with
-changed VM IDs and preservation of the old bit1 behavior. These C++ changes
-and tests have not been compiled or run; they require independent review and
-the next coordinated compile/run before any further runtime claim.
+changed VM IDs and preservation of the old bit1 behavior. Primary and
+independent reviews approved exact source head `b0e86bb`; PR16 merged at
+`8f1ac6d2443feb4432bfc2f9f6915d0ba50ea0c6`. Its new C++ predicate and native
+regressions compiled and passed in the full Release build. It has not run in
+the engine; no body/query/teardown or gameplay follows from those checks.
+
+The actual Native16 build used clean sealed source `8f1ac6d` (318 files,
+2,999,759 bytes), with36 raw native sources and only the provider CPP/HPP
+differing from Native14. Existing required fixtures and the new admission
+regressions passed. The original admitted firstBody preserved37 available
+native overlay/output files. Actual EXE/PDB/manifest hashes were captured
+inside the same original build reservation before release. Build host and
+original PTY exited0, owned job active count was0 before disposal, and a fresh
+check found all75 observed tree identities absent and registry0. No engine
+process/client or Main deployment occurred. Native14/B/A remain intact.
 
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
@@ -242,15 +254,16 @@ hash-bound prepared server-helper package. The route reuses existing resource,
 bank isolation, transaction, original process-handle, UDP, fatal-diagnostic and
 restoration helpers. It adds no scheduler and changes no shared server file.
 
-The next admitted image is the separately compiled Native14 diagnostic source
-`02eab0c73d41a842e18caad13e9b6ffe6c480b89`, EXE
-`5931CD975C5CD2086900D599A7F79B2BF1969E64899D1E0360B6ED40225DF874`,
-manifest `81105E9B5E7FF92BB160BB375B18C4E39B55D3C13FD8671F38A2A2AC8389799C`
-and PDB `7BD65750C12A119953181DDF529394B92BC47E7183653056FBC523CC8F59ECCD`.
+The next admitted image is the separately compiled Native16 corrected source
+`8f1ac6d2443feb4432bfc2f9f6915d0ba50ea0c6`, EXE
+`A47E4F6464D208D612DE85E40D77E5FD106D3CB092B9029E9C4B83844C6FB7CD`,
+manifest `7B7B50B703F92E4D1394D6F74836B9A7D0588FCF0B03453C5B8298C6716DFA95`
+and PDB `4E7A7D0EF32431C73B1AD123C5A4D3298B905A851C2C176A791F013FC0C4D427`.
 It declares `CollisionProvider=true` and 36 sources. There is no
 `CollisionProbeCapability` field. The consumer pins that actual compiled tuple;
-the collision guard and shared lifecycle/transport are unchanged. No further
-C++ rebuild is required for the next diagnostic-only zero-client run. The old
+the reviewed Native16 owner-admission correction is present and shared
+lifecycle/transport remain unchanged. No further C++ rebuild is required for
+the next zero-client body/query/removal test. The old
 c32/B78 executables, symbols, failed proposals and receipts remain intact.
 
 The runtime group contains one marked retained dedicated on loopback UDP27116,
