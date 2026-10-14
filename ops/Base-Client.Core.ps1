@@ -23,8 +23,9 @@ function ConvertTo-IW7BaseKeyboardYaw($Value) {
 function New-IW7BaseClientPlan {
     param([Parameter(Mandatory)][string]$GameRoot,[Parameter(Mandatory)][string]$ClientImage,
         [ValidateRange(27100,27999)][int]$ServerPort,[ValidateRange(27100,27999)][int]$ClientPort,
-        [ValidateSet('Full','Reduced')][string]$GraphicsProfile='Full',[switch]$Debugger,$KeyboardYawDegreesPerSecond=0,$KeyboardPitchDegreesPerSecond=0,[switch]$OriginalRigConsole,[switch]$RigAssetsProbe,[switch]$RigSceneProbe,[switch]$RigSceneStockWitness)
+        [ValidateSet('Full','Reduced')][string]$GraphicsProfile='Full',[switch]$Debugger,$KeyboardYawDegreesPerSecond=0,$KeyboardPitchDegreesPerSecond=0,[switch]$OriginalRigConsole,[switch]$RigAssetsProbe,[switch]$RigSceneProbe,[switch]$RigSceneStockWitness,[switch]$BO3HUDPrivate)
     $keyboardYaw=ConvertTo-IW7BaseKeyboardYaw $KeyboardYawDegreesPerSecond
+    if($BO3HUDPrivate -and $OriginalRigConsole){throw 'Private disk HUD and original-rig console plans are exclusive.'}
     if($RigAssetsProbe -and !$OriginalRigConsole){throw 'Rig assets probe requires the explicit original-rig console plan.'}
     if($RigSceneProbe -and !$RigAssetsProbe){throw 'Rig scene probe requires the explicit assets probe.'}
     if($RigSceneStockWitness -and !$RigSceneProbe){throw 'Rig stock witness requires the explicit scene probe.'}
@@ -37,7 +38,7 @@ function New-IW7BaseClientPlan {
     . "$PSScriptRoot/Lab-RunPlan.ps1"
     $budget=Get-IW7LabRunPlan -PlannedClients 1 -GraphicsProfile $GraphicsProfile -Debugger:$Debugger
     [pscustomobject]@{Schema='iw7.base-client/1';GameRoot=$root;Image=$image;SHA256=(Get-FileHash -LiteralPath $image).Hash;
-        ServerPort=$ServerPort;ClientPort=$ClientPort;GraphicsProfile=$GraphicsProfile;RunPlan=$budget;KeyboardYawDegreesPerSecond=$keyboardYaw;KeyboardPitchDegreesPerSecond=$keyboardPitch;OriginalRigConsole=[bool]$OriginalRigConsole;RigAssetsProbe=[bool]$RigAssetsProbe;RigSceneProbe=[bool]$RigSceneProbe;RigSceneStockWitness=[bool]$RigSceneStockWitness;
+        ServerPort=$ServerPort;ClientPort=$ClientPort;GraphicsProfile=$GraphicsProfile;RunPlan=$budget;KeyboardYawDegreesPerSecond=$keyboardYaw;KeyboardPitchDegreesPerSecond=$keyboardPitch;OriginalRigConsole=[bool]$OriginalRigConsole;RigAssetsProbe=[bool]$RigAssetsProbe;RigSceneProbe=[bool]$RigSceneProbe;RigSceneStockWitness=[bool]$RigSceneStockWitness;BO3HUDPrivate=[bool]$BO3HUDPrivate;
         MutableFiles=@('iw7-mod/agent-base-client.cfg','iw7-mod/paris-server-client.request','iw7-mod/paris-server-client.response','iw7-mod/screenshots/server-modules-fixture.bmp',
             'iw7-mod/paris-agent.session','iw7-mod/paris-agent.request','iw7-mod/paris-agent.response','iw7-mod/paris-agent.safety','iw7-mod/paris-isolated-lab.marker');
         ProfileDirectory='iw7-mod/players2';ProfileDirectories=@('iw7-mod/players2','iw7-mod/lab-appdata')}
@@ -211,6 +212,12 @@ function Get-IW7BaseOriginalRigConsole($Plan) {
 }
 
 function Get-IW7BaseClientArguments($Plan,[string]$Password) {
+    $bo3HUD=$false
+    if($Plan.PSObject.Properties.Name -contains 'BO3HUDPrivate'){
+        if($Plan.BO3HUDPrivate -isnot [bool]){throw 'BO3HUDPrivate must be an explicit boolean.'}
+        $bo3HUD=$Plan.BO3HUDPrivate
+    }
+    if($bo3HUD -and (Get-IW7BaseOriginalRigConsole $Plan)){throw 'Private disk HUD and original-rig console plans are exclusive.'}
     $rigAssets=$false
     if($Plan.PSObject.Properties.Name -contains 'RigAssetsProbe'){
         if($Plan.RigAssetsProbe -isnot [bool]){throw 'RigAssetsProbe must be an explicit boolean.'}
@@ -251,6 +258,7 @@ function Get-IW7BaseClientArguments($Plan,[string]$Password) {
     if ($rigAssets) { $arguments+=' -paris-rig-assets-probe' }
     if ($rigScene) { $arguments+=' -paris-rig-scene-probe' }
     if ($rigStock) { $arguments+=' -paris-rig-scene-stock-witness' }
+    if ($bo3HUD) { $arguments+=' +set bo3_zombies_hud_enable 1 +set bo3_zombies_hud_private 1' }
     $arguments
 }
 

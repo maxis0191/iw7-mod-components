@@ -25,6 +25,20 @@ try {
     # setting, independently of any existing owner config or exec search path.
     $fixturePassword=[guid]::NewGuid().ToString('N')
     $launch=Get-IW7BaseClientArguments $plan $fixturePassword
+    Assert-Test (!$plan.BO3HUDPrivate -and $launch -notmatch 'bo3_zombies_hud') 'Ordinary client enabled the private HUD.'
+    $legacyPlan=$plan.PSObject.Copy();$legacyPlan.PSObject.Properties.Remove('BO3HUDPrivate')
+    Assert-Test ((Get-IW7BaseClientArguments $legacyPlan $fixturePassword) -ceq $launch) 'Legacy arguments changed without a HUD field.'
+    $hudPlan=New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -GraphicsProfile Reduced -BO3HUDPrivate
+    $hudLaunch=Get-IW7BaseClientArguments $hudPlan $fixturePassword
+    Assert-Test ($hudPlan.BO3HUDPrivate -and $hudLaunch -ceq ($launch+' +set bo3_zombies_hud_enable 1 +set bo3_zombies_hud_private 1')) 'Private HUD startup did not add exactly the two opt-ins.'
+    Assert-Test ($hudLaunch -notmatch '\+exec\s|-wincon|-paris-rig') 'HUD startup acquired exec or rig behavior.'
+    foreach($badHUD in @('true','1 +set sv_cheats 1',1,$null,@($true,$false))){
+        $invalidHUD=$plan.PSObject.Copy();$invalidHUD.BO3HUDPrivate=$badHUD
+        Assert-Refused { Get-IW7BaseClientArguments $invalidHUD $fixturePassword } 'Nonboolean private HUD input accepted.'
+    }
+    Assert-Refused { New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -BO3HUDPrivate -OriginalRigConsole } 'HUD and rig plan combined.'
+    $invalidHUD=$hudPlan.PSObject.Copy();$invalidHUD.OriginalRigConsole=$true
+    Assert-Refused { Get-IW7BaseClientArguments $invalidHUD $fixturePassword } 'Mutated HUD and rig argument plan combined.'
     foreach ($setting in @{'password'=('"'+$fixturePassword+'"');'r_picmip'='2';'r_picmip_bump'='2';'r_picmip_spec'='2';'r_fullscreen'='0';'r_fullscreenWindow'='0';'vid_width'='1280';'vid_height'='720';'r_mode'='1280x720';'r_vsync'='1';'com_maxfps'='30';'net_ip'='127.0.0.1';'net_port'='27117';'paris_lab_server_port'='27116'}.GetEnumerator()) {
         $matches=[regex]::Matches($launch,('\+set\s+'+[regex]::Escape($setting.Key)+'\s+("[^"]*"|\S+)'))
         Assert-Test ($matches.Count -eq 1 -and $matches[0].Groups[1].Value -eq $setting.Value) ('Startup setting absent/ambiguous: '+$setting.Key)

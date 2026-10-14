@@ -115,3 +115,15 @@ every map. Root grants each serialized Game case after the current CPP holder
 closes. Stop only exact owned identities, restore/profile/Main-bank audit, obtain
 the true PTY exit and then record pixels/limits separately. No Game occurred in
 this source tranche; CPP/FF/GSC/extraction and Main deployment were not run.
+
+# Private base-client activation
+
+`New-IW7BaseClientPlan -BO3HUDPrivate` is an explicit, default-off disk-HUD
+startup option. Its typed boolean adds exactly
+`+set bo3_zombies_hud_enable 1 +set bo3_zombies_hud_private 1`; ordinary and
+legacy plans keep their existing arguments. Original-rig console plans are
+exclusive. The option does not install Lua, launch a client, select a Lua
+revision, reload HKS, or qualify pixels. The server-owned profile transaction
+must install the reviewed Lua before launch and restore it after exact owned
+client/dedicated closure. Client `+exec` is not activation evidence because
+retail profile loading can retain owner dvars.
