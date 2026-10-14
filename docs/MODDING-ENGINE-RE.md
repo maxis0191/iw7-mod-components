@@ -1,5 +1,42 @@
 # Agent capabilities and the next engine investigation
 
+## Original rig typed asset snapshot — source candidate, 2026-10-14
+
+The existing client observer runs on accepted native agent arm, after the
+consumer's scene-ready check and neutral capture. Its second closed profile
+requires `-paris-rig-assets-probe`, exact `fs_game=mods/sdk_original_rig_probe`,
+active Spaceland CP state and the fresh independent client-protection value
+matching the current nonce, server generation and connection challenge. The
+old `mods/paris_model_probe` profile keeps its existing behavior. Dedicated
+observation is excluded; no ninth console command or new component is added.
+
+The observer looks up exactly the two `paris_doom_skin_two_bone_*_a` models and
+`mopw/character_park_clown_zombie_shoes`. Pinned upstream `77e6d4d` declares
+`DB_FindXAssetHeader` at `0x140A76E00` and `DB_IsXAssetDefault` at `0x140A780D0`.
+Default status is unknown unless the latter returns normally. The typed model,
+LOD0, first surface and first material handle are copied within checked memory
+regions; leaf SEH catches access/in-page faults without swallowing unrelated
+engine failures. Counts, raw documented flags, first-material name/pointer
+equality and typed buffer/view presence are observed. No unknown flag is
+interpreted, no COM/GPU/technique object is followed, and the rig records emit
+no raw addresses, PIDs, nonces or player identifiers. Copies are not atomic;
+pointer presence proves neither resource validity, DObj binding nor drawing.
+
+`New-IW7BaseClientPlan -OriginalRigConsole -RigAssetsProbe` enables the client
+flag only through the explicit rig plan. The new manifest capability is
+`RigAssetsProbeCapability`, a boolean true only for IsolatedLab+ServerModules
+builds at the existing pin. Historical absence means unavailable. Native source
+inventory is unchanged: 34 normal isolated sources, or 36 when the separately
+declared `CollisionProvider=true` adds its two files. Consumers must verify the
+complete actual manifest, source revision and image rather than force a count.
+The frozen native958 source/manifest, FF and SDK are unchanged.
+
+Nine actual PowerShell argument checks pass without any process or compiler.
+Nineteen new pure C++ profile/default-result/LOD-span/copy-bound checks are
+prepared in the existing required fixture. Their compilation/execution and
+the complete native adapter build remain pending the orchestrator's heavy
+slot; no native runtime or ribbon rendering is qualified by these source checks.
+
 ## Original rig console transport — 2026-10-14
 
 The private launcher normally assigns `NUL` to stdin. The pinned official

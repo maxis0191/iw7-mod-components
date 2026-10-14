@@ -23,8 +23,9 @@ function ConvertTo-IW7BaseKeyboardYaw($Value) {
 function New-IW7BaseClientPlan {
     param([Parameter(Mandatory)][string]$GameRoot,[Parameter(Mandatory)][string]$ClientImage,
         [ValidateRange(27100,27999)][int]$ServerPort,[ValidateRange(27100,27999)][int]$ClientPort,
-        [ValidateSet('Full','Reduced')][string]$GraphicsProfile='Full',[switch]$Debugger,$KeyboardYawDegreesPerSecond=0,$KeyboardPitchDegreesPerSecond=0,[switch]$OriginalRigConsole)
+        [ValidateSet('Full','Reduced')][string]$GraphicsProfile='Full',[switch]$Debugger,$KeyboardYawDegreesPerSecond=0,$KeyboardPitchDegreesPerSecond=0,[switch]$OriginalRigConsole,[switch]$RigAssetsProbe)
     $keyboardYaw=ConvertTo-IW7BaseKeyboardYaw $KeyboardYawDegreesPerSecond
+    if($RigAssetsProbe -and !$OriginalRigConsole){throw 'Rig assets probe requires the explicit original-rig console plan.'}
     $keyboardPitch=ConvertTo-IW7BaseKeyboardYaw $KeyboardPitchDegreesPerSecond
     $root=(Resolve-Path -LiteralPath $GameRoot).Path.TrimEnd('\','/')
     $image=[IO.Path]::GetFullPath($ClientImage)
@@ -34,7 +35,7 @@ function New-IW7BaseClientPlan {
     . "$PSScriptRoot/Lab-RunPlan.ps1"
     $budget=Get-IW7LabRunPlan -PlannedClients 1 -GraphicsProfile $GraphicsProfile -Debugger:$Debugger
     [pscustomobject]@{Schema='iw7.base-client/1';GameRoot=$root;Image=$image;SHA256=(Get-FileHash -LiteralPath $image).Hash;
-        ServerPort=$ServerPort;ClientPort=$ClientPort;GraphicsProfile=$GraphicsProfile;RunPlan=$budget;KeyboardYawDegreesPerSecond=$keyboardYaw;KeyboardPitchDegreesPerSecond=$keyboardPitch;OriginalRigConsole=[bool]$OriginalRigConsole;
+        ServerPort=$ServerPort;ClientPort=$ClientPort;GraphicsProfile=$GraphicsProfile;RunPlan=$budget;KeyboardYawDegreesPerSecond=$keyboardYaw;KeyboardPitchDegreesPerSecond=$keyboardPitch;OriginalRigConsole=[bool]$OriginalRigConsole;RigAssetsProbe=[bool]$RigAssetsProbe;
         MutableFiles=@('iw7-mod/agent-base-client.cfg','iw7-mod/paris-server-client.request','iw7-mod/paris-server-client.response','iw7-mod/screenshots/server-modules-fixture.bmp',
             'iw7-mod/paris-agent.session','iw7-mod/paris-agent.request','iw7-mod/paris-agent.response','iw7-mod/paris-agent.safety','iw7-mod/paris-isolated-lab.marker');
         ProfileDirectory='iw7-mod/players2';ProfileDirectories=@('iw7-mod/players2','iw7-mod/lab-appdata')}
@@ -208,6 +209,12 @@ function Get-IW7BaseOriginalRigConsole($Plan) {
 }
 
 function Get-IW7BaseClientArguments($Plan,[string]$Password) {
+    $rigAssets=$false
+    if($Plan.PSObject.Properties.Name -contains 'RigAssetsProbe'){
+        if($Plan.RigAssetsProbe -isnot [bool]){throw 'RigAssetsProbe must be an explicit boolean.'}
+        $rigAssets=$Plan.RigAssetsProbe
+    }
+    if($rigAssets -and !(Get-IW7BaseOriginalRigConsole $Plan)){throw 'Rig assets probe requires the explicit original-rig console plan.'}
     if ($Password -notmatch '^[a-zA-Z0-9_-]{1,64}$') { throw 'Use a generated private test password.' }
     if ($Plan.RunPlan.Picmip -notin @(0,2) -or
         $Plan.ServerPort -lt 27100 -or $Plan.ServerPort -gt 27999 -or
@@ -227,6 +234,7 @@ function Get-IW7BaseClientArguments($Plan,[string]$Password) {
     if ($pitch -gt 0) { $arguments+=' +set cl_pitchspeed '+$pitch.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture) }
     if ($Plan.RunPlan.Debugger) { $arguments+=' -paris-debugger' }
     if (Get-IW7BaseOriginalRigConsole $Plan) { $arguments+=' -wincon' }
+    if ($rigAssets) { $arguments+=' -paris-rig-assets-probe' }
     $arguments
 }
 
