@@ -135,7 +135,7 @@ pose before either journaled placement. A spawn area which cannot pass the audit
 refuses the experiment; source tests never fabricate its location/terrain. The
 operator writes a local actual-anchor plan before arm for the original caller's
 evidence. Optional explicit `-Anchor` remains pure preview; live invocation omits
-it. Seven ownership, seven readiness and twelve pose transport/freeze refusals,
+it. Seven ownership, seven readiness and thirteen pose transport/freeze refusals,
 plus existing movement tests, check the source contract without qualifying a game
 location or player movement.
 
@@ -143,7 +143,7 @@ The independent source review found a partial-line fallback in the earlier d8e
 candidate: a fresh completed publication followed by a newer incomplete own
 publication could still return the predecessor. The reader now returns pending
 until that own row terminates; complete malformed/foreign own rows still refuse.
-Two causal cases include a valid predecessor plus partial malformed/foreign own
-rows, with separate unrelated-prefix/foreign-token noise controls. This is wire
+Three causal cases include a valid predecessor plus partial malformed/foreign
+ready or failure rows, with separate unrelated-prefix/foreign-token noise controls. This is wire
 validation only. The rejected source candidate remains in history and was never
 run in game.

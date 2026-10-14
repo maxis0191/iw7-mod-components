@@ -42,7 +42,8 @@ function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerI
         if($complete -match ('(?m)^\[Collision player\] FAIL token='+$Token+' ')){throw 'Fixture refused readiness/anchor; do not arm.'}
         $tail=$Text.Substring($last+1)
         $ownPrefix='[Collision player] PLAYER_READY token='+$Token
-        if($tail.StartsWith($ownPrefix,[StringComparison]::Ordinal)){
+        $failurePrefix='[Collision player] FAIL token='+$Token
+        if($tail.StartsWith($ownPrefix,[StringComparison]::Ordinal) -or $tail.StartsWith($failurePrefix,[StringComparison]::Ordinal)){
             return [pscustomobject]@{Ready=$false;Pending='Latest own pose publication is not terminated; no predecessor fallback.'}
         }
         $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)'

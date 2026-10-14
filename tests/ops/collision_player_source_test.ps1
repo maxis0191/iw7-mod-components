@@ -65,7 +65,7 @@ foreach($change in @('expired','generation','pose')){
 foreach($badLast in @($wire.Replace('anchor_x=10','anchor_x=NaN'),$wire.Replace('client_nonce='+$nonce,'client_nonce=cccccccccccccccccccccccccccccccc'))){
     try{$null=Read-IW7CollisionPlayerReady ($wire+$badLast) $token 42 $nonce 1100 1500}catch{$poseRefusals++;continue};throw 'Earlier good publication hid a malformed/foreign later pose.'
 }
-foreach($partialLast in @($wire.Replace('anchor_x=10','anchor_x=NaN').TrimEnd("`n"),$wire.Replace('slot=0','slot=1').TrimEnd("`n"))){
+foreach($partialLast in @($wire.Replace('anchor_x=10','anchor_x=NaN').TrimEnd("`n"),$wire.Replace('slot=0','slot=1').TrimEnd("`n"),"[Collision player] FAIL token=$token reason=anchor_pose_changed_before_arm")){
     if((Read-IW7CollisionPlayerReady ($wire+$partialLast) $token 42 $nonce 1100 1500).Ready){throw 'Valid predecessor hid a partial malformed/foreign latest own pose.'};$poseRefusals++
 }
 foreach($noise in @('[unrelated] partial diagnostic',$wire.Replace('token='+$token,'token=cccccccccccccccccccccccccccccccc').TrimEnd("`n"))){
