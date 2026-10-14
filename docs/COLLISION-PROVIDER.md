@@ -91,8 +91,9 @@ Native regression cases cover that exact B input and refusal boundaries, with
 changed VM IDs and preservation of the old bit1 behavior. Primary and
 independent reviews approved exact source head `b0e86bb`; PR16 merged at
 `8f1ac6d2443feb4432bfc2f9f6915d0ba50ea0c6`. Its new C++ predicate and native
-regressions compiled and passed in the full Release build. It has not run in
-the engine; no body/query/teardown or gameplay follows from those checks.
+regressions compiled and passed in the full Release build. Its first engine
+run C crashed as recorded below; no successful body/query/teardown or gameplay
+follows from the source/build checks.
 
 The actual Native16 build used clean sealed source `8f1ac6d` (318 files,
 2,999,759 bytes), with36 raw native sources and only the provider CPP/HPP
@@ -294,7 +295,7 @@ hash-bound prepared server-helper package. The route reuses existing resource,
 bank isolation, transaction, original process-handle, UDP, fatal-diagnostic and
 restoration helpers. It adds no scheduler and changes no shared server file.
 
-The next admitted image is the separately compiled Native16 corrected source
+The most recently admitted image is the separately compiled Native16 corrected source
 `8f1ac6d2443feb4432bfc2f9f6915d0ba50ea0c6`, EXE
 `A47E4F6464D208D612DE85E40D77E5FD106D3CB092B9029E9C4B83844C6FB7CD`,
 manifest `7B7B50B703F92E4D1394D6F74836B9A7D0588FCF0B03453C5B8298C6716DFA95`
@@ -303,7 +304,8 @@ It declares `CollisionProvider=true` and 36 sources. There is no
 `CollisionProbeCapability` field. The consumer pins that actual compiled tuple;
 the reviewed Native16 owner-admission correction is present and shared
 lifecycle/transport remain unchanged. No further C++ rebuild is required for
-the next zero-client body/query/removal test. The old
+that attempted zero-client body/query/removal test. Its C failure is preserved
+above; a new test needs the qualified argument-provenance correction. The old
 c32/B78 executables, symbols, failed proposals and receipts remain intact.
 
 The runtime group contains one marked retained dedicated on loopback UDP27116,
