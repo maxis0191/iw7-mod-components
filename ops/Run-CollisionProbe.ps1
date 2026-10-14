@@ -188,7 +188,12 @@ set sv_mapRotationCurrent ""
     [pscustomobject]@{ArmRequestedTick=$armTick;Token=$token;Measurements=$measurement}|ConvertTo-Json -Depth 7|Set-Content -LiteralPath (Join-Path $outputRoot 'measurements.local.json')
 }catch{$failure=$_.Exception.Message}
 finally{
-    if($lease){
+    # A refused source/package admission has not staged a byte or created a
+    # process. Its own scheduler can release without loading external helpers.
+    if($lease -and !$server -and !$transaction -and !$mainTransaction){
+        Exit-IW7ResourceLease -Token $lease.Token;$closure.Restored=$true
+    }
+    if($lease -and !$closure.Restored){
         $closure.Crash=$crash
         # Repeat the existing guarded stages on a transient failure. Keep this
         # original host, handle, backups and lease alive on uncertain closure.
@@ -245,6 +250,6 @@ $result=[pscustomobject]@{Schema='iw7.collision-probe-result/1';Passed=[bool]$pa
     ServerExitCode=$exitCode;Stop=$stop;ManagedRestored=$restored;LeaseReleased=$restored;OriginalHostExitObserved=$false;
     Host=$lease.OwnerIdentity;LeaseToken=$lease.Token;Server=$identity;
     CompiledCommit=$expectedCommit;NativeSHA256=$expectedImage;ClientStarted=$false;MainDeployed=$false;OwnerAccepted=$false;OutputRoot=$outputRoot}
-$result|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $outputRoot 'result.local.json')
+if(Test-Path -LiteralPath $outputRoot){$result|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $outputRoot 'result.local.json')}
 $result|ConvertTo-Json -Depth 8
-if(!$passed){throw 'Collision probe failed; retained measurements and cleanup facts remain separate.'}
+if(!$passed){throw "Collision probe failed: $failure. Retained measurements and cleanup facts remain separate."}
