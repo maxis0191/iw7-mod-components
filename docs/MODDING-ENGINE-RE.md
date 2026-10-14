@@ -122,7 +122,7 @@ snapshot atomic or qualify the opaque DObj table, GPU submission or pixels.
 | Observed field | Three custom records | Stock record | Scope |
 | --- | --- | --- | --- |
 | Origin / quaternion | Match the three SDK poses | Matches the central pose | Placement agrees; entity-number mapping remains unmeasured. |
-| placement.scale | 1 | 1 | SDK/server field is 3 for all; effective geometry scale and setter consumption are unmeasured. |
+| placement.scale | 1 | 1 | SDK assigns 3 to all; the stock server field is read as 3. Effective geometry scale and setter consumption are unmeasured. |
 | LOD / material LOD | 0 / 0 | 0 / 0 | No observed selection difference. |
 | obj_present / render_flags_raw | 1 / 512 | 1 / 512 | Pointer presence and raw flags; no bone or flag semantics. |
 | radius | 16.4924 | 6.37733 | Custom value matches the source radius; loaded model bounds and culling remain unmeasured. |
@@ -151,8 +151,8 @@ indices by dividing by 64; multiplying IW7 raw indices 0/1 by 64 is not a
 supported correction. Source agreement does not qualify GPU weight consumption.
 
 Retail pin `1dd48a78e55ef9c99519fc5221a206168ce2e98a`,
-`scripts/cp/crafted_trap_fireworks.gsc:154` and
-`scripts/mp/killstreaks/ims.gsc:201`, uses script_model setmodel before assigning
+`decompiled/scripts/cp/crafted_trap_fireworks.gsc:154` and
+`decompiled/scripts/mp/killstreaks/ims.gsc:201`, uses script_model setmodel before assigning
 scale 3. The SDK assigns scale before setmodel. This is a real source order
 difference, not proof of a reset, setter defect or the custom rendering cause.
 No alternate SetScale API is inferred. Upstream scripting.cpp records native
