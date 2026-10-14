@@ -1,5 +1,6 @@
 #include "../../src/native/paris_voice_protocol.hpp"
 #include "../../src/native/paris_test_safety.hpp"
+#include "../../src/native/paris_model_diagnostics.hpp"
 #include <cstdlib>
 #include <iostream>
 #include <random>
@@ -9,6 +10,26 @@ namespace w = paris_voice::protocol;
 void check(bool ok, const char* what) { if (!ok) throw std::runtime_error(what); }
 int main()
 {
+    namespace diagnostic = paris_model_diagnostics;
+    check(diagnostic::select_profile("mods/paris_model_probe",false)==diagnostic::profile::model_probe,"existing diagnostic profile lost");
+    check(diagnostic::select_profile("mods/sdk_original_rig_probe",false)==diagnostic::profile::none,"rig profile enabled by default");
+    check(diagnostic::select_profile("mods/sdk_original_rig_probe",true)==diagnostic::profile::original_rig,"explicit rig profile unavailable");
+    check(diagnostic::select_profile("mods/sdk_original_rig_probe;quit",true)==diagnostic::profile::none,"unbounded diagnostic profile");
+    check(diagnostic::observed_default(false,false)==diagnostic::default_status::unknown,"failed default lookup called nondefault");
+    check(diagnostic::observed_default(false,true)==diagnostic::default_status::unknown,"failed default lookup called default");
+    check(diagnostic::observed_default(true,false)==diagnostic::default_status::nondefault,"actual nondefault result lost");
+    check(diagnostic::observed_default(true,true)==diagnostic::default_status::default_asset,"actual default result lost");
+    check(diagnostic::lod0_span(1,1,1,0),"fixed rig LOD span rejected");
+    check(!diagnostic::lod0_span(0,1,1,0),"missing LOD accepted");
+    check(!diagnostic::lod0_span(7,1,1,0),"excess LOD count accepted");
+    check(!diagnostic::lod0_span(1,257,1,0),"unbounded model surfaces accepted");
+    check(!diagnostic::lod0_span(1,1,2,0),"LOD count exceeds model");
+    check(!diagnostic::lod0_span(1,1,1,1),"LOD starts past model");
+    check(!diagnostic::lod0_span(1,1,1,~0u),"LOD index overflow accepted");
+    check(diagnostic::span_within(4096,4096,4096,4096),"bounded full page rejected");
+    check(!diagnostic::span_within(4096,4097,4096,8192),"copy bound bypassed");
+    check(!diagnostic::span_within(4095,1,4096,4096),"read before region accepted");
+    check(!diagnostic::span_within(~std::uintptr_t{0},1,4096,4096),"wrapped pointer span accepted");
     using namespace paris_test_fixture;
     const kick_context safe{true,true,true,true,true,true,true,true,true,true};
     check(allow_inactivity_exception(safe,"EXE_PLAYERKICKED_INACTIVE"), "protected fixture inactivity still kicks");

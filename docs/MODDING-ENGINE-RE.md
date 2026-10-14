@@ -1,5 +1,61 @@
 # Agent capabilities and the next engine investigation
 
+## Original rig typed asset snapshot — compiled candidate, 2026-10-14
+
+The existing client observer runs on accepted native agent arm, after the
+consumer's scene-ready check and neutral capture. Its second closed profile
+requires `-paris-rig-assets-probe`, exact `fs_game=mods/sdk_original_rig_probe`,
+active Spaceland CP state and the fresh independent client-protection value
+matching the current nonce, server generation and connection challenge. The
+old `mods/paris_model_probe` profile keeps its existing behavior. Dedicated
+observation is excluded; no ninth console command or new component is added.
+
+The observer looks up exactly the two `paris_doom_skin_two_bone_*_a` models and
+`mopw/character_park_clown_zombie_shoes`. Pinned upstream `77e6d4d` declares
+`DB_FindXAssetHeader` at `0x140A76E00` and `DB_IsXAssetDefault` at `0x140A780D0`.
+Default status is unknown unless the latter returns normally. The typed model,
+LOD0, first surface and first material handle are copied within checked memory
+regions; leaf SEH catches access/in-page faults without swallowing unrelated
+engine failures. Counts, raw documented flags, first-material name/pointer
+equality and typed buffer/view presence are observed. No unknown flag is
+interpreted, no COM/GPU/technique object is followed, and the rig records emit
+no raw addresses, PIDs, nonces or player identifiers. Copies are not atomic;
+pointer presence proves neither resource validity, DObj binding nor drawing.
+
+`New-IW7BaseClientPlan -OriginalRigConsole -RigAssetsProbe` enables the client
+flag only through the explicit rig plan. The new manifest capability is
+`RigAssetsProbeCapability`, a boolean true only for IsolatedLab+ServerModules
+builds at the existing pin. Historical absence means unavailable. Native source
+inventory is unchanged: 34 normal isolated sources, or 36 when the separately
+declared `CollisionProvider=true` adds its two files. Consumers must verify the
+complete actual manifest, source revision and image rather than force a count.
+The frozen native958 source/manifest, FF and SDK are unchanged.
+
+Nine actual PowerShell argument checks pass without any process or compiler.
+Nineteen new pure C++ profile/default-result/LOD-span/copy-bound checks compile
+and run in the existing required fixture, alongside the existing 200,000-packet
+seeded protocol checks. The full Release image also compiles the actual typed
+observer and links successfully. Source head
+`4377a5b7831520478d7a2a3af819feaaf87dac89` is clean; its unchanged 313-file,
+2,901,583-byte input package verifies after building against `77e6d4d`.
+
+The 6,125,056-byte executable SHA-256 is
+`1B15AE7EB96DAF6FA494B80E5E0E2C08551E80D131757DEB11F674C781BE6A6D`;
+matching PDB SHA-256 is
+`F66DC4DAFA85E356DD89E35DDA585B019DD8E65BF00FA31C8051542D4B54D84B`.
+The unchanged 16,457-byte manifest SHA-256, read after closure, is
+`F6AC4BBDF3961F60E8F42899C7FF32F37051CE4A3909FB13D38369396671D5C3`.
+The builder recorded executable/PDB hashes during its build lease. The manifest
+declares `CollisionProvider=true`, 36 exact native source entries and
+`RigAssetsProbeCapability=true`. Its legacy `Protocol=1` field remains unchanged;
+the pinned source still defines engine protocol 2, without a new runtime claim.
+
+The original build host exits zero. Its owned job closes every descendant,
+including the observed compiler service, before disposal; the reservation is
+released and postflight finds no remaining leases. Previous tracked native
+overlays were preserved before the reviewed builder reapplied its pin. No game,
+stock read, runtime probe, ribbon rendering or owner acceptance is qualified.
+
 ## Original rig console transport — 2026-10-14
 
 The private launcher normally assigns `NUL` to stdin. The pinned official

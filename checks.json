@@ -2,6 +2,10 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "rig_assets_probe_test",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/rig_assets_probe_test.ps1"]
+    },
+    {
       "id": "original_rig_console_caller_test",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/original_rig_console_caller_test.ps1"]
     },

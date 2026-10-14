@@ -1,6 +1,7 @@
 #include <std_include.hpp>
 #include "paris_model_diagnostics.hpp"
 #include "agent_scenario.hpp"
+#include "paris_test_safety.hpp"
 #include "game/game.hpp"
 #include "console/console.hpp"
 #include <utils/flags.hpp>
@@ -29,7 +30,10 @@ namespace paris_model_diagnostics
         static_assert(sizeof(game::NetConstStrings) == 0x20);
         static_assert(offsetof(game::NetConstStrings, stringList) == 0x18);
         static_assert(offsetof(game::Material, techniqueSet) == 0x38);
+        static_assert(sizeof(game::Material) == 0x118);
+        static_assert(offsetof(game::XModel, materialHandles) == 0xD8);
         std::string observed_nonce, observed_generation, observed_challenge;
+        profile observed_profile = profile::none;
         std::uint64_t observation_sequence{}; // Main-thread observation ID, not a loader invocation.
 
         struct provenance_context
@@ -92,10 +96,31 @@ namespace paris_model_diagnostics
             const auto base = reinterpret_cast<std::uintptr_t>(region.BaseAddress);
             return span_within(address, bytes, base, region.RegionSize);
         }
+        // These leaf functions have no C++ objects requiring SEH unwinding.
+        int memory_fault(unsigned code) noexcept
+        {
+            return code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_IN_PAGE_ERROR ?
+                EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH;
+        }
+        bool copy_leaf(const void* pointer, void* value, std::size_t bytes) noexcept
+        {
+            __try { std::memcpy(value, pointer, bytes); return true; }
+            __except(memory_fault(GetExceptionCode())) { return false; }
+        }
+        bool lookup_leaf(game::XAssetType type, const char* key, game::XAssetHeader* value) noexcept
+        {
+            __try { *value = game::DB_FindXAssetHeader(type, key, 0); return true; }
+            __except(memory_fault(GetExceptionCode())) { return false; }
+        }
+        bool default_leaf(game::XAssetType type, const char* key, bool* value) noexcept
+        {
+            __try { *value = game::DB_IsXAssetDefault(type, key); return true; }
+            __except(memory_fault(GetExceptionCode())) { return false; }
+        }
         template <typename T> bool snapshot(const T* pointer, T& value)
         {
             if (!readable(pointer, sizeof(T))) return false;
-            std::memcpy(&value, pointer, sizeof(T)); return true;
+            return copy_leaf(pointer, &value, sizeof(T));
         }
         std::string name(const char* pointer)
         {
@@ -103,7 +128,8 @@ namespace paris_model_diagnostics
             for (std::size_t i = 0; i < 160; ++i)
             {
                 if (!readable(pointer, 1)) return "unreadable";
-                const char c = *pointer++;
+                char c{};
+                if (!copy_leaf(pointer++, &c, 1)) return "unreadable";
                 if (!c) return text;
                 if (static_cast<unsigned char>(c) < 32 || c == 127) return "invalid";
                 text.push_back(c);
@@ -118,7 +144,101 @@ namespace paris_model_diagnostics
             // later optional diagnostic exception boundary.
             const auto length = std::strlen(expected);
             if (length >= 160 || !readable(dvar->current.string, length + 1)) return false;
-            return std::memcmp(dvar->current.string, expected, length + 1) == 0;
+            char copied[160]{};
+            return copy_leaf(dvar->current.string, copied, length + 1) && std::memcmp(copied, expected, length + 1) == 0;
+        }
+        // -1 unreadable/null; 0 readable mismatch; 1 exact bounded match.
+        int exact_name(const char* pointer, const char* expected)
+        {
+            const auto bytes = std::strlen(expected) + 1;
+            char copied[128]{};
+            if (bytes > sizeof(copied) || !readable(pointer, bytes) || !copy_leaf(pointer, copied, bytes)) return -1;
+            return std::memcmp(copied, expected, bytes) == 0 ? 1 : 0;
+        }
+        default_status rig_default(game::XAssetType type, const char* key)
+        {
+            bool value{};
+            const bool returned = default_leaf(type, key, &value);
+            return observed_default(returned, value);
+        }
+        void rig_surface(const char* key, const char* path, const game::XSurface* pointer)
+        {
+            game::XSurface data{};
+            if (!snapshot(pointer, data))
+            {
+                console::info("[Paris rig asset snapshot] model=%s path=%s readable=0\n", key, path);
+                return;
+            }
+            console::info("[Paris rig asset snapshot] model=%s path=%s readable=1 raw_flags=%u vertices=%u triangles=%u rigid_lists=%u blend_size=%u cpu_vertices_present=%u cpu_indices_present=%u vb_present=%u vb_view_present=%u ib_present=%u ib_view_present=%u blend_buffer_present=%u blend_view_present=%u gpu_resource_verified=0 draw_verified=0\n",
+                key, path, static_cast<unsigned>(data.flags), static_cast<unsigned>(data.vertCount), static_cast<unsigned>(data.triCount),
+                static_cast<unsigned>(data.rigidVertListCount), data.blendVertSize, static_cast<unsigned>(data.verts0.verts0 != nullptr),
+                static_cast<unsigned>(data.triIndices != nullptr), static_cast<unsigned>(data.vb0 != nullptr), static_cast<unsigned>(data.vb0View != nullptr),
+                static_cast<unsigned>(data.indexBuffer != nullptr), static_cast<unsigned>(data.indexBufferView != nullptr),
+                static_cast<unsigned>(data.blendVertsBuffer != nullptr), static_cast<unsigned>(data.blendVertsView != nullptr));
+        }
+        void rig_model(const char* key, const char* mesh_key, const game::Material* named_material)
+        {
+            constexpr auto material_key = "mopw/character_park_clown_zombie_shoes";
+            const auto is_default = rig_default(game::ASSET_TYPE_XMODEL, key);
+            game::XAssetHeader header{};
+            const bool lookup_returned = lookup_leaf(game::ASSET_TYPE_XMODEL, key, &header);
+            game::XModel data{};
+            const bool copied = lookup_returned && snapshot(header.model, data);
+            const int identity = copied ? exact_name(data.name, key) : -1;
+            console::info("[Paris rig asset snapshot] model=%s lookup_returned=%u lookup_present=%d default_status=%d readable=%u name_match=%d\n",
+                key, static_cast<unsigned>(lookup_returned), lookup_returned ? static_cast<int>(header.model != nullptr) : -1,
+                static_cast<int>(is_default), static_cast<unsigned>(copied), identity);
+            // Never follow a fallback or mismatched asset into foreign resources.
+            if (!copied || identity != 1 || is_default == default_status::default_asset) return;
+            const auto& lod = data.lodInfo[0];
+            unsigned char has_lods{};
+            std::memcpy(&has_lods, reinterpret_cast<const unsigned char*>(&data) + offsetof(game::XModel, hasLods), 1);
+            console::info("[Paris rig asset snapshot] model=%s bones=%u root_bones=%u client_bones=%u surfaces=%u lods=%u has_lods_raw=%u max_loaded_lod=%u lod0_distance=%g lod0_surfaces=%u lod0_first=%u lod0_raw_flags=%u material_table_present=%u\n",
+                key, static_cast<unsigned>(data.numBones), static_cast<unsigned>(data.numRootBones), static_cast<unsigned>(data.numClientBones),
+                static_cast<unsigned>(data.numsurfs), static_cast<unsigned>(data.numLods), static_cast<unsigned>(has_lods), static_cast<unsigned>(data.maxLoadedLod),
+                static_cast<double>(lod.dist), static_cast<unsigned>(lod.numsurfs), static_cast<unsigned>(lod.surfIndex),
+                static_cast<unsigned>(static_cast<unsigned char>(lod.flags)), static_cast<unsigned>(data.materialHandles != nullptr));
+            if (!lod0_span(data.numLods, data.numsurfs, lod.numsurfs, lod.surfIndex))
+            {
+                console::info("[Paris rig asset snapshot] model=%s status=refused reason=lod0_span\n", key);
+                return;
+            }
+            game::XModelSurfs mesh{};
+            const bool mesh_copied = snapshot(lod.modelSurfs, mesh);
+            const int mesh_identity = mesh_copied ? exact_name(mesh.name, mesh_key) : -1;
+            console::info("[Paris rig asset snapshot] model=%s mesh_readable=%u mesh_name_match=%d mesh_surfaces=%d resolved_surface_present=%u mesh_surface_present=%d same_nonnull_surface0=%d\n",
+                key, static_cast<unsigned>(mesh_copied), mesh_identity, mesh_copied ? static_cast<int>(mesh.numsurfs) : -1,
+                static_cast<unsigned>(lod.surfs != nullptr), mesh_copied ? static_cast<int>(mesh.surfs != nullptr) : -1,
+                mesh_copied ? static_cast<int>(lod.surfs && lod.surfs == mesh.surfs) : -1);
+            rig_surface(key, "resolved_lod0", lod.surfs);
+            if (mesh_copied && mesh_identity == 1 && mesh.numsurfs > 0 && mesh.numsurfs <= 256)
+                rig_surface(key, "mesh_surface0", mesh.surfs);
+            game::Material* material{};
+            game::Material value{};
+            const bool handle_copied = snapshot(data.materialHandles, material);
+            const bool material_copied = handle_copied && snapshot(material, value);
+            console::info("[Paris rig asset snapshot] model=%s material0_handle_readable=%u material0_present=%d material0_readable=%u material0_name_match=%d material0_equals_named_lookup=%d technique_set_present=%d textures=%d\n",
+                key, static_cast<unsigned>(handle_copied), handle_copied ? static_cast<int>(material != nullptr) : -1, static_cast<unsigned>(material_copied),
+                material_copied ? exact_name(value.name, material_key) : -1, !named_material || !handle_copied ? -1 : static_cast<int>(material == named_material),
+                material_copied ? static_cast<int>(value.techniqueSet != nullptr) : -1, material_copied ? static_cast<int>(value.textureCount) : -1);
+        }
+        void rig_assets(std::uint64_t observation_id)
+        {
+            constexpr auto key = "mopw/character_park_clown_zombie_shoes";
+            const auto is_default = rig_default(game::ASSET_TYPE_MATERIAL, key);
+            game::XAssetHeader header{};
+            const bool returned = lookup_leaf(game::ASSET_TYPE_MATERIAL, key, &header);
+            game::Material value{};
+            const bool copied = returned && snapshot(header.material, value);
+            const int identity = copied ? exact_name(value.name, key) : -1;
+            console::info("[Paris rig asset snapshot] observation_id=%llu role=client stage=after_agent_arm tick_ms=%llu atomic_snapshot_verified=0 entity_dobj=unmeasured gpu_resource_verified=0 draw_verified=0\n",
+                static_cast<unsigned long long>(observation_id), GetTickCount64());
+            console::info("[Paris rig asset snapshot] material=%s lookup_returned=%u lookup_present=%d default_status=%d readable=%u name_match=%d technique_set_present=%d textures=%d\n",
+                key, static_cast<unsigned>(returned), returned ? static_cast<int>(header.material != nullptr) : -1, static_cast<int>(is_default),
+                static_cast<unsigned>(copied), identity, copied ? static_cast<int>(value.techniqueSet != nullptr) : -1, copied ? static_cast<int>(value.textureCount) : -1);
+            const auto* named = copied && identity == 1 && is_default != default_status::default_asset ? header.material : nullptr;
+            rig_model("paris_doom_skin_two_bone_first_a", "paris_doom_skin_two_bone_first_a_lod0", named);
+            rig_model("paris_doom_skin_two_bone_second_a", "paris_doom_skin_two_bone_second_a_lod0", named);
         }
         void surface(const char* label, const game::XSurface* pointer, const provenance_context* context = nullptr)
         {
@@ -200,19 +320,31 @@ namespace paris_model_diagnostics
         if (game::environment::is_dedi() || !utils::flags::has_flag("paris-server-client-test") ||
             !utils::flags::has_flag("paris-isolated-lab") || !protected_now || !probe_tick || now < probe_tick || now - probe_tick > 500 ||
             !iw7::agent::nonce_valid(client_nonce) || !iw7::agent::nonce_valid(server_generation) || connection_challenge.empty() ||
-            !exact_string_dvar("fs_game", "mods/paris_model_probe") ||
             game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP || !game::CL_IsGameClientActive(0) ||
             !game::clientUIActives[0].cgameInitialized || game::clientUIActives[0].connectionState != game::CA_ACTIVE) return;
-        if (observed_nonce == client_nonce && observed_generation == server_generation && observed_challenge == connection_challenge) return;
         try
         {
+            const bool model_scope = exact_string_dvar("fs_game", "mods/paris_model_probe");
+            const bool rig_scope = exact_string_dvar("fs_game", "mods/sdk_original_rig_probe");
+            const auto selected = select_profile(model_scope ? "mods/paris_model_probe" : rig_scope ? "mods/sdk_original_rig_probe" : "",
+                rig_scope && utils::flags::has_flag("paris-rig-assets-probe"));
+            if (selected == profile::none) return;
+            if (selected == profile::original_rig)
+            {
+                const auto protection = paris_test_fixture::client_protection();
+                if (!paris_test_fixture::client_protection_current(protection, GetTickCount64()) || protection.map != "cp_zmb" ||
+                    protection.nonce != client_nonce || protection.generation != server_generation || protection.challenge != connection_challenge) return;
+            }
+            if (observed_profile == selected && observed_nonce == client_nonce && observed_generation == server_generation && observed_challenge == connection_challenge) return;
             observed_nonce = client_nonce; observed_generation = server_generation; observed_challenge = connection_challenge;
+            observed_profile = selected;
             if (observation_sequence == std::numeric_limits<std::uint64_t>::max())
             {
                 console::error("[Paris model provenance] status=refused reason=observation_id_exhausted H_invocation_verified=false allocation_identity_verified=false observation_tid_is_loader_tid=false atomic_snapshot_verified=false gpu_resource_verified=false\n");
                 return;
             }
             const auto observation_id = ++observation_sequence;
+            if (selected == profile::original_rig) { rig_assets(observation_id); return; }
             const auto observation_tid = GetCurrentThreadId();
             console::info("[Paris model diagnostic] pid=%lu nonce=%s generation=%s tick_ms=%llu protected=1 once_per_connection=1\n",
                 GetCurrentProcessId(), observed_nonce.c_str(), observed_generation.c_str(), now);
