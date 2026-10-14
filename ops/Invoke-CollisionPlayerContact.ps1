@@ -64,12 +64,8 @@ if($wire -cnotmatch ('^'+$Session.Identity.PID+' ([a-f0-9]{32})$')){throw 'Actua
 $readyDeadline=[Environment]::TickCount64+180000;$generation=$null
 do{
     $null=Update-IW7BaseClient $Session
-    $fresh=Read-IW7BaseLog $ServerIdentity.Stdout;$last=$fresh.LastIndexOf("`n")
-    if($last -ge 0){
-        $ready=[regex]::Matches($fresh.Substring(0,$last+1),'(?m)^\[Collision player\] PLAYER_READY token='+$Token+'; server_pid='+$ServerIdentity.PID+'; client_nonce='+$nonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1[\t ]*\r?$')
-        if($ready.Count){$r=$ready[-1];$tick=[long]$r.Groups[2].Value;$now=[Environment]::TickCount64
-            if($tick -ge $Session.StartedTick -and $tick -le $now -and $now-$tick -le 500){$generation=$r.Groups[1].Value;break}}
-    }
+    $ready=Read-IW7CollisionPlayerReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64)
+    if($ready.Ready){$generation=$ready.Generation;break}
     if([Environment]::TickCount64 -ge $readyDeadline){throw 'Fresh playable/retail-intro readiness unavailable; no placement or collision arm.'}
     Start-Sleep -Milliseconds 100
 }while($true)

@@ -35,6 +35,21 @@ function Assert-IW7CollisionPlayerOwnership($Session,$Identity,$Kernel,$Lease,$C
         ([datetimeoffset]$Lease.OwnerIdentity.CreatedUtc).UtcTicks -ne ([datetimeoffset]$CurrentHost.CreatedUtc).UtcTicks){throw 'Original protected collision group identity/ownership differs.'}
 }
 
+function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerId,[string]$ClientNonce,[long]$NotBeforeTick,[long]$NowTick) {
+    if($Text.Length -gt 16MB -or $Token -cnotmatch '^[a-f0-9]{32}$' -or $ServerId -le 0 -or
+        $ClientNonce -cnotmatch '^[a-f0-9]{32}$' -or $NowTick -lt $NotBeforeTick){throw 'Bounded launch-owned readiness input required.'}
+    $last=$Text.LastIndexOf("`n")
+    if($last -ge 0){
+        $rows=[regex]::Matches($Text.Substring(0,$last+1),'(?m)^\[Collision player\] PLAYER_READY token='+$Token+'; server_pid='+$ServerId+'; client_nonce='+$ClientNonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1[\t ]*\r?$')
+        if($rows.Count){$r=$rows[-1];$tick=[long]$r.Groups[2].Value
+            if($tick -ge $NotBeforeTick -and $tick -le $NowTick -and $NowTick-$tick -le 500){
+                return [pscustomobject]@{Ready=$true;Generation=$r.Groups[1].Value;Tick=$tick;Meaning='Fresh source-fixture publication; retail intro state is not simulated by this reader.'}
+            }
+        }
+    }
+    [pscustomobject]@{Ready=$false}
+}
+
 function Read-IW7CollisionPlayerNative([string]$Text,[uint32]$Instance,[int]$BeforeCreateOffset,[int]$CreatedOffset,[int]$BeforeRemovalOffset,[int]$RemovedOffset) {
     $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)';$culture=[Globalization.CultureInfo]::InvariantCulture
     $created=Get-IW7CollisionPlayerOne $Text ('(?m)^\[Collision provider\] created world=0 entity=(\d+) instance='+$Instance+' original_vertices=8 contents=1 template=([^\r\n]+)[\t ]*\r?$')

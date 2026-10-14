@@ -77,8 +77,11 @@ Issue 8 remains open. Next action: independent exact-head source review and
 source package/capsule preparation, then distinct Root game arbitration.
 
 Local source validation passed: one valid narrow transcript plus 22 causal
-refusals; pure Plan/missing-context refusal and six original identity refusals;
+refusals; pure Plan/missing-context refusal, six original identity refusals and
+seven partial/stale/future/foreign/unprotected readiness-publication refusals;
 PowerShell grammar and official pinned GSC-tool 1.5.1.359 parsing; existing D/E
 transcript regression; product boundary (292 tracked, 275 exports, 3 dependencies)
 and whitespace. These are source checks, not Aurora runtime compilation, native
-build, player gameplay or closure evidence.
+build, player gameplay or closure evidence. Readiness tests check wire freshness
+and binding, not a fabricated retail intro/control state; those engine flags
+remain solely in the actual fixture's runtime readiness check.

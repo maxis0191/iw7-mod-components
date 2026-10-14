@@ -21,6 +21,18 @@ try{& (Join-Path $root 'ops/Invoke-CollisionPlayerContact.ps1') -Action Run -Anc
 }
 if(!$refused -or $effects.Count){throw 'Missing-owned-context Run or default Plan performed a live effect.'}
 . (Join-Path $root 'ops/Collision-Player.Core.ps1')
+$nonce='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';$generation='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+$wire="[Collision player] PLAYER_READY token=$token; server_pid=42; client_nonce=$nonce; server_generation=$generation; slot=0; native_tick_ms=1400; protected=1`n"
+$ready=Read-IW7CollisionPlayerReady $wire $token 42 $nonce 1100 1500
+if(!$ready.Ready -or $ready.Generation -cne $generation){throw 'Fresh bound readiness publication rejected.'}
+$readyRefusals=0
+foreach($case in @($wire.TrimEnd("`n"),$wire.Replace('native_tick_ms=1400','native_tick_ms=1099'),$wire.Replace('native_tick_ms=1400','native_tick_ms=1501'),
+    $wire.Replace('client_nonce='+$nonce,'client_nonce=cccccccccccccccccccccccccccccccc'),$wire.Replace('slot=0','slot=1'),$wire.Replace('protected=1','protected=0'))){
+    if((Read-IW7CollisionPlayerReady $case $token 42 $nonce 1100 1500).Ready){throw 'Partial/stale/future/foreign/unprotected readiness accepted.'};$readyRefusals++
+}
+if((Read-IW7CollisionPlayerReady $wire $token 42 $nonce 1100 1901).Ready){throw 'Expired readiness accepted.'};$readyRefusals++
+# Only the real GSC fixture reads retail intro/control state. These fixtures
+# verify the publication transport/freshness; they never fabricate that state.
 $created=[datetime]::Parse('2026-10-14T13:00:00Z').ToUniversalTime();$filetime=$created.ToFileTimeUtc()
 $server=[pscustomobject]@{PID=42;Image='C:\candidate\native.exe';CreatedUtc=$created.ToString('o');CreationFileTime=$filetime;SHA256='5F1BF0569FF109A46CF23997E2A2EDF551FE6FD525B1F2B341BC8BEB91287006'}
 $kernel=[pscustomobject]@{PID=42;Image=$server.Image;CreationFileTime=$filetime}
@@ -48,4 +60,4 @@ if($GscToolPath){
         @($output|Where-Object{"$_" -match '^parsed iw7/collision_player_contact.gsc$'}).Count -ne 1){throw 'GSC source grammar failed.'}
     Write-Output 'PASS pinned GSC grammar; Aurora/runtime compilation remains untested.'
 }
-Write-Output "PASS collision player source grammar, default Plan, missing-original and $rejected identity refusals; live effects=0."
+Write-Output "PASS collision player source grammar, default Plan, missing-original, $rejected identity and $readyRefusals readiness-wire refusals; live effects=0; no fake retail intro state."
