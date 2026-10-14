@@ -145,6 +145,37 @@ are not present in the already-extracted JSON. A pointer/type/library fix
 requires that missing qualification, not an invented argument shift or blind
 asset replacement. The owner2080 admission is orthogonal to this failure.
 
+Subsequent separately admitted analyses D/E used the existing bounded reader.
+D selected54EC30/578C00 only,195 bytes:54EC30 is a5-byte tail jump to577A10;
+578C00 is a190-byte lookup keyed by the exact input pointer, returning its
+stored value or0. A found entry can also contain value0. E followed only the
+justified577A10 body,241 bytes. It compares the input's bytes with each occupied
+object's name pointer at+0 through NUL, case-sensitively, and returns that
+matching object pointer or0. D/E RIP table references match0x144BE1488; E's
+returned key is the pointer D subsequently looks up. No table creation/write
+is visible in E; its surrounding indirect calls remain unqualified.
+
+This qualifies the missing name-to-object resolution in the provider's arg3
+route. Name+0 and retail returned-object usage+0x40 agree with the pinned
+PhysicsAsset SDK layout, while full runtime body availability is not proven.
+The correction treats141BA4500 as a name-pointer slot, refuses null/empty/
+unreadable or unterminated laboratory names before the native comparator,
+resolves through54EC30, validates the returned asset, and preflights578C00 on
+that resolved object. Null/unreadable runtime context is refused before shape
+or instance creation. The bounded name limit is a local validation contract,
+not a claimed engine name limit. Thunk/target/lookup instruction signatures
+are checked before activation. A preflight cannot guarantee that an engine
+table is not changed concurrently before instantiation.
+
+Both analyses completed with reader/original PTY exit0 and fresh exact original
+host/parent absence plus registry0. D's owner field/outer console scope mistakes
+are explained by a separate witness; original records remain unchanged. E
+correctly captures both plan/reader hashes and the outer reader exit. No game,
+CPP, scan, automatic call expansion or PE/dump/PDB/CDB analysis occurred.
+New name-resolution/context-refusal native fixtures are source-only; this
+corrected route and those fixtures have not yet been compiled or run in engine.
+C remains failed evidence, not a measured successful body/query/destruction.
+
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
 `fx/update.cpp` supplies its brush mask in that position and provides the larger

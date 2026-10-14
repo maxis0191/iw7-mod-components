@@ -1,11 +1,43 @@
 #include "../../src/native/collision_provider.hpp"
 #include <cassert>
+#include <cstring>
 #include <initializer_list>
 #include <limits>
 
 int main()
 {
     using namespace collision_provider;
+    // The real name must be resolved before its object can be used as the
+    // exact-pointer lookup key; null/invalid stages must stop the call sequence.
+    struct fixture_asset { int marker; } resolved{42};
+    const char template_name[] = "retained_template";
+    int resolve_calls = 0, validate_calls = 0, lookup_calls = 0;
+    bool resolve_present = true, object_valid = true, context_present = true;
+    const auto resolve = [&](const char* name) -> fixture_asset* {
+        ++resolve_calls;
+        assert(name == template_name && std::strcmp(name, "retained_template") == 0);
+        return resolve_present ? &resolved : nullptr;
+    };
+    const auto validate = [&](const fixture_asset* asset) {
+        ++validate_calls; assert(asset == &resolved); return object_valid;
+    };
+    const auto lookup = [&](const fixture_asset* asset) {
+        ++lookup_calls; assert(asset == &resolved); return context_present;
+    };
+    assert(resolve_body_template(template_name, resolve, validate, lookup) == &resolved);
+    assert(resolve_calls == 1 && validate_calls == 1 && lookup_calls == 1);
+    const auto refused = [&](const char* name) {
+        try { (void)resolve_body_template(name, resolve, validate, lookup); return false; }
+        catch (const std::exception&) { return true; }
+    };
+    assert(refused(nullptr) && refused(""));
+    assert(resolve_calls == 1 && validate_calls == 1 && lookup_calls == 1);
+    resolve_present = false; assert(refused(template_name));
+    assert(resolve_calls == 2 && validate_calls == 1 && lookup_calls == 1);
+    resolve_present = true; object_valid = false; assert(refused(template_name));
+    assert(resolve_calls == 3 && validate_calls == 2 && lookup_calls == 1);
+    object_valid = true; context_present = false; assert(refused(template_name));
+    assert(resolve_calls == 4 && validate_calls == 3 && lookup_calls == 2);
     // A ready recycled client world must still be refused. Readiness and launch
     // flags cannot establish its private connection or allocation generation.
     for (int world = -1; world <= 9; ++world)
