@@ -1,12 +1,13 @@
 # Agent capabilities and the next engine investigation
 
-## Renderer scene table observer — source candidate, 2026-10-14
+## Renderer scene table observer — compiled candidate, 2026-10-14
 
 `RigSceneProbe=true` adds `-paris-rig-scene-probe` only with the explicit
 OriginalRigConsole/RigAssetsProbe plan. The manifest capability is
 `RigSceneProbeCapability`; a historical missing field means unavailable.
-This candidate has not been compiled or run. The executable described below
-does not contain it. Normal/native source counts remain 34/36.
+The full Release candidate compiles and links; it has not run in the game.
+The earlier asset-only executable described below does not contain it.
+Normal/native source counts remain 34/36.
 
 The original asset observation remains after ARM. The new observer instead uses
 the existing main-thread `capture` action after an accepted active ARM, once per
@@ -68,16 +69,45 @@ Twelve source/serialized-log checks pass, including the renderer/main API
 boundary, privacy and truthful unknown states. Two old checks were scoped to
 their original provenance observer after new profiles made their global string
 counts and first-try search stale; the original formats remain covered.
-The existing C++ fixture now prepares stale request/ARM/process/binding,
-cancel/expiry/count/filter cases; it has not been compiled for this candidate.
-Source review and an independently admitted CPP/full build precede any runtime
-qualification. Main27016, immutable native958, the prior compiled4377 image,
-SDK49f/FF and banks remain outside this source-only work.
+The existing C++ fixture passes 27 new stale request/ARM/process/binding,
+cancel/expiry/count/filter assertions alongside its existing 200,000 seeded
+protocol mutations (29 canonical) and the other required fixtures. The real
+typed observer and client adapter compile and link in the full Release build.
+Main27016, immutable native958, the prior compiled4377 image, SDK49f/FF and
+banks remain outside this build-only work. No game, renderer observation,
+entity/DObj visibility, stock witness or owner acceptance is qualified.
 
 Independent Architecture source review approved exact C++ candidate
 `8a5da90bacbc11fd72c99ae4f7dde1baaa1fe26a`. The clock-domain clarification above
-is documentation only; its approved C++ bytes remain frozen pending the next
-separately admitted full build and the 27 prepared fixture assertions.
+is documentation only. The separately admitted full build uses clean source
+`56a2ef7cab451830cc506449291e748d5f9ff7b1`, whose C++ is unchanged from the
+reviewed candidate. Its 313-file, 2,937,360-byte package still verifies after
+the build. Pinned upstream remains `77e6d4d`; CollisionProvider is explicit,
+with all 36 raw source hashes verified. The manifest separately declares
+RigAssetsProbeCapability, RigSceneProbeCapability and
+RigSceneStockWitnessCapability true, ServerModules/IsolatedLab true and
+Debugger/VoiceTrace false. Legacy `Protocol=1` is unchanged and does not prove
+a runtime engine-protocol observation.
+
+The 6,137,344-byte executable SHA-256 is
+`B78B6020C1E0AFDD9E548B81FC3910C68477C253ABFB43EDE159AED36D9752CE`;
+matching 55,291,904-byte PDB SHA-256 is
+`6961C40B11196ED20F48A5A4F331CB6A526E7CE2B4D4D81A2AC019E51BB48A61`.
+The 16,536-byte manifest SHA-256 is
+`CA4249B2FCF4EB4C6BD11F0A6434C34B0FE1A10656039A444101115A3CE97526`.
+All three hashes were read at 02:50:46 UTC inside the original build body's
+reservation, with the same owner/token confirmed before and after reading.
+A read-only PowerShell observation at the existing final output line supplied
+that receipt without editing committed/generated build sources or engine code.
+The older runtime wrappers are retained; the new wrapper also preserves tracked
+native patches and needed ignored overlays/binary/symbols before replacement.
+
+The original build host and original PTY exit zero. Its owned job closes every
+descendant, including the compiler service, and records zero active processes
+before disposal. Its reservation is absent; the independent 02:52:31 UTC
+postflight finds zero leases and compilers. The previous 4377 executable/PDB/
+manifest hashes remain exact. Next: a separately authorized consumer admission
+and protected same-run scene observation, with the ordinal clock contract above.
 
 ## Original rig typed asset snapshot — compiled candidate, 2026-10-14
 
