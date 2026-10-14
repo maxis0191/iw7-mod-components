@@ -150,7 +150,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-61 source controls cover default-off/private opt-in/frontend/MP, controller1,
+63 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -164,6 +164,11 @@ recovery, suppressing a recurrence of the same fault and leaving stale external
 bind evidence. Success now resets that failure key. The same-root/sequence
 failure-recovery-same-failure control requires two emitted failure markers and
 invalidation of the earlier success; the initial candidate remains in history.
+Architecture review then found the reserve text's retail NoStockAmmo warning
+color was overwritten on every style poll. That color now stays retail-owned;
+numeric zero/positive-reserve callbacks followed by each next poll retain their
+retail warning/normal colors. The new late-runtime fixture initially omitted
+the numeric stock model, failed setup, and was corrected before qualification.
 This is not HKS,
 render or gameplay evidence. An early test setup artificially cleared the module
 global without destroying old scheduled callbacks; it was corrected to test the

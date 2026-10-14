@@ -209,7 +209,8 @@ local function style_ammo(self)
         }) do
             entry[1]:SetFont(FONTS.GetFont(FONTS.MainBold.File))
             entry[1]:SetFontSize(scale(entry[2]))
-            entry[1]:SetRGBFromInt(0xF5F1E7, 0)
+            -- Retail NoStockAmmo/HasStockAmmo owns reserve warning colors.
+            if entry[1] ~= self.TextStockAmmo then entry[1]:SetRGBFromInt(0xF5F1E7, 0) end
             rect(entry[1], entry[3], entry[4], entry[5], entry[6])
         end
         if not self.__bo3AmmoStyled then
