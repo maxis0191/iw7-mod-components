@@ -2,9 +2,7 @@
 function New-IW7CollisionPlayerPlan([double[]]$Anchor,[string]$Token) {
     if($Anchor.Count -ne 3 -or @($Anchor|Where-Object{![double]::IsFinite($_) -or [math]::Abs($_) -gt 30000}).Count -or
         $Token -cnotmatch '^[a-f0-9]{32}$'){throw 'Finite reviewed anchor and unique 32-hex token required.'}
-    $culture=[Globalization.CultureInfo]::InvariantCulture
-    $config="set paris_collision_player_test 1`nset paris_collision_probe_arm 0`nset paris_collision_probe_token `"$Token`"`n"
-    foreach($axis in 0..2){$config+='set paris_collision_player_'+@('x','y','z')[$axis]+' '+$Anchor[$axis].ToString('R',$culture)+"`n"}
+    $config="set paris_collision_player_test 1`nset paris_collision_player_anchor_current 1`nset paris_collision_probe_arm 0`nset paris_collision_probe_token `"$Token`"`n"
     [pscustomobject]@{Schema='iw7.collision-player-plan/1';Anchor=@($Anchor);Token=$Token;PlannedClients=1;World=0;ServerPort=27116;
         Minimum=@(($Anchor[0]-128),($Anchor[1]-128),($Anchor[2]+96));Maximum=@(($Anchor[0]+128),($Anchor[1]+128),($Anchor[2]+112));
         Start=@($Anchor[0],$Anchor[1],($Anchor[2]+208));MeasuredDeadlineMs=25000;NativeArmDeadlineMs=30000;
@@ -40,14 +38,24 @@ function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerI
         $ClientNonce -cnotmatch '^[a-f0-9]{32}$' -or $NowTick -lt $NotBeforeTick){throw 'Bounded launch-owned readiness input required.'}
     $last=$Text.LastIndexOf("`n")
     if($last -ge 0){
-        $rows=[regex]::Matches($Text.Substring(0,$last+1),'(?m)^\[Collision player\] PLAYER_READY token='+$Token+'; server_pid='+$ServerId+'; client_nonce='+$ClientNonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1[\t ]*\r?$')
+        $complete=$Text.Substring(0,$last+1)
+        if($complete -match ('(?m)^\[Collision player\] FAIL token='+$Token+' ')){throw 'Fixture refused readiness/anchor; do not arm.'}
+        $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)'
+        $rows=[regex]::Matches($complete,'(?m)^\[Collision player\] PLAYER_READY token='+$Token+'; server_pid='+$ServerId+'; client_nonce='+$ClientNonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1; anchor_x='+$n+'; anchor_y='+$n+'; anchor_z='+$n+'[\t ]*\r?$')
         if($rows.Count){$r=$rows[-1];$tick=[long]$r.Groups[2].Value
             if($tick -ge $NotBeforeTick -and $tick -le $NowTick -and $NowTick-$tick -le 500){
-                return [pscustomobject]@{Ready=$true;Generation=$r.Groups[1].Value;Tick=$tick;Meaning='Fresh source-fixture publication; retail intro state is not simulated by this reader.'}
+                $anchor=@(3..5|ForEach-Object{[double]::Parse($r.Groups[$_].Value,[Globalization.CultureInfo]::InvariantCulture)})
+                $null=New-IW7CollisionPlayerPlan $anchor $Token
+                return [pscustomobject]@{Ready=$true;Generation=$r.Groups[1].Value;Tick=$tick;Anchor=$anchor;Meaning='Fresh real-pose publication; source tests do not simulate retail intro/terrain state.'}
             }
         }
     }
     [pscustomobject]@{Ready=$false}
+}
+
+function Assert-IW7CollisionPlayerFrozenReady($First,$Current) {
+    if(!$First.Ready -or !$Current.Ready -or $Current.Generation -cne $First.Generation -or
+        ($Current.Anchor -join ',') -cne ($First.Anchor -join ',')){throw 'Frozen stock-pose readiness changed/expired before arm.'}
 }
 
 function Read-IW7CollisionPlayerNative([string]$Text,[uint32]$Instance,[int]$BeforeCreateOffset,[int]$CreatedOffset,[int]$BeforeRemovalOffset,[int]$RemovedOffset) {

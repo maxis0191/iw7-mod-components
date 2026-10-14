@@ -6,11 +6,12 @@ This separate fixture/operation prepares that next control without enabling
 client collider creation. Client prediction, exact actor shape/margin, sensor
 behavior, physical-world reset and owner acceptance remain unqualified.
 
-`Invoke-CollisionPlayerContact.ps1` defaults to pure Plan. It takes a finite
-explicit ground anchor and unique token, derives a 256 by 256 by 16 floor at
+`Invoke-CollisionPlayerContact.ps1` defaults to pure Plan. Without coordinates it
+reports actual protected stock-pose selection pending and invents no anchor.
+Optional finite coordinates are preview only: a 256 by 256 by 16 floor at
 anchor Z+96..112, and initial placement at Z+208. Plan reads only its GSC source;
 it creates no output, lease, process or staged game file. Coordinates are
-examples only until a reviewed capsule selects an auditable area. The fixture
+examples only; Run rejects that preview argument. The actual fixture
 must freshly verify five lower ground points and five clear vertical segments
 before placement. Native actor-baseline admission adds its own existing query
 guard; these controls do not prove an exact player shape or full terrain safety.
@@ -115,3 +116,25 @@ is accepted as a safe physical location. A reviewed source reference/selection
 must produce explicit coordinates, followed by the fixture's fresh clearance
 audit before the two declared placements. A capsule and separate Root game slot
 are still required.
+
+## Frozen actual stock pose
+
+The fixture uses the real protected player's ordinary stock-spawn origin after
+actual retail readiness checks. It freezes that position once for the unique
+token and publishes its coordinates with the current native PID/nonce/generation/
+tick stamp. A lost player/readiness or position change over one unit invalidates
+the frozen proposal before arm. The operation derives and records the explicit
+actual plan from that publication, then rereads freshness, generation and
+unchanged coordinates immediately before its one typed arm. There is no fallback
+coordinate, E altitude, arbitrary memory getter or new native binding.
+`paris_collision_player_anchor_current=1` is required; legacy coordinate config
+is no longer consumed.
+
+The five ground/five clear segment audit still runs against the actual frozen
+pose before either journaled placement. A spawn area which cannot pass the audit
+refuses the experiment; source tests never fabricate its location/terrain. The
+operator writes a local actual-anchor plan before arm for the original caller's
+evidence. Optional explicit `-Anchor` remains pure preview; live invocation omits
+it. Seven ownership, seven readiness and eight pose transport/freeze refusals,
+plus existing movement tests, check the source contract without qualifying a game
+location or player movement.
