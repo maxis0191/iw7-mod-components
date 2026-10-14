@@ -29,10 +29,14 @@ result and its closure witness remain separate immutable local evidence.
 
 The refusal does not identify the failing field. A bounded1,550-byte read of
 the retained patched snapshot confirms the retail producer's1016-byte entity
-stride/classname+0x1a8, contents+0x130 writes1 or0x2080 depending on a runtime
+stride/compared raw word+0x1a8, contents+0x130 writes1 or0x2080 depending on a runtime
 class constant, and the linker's byte+0x110 write1. Those offsets are source
 evidence, not an effective-value observation from the failed process.
 No class name is assigned to the constants without actual engine evidence.
+The pinned packed SDK declaration instead places its `classname` member at
+0x1ac; +0x110/+0x130 are inside its opaque padding. Matching entity stride does
+not qualify that layout. The diagnostic records the SDK member/offset and the
+producer's raw compared word separately, without renaming either as the other.
 
 The next source candidate preserves the current admission guard. It logs raw
 contents/link/class IDs before refusal and reads the producer's two runtime

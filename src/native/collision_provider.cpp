@@ -127,6 +127,8 @@ namespace collision_provider
                 int contents{};
                 std::memcpy(&contents, reinterpret_cast<const char*>(&target) + 0x130, sizeof(contents));
                 const auto linked = *(reinterpret_cast<const unsigned char*>(&target) + 0x110);
+                std::uint32_t producer_class_word{};
+                std::memcpy(&producer_class_word, reinterpret_cast<const char*>(&target) + 0x1a8, sizeof(producer_class_word));
                 // A refused first run did not record which part of this guard
                 // failed. Read the exact producer globals, without guessing
                 // their names or passing unknown IDs to SL_ConvertToString.
@@ -134,8 +136,8 @@ namespace collision_provider
                 const auto* mask_2080_class = reinterpret_cast<const game::scr_string_t*>(0x145D5B06C);
                 if (!readable(no_change_class, sizeof(*no_change_class)) || !readable(mask_2080_class, sizeof(*mask_2080_class)))
                     throw std::runtime_error("Retail solid producer class data is unreadable; preserve the entity");
-                console::info("[Collision provider] solid_admission world=%d entity=%d classname=%s classname_id=%u contents=0x%08x linked=%u no_change_class_id=%u mask_2080_class_id=%u\n",
-                    world, entity, classname, static_cast<unsigned int>(target.classname), static_cast<unsigned int>(contents),
+                console::info("[Collision provider] solid_admission world=%d entity=%d sdk_classname=%s sdk_classname_id=%u sdk_classname_offset=%zu producer_class_word_1a8=%u contents_word_130=0x%08x linked_byte_110=%u no_change_class_id=%u mask_2080_class_id=%u\n",
+                    world, entity, classname, static_cast<unsigned int>(target.classname), offsetof(game::gentity_s, classname), producer_class_word, static_cast<unsigned int>(contents),
                     static_cast<unsigned int>(linked), static_cast<unsigned int>(*no_change_class), static_cast<unsigned int>(*mask_2080_class));
                 if (!(contents & 1) || !linked)
                     throw std::runtime_error("Call the retail solid() method on the script_model before creating its box");
