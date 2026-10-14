@@ -36,6 +36,12 @@ collision_probe()
     floor = spawn("script_model", (0, 0, 4088));
     floor solid();
     instance = floor collision_createbox((-256, -192, 4080), (256, 192, 4096));
+    if (!isdefined(instance))
+    {
+        println("[Collision probe] FAIL token=" + token + " reason=create_refused");
+        floor delete();
+        return;
+    }
     println("[Collision probe] CREATED token=" + token + " instance=" + instance);
     collision_trace("inside", "center", 0, 0, token);
     collision_trace("inside", "edge", 220, 160, token);
