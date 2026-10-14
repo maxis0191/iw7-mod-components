@@ -49,6 +49,13 @@ namespace collision_provider
         in_progress = false;
     }
 
+    template <typename Quarantine, typename Action>
+    inline void quarantine_on_failure(Quarantine& quarantine, Action action)
+    {
+        try { action(); }
+        catch (...) { quarantine = true; throw; }
+    }
+
     struct alignas(16) vertex
     {
         float x, y, z, w;

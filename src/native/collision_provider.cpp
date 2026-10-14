@@ -137,7 +137,7 @@ namespace collision_provider
                 quarantined = true;
                 throw std::runtime_error("Collision template/world episode changed; quarantine original records without stale asset access");
             };
-            if (quarantined || item.epoch != vm_epoch || world_marker(item.world) != item.world_marker) fail();
+            if (quarantined || !item.world_marker || item.epoch != vm_epoch || world_marker(item.world) != item.world_marker) fail();
             const auto* current_asset = find_asset_by_name(item.template_name.c_str());
             if (quarantined || item.epoch != vm_epoch || world_marker(item.world) != item.world_marker ||
                 current_asset != item.body_template || !readable(current_asset, sizeof(*current_asset))) fail();
@@ -246,8 +246,10 @@ namespace collision_provider
                     const auto* context = lookup_asset_context(value);
                     return readable(context, 0x68); // Includes the retained dereference at+0x60.
                 });
+            const auto captured_world = world_marker(world);
+            if (!captured_world) throw std::runtime_error("Live world disappeared before collision episode capture");
             instance item{world, entity, 0xffffffffU, geometry, asset, lookup_asset_context(asset),
-                world_marker(world), std::string(name), vm_epoch};
+                captured_world, std::string(name), vm_epoch};
             item.observe = observe;
             item.before_create = sample_usage(item, "before_create");
             if (!manual_increment_permitted(item.before_create))
@@ -333,6 +335,7 @@ namespace collision_provider
         {
             std::lock_guard lock(mutex);
             operation_scope operation(internal);
+            quarantine_on_failure(quarantined, [&] {
             for (auto it = instances.begin(); it != instances.end();)
             {
                 if (entity >= 0 && it->entity != entity) { ++it; continue; }
@@ -373,11 +376,12 @@ namespace collision_provider
                 console::info("[Collision provider] destroyed world=%d entity=%d instance=%u\n", it->world, it->entity, it->id);
                 it = instances.erase(it);
             }
+            }); // Any fallible post-effect observation blocks a fresh retry baseline.
         }
 
         bool query_geometry(const query_zone& item, const char* phase)
         {
-            if (quarantined || shutting_down || !session_ready() || item.epoch != vm_epoch ||
+            if (quarantined || !item.world_marker || shutting_down || !session_ready() || item.epoch != vm_epoch ||
                 reinterpret_cast<std::uintptr_t>(world_marker(item.world)) != item.world_marker)
                 throw std::runtime_error("Original live query episode required; no removed handle is used");
             const auto& shape = item.geometry;
@@ -390,7 +394,7 @@ namespace collision_provider
                 // the SDK trace_t, including a float at 0x40.
                 alignas(16) std::array<unsigned char, 128> result{};
                 legacy_trace(item.world, result.data(), point_start.data(), end.data(), &bounds, 2047, 0, 1, 0, nullptr, 0);
-                if (quarantined || item.epoch != vm_epoch || reinterpret_cast<std::uintptr_t>(world_marker(item.world)) != item.world_marker)
+                if (quarantined || !item.world_marker || item.epoch != vm_epoch || reinterpret_cast<std::uintptr_t>(world_marker(item.world)) != item.world_marker)
                     throw std::runtime_error("Collision query episode changed across native trace; discard result");
                 game::trace_t trace{};
                 std::memcpy(&trace, result.data(), sizeof(trace));
