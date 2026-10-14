@@ -196,8 +196,39 @@ An auxiliary UTC-string-versus-JSON-DateTime comparison initially refused;
 normalizing both creation instants to exact UTC FILETIME corrected the witness
 without changing the original metadata or relaxing process identity checks.
 No game, Main deployment, native creation/query/destruction or owner acceptance
-is claimed by this compilation. Issue #8 remains open; the next evidence needed
-is a separately admitted zero-client engine probe on this exact output tuple.
+is claimed by this compilation. A separately admitted zero-client engine probe
+on this exact output tuple was the next required evidence.
+
+Case D completed that engine probe on2026-10-14, using the unchanged Native19
+output and the separately reviewed consumer merged in PR21. The private
+dedicated reported protocol2, `cp_zmb`, zero clients, cheats0 and inactivity0.
+The provider created the original eight-vertex box in world0 with template
+`physicsvolumedummy`, body contents1. Retail point traces at the center and
+edge measured1 before creation,0.5 while the body existed, then1 after native
+clear and script-owner deletion. The native point query measured0.500000000;
+the actor sweep measured0.731249869. Both reported normal(0,0,1), contents1,
+hitType1/hitId2046 and no startsolid/allsolid. The actor fraction is an actual
+measurement, not the ideal44/60 expectation or qualification of its exact shape.
+The observed order is CREATED, point/sweep queries, DESTROYED, clear retail
+point traces, DONE. [Sanitized evidence](evidence/2026-10-14-collision-zero-client-D.json)
+records these measurements without local paths, process/player identifiers,
+tokens, bank data or raw logs.
+
+The dedicated stopped cleanly after the guarded empty-UDP30s check. Candidate
+restoration verified28 saved files and24 protected files; the separate Main
+audit confirmed static files unchanged, no bank delta and no strict audit error.
+The original caller PTY exited0, and a fresh witness found its original
+host/parent/dedicated absent, the test UDP endpoint absent and registry0.
+Original result metadata still says caller-exit not yet observed; the later
+actual-exit witness is separate, preserving that chronology.
+
+This qualifies creation, measured server-world point contact and the fixture's
+clear/delete point controls on this one box/map. A native sweep after removal,
+exact actor shape/margin, static/sensor behavior, template usage restoration,
+world reset and real player movement remain unqualified. No client, Main
+deployment, accepted tag or owner gameplay acceptance is claimed. Issue #8
+stays open for those next controls and a separately authorized protected player
+contact test.
 
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
