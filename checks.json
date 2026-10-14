@@ -2,6 +2,10 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "stock_links_test",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/stock_links_test.ps1"]
+    },
+    {
       "id": "bo3_zombies_hud_source",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "ops/Test-BO3HUDSource.ps1"]
     },
