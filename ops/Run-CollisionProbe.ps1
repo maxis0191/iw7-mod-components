@@ -10,10 +10,10 @@ param(
 )
 $ErrorActionPreference='Stop'
 $selfRoot=Split-Path $PSScriptRoot -Parent
-$expectedCommit='f2e5362fe8c1536396d56ee14f55735374384091'
-$expectedImage='4E8885EACBF01ACBCE57F8A3EB05A8347F06CB2A515B78516AF8FB39D37E3E9F'
-$expectedManifest='070A50C7670CD0FE3243C8BF8451F6EA857E7DD1DD7AB4BB76BF0DF1E605E649'
-$expectedSymbols='1E3D97FB1C1D0F2A7CE90DCED9132D25495B9BC1EF7A7FE6413923C8BF058343'
+$expectedCommit='d2b73923de9e21fca7446ad5bad4a8742d0c8468'
+$expectedImage='5F1BF0569FF109A46CF23997E2A2EDF551FE6FD525B1F2B341BC8BEB91287006'
+$expectedManifest='A713670040A9932AD47A195F91F714FF39DA88AB8C73EFAD81D5527156299A32'
+$expectedSymbols='405679CA12EB89BE85D9FA11522CDD2CEF606520429880DE22676924022B2360'
 $helperRoot=(Resolve-Path -LiteralPath $HelperRoot).Path.TrimEnd('\','/')
 $nativeSourceRoot=(Resolve-Path -LiteralPath $NativeSourceRoot).Path.TrimEnd('\','/')
 $packageRoot=(Resolve-Path -LiteralPath $PackageRoot).Path.TrimEnd('\','/')
@@ -49,7 +49,7 @@ if($mainRoot -ieq $candidateRoot -or $mainRoot.StartsWith($candidateRoot+'\',[St
 if(Test-Path -LiteralPath $outputRoot){throw 'A fresh output root is required.'}
 $manifestPath=Resolve-IW7BasePath $packageRoot 'build-manifest.json'
 if((Get-Item -LiteralPath $manifestPath).Length -gt 1MB){throw 'Native manifest exceeds the bounded metadata contract.'}
-if((Get-FileHash -LiteralPath $manifestPath).Hash -cne $expectedManifest){throw 'Only the separately compiled Native19 resolved-template package is qualified for this route.'}
+if((Get-FileHash -LiteralPath $manifestPath).Hash -cne $expectedManifest){throw 'Only the separately compiled Native23 lifecycle-control package is qualified for this route.'}
 $manifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if($manifest.ProjectCommit -cne $expectedCommit -or $manifest.ProjectDirty -ne $false -or
     $manifest.CollisionProvider -isnot [bool] -or !$manifest.CollisionProvider -or $manifest.SourceHashes.Count -ne 36){throw 'Compiled collision source identity differs.'}
