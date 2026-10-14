@@ -1,5 +1,6 @@
 #include "../../src/native/collision_provider.hpp"
 #include <cassert>
+#include <initializer_list>
 #include <limits>
 
 int main()
@@ -11,6 +12,28 @@ int main()
     {
         assert(!world_permitted(false, world));
         assert(world_permitted(true, world) == (world == 0 || world == 1));
+    }
+    // Actual B failed before allocation: a linked retail script_model produces
+    // mask0x2080, which has no bit1. Admit only its exact authenticated case.
+    assert(owner_solid_permitted(0x2080, 1, 172, 172, 172, 174));
+    assert(owner_solid_permitted(0x2080, 1, 919, 919, 919, 920)); // VM IDs may change.
+    assert(!owner_solid_permitted(0x2080, 0, 172, 172, 172, 174));
+    assert(!owner_solid_permitted(0x2080, 2, 172, 172, 172, 174));
+    assert(!owner_solid_permitted(0x2080, 1, 174, 172, 172, 174));
+    assert(!owner_solid_permitted(0x2080, 1, 173, 172, 172, 174));
+    assert(!owner_solid_permitted(0x2080, 1, 172, 173, 172, 174));
+    assert(!owner_solid_permitted(0x2080, 1, 0, 172, 0, 174));
+    assert(!owner_solid_permitted(0x2080, 1, 172, 172, 172, 0));
+    assert(!owner_solid_permitted(0x2080, 1, 172, 172, 172, 172));
+    for (const auto mask : {0U, 0x80U, 0x2000U, 0x2082U, 0x80002080U})
+        assert(!owner_solid_permitted(mask, 1, 172, 172, 172, 174));
+    // Existing linked bit1 behavior is preserved, including unrelated bits;
+    // these inputs do not introduce a general nonzero-mask admission.
+    for (const auto mask : {1U, 3U, 0x2081U, 0x80000001U})
+    {
+        assert(owner_solid_permitted(mask, 1, 0, 0, 0, 0));
+        assert(owner_solid_permitted(mask, 2, 174, 999, 172, 174));
+        assert(!owner_solid_permitted(mask, 0, 172, 172, 172, 174));
     }
     const auto floor = make_box({-256, -192, -16}, {256, 192, 0});
     assert((floor.origin == point{0, 0, -8}));

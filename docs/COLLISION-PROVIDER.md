@@ -18,7 +18,7 @@ solid/linked guard, despite the fixture calling retail `solid()` immediately
 beforehand. All six before/inside/after point fractions were1. No native body,
 native point/actor query or destruction record was produced. The fixture's
 continued DONE after an undefined return was correctly rejected by the parser.
-The future fixture now stops explicitly on an undefined creation result.
+The corrected fixture stops explicitly on an undefined creation result.
 
 Normal continuous empty UDP/quit closed the dedicated with exit0. Managed
 candidate files and bank were restored; Main static files were unchanged and
@@ -27,7 +27,7 @@ exited with failure1. Fresh process/port observations found the exact host,
 parent and dedicated absent, and the runtime lease was absent. The failed
 result and its closure witness remain separate immutable local evidence.
 
-The refusal does not identify the failing field. A bounded1,550-byte read of
+The first refusal did not identify the failing field. A bounded1,550-byte read of
 the retained patched snapshot confirms the retail producer's1016-byte entity
 stride/compared raw word+0x1a8, contents+0x130 writes1 or0x2080 depending on a runtime
 class constant, and the linker's byte+0x110 write1. Those offsets are source
@@ -42,9 +42,66 @@ The Native14 source candidate preserves the current admission guard. It logs raw
 contents/link/class IDs before refusal and reads the producer's two runtime
 class-ID globals only after checking their exact RIP-relative instruction
 signatures. It also verifies the link-byte producer. This read-only diagnostic
-compiled successfully on 2026-10-14; it has not run in the engine. It neither accepts0x2080, drops linking,
-forces contents nor bypasses the guard. A future separately pinned build/run
-must observe the effective values before choosing a corrective policy.
+compiled successfully and ran in the separate zero-client probe B on
+2026-10-14. Its guard remained unchanged for that investigation.
+
+Probe B used compiled source `02eab0c`/EXE `5931CD975C5CD2086900D599A7F79B2BF1969E64899D1E0360B6ED40225DF874`
+and the consumer merged at `ff0f8ede60445dfb87441fae132f0b455c49ccb2`.
+Original private loopback UDP27116 established actual protocol2, clients0 and
+cp_zmb before the32-byte arm; the subsequent fresh GSC SAFETY/trace/FAIL records
+establish engine execution. Actual admission values were:
+
+| Field | Observed value in B |
+| --- | --- |
+| SDK classname / ID / offset | script_model /172 /0x1ac |
+| Producer raw word+0x1a8 |172 |
+| Producer mask0x2080 runtime class ID |172 |
+| Producer no-change runtime class ID |174 |
+| Raw contents+0x130 |0x00002080 |
+| Raw linked byte+0x110 |1 |
+
+Those172/174 IDs are observations from this VM, not stable constants. The raw
+word and SDK member remain distinct fields despite equal observed values.
+For this actual entity, linking passed and the producer's mask0x2080 case
+matched, but the provider demanded bit1 absent from0x2080. This explains the
+refusal before allocation. The corrected fixture emitted create_refused FAIL
+with no DONE; only the two clear before traces ran. No body creation, native
+point/actor query or destruction was observed. The strict probe result stayed
+false and cannot qualify collision or player movement.
+
+B ended with a continuous empty UDP30-second window and owned quit: original
+dedicated exit0/clean, candidate files and bank restored, Main static audit
+unchanged and Main bank delta false. The original NoExit host then exited1,
+preserving strict test failure. Fresh exact host/parent/dedicated and port
+observations were absent and the registry held0 leases. The raw result, logs
+and separate original-host closure witness remain intact; A was not rewritten.
+
+The next source correction preserves linked bit1 admission and adds only the
+exact observed retail script_model case: linked byte1, contents exactly0x2080,
+producer raw class matching both the SDK script_model ID and the current
+nonzero mask0x2080 global, with a
+separate nonzero no-change global. Dedicated/static script_model classification,
+producer signatures/readability, ready world, loopback/password/LAN-only and
+all allocation/teardown checks stay in force. Other even/nonzero/partial masks,
+foreign/no-change class IDs and missing/ambiguous globals are rejected. No
+numeric172/174 VM ID is compiled into the predicate. The owner contents are
+not overwritten. The generated body's existing contents1 and mask1 native
+queries remain separate; admitting an owner does not prove body collision.
+Native regression cases cover that exact B input and refusal boundaries, with
+changed VM IDs and preservation of the old bit1 behavior. These C++ changes
+and tests have not been compiled or run; they require independent review and
+the next coordinated compile/run before any further runtime claim.
+
+Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
+argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
+`fx/update.cpp` supplies its brush mask in that position and provides the larger
+trace scratch buffer. The provider passes1 in that same slot. The retained
+retail solid path forwards the owner's contents to0x140550EC0 for existing
+world0/1 instance IDs, whereas the provider sets1 on its separately created
+original instance. These are distinct owners/instances and uses. This supports
+preserving the new body's1/query1 pair; it does not qualify the complete engine
+filter implementation or the GSC bullettrace default mask. B performed no
+post-allocation query, and those remaining semantics need actual engine evidence.
 
 The full Release build and existing required fixtures passed from sealed clean
 source `02eab0c73d41a842e18caad13e9b6ffe6c480b89` (318 files, 2,992,655 bytes).
@@ -248,7 +305,9 @@ entry at0x140B4A000. Retained retail `scripts/mp/utility.gsc::getplant` uses
 No retail script bytes are copied into this product. Pure transcript tests
 pass, including numeric, identity, order, allocation/removal, partial-line and
 terminal TAB/CRLF refusals. The corrected undefined-result fixture and this
-Native14 consumer tuple have not run in a game.
+Native14 consumer tuple ran once in B and refused before allocation as recorded
+above. A further source policy requires independent review and a separately
+authorized compile/run; no successful engine collision follows from B.
 
 Use the separately identified compiled candidate under the next coordinated
 heavy workload slot. Do not reuse native958's executable or runtime evidence.
