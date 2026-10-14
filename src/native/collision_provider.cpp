@@ -127,6 +127,18 @@ namespace collision_provider
                 int contents{};
                 std::memcpy(&contents, reinterpret_cast<const char*>(&target) + 0x130, sizeof(contents));
                 const auto linked = *(reinterpret_cast<const unsigned char*>(&target) + 0x110);
+                std::uint32_t producer_class_word{};
+                std::memcpy(&producer_class_word, reinterpret_cast<const char*>(&target) + 0x1a8, sizeof(producer_class_word));
+                // A refused first run did not record which part of this guard
+                // failed. Read the exact producer globals, without guessing
+                // their names or passing unknown IDs to SL_ConvertToString.
+                const auto* no_change_class = reinterpret_cast<const game::scr_string_t*>(0x145D5B070);
+                const auto* mask_2080_class = reinterpret_cast<const game::scr_string_t*>(0x145D5B06C);
+                if (!readable(no_change_class, sizeof(*no_change_class)) || !readable(mask_2080_class, sizeof(*mask_2080_class)))
+                    throw std::runtime_error("Retail solid producer class data is unreadable; preserve the entity");
+                console::info("[Collision provider] solid_admission world=%d entity=%d sdk_classname=%s sdk_classname_id=%u sdk_classname_offset=%zu producer_class_word_1a8=%u contents_word_130=0x%08x linked_byte_110=%u no_change_class_id=%u mask_2080_class_id=%u\n",
+                    world, entity, classname, static_cast<unsigned int>(target.classname), offsetof(game::gentity_s, classname), producer_class_word, static_cast<unsigned int>(contents),
+                    static_cast<unsigned int>(linked), static_cast<unsigned int>(*no_change_class), static_cast<unsigned int>(*mask_2080_class));
                 if (!(contents & 1) || !linked)
                     throw std::runtime_error("Call the retail solid() method on the script_model before creating its box");
             }
@@ -252,6 +264,11 @@ namespace collision_provider
             check(0x14054E750, {0xe9,0x2b,0x80,0x02,0x00});
             check(0x14055C9E0, {0x4c,0x8b,0xdc,0x48,0x83,0xec,0x78});
             check(0x140550EC0, {0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c});
+            // Bind the diagnostic globals to their retained retail producers,
+            // rather than treating their absolute addresses as a live ABI.
+            check(0x140B60AC0, {0x8b,0x05,0xaa,0xa5,0x1f,0x05});
+            check(0x140B60AD2, {0x8b,0x05,0x94,0xa5,0x1f,0x05});
+            check(0x140C6D552, {0xc6,0x83,0x10,0x01,0x00,0x00,0x01});
             static_assert(sizeof(game::PhysicsAsset) == 0x50);
             static_assert(offsetof(game::PhysicsAsset, physicsUsageCounter) == 0x40);
             static_assert(sizeof(game::trace_t) <= 112);

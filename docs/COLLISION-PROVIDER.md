@@ -7,6 +7,45 @@ HKX archive, a trigger, or an analytic replacement for engine traces.
 
 ## Current evidence
 
+The first actual zero-client probe ran on 2026-10-14 against compiled56/B78.
+Private loopback UDP27116 returned real game protocol2, zero clients and
+running cp_zmb; native privacy reported LAN-only and heartbeat suppression.
+The original dedicated stdin pipe wrote32 bytes, and the subsequent token-bound
+GSC SAFETY/trace records establish that arm reached the engine. No client started.
+
+The provider refused `collision_createbox` before allocation with its combined
+solid/linked guard, despite the fixture calling retail `solid()` immediately
+beforehand. All six before/inside/after point fractions were1. No native body,
+native point/actor query or destruction record was produced. The fixture's
+continued DONE after an undefined return was correctly rejected by the parser.
+The future fixture now stops explicitly on an undefined creation result.
+
+Normal continuous empty UDP/quit closed the dedicated with exit0. Managed
+candidate files and bank were restored; Main static files were unchanged and
+its bank delta was false. The original bundled NoExit host was then explicitly
+exited with failure1. Fresh process/port observations found the exact host,
+parent and dedicated absent, and the runtime lease was absent. The failed
+result and its closure witness remain separate immutable local evidence.
+
+The refusal does not identify the failing field. A bounded1,550-byte read of
+the retained patched snapshot confirms the retail producer's1016-byte entity
+stride/compared raw word+0x1a8, contents+0x130 writes1 or0x2080 depending on a runtime
+class constant, and the linker's byte+0x110 write1. Those offsets are source
+evidence, not an effective-value observation from the failed process.
+No class name is assigned to the constants without actual engine evidence.
+The pinned packed SDK declaration instead places its `classname` member at
+0x1ac; +0x110/+0x130 are inside its opaque padding. Matching entity stride does
+not qualify that layout. The diagnostic records the SDK member/offset and the
+producer's raw compared word separately, without renaming either as the other.
+
+The next source candidate preserves the current admission guard. It logs raw
+contents/link/class IDs before refusal and reads the producer's two runtime
+class-ID globals only after checking their exact RIP-relative instruction
+signatures. It also verifies the link-byte producer. This read-only diagnostic
+has not been compiled or executed. It neither accepts0x2080, drops linking,
+forces contents nor bypasses the guard. A future separately pinned build/run
+must observe the effective values before choosing a corrective policy.
+
 Source inspection identified the strided-vertices factory and its 56-byte
 configuration constructor in the retained, already patched IW7 code snapshot.
 The native capsule factory calls that same factory after generating vertices.
