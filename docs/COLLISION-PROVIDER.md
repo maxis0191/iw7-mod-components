@@ -91,8 +91,9 @@ Native regression cases cover that exact B input and refusal boundaries, with
 changed VM IDs and preservation of the old bit1 behavior. Primary and
 independent reviews approved exact source head `b0e86bb`; PR16 merged at
 `8f1ac6d2443feb4432bfc2f9f6915d0ba50ea0c6`. Its new C++ predicate and native
-regressions compiled and passed in the full Release build. It has not run in
-the engine; no body/query/teardown or gameplay follows from those checks.
+regressions compiled and passed in the full Release build. Its first engine
+run C crashed as recorded below; no successful body/query/teardown or gameplay
+follows from the source/build checks.
 
 The actual Native16 build used clean sealed source `8f1ac6d` (318 files,
 2,999,759 bytes), with36 raw native sources and only the provider CPP/HPP
@@ -103,6 +104,46 @@ inside the same original build reservation before release. Build host and
 original PTY exited0, owned job active count was0 before disposal, and a fresh
 check found all75 observed tree identities absent and registry0. No engine
 process/client or Main deployment occurred. Native14/B/A remain intact.
+
+The first Native16 engine probe C subsequently ran with compiled source8f1/
+EXE `A47E4F6464D208D612DE85E40D77E5FD106D3CB092B9029E9C4B83844C6FB7CD`
+and consumer `ccfb2f2a3111cc7c5d4d344fd43fd849afd269a1`. Private loopback
+protocol2/clients0/cp_zmb,32-byte arm and token-bound SAFETY/before traces were
+observed. The raw owner diagnostic matched B's script_model/SDK172/raw172/
+global2080=172/no-change174, contents0x2080 and linked1. A native fatal error
+followed before any successful created/query/destroy or inside/after receipt.
+The absence of those success receipts does not prove that no earlier native
+allocation occurred.
+
+The fresh dump/dialog correlated with the original executable, PID and creation
+identity. Its already-produced JSON recorded C0000005 at0x14057BA84, read
+target0x60. The retained57B9C0 code has `mov rcx,[rsi+0x60]` at that exact site;
+RSI receives the preceding0x140578C00 lookup return. This locates the immediate
+null-base candidate, not a proven argument/asset-registration root cause. The
+parsed JSON exposes a thread count, not registers, and explicitly requires
+matching-symbol unwinding for a real stack. No further opaque dump/PE/PDB/CDB
+analysis follows from this source-only evidence.
+
+Existing correlated-fatal recovery preserved the dump/parser result, checked
+bank backups, and terminated the exact dedicated with3758096385/0xE0000001.
+Strict probe result was false; its surfaced Receive timeout remains distinct
+from the native fatal context. Candidate files/bank restored, Main static audit
+unchanged/bank delta false, then the original NoExit host exited1. Fresh exact
+host/parent/dedicated and test port were absent and registry0. Raw A/B/C,
+original result, fatal recovery and separate closure witness remain intact.
+No functional body/query/sweep/removal, player or owner acceptance is claimed.
+
+Primary source review of the retained431-byte54FBD0 wrapper confirms the15
+argument slots currently declared: first ID, second world, third pointer,
+followed by the preserved stack scalars/origin/quaternion/flags. It does not
+prove that the third pointer is a PhysicsAsset object. The retained596-byte
+retail volume caller at56C650 loads the same141BA4500 slot, calls54EC30 with
+that value, and passes the returned pointer as arg3. The current provider
+instead passes the slot value directly. That is a concrete provenance
+difference; the54EC30 transform's semantics and578C00 lookup implementation
+are not present in the already-extracted JSON. A pointer/type/library fix
+requires that missing qualification, not an invented argument shift or blind
+asset replacement. The owner2080 admission is orthogonal to this failure.
 
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
@@ -254,7 +295,7 @@ hash-bound prepared server-helper package. The route reuses existing resource,
 bank isolation, transaction, original process-handle, UDP, fatal-diagnostic and
 restoration helpers. It adds no scheduler and changes no shared server file.
 
-The next admitted image is the separately compiled Native16 corrected source
+The most recently admitted image is the separately compiled Native16 corrected source
 `8f1ac6d2443feb4432bfc2f9f6915d0ba50ea0c6`, EXE
 `A47E4F6464D208D612DE85E40D77E5FD106D3CB092B9029E9C4B83844C6FB7CD`,
 manifest `7B7B50B703F92E4D1394D6F74836B9A7D0588FCF0B03453C5B8298C6716DFA95`
@@ -263,7 +304,8 @@ It declares `CollisionProvider=true` and 36 sources. There is no
 `CollisionProbeCapability` field. The consumer pins that actual compiled tuple;
 the reviewed Native16 owner-admission correction is present and shared
 lifecycle/transport remain unchanged. No further C++ rebuild is required for
-the next zero-client body/query/removal test. The old
+that attempted zero-client body/query/removal test. Its C failure is preserved
+above; a new test needs the qualified argument-provenance correction. The old
 c32/B78 executables, symbols, failed proposals and receipts remain intact.
 
 The runtime group contains one marked retained dedicated on loopback UDP27116,
