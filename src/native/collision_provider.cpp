@@ -10,6 +10,7 @@
 #include "component/scripting.hpp"
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
+#include <utils/cryptography.hpp>
 #include <atomic>
 #include <charconv>
 #include <cstdlib>
@@ -292,7 +293,13 @@ namespace collision_provider
             check(0x14054E080, {0xe9,0x3b,0x5c,0x02,0x00});
             check(0x14054E750, {0xe9,0x2b,0x80,0x02,0x00});
             check(0x14054EC30, {0xe9,0xdb,0x8d,0x02,0x00});
-            check(0x140577A10, {0x57,0x48,0x83,0xec,0x20,0x48,0x8b,0xf9});
+            // E's PUSH RDI spans two bytes. Bind the exact admitted body hash
+            // instead of guessing its prefix from a mnemonic-only transcript.
+            const auto* name_resolver_body = reinterpret_cast<const std::uint8_t*>(0x140577A10);
+            if (!readable(name_resolver_body, 241) ||
+                _stricmp(utils::cryptography::sha256::compute(name_resolver_body, 241, true).c_str(),
+                    "a61124d54fb0eb5cbd9c2c8e3ace99380ee86ded6f0b809dbdde172ddd207f0b"))
+                throw std::runtime_error("Retained retail name resolver body hash differs; preserve diagnostics");
             check(0x140578C00, {0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x74,0x24,0x18});
             check(0x14055C9E0, {0x4c,0x8b,0xdc,0x48,0x83,0xec,0x78});
             check(0x140550EC0, {0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c});
