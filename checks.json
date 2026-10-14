@@ -6,6 +6,10 @@
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "ops/Test-BO3HUDSource.ps1"]
     },
     {
+      "id": "raygun_weapon_authoring_test",
+      "command": ["python", "-B", "tests/ops/raygun_weapon_authoring_test.py"]
+    },
+    {
       "id": "collision_player_result_test",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_player_result_test.ps1"]
     },
