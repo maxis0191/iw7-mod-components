@@ -32,7 +32,8 @@ class ModelDiagnosticsSourceTests(unittest.TestCase):
         self.assertEqual(sum(s.startswith("[Paris model diagnostic]") for s in STRINGS), 13)
 
     def test_original_gate_and_once_per_connection_precede_observation(self):
-        gate = SOURCE[SOURCE.index("if (game::environment::is_dedi()") : SOURCE.index("        try", SOURCE.index("void observe_client"))]
+        start = SOURCE.index("if (game::environment::is_dedi()", SOURCE.index("void observe_client"))
+        gate = SOURCE[start:SOURCE.index("const auto observation_tid = GetCurrentThreadId()", start)]
         for check in (
             'utils::flags::has_flag("paris-server-client-test")',
             'utils::flags::has_flag("paris-isolated-lab")',
@@ -56,9 +57,10 @@ class ModelDiagnosticsSourceTests(unittest.TestCase):
         self.assertIn('selected ? &context : nullptr', SOURCE)
         self.assertIn('provenance(*context, pointer, &data)', SOURCE)
         self.assertEqual(SOURCE.count("name(mesh.name)"), 1)
-        self.assertEqual(SOURCE.count("snapshot(pointer, data)"), 1)
-        self.assertEqual(SOURCE.count("game::DB_FindXAssetHeader("), 3)
-        self.assertEqual(SOURCE.count("game::DB_IsXAssetDefault("), 3)
+        legacy = SOURCE[SOURCE.index("void surface("):SOURCE.index("void observe_client(")]
+        self.assertEqual(legacy.count("snapshot(pointer, data)"), 1)
+        self.assertEqual(legacy.count("game::DB_FindXAssetHeader("), 3)
+        self.assertEqual(legacy.count("game::DB_IsXAssetDefault("), 3)
         self.assertNotRegex(body, r"\b(?:for|while)\s*\(")
 
     def test_invalid_provenance_is_refused_before_serializing_fields(self):
@@ -154,6 +156,51 @@ class ModelDiagnosticsSourceTests(unittest.TestCase):
         self.assertEqual(result["lines"], 3)
         self.assertEqual(result["events"], [])
         self.assertNotIn("ready", result)
+
+
+class SceneBoundarySourceTests(unittest.TestCase):
+    def test_renderer_cannot_call_main_engine_or_publish(self):
+        body = SOURCE[SOURCE.index("void renderer_scene("):SOURCE.index("void request_scene(")]
+        for forbidden in ("console::", "DB_", "client_protection(", "Dvar_", "Com_", "CL_",
+                          "environment::", "sceneDObj[", "entry.obj->", "GetDesc", "QueryInterface"):
+            self.assertNotIn(forbidden, body)
+        copy = body[body.index("const auto copy ="):body.index("// The scene symbol")]
+        self.assertLess(copy.index("scene_admitted("), copy.index("readable(source"))
+        self.assertLess(copy.index("bytes > budget"), copy.index("copy_leaf("))
+
+    def test_output_preserves_unknowns_and_privacy(self):
+        formats = [s for s in STRINGS if s.startswith("[Paris rig scene snapshot]")]
+        self.assertEqual(len(formats), 5)
+        for fmt in formats:
+            for private in ("pid=", "nonce=", "generation=", "challenge=", "0x", "%p"):
+                self.assertNotIn(private, fmt)
+        header = next(s for s in formats if "count_before=" in s)
+        for unknown in ("atomic_snapshot_verified=0", "entity_replication=unmeasured", "entity_dobj=unmeasured",
+                        "gpu_resource_verified=0", "draw_verified=0", "table=sceneModel"):
+            self.assertIn(unknown, header)
+        self.assertIn('publish ? "SceneModelTableObserved" : "NoSceneObservation"', SOURCE)
+        self.assertIn('publish && stock_enabled ? static_cast<int>(result.matches[2]) : -1', SOURCE)
+        self.assertNotIn('"NoEntity"', SOURCE)
+        self.assertTrue(any("absence_scope=not_observed_in_this_scene_model_table" in s for s in formats))
+
+    def test_stock_lookup_is_closed_and_separate(self):
+        body = SOURCE[SOURCE.index("void request_scene("):SOURCE.index("void surface(")]
+        self.assertIn('has_flag("paris-rig-scene-stock-witness") ? 3 : 2', body)
+        self.assertIn('exact_name(model.name, scene_keys[i]) != 1', body)
+        self.assertIn('!= default_status::nondefault', body)
+        keys = re.search(r'constexpr const char\* scene_keys\[\]\{([^}]+)\}', SOURCE)[1]
+        self.assertEqual(re.findall(r'"([^"]+)"', keys),
+                         ["paris_doom_skin_two_bone_first_a", "paris_doom_skin_two_bone_second_a", "zmb_coin_alien"])
+
+    def test_capture_follows_arm_and_teardown_avoids_engine(self):
+        fixture = (ROOT / "src/native/paris_test_fixture.cpp").read_text(encoding="utf-8")
+        action = fixture[fixture.index('if (action == "capture")'):fixture.index('else if (vote_input)')]
+        self.assertIn("agent_runtime.client->active() && rig_scene_arm", action)
+        self.assertIn("true, rig_scene_arm", action)
+        self.assertIn("rig_scene_arm = request.sequence", fixture)
+        cancellation = SOURCE[SOURCE.index("// Teardown cancellation"):SOURCE.index("try { maintain_scene(")]
+        for forbidden in ("game::", "console::", "client_protection("):
+            self.assertNotIn(forbidden, cancellation)
 
 
 if __name__ == "__main__":

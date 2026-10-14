@@ -1,5 +1,69 @@
 # Agent capabilities and the next engine investigation
 
+## Renderer scene table observer — source candidate, 2026-10-14
+
+`RigSceneProbe=true` adds `-paris-rig-scene-probe` only with the explicit
+OriginalRigConsole/RigAssetsProbe plan. The manifest capability is
+`RigSceneProbeCapability`; a historical missing field means unavailable.
+This candidate has not been compiled or run. The executable described below
+does not contain it. Normal/native source counts remain 34/36.
+
+The original asset observation remains after ARM. The new observer instead uses
+the existing main-thread `capture` action after an accepted active ARM, once per
+that ARM and current nonce/generation/challenge. A neutral capture before ARM
+cannot consume this slot. The consumer must wait for its real server creation
+marker before capture; native code does not prove that marker or a server tick.
+No new command, component, hook or model name argument is introduced.
+
+Main requires the exact rig fs_game, Spaceland and current independent engine
+protection aged at most 250 ms, then resolves the two fixed, exact-name,
+nondefault XModel references. One existing scheduler::renderer callback copies
+the pinned `GfxScene::sceneModel` table: at most 1024 model pointers, 16 KiB
+total reads and eight matching POD records. Every copy checks a mutex-protected
+main permit bound to process, request and ARM, its one-second deadline and the
+cached protection deadline. Renderer calls no DB, dvar, game-mode or protection
+API. VirtualQuery plus leaf SEH only bounds memory access; it does not pin an
+engine allocation. Process-lifetime request storage avoids a freed callback
+target, and teardown cancels without engine access or logging.
+Its atomic shutdown latch also refuses subsequent observer work and every
+renderer copy; the request storage is never deleted while callbacks may exist.
+
+Main refreshes the permit only while the same binding/ARM remains protected,
+then revalidates before publishing. Expiry, cancellation, refused counts,
+reference/read failure and unreadable data produce `NoSceneObservation`.
+Successful data is explicitly `SceneModelTableObserved`: raw entnum12,
+renderFlags14, typed draw-info fields, DObj pointer presence and placement
+quat/origin/scale/radius. Output contains no addresses, process/player identity
+or nonce. Requested/sample-start/sample-end/published local ticks permit later
+sequence checks. Consumers must compare creation against sample start; a later
+sample-end timestamp alone cannot prove every read followed creation.
+
+Zero matches means only `not_observed_in_this_scene_model_table`. The separate
+opaque sceneDObj table is not inspected. Count stability is not an atomic
+snapshot; entnum is not a qualified server entity ID; DObj presence does not
+qualify its models/bones, culling, GPU resources, draw submission or pixels.
+These states remain unmeasured. Root approved the separate explicit
+`RigSceneStockWitness` plan switch, `-paris-rig-scene-stock-witness` flag and
+`RigSceneStockWitnessCapability` boolean. They require the scene profile above
+and add only the exact nondefault `zmb_coin_alien` reference, never an arbitrary
+name. The default filter still contains only the two custom pointers. Witness
+records are labeled separately within the same eight-record/16 KiB bounds.
+An aliased or unqualified reference refuses observation. The witness model is
+not part of any older runtime receipt. This source option does not establish
+same-run server creation, placement or visible pixels; the independent SDK/
+consumer variant supplies those later checks.
+
+The argument-only suite passes 28 absent/false/strict-boolean/dependency checks.
+Twelve source/serialized-log checks pass, including the renderer/main API
+boundary, privacy and truthful unknown states. Two old checks were scoped to
+their original provenance observer after new profiles made their global string
+counts and first-try search stale; the original formats remain covered.
+The existing C++ fixture now prepares stale request/ARM/process/binding,
+cancel/expiry/count/filter cases; it has not been compiled for this candidate.
+Source review and an independently admitted CPP/full build precede any runtime
+qualification. Main27016, immutable native958, the prior compiled4377 image,
+SDK49f/FF and banks remain outside this source-only work.
+
 ## Original rig typed asset snapshot — compiled candidate, 2026-10-14
 
 The existing client observer runs on accepted native agent arm, after the

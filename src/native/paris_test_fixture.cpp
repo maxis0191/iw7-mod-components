@@ -159,6 +159,7 @@ namespace paris_test_fixture
         bool capture_slot_correlated{};
         std::string agent_connection_challenge;
         std::uint64_t agent_last_probe{}, agent_last_ack{};
+        std::uint64_t rig_scene_arm{}; // Accepted ARM identity; no new command or scenario API.
         bool agent_binding_failed{};
         bool agent_read_key(const iw7::agent::key_probe& probe, iw7::agent::movement_key_snapshot& state)
         {
@@ -765,6 +766,9 @@ namespace paris_test_fixture
             if (agent_binding_failed) { agent_runtime.client->stop(agent_binding); agent_safety.protected_now = false; frame_status = "binding_rejected"; }
             agent_flush_dispatch();
             if (frame_status) agent_result(frame_status);
+            paris_model_diagnostics::observe_client(iw7::agent::scenario::safe(agent_safety, GetTickCount64()), agent_safety.received,
+                agent_runtime.client_nonce, agent_generation, agent_connection_challenge, false,
+                agent_runtime.client->active() ? rig_scene_arm : 0);
             static std::uint64_t last_poll{};
             if (now >= last_poll && now - last_poll < 50) return;
             last_poll = now;
@@ -827,6 +831,7 @@ namespace paris_test_fixture
             const auto* status = agent_runtime.client->accept(request, GetTickCount64(), agent_safety, agent_binding);
             if (std::strcmp(status, "armed") == 0)
             {
+                rig_scene_arm = request.sequence;
                 observe_original_sound_on_arm(request);
                 // Model READY and the pre-action frame precede runner arm.
                 // Sample after the scene has been referenced, not on its first
@@ -985,6 +990,10 @@ namespace paris_test_fixture
             }
             if (action == "capture")
             {
+                if (agent_runtime.client && agent_runtime.client->active() && rig_scene_arm &&
+                    utils::flags::has_flag("paris-rig-scene-probe"))
+                    paris_model_diagnostics::observe_client(iw7::agent::scenario::safe(agent_safety, GetTickCount64()), agent_safety.received,
+                        agent_runtime.client_nonce, agent_generation, agent_connection_challenge, true, rig_scene_arm);
                 const auto graphics_value = [](const char* name)
                 {
                     const auto* dvar = game::Dvar_FindVar(name);
@@ -1159,6 +1168,7 @@ namespace paris_test_fixture
         }
         void pre_destroy() override
         {
+            paris_model_diagnostics::observe_client(false, 0, {}, {}, {}, false);
 #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
             std::lock_guard lock(movie_mutex);
             movie_stopping=true;movie.deadline=0;
