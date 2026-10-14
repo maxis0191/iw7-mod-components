@@ -76,6 +76,32 @@ preserving strict test failure. Fresh exact host/parent/dedicated and port
 observations were absent and the registry held0 leases. The raw result, logs
 and separate original-host closure witness remain intact; A was not rewritten.
 
+The next source correction preserves linked bit1 admission and adds only the
+exact observed retail script_model case: linked byte1, contents exactly0x2080,
+producer raw class matching the current nonzero mask0x2080 global, with a
+separate nonzero no-change global. Dedicated/static script_model classification,
+producer signatures/readability, ready world, loopback/password/LAN-only and
+all allocation/teardown checks stay in force. Other even/nonzero/partial masks,
+foreign/no-change class IDs and missing/ambiguous globals are rejected. No
+numeric172/174 VM ID is compiled into the predicate. The owner contents are
+not overwritten. The generated body's existing contents1 and mask1 native
+queries remain separate; admitting an owner does not prove body collision.
+Native regression cases cover that exact B input and refusal boundaries, with
+changed VM IDs and preservation of the old bit1 behavior. These C++ changes
+and tests have not been compiled or run; they require independent review and
+the next coordinated compile/run before any further runtime claim.
+
+Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
+argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
+`fx/update.cpp` supplies its brush mask in that position and provides the larger
+trace scratch buffer. The provider passes1 in that same slot. The retained
+retail solid path forwards the owner's contents to0x140550EC0 for existing
+world0/1 instance IDs, whereas the provider sets1 on its separately created
+original instance. These are distinct owners/instances and uses. This supports
+preserving the new body's1/query1 pair; it does not qualify the complete engine
+filter implementation or the GSC bullettrace default mask. B performed no
+post-allocation query, and those remaining semantics need actual engine evidence.
+
 The full Release build and existing required fixtures passed from sealed clean
 source `02eab0c73d41a842e18caad13e9b6ffe6c480b89` (318 files, 2,992,655 bytes).
 Of its36 native raw sources,35 match the previous B78 build; only the read-only

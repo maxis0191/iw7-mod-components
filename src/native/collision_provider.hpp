@@ -30,6 +30,20 @@ namespace collision_provider
         return dedicated && (world == 0 || world == 1);
     }
 
+    inline bool owner_solid_permitted(std::uint32_t contents, std::uint8_t linked,
+        std::uint32_t producer_class, std::uint32_t mask_2080_class, std::uint32_t no_change_class)
+    {
+        // Caller separately verifies the dedicated static script_model and
+        // retail producer bindings. Preserve the existing bit1 admission.
+        if (!linked) return false;
+        if (contents & 1U) return true;
+        // Probe B observed exactly this linked retail producer case. Other
+        // nonzero masks, class IDs or unqualified runtime globals do not suffice.
+        return linked == 1 && contents == 0x2080U && producer_class != 0 &&
+            producer_class == mask_2080_class && no_change_class != 0 &&
+            mask_2080_class != no_change_class;
+    }
+
     struct box
     {
         point minimum, maximum, origin, half;

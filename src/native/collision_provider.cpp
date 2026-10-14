@@ -129,9 +129,9 @@ namespace collision_provider
                 const auto linked = *(reinterpret_cast<const unsigned char*>(&target) + 0x110);
                 std::uint32_t producer_class_word{};
                 std::memcpy(&producer_class_word, reinterpret_cast<const char*>(&target) + 0x1a8, sizeof(producer_class_word));
-                // A refused first run did not record which part of this guard
-                // failed. Read the exact producer globals, without guessing
-                // their names or passing unknown IDs to SL_ConvertToString.
+                // Probe B qualified the retail script_model mask0x2080 branch.
+                // Read its current producer IDs; observed VM IDs are not constants
+                // and unknown IDs are never passed to SL_ConvertToString.
                 const auto* no_change_class = reinterpret_cast<const game::scr_string_t*>(0x145D5B070);
                 const auto* mask_2080_class = reinterpret_cast<const game::scr_string_t*>(0x145D5B06C);
                 if (!readable(no_change_class, sizeof(*no_change_class)) || !readable(mask_2080_class, sizeof(*mask_2080_class)))
@@ -139,7 +139,8 @@ namespace collision_provider
                 console::info("[Collision provider] solid_admission world=%d entity=%d sdk_classname=%s sdk_classname_id=%u sdk_classname_offset=%zu producer_class_word_1a8=%u contents_word_130=0x%08x linked_byte_110=%u no_change_class_id=%u mask_2080_class_id=%u\n",
                     world, entity, classname, static_cast<unsigned int>(target.classname), offsetof(game::gentity_s, classname), producer_class_word, static_cast<unsigned int>(contents),
                     static_cast<unsigned int>(linked), static_cast<unsigned int>(*no_change_class), static_cast<unsigned int>(*mask_2080_class));
-                if (!(contents & 1) || !linked)
+                if (!owner_solid_permitted(static_cast<std::uint32_t>(contents), linked,
+                    producer_class_word, *mask_2080_class, *no_change_class))
                     throw std::runtime_error("Call the retail solid() method on the script_model before creating its box");
             }
             auto* asset_slot = reinterpret_cast<game::PhysicsAsset**>(0x141BA4500);
