@@ -322,6 +322,14 @@ The earlier missing classification for D/Native23 was a real tracked-tree gate
 failure, corrected by those declarations; it is not covered by the hosted
 pre-run billing exception. Generated historical input packages remain unchanged.
 
+The separately authorized next [protected player-contact source plan](COLLISION-PLAYER-CONTACT.md)
+keeps client creation disabled. Its distinct fixture/operation measures absent
+fall, present landing/standing/ordinary movement, then native removal with owner
+alive and another ordinary fall. It remains source-only: no player engine run,
+prediction/reset/shape/sensor qualification or owner acceptance. The operation
+reuses an already original-owned session and leaves closure/restoration to its
+reviewed caller; it grants no game or compiler reservation.
+
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
 `fx/update.cpp` supplies its brush mask in that position and provides the larger

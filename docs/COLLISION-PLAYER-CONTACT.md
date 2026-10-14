@@ -1,0 +1,81 @@
+# Protected authoritative player contact
+
+2026-10-14: **source-only, not run**. E already measured server point/actor
+queries and usage restoration; it did not measure a real player's movement.
+This separate fixture/operation prepares that next control without enabling
+client collider creation. Client prediction, exact actor shape/margin, sensor
+behavior, physical-world reset and owner acceptance remain unqualified.
+
+`Invoke-CollisionPlayerContact.ps1` defaults to pure Plan. It takes a finite
+explicit ground anchor and unique token, derives a 256 by 256 by 16 floor at
+anchor Z+96..112, and initial placement at Z+208. Plan reads only its GSC source;
+it creates no output, lease, process or staged game file. Coordinates are
+examples only until a reviewed capsule selects an auditable area. The fixture
+must freshly verify five lower ground points and five clear vertical segments
+before placement. Native actor-baseline admission adds its own existing query
+guard; these controls do not prove an exact player shape or full terrain safety.
+
+The three measured phases are separate from the two journaled initial placements:
+
+- F0 has no body: ordinary gravity must carry the protected player through the
+  future top to a stable audited lower landing.
+- F1 inserts one observed native body: ordinary fall must land and stand on its
+  top for 600 ms. A normal 300 ms forward input must produce 4..64 units of actual
+  movement while maintaining top contact. A later normal Use press requests
+  removal; release and 250 ms of observed velocity stability precede clearing.
+- F2 clears the native body with `collision_clearboxprobe`, keeps the script
+  owner alive for native post-removal queries and the ordinary fall through the
+  former top, then deletes that owner after stable lower landing.
+
+The pure reader requires launch-bound nonce/generation/server identity, current
+native protection stamps, contiguous ordered finite movement samples, bounded
+observation gaps and velocity-consistent position changes. It checks actual
+falls, stable landing/contact and movement; a dispatch acknowledgement or GSC
+PASS string cannot substitute. It also requires the six ordered shared usage
+snapshots, native before/inside/removed point and actor controls, original body
+allocation/destruction and owner-alive ordering. Shared counts are observations,
+never a baseline assignment. The generation stamp binds the logical session;
+it does not qualify physical-world generation.
+
+The operation runs **inside an existing original owned session**. It creates no
+process controller and never acquires/releases a lease, stages an executable or
+restores game files. The separately reviewed original caller must prepare/start
+one complete private dedicated/base-client group using existing helpers, then
+call the operation inside its guarded try/finally. Run refuses without retained
+objects, both pinned prepared source receipts, exact Native23 server identity,
+original reservation host ownership and fresh protected playable client. It
+verifies source files before importing those helpers. It uses existing typed
+collision stdin only for the one arm command; normal movement/Use/capture use
+the existing bounded scenario transport. A passive warmup binds that handshake
+before measurements; the real case fits the source 25-second/30-second budgets.
+A phase timing failure remains a failure, not a reason to force a PASS.
+
+Before a run, review the entire capsule: exact final source and compiled tuple,
+fixture/config/anchor, source receipt hashes, original-host entry, complete group
+reservation and actual machine telemetry. Native23 is a candidate, not a promise
+that this new fixture compiles/runs. New native requirements must be coordinated
+with the native source owner and separately reviewed/compiled. No heavy slot is
+granted by this document or the source merge. Preserve an occupied owner client,
+reuse retained dedicated stock and the base client, maintain cheats=0 plus fresh
+engine godmode and engine/GSC inactivity protection. The fixture uses reviewed
+noncombat drain ordering and requires zero alive/pending/reserved enemies.
+
+The operation returns **measurement only** with `LifecycleClosed=false`,
+`LeaseReleased=false` and `OriginalHostExitObserved=false`. The caller must close
+the exact client, verify valid empty UDP for 30 seconds, stop the original
+dedicated, restore candidate/base-client/Main bank isolation, release only after
+verified restoration, and observe the true original host exit separately. On
+failure keep diagnostics, original handles and uncertain reservation; missing
+UDP alone is not a crash. Only those later witnesses can qualify closure.
+
+Optional standing capture needs visual inspection; it cannot prove prediction.
+No Main promotion, accepted tag or owner acceptance follows from source tests.
+Issue 8 remains open. Next action: independent exact-head source review and
+source package/capsule preparation, then distinct Root game arbitration.
+
+Local source validation passed: one valid narrow transcript plus 22 causal
+refusals; pure Plan/missing-context refusal and six original identity refusals;
+PowerShell grammar and official pinned GSC-tool 1.5.1.359 parsing; existing D/E
+transcript regression; product boundary (292 tracked, 275 exports, 3 dependencies)
+and whitespace. These are source checks, not Aurora runtime compilation, native
+build, player gameplay or closure evidence.
