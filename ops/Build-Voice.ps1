@@ -533,6 +533,8 @@ $manifest.CapacityWatchBuildHelperSHA256 = (Get-FileHash -LiteralPath "$PSScript
 if ((Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')).Hash -ne $manifest.SHA256) { throw 'Archived diagnostic executable mismatch.' }
 $manifest.ServerModules = [bool]$ServerModules
 $manifest.RigAssetsProbeCapability = [bool]($ServerModules -and $IsolatedLab)
+$manifest.RigSceneProbeCapability = [bool]($ServerModules -and $IsolatedLab)
+$manifest.RigSceneStockWitnessCapability = [bool]($ServerModules -and $IsolatedLab)
 $manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
 $manifest.VoiceTrace = [bool]$VoiceTrace
 $manifest.TestKickHookSHA256 = (Get-FileHash -LiteralPath $botsPath).Hash

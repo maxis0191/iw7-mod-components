@@ -1,5 +1,114 @@
 # Agent capabilities and the next engine investigation
 
+## Renderer scene table observer — compiled candidate, 2026-10-14
+
+`RigSceneProbe=true` adds `-paris-rig-scene-probe` only with the explicit
+OriginalRigConsole/RigAssetsProbe plan. The manifest capability is
+`RigSceneProbeCapability`; a historical missing field means unavailable.
+The full Release candidate compiles and links; it has not run in the game.
+The earlier asset-only executable described below does not contain it.
+Normal/native source counts remain 34/36.
+
+The original asset observation remains after ARM. The new observer instead uses
+the existing main-thread `capture` action after an accepted active ARM, once per
+that ARM and current nonce/generation/challenge. A neutral capture before ARM
+cannot consume this slot. The consumer must wait for its real server creation
+marker before capture; native code does not prove that marker or a server tick.
+No new command, component, hook or model name argument is introduced.
+
+Main requires the exact rig fs_game, Spaceland and current independent engine
+protection aged at most 250 ms, then resolves the two fixed, exact-name,
+nondefault XModel references. One existing scheduler::renderer callback copies
+the pinned `GfxScene::sceneModel` table: at most 1024 model pointers, 16 KiB
+total reads and eight matching POD records. Every copy checks a mutex-protected
+main permit bound to process, request and ARM, its one-second deadline and the
+cached protection deadline. Renderer calls no DB, dvar, game-mode or protection
+API. VirtualQuery plus leaf SEH only bounds memory access; it does not pin an
+engine allocation. Process-lifetime request storage avoids a freed callback
+target, and teardown cancels without engine access or logging.
+Its atomic shutdown latch also refuses subsequent observer work and every
+renderer copy; the request storage is never deleted while callbacks may exist.
+
+Main refreshes the permit only while the same binding/ARM remains protected,
+then revalidates before publishing. Expiry, cancellation, refused counts,
+reference/read failure and unreadable data produce `NoSceneObservation`.
+Successful data is explicitly `SceneModelTableObserved`: raw entnum12,
+renderFlags14, typed draw-info fields, DObj pointer presence and placement
+quat/origin/scale/radius. Output contains no addresses, process/player identity
+or nonce. Requested/sample-start/sample-end/published ticks all come from the
+client process's Windows `GetTickCount64` uptime clock. GSC `gettime`/level-time
+and the server witness's `time_ms` have an unqualified clock domain; no numeric
+comparison with client uptime is allowed without independent clock proof.
+
+The consumer must first read the fresh `WITNESS_CREATED` marker bound to the
+same server/run, then send the new ARM/CAPTURE requests. That controller order
+establishes the temporal prerequisite. Within the single native uptime domain,
+require sample start at or after request, before the one-second request expiry,
+and valid publication; reject backwards/wrapped or expired intervals rather
+than extending freshness. A later sample-end/publication time cannot replace
+sample start. This observer performs no cross-clock comparison and does not
+by itself prove freshness or provenance of the server marker.
+
+Zero matches means only `not_observed_in_this_scene_model_table`. The separate
+opaque sceneDObj table is not inspected. Count stability is not an atomic
+snapshot; entnum is not a qualified server entity ID; DObj presence does not
+qualify its models/bones, culling, GPU resources, draw submission or pixels.
+These states remain unmeasured. Root approved the separate explicit
+`RigSceneStockWitness` plan switch, `-paris-rig-scene-stock-witness` flag and
+`RigSceneStockWitnessCapability` boolean. They require the scene profile above
+and add only the exact nondefault `zmb_coin_alien` reference, never an arbitrary
+name. The default filter still contains only the two custom pointers. Witness
+records are labeled separately within the same eight-record/16 KiB bounds.
+An aliased or unqualified reference refuses observation. The witness model is
+not part of any older runtime receipt. This source option does not establish
+same-run server creation, placement or visible pixels; the independent SDK/
+consumer variant supplies those later checks.
+
+The argument-only suite passes 28 absent/false/strict-boolean/dependency checks.
+Twelve source/serialized-log checks pass, including the renderer/main API
+boundary, privacy and truthful unknown states. Two old checks were scoped to
+their original provenance observer after new profiles made their global string
+counts and first-try search stale; the original formats remain covered.
+The existing C++ fixture passes 27 new stale request/ARM/process/binding,
+cancel/expiry/count/filter assertions alongside its existing 200,000 seeded
+protocol mutations (29 canonical) and the other required fixtures. The real
+typed observer and client adapter compile and link in the full Release build.
+Main27016, immutable native958, the prior compiled4377 image, SDK49f/FF and
+banks remain outside this build-only work. No game, renderer observation,
+entity/DObj visibility, stock witness or owner acceptance is qualified.
+
+Independent Architecture source review approved exact C++ candidate
+`8a5da90bacbc11fd72c99ae4f7dde1baaa1fe26a`. The clock-domain clarification above
+is documentation only. The separately admitted full build uses clean source
+`56a2ef7cab451830cc506449291e748d5f9ff7b1`, whose C++ is unchanged from the
+reviewed candidate. Its 313-file, 2,937,360-byte package still verifies after
+the build. Pinned upstream remains `77e6d4d`; CollisionProvider is explicit,
+with all 36 raw source hashes verified. The manifest separately declares
+RigAssetsProbeCapability, RigSceneProbeCapability and
+RigSceneStockWitnessCapability true, ServerModules/IsolatedLab true and
+Debugger/VoiceTrace false. Legacy `Protocol=1` is unchanged and does not prove
+a runtime engine-protocol observation.
+
+The 6,137,344-byte executable SHA-256 is
+`B78B6020C1E0AFDD9E548B81FC3910C68477C253ABFB43EDE159AED36D9752CE`;
+matching 55,291,904-byte PDB SHA-256 is
+`6961C40B11196ED20F48A5A4F331CB6A526E7CE2B4D4D81A2AC019E51BB48A61`.
+The 16,536-byte manifest SHA-256 is
+`CA4249B2FCF4EB4C6BD11F0A6434C34B0FE1A10656039A444101115A3CE97526`.
+All three hashes were read at 02:50:46 UTC inside the original build body's
+reservation, with the same owner/token confirmed before and after reading.
+A read-only PowerShell observation at the existing final output line supplied
+that receipt without editing committed/generated build sources or engine code.
+The older runtime wrappers are retained; the new wrapper also preserves tracked
+native patches and needed ignored overlays/binary/symbols before replacement.
+
+The original build host and original PTY exit zero. Its owned job closes every
+descendant, including the compiler service, and records zero active processes
+before disposal. Its reservation is absent; the independent 02:52:31 UTC
+postflight finds zero leases and compilers. The previous 4377 executable/PDB/
+manifest hashes remain exact. Next: a separately authorized consumer admission
+and protected same-run scene observation, with the ordinal clock contract above.
+
 ## Original rig typed asset snapshot — compiled candidate, 2026-10-14
 
 The existing client observer runs on accepted native agent arm, after the
