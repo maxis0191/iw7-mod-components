@@ -126,6 +126,60 @@ and margin must be identified before comparing it to World's AABB oracle.
 
 ## Next decisive test
 
+The 2026-10-14 server-only route is `ops/Run-CollisionProbe.ps1`. Its default
+Plan mode reads bounded manifest/source metadata and the original GSC fixture;
+it does not reserve, open an EXE/PDB, enumerate processes, stage or launch.
+Run requires a freshly composed native operation package plus an explicit
+hash-bound prepared server-helper package. The route reuses existing resource,
+bank isolation, transaction, original process-handle, UDP, fatal-diagnostic and
+restoration helpers. It adds no scheduler and changes no shared server file.
+
+The admitted image is the separately compiled NativeScene source
+`56a2ef7cab451830cc506449291e748d5f9ff7b1`, EXE
+`B78B6020C1E0AFDD9E548B81FC3910C68477C253ABFB43EDE159AED36D9752CE`,
+manifest `CA4249B2FCF4EB4C6BD11F0A6434C34B0FE1A10656039A444101115A3CE97526`
+and PDB `6961C40B11196ED20F48A5A4F331CB6A526E7CE2B4D4D81A2AC019E51BB48A61`.
+It declares `CollisionProvider=true` and 36 sources. There is no
+`CollisionProbeCapability` field. Both provider source hashes are byte-identical
+to the reviewed c32 candidate; no C++ rebuild is needed for this route. The old
+c32 executable, symbols, failed proposals and receipts remain intact.
+
+The runtime group contains one marked retained dedicated on loopback UDP27116,
+zero clients and no FF/asset build or debugger. Its generated config uses a
+fresh password, LAN-only startup, empty fs_game, inactivity0 and cheats0. The
+controller first binds real UDP protocol2, private/empty cp_zmb, native privacy
+telemetry and the fresh fixture token to the original process. Only then does
+it arm the GSC thread. The ordinary manifest Protocol1 is never used as game
+protocol evidence.
+
+The fixture measures the same retail point trace at center and near an edge,
+before creation, during the original box and after explicit clear/delete. It
+also requests the provider's actual native point and actor queries. Acceptance
+requires a clear baseline, the original top plane at both points, observed
+native allocation/queries/destruction and clear post-removal point queries.
+The actor's exact shape/margin, post-removal actor query, static/sensor flags,
+template usage-counter restitution, reset lifetime and player movement remain
+unqualified. Point0.5 and actor44/60 are expectations, not measured results.
+
+Before staging, Run acquires the shared lease, verifies prepared sources and
+36 raw source hashes, hashes EXE/PDB under that lease and snapshots candidate
+files/profile/bank with a separate read-only Main audit. The staged image is
+held open against replacement. Normal stop requires30 seconds of valid empty
+UDP bound to the exact original handle/creation/image and a guarded quit.
+Correlated fatal recovery preserves diagnostics and validates bank backups;
+missing UDP alone never authorizes termination. Closure, vacancy and bank
+file-identity isolation precede any restoration. An uncertain cleanup keeps
+the original host, handle, backups and lease alive. The caller must separately
+observe the original host's exit after the result returns.
+
+Primary call evidence is the pinned upstream77e6d4d `script_extension.cpp`
+implementation of `executecommand` and the IW7 builtin map's `bullettrace`
+entry at0x140B4A000. Retained retail `scripts/mp/utility.gsc::getplant` uses
+`bullettrace(start,end,0,undefined)` and its fraction/position/normal fields.
+No retail script bytes are copied into this product. Pure transcript tests
+pass, including numeric, identity, order, allocation/removal, partial-line and
+terminal TAB/CRLF refusals. The fixture and runner have not run in a game.
+
 Use the separately identified compiled candidate under the next coordinated
 heavy workload slot. Do not reuse native958's executable or runtime evidence.
 First create one elevated box in a zero-client private dedicated and inspect
