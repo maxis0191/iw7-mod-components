@@ -65,6 +65,12 @@ foreach($change in @('expired','generation','pose')){
 foreach($badLast in @($wire.Replace('anchor_x=10','anchor_x=NaN'),$wire.Replace('client_nonce='+$nonce,'client_nonce=cccccccccccccccccccccccccccccccc'))){
     try{$null=Read-IW7CollisionPlayerReady ($wire+$badLast) $token 42 $nonce 1100 1500}catch{$poseRefusals++;continue};throw 'Earlier good publication hid a malformed/foreign later pose.'
 }
+foreach($partialLast in @($wire.Replace('anchor_x=10','anchor_x=NaN').TrimEnd("`n"),$wire.Replace('slot=0','slot=1').TrimEnd("`n"))){
+    if((Read-IW7CollisionPlayerReady ($wire+$partialLast) $token 42 $nonce 1100 1500).Ready){throw 'Valid predecessor hid a partial malformed/foreign latest own pose.'};$poseRefusals++
+}
+foreach($noise in @('[unrelated] partial diagnostic',$wire.Replace('token='+$token,'token=cccccccccccccccccccccccccccccccc').TrimEnd("`n"))){
+    if(!(Read-IW7CollisionPlayerReady ($wire+$noise) $token 42 $nonce 1100 1500).Ready){throw 'Unrelated partial noise blocked the fresh owned pose.'}
+}
 # Only the real GSC fixture reads retail intro/control state. These fixtures
 # verify the publication transport/freshness; they never fabricate that state.
 $created=[datetime]::Parse('2026-10-14T13:00:00Z').ToUniversalTime();$filetime=$created.ToFileTimeUtc()

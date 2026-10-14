@@ -40,6 +40,11 @@ function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerI
     if($last -ge 0){
         $complete=$Text.Substring(0,$last+1)
         if($complete -match ('(?m)^\[Collision player\] FAIL token='+$Token+' ')){throw 'Fixture refused readiness/anchor; do not arm.'}
+        $tail=$Text.Substring($last+1)
+        $ownPrefix='[Collision player] PLAYER_READY token='+$Token
+        if($tail.StartsWith($ownPrefix,[StringComparison]::Ordinal)){
+            return [pscustomobject]@{Ready=$false;Pending='Latest own pose publication is not terminated; no predecessor fallback.'}
+        }
         $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)'
         $rows=[regex]::Matches($complete,'(?m)^\[Collision player\] PLAYER_READY token='+$Token+'; server_pid='+$ServerId+'; client_nonce='+$ClientNonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1; anchor_x='+$n+'; anchor_y='+$n+'; anchor_z='+$n+'[\t ]*\r?$')
         $ownRows=[regex]::Matches($complete,'(?m)^\[Collision player\] PLAYER_READY token='+$Token+';[^\r\n]*\r?$')
