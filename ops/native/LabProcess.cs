@@ -54,13 +54,16 @@ public static class IW7LabProcess
         IntPtr handle;
         SafeFileHandle consoleInput;
         readonly bool consoleDedicated;
+        readonly bool collisionProbeConsole;
+        readonly System.Collections.Generic.HashSet<string> collisionSent = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
         string consoleNonce;
         readonly object consoleLock = new object();
         readonly System.Collections.Generic.HashSet<string> consoleSent = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
         public int Id { get; private set; }
         internal OwnedProcess(IntPtr value, int id) { handle=value; Id=id; }
-        internal OwnedProcess(IntPtr value, int id, SafeFileHandle input, bool dedicated) : this(value,id) { consoleInput=input; consoleDedicated=dedicated; }
-        public bool OriginalRigConsoleEnabled { get { CheckOpen(); return consoleInput!=null && !consoleInput.IsClosed; } }
+        internal OwnedProcess(IntPtr value, int id, SafeFileHandle input, bool dedicated, bool collision=false) : this(value,id) { consoleInput=input; consoleDedicated=dedicated; collisionProbeConsole=collision; }
+        public bool OriginalRigConsoleEnabled { get { CheckOpen(); return !collisionProbeConsole && consoleInput!=null && !consoleInput.IsClosed; } }
+        public bool CollisionProbeConsoleEnabled { get { CheckOpen(); return collisionProbeConsole && consoleDedicated && consoleInput!=null && !consoleInput.IsClosed; } }
         void CheckOpen() { if (handle==IntPtr.Zero) throw new ObjectDisposedException("OwnedProcess"); }
         public bool WaitForExit(int milliseconds) {
             CheckOpen();
@@ -124,6 +127,26 @@ public static class IW7LabProcess
             consoleNonce=nonce; consoleSent.Add(command);
             if (!WriteFile(consoleInput,bytes,(uint)bytes.Length,out written,IntPtr.Zero) || written!=bytes.Length)
                 throw new Win32Exception(Marshal.GetLastWin32Error(),"Owned rig stdin write failed or was incomplete.");
+            return (int)written;
+            }
+        }
+        // A separate dedicated-only role. Never accepts a caller PID, a rig
+        // command, arbitrary console text or a fabricated client safety wire.
+        public int WriteCollisionProbeCommand(string command, string expectedImage, long expectedCreation)
+        {
+            lock(consoleLock) {
+            CheckOpen();
+            if (!IsCollisionProbeCommand(command) || !CollisionProbeConsoleEnabled)
+                throw new ArgumentException("Exact owned dedicated collision console required.");
+            var identity=ReadIdentity();
+            if (identity.CreationFileTime!=expectedCreation || !String.Equals(identity.Image,expectedImage,StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Original collision process identity differs.");
+            if (collisionSent.Contains(command)) throw new InvalidOperationException("Each collision command may be written once.");
+            byte[] bytes=Encoding.ASCII.GetBytes(command+"\n");
+            uint written;
+            collisionSent.Add(command);
+            if (!WriteFile(consoleInput,bytes,(uint)bytes.Length,out written,IntPtr.Zero) || written!=bytes.Length)
+                throw new Win32Exception(Marshal.GetLastWin32Error(),"Owned collision stdin write failed or incomplete.");
             return (int)written;
             }
         }
@@ -205,9 +228,28 @@ public static class IW7LabProcess
     }
     public static OwnedProcess StartOwned(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName, bool waitForInputIdle, bool originalRigConsole)
     {
+        return StartOwned(exe,arguments,cwd,stdout,stderr,desktopName,waitForInputIdle,originalRigConsole,false);
+    }
+    public static bool IsCollisionProbeCommand(string command)
+    {
+        return command=="set paris_collision_probe_arm 1" || command=="quit";
+    }
+    public static bool IsCollisionProbeLaunch(string arguments)
+    {
+        var flags=new System.Collections.Generic.HashSet<string>(arguments.Split(new [] {' ','\t','\r','\n'},StringSplitOptions.RemoveEmptyEntries),StringComparer.Ordinal);
+        return flags.Contains("-dedicated") && flags.Contains("-wincon") && flags.Contains("-paris-isolated-lab") &&
+            flags.Contains("-paris-server-test") && flags.Contains("-paris-collision-provider") &&
+            !flags.Contains("-paris-server-client-test") && !flags.Contains("-noconsole") && !flags.Contains("-syscon") && !flags.Contains("-terminal");
+    }
+    public static OwnedProcess StartOwned(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName, bool waitForInputIdle, bool originalRigConsole, bool collisionProbeConsole)
+    {
         if (exe.Contains("\"") || !System.Text.RegularExpressions.Regex.IsMatch(desktopName, "^IW7ParisLab_[a-f0-9]{32}$"))
             throw new ArgumentException("Invalid executable/desktop name.");
         bool consoleDedicated=false;
+        if (collisionProbeConsole) {
+            if (originalRigConsole || !IsCollisionProbeLaunch(arguments)) throw new ArgumentException("Collision stdin requires its exclusive private dedicated wincon profile.");
+            consoleDedicated=true;
+        }
         if (originalRigConsole) {
             var tokens=arguments.Split(new [] {' ','\t','\r','\n'},StringSplitOptions.RemoveEmptyEntries);
             var flags=new System.Collections.Generic.HashSet<string>(tokens,StringComparer.Ordinal);
@@ -228,7 +270,7 @@ public static class IW7LabProcess
             {
                 SafeFileHandle input=null,writer=null;
                 try {
-                if (originalRigConsole) {
+                if (originalRigConsole || collisionProbeConsole) {
                     if (!CreatePipe(out input,out writer,ref security,4096)) throw new Win32Exception(Marshal.GetLastWin32Error(),"Rig stdin pipe creation failed.");
                     if (!SetHandleInformation(writer.DangerousGetHandle(),1,0)) throw new Win32Exception(Marshal.GetLastWin32Error(),"Rig stdin writer inheritance refusal failed.");
                 } else input=CreateFileW("NUL",0x80000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
@@ -249,7 +291,7 @@ public static class IW7LabProcess
                         if (WaitForSingleObject(process.process, 0) == 0 && GetExitCodeProcess(process.process, out code))
                             throw new InvalidOperationException("Child exited with code 0x" + code.ToString("X8"));
                     }
-                    var owned=new OwnedProcess(process.process,(int)process.pid,writer,consoleDedicated);
+                    var owned=new OwnedProcess(process.process,(int)process.pid,writer,consoleDedicated,collisionProbeConsole);
                     writer=null;
                     process.process=IntPtr.Zero;
                     return owned;
