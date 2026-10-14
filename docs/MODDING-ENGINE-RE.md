@@ -1,6 +1,6 @@
 # Agent capabilities and the next engine investigation
 
-## Original rig typed asset snapshot — source candidate, 2026-10-14
+## Original rig typed asset snapshot — compiled candidate, 2026-10-14
 
 The existing client observer runs on accepted native agent arm, after the
 consumer's scene-ready check and neutral capture. Its second closed profile
@@ -32,10 +32,29 @@ complete actual manifest, source revision and image rather than force a count.
 The frozen native958 source/manifest, FF and SDK are unchanged.
 
 Nine actual PowerShell argument checks pass without any process or compiler.
-Nineteen new pure C++ profile/default-result/LOD-span/copy-bound checks are
-prepared in the existing required fixture. Their compilation/execution and
-the complete native adapter build remain pending the orchestrator's heavy
-slot; no native runtime or ribbon rendering is qualified by these source checks.
+Nineteen new pure C++ profile/default-result/LOD-span/copy-bound checks compile
+and run in the existing required fixture, alongside the existing 200,000-packet
+seeded protocol checks. The full Release image also compiles the actual typed
+observer and links successfully. Source head
+`4377a5b7831520478d7a2a3af819feaaf87dac89` is clean; its unchanged 313-file,
+2,901,583-byte input package verifies after building against `77e6d4d`.
+
+The 6,125,056-byte executable SHA-256 is
+`1B15AE7EB96DAF6FA494B80E5E0E2C08551E80D131757DEB11F674C781BE6A6D`;
+matching PDB SHA-256 is
+`F66DC4DAFA85E356DD89E35DDA585B019DD8E65BF00FA31C8051542D4B54D84B`.
+The unchanged 16,457-byte manifest SHA-256, read after closure, is
+`F6AC4BBDF3961F60E8F42899C7FF32F37051CE4A3909FB13D38369396671D5C3`.
+The builder recorded executable/PDB hashes during its build lease. The manifest
+declares `CollisionProvider=true`, 36 exact native source entries and
+`RigAssetsProbeCapability=true`. Its legacy `Protocol=1` field remains unchanged;
+the pinned source still defines engine protocol 2, without a new runtime claim.
+
+The original build host exits zero. Its owned job closes every descendant,
+including the observed compiler service, before disposal; the reservation is
+released and postflight finds no remaining leases. Previous tracked native
+overlays were preserved before the reviewed builder reapplied its pin. No game,
+stock read, runtime probe, ribbon rendering or owner acceptance is qualified.
 
 ## Original rig console transport — 2026-10-14
 
