@@ -1,6 +1,6 @@
 # Agent capabilities and the next engine investigation
 
-## Scene capture admission diagnostics — source candidate, 2026-10-14
+## Scene capture admission diagnostics — compiled candidate, 2026-10-14
 
 The closed RigidControl B run loaded both exact nondefault one-root models and
 saved two native frames, but its entire client log contains no scene snapshot.
@@ -27,11 +27,45 @@ cancelled or expired. A native frame alone remains a different witness.
 No delay, automatic retry, protection threshold, renderer read budget, model
 filter, known engine binding or screenshot behavior is changed. The capture
 bridge and optional protection refusal reason use the existing MAIN path and
-the same protection checks. Source/serialized-log tests pass; new causal C++
-fixtures cover the 250/500 ms boundary and client/server clock distinction but
-are not compiled yet. No new executable or game result exists. Required next
-steps are independent source review, a separately admitted build, and one
-explicitly authorized capture witness before any correction or animation work.
+the same protection checks. Source/serialized-log tests pass. Independent source
+review approved `ff4df369329c9b2859a88116297bff9d12ccd4ea`; the additive merge
+`785ddd43d18c4eebd599bab10880e83d73a950e9` keeps all seven reviewed feature files
+unchanged and includes the collision owner's export correction.
+
+The separately authorized full Release build and all required fixtures passed
+for exact source `785ddd43d18c4eebd599bab10880e83d73a950e9`, including the new
+compiled/executed causal C++ checks for the 250/500 ms boundary and client/server
+clock distinction. The source-only packet contains 321 files / 3,071,369 bytes;
+its receipt SHA-256 is
+`CE89219B32E77D3AB2D02571A7A8364B4F53839348A58E88094911608CD926FB`.
+All 36 raw native source hashes match the build manifest; 32 equal Native23 and
+only the four observer/capture-bridge files change. Collision source remains
+byte-identical to Native23.
+
+| Actual output | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Executable | 6,153,728 | `012E6CDDCD6A91ADC2F041035C86417064998127044A11341895C55F8BD4FC53` |
+| PDB | 55,373,824 | `1B98B4BAA777936FDF8B8FD6B0B9F6696BB5D5F57D0C48D673EE8668014219A4` |
+| Build manifest | 16,536 | `63E6270EF92E7C473CFADDCF0386FF161C3BC16E0170B03757DED8E45F7B3460` |
+
+The original reservation preserved 37 existing files before compilation and
+captured these output sizes/hashes before lease release, at
+14:02:51.6817418–14:02:51.7481267 UTC. The original owned job exited 0 with no
+active members before disposal. Its actual caller PTY then exited 0. A fresh
+14:05:24.3234476 UTC check found the original caller, parent, build job and all
+71 observed tree identities absent, with zero registry reservations. The closed
+36-source tuple SHA-256 is
+`FDBEBB51A035A205EC0F7B631EC0D420012F99F91CF8DC21C9FB788A7C37A0B2`;
+no executable/PDB rehash occurred after release.
+
+`checked_tick_ms` is the final check tick after enqueue, while the renderer's
+`requested_tick_ms` is set before enqueue. The final reported age may exceed
+250 ms even though the earlier admission gate passed. Consumers must preserve
+these actual timings and distinguish queue admission from terminal publication.
+No game run, consumer pin update, GPU/draw/pixel verification or owner acceptance
+is claimed. Required next step is one explicitly authorized capture witness
+before any correction or animation work. Hosted CI has no successful runner
+execution and is not reported as passed.
 
 ## Renderer scene table observer — compiled candidate, 2026-10-14
 
