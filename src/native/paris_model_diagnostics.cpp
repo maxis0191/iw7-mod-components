@@ -185,8 +185,8 @@ namespace paris_model_diagnostics
             game::XModel data{};
             const bool copied = lookup_returned && snapshot(header.model, data);
             const int identity = copied ? exact_name(data.name, key) : -1;
-            console::info("[Paris rig asset snapshot] model=%s lookup_returned=%u lookup_present=%u default_status=%d readable=%u name_match=%d\n",
-                key, static_cast<unsigned>(lookup_returned), static_cast<unsigned>(lookup_returned && header.model != nullptr),
+            console::info("[Paris rig asset snapshot] model=%s lookup_returned=%u lookup_present=%d default_status=%d readable=%u name_match=%d\n",
+                key, static_cast<unsigned>(lookup_returned), lookup_returned ? static_cast<int>(header.model != nullptr) : -1,
                 static_cast<int>(is_default), static_cast<unsigned>(copied), identity);
             // Never follow a fallback or mismatched asset into foreign resources.
             if (!copied || identity != 1 || is_default == default_status::default_asset) return;
@@ -206,10 +206,10 @@ namespace paris_model_diagnostics
             game::XModelSurfs mesh{};
             const bool mesh_copied = snapshot(lod.modelSurfs, mesh);
             const int mesh_identity = mesh_copied ? exact_name(mesh.name, mesh_key) : -1;
-            console::info("[Paris rig asset snapshot] model=%s mesh_readable=%u mesh_name_match=%d mesh_surfaces=%u resolved_surface_present=%u mesh_surface_present=%u same_surface0=%u\n",
-                key, static_cast<unsigned>(mesh_copied), mesh_identity, mesh_copied ? static_cast<unsigned>(mesh.numsurfs) : 0,
-                static_cast<unsigned>(lod.surfs != nullptr), static_cast<unsigned>(mesh_copied && mesh.surfs != nullptr),
-                static_cast<unsigned>(mesh_copied && lod.surfs && lod.surfs == mesh.surfs));
+            console::info("[Paris rig asset snapshot] model=%s mesh_readable=%u mesh_name_match=%d mesh_surfaces=%d resolved_surface_present=%u mesh_surface_present=%d same_nonnull_surface0=%d\n",
+                key, static_cast<unsigned>(mesh_copied), mesh_identity, mesh_copied ? static_cast<int>(mesh.numsurfs) : -1,
+                static_cast<unsigned>(lod.surfs != nullptr), mesh_copied ? static_cast<int>(mesh.surfs != nullptr) : -1,
+                mesh_copied ? static_cast<int>(lod.surfs && lod.surfs == mesh.surfs) : -1);
             rig_surface(key, "resolved_lod0", lod.surfs);
             if (mesh_copied && mesh_identity == 1 && mesh.numsurfs > 0 && mesh.numsurfs <= 256)
                 rig_surface(key, "mesh_surface0", mesh.surfs);
@@ -217,10 +217,10 @@ namespace paris_model_diagnostics
             game::Material value{};
             const bool handle_copied = snapshot(data.materialHandles, material);
             const bool material_copied = handle_copied && snapshot(material, value);
-            console::info("[Paris rig asset snapshot] model=%s material0_handle_readable=%u material0_present=%u material0_readable=%u material0_name_match=%d material0_equals_named_lookup=%d technique_set_present=%u textures=%u\n",
-                key, static_cast<unsigned>(handle_copied), static_cast<unsigned>(handle_copied && material != nullptr), static_cast<unsigned>(material_copied),
+            console::info("[Paris rig asset snapshot] model=%s material0_handle_readable=%u material0_present=%d material0_readable=%u material0_name_match=%d material0_equals_named_lookup=%d technique_set_present=%d textures=%d\n",
+                key, static_cast<unsigned>(handle_copied), handle_copied ? static_cast<int>(material != nullptr) : -1, static_cast<unsigned>(material_copied),
                 material_copied ? exact_name(value.name, material_key) : -1, !named_material || !handle_copied ? -1 : static_cast<int>(material == named_material),
-                static_cast<unsigned>(material_copied && value.techniqueSet != nullptr), material_copied ? static_cast<unsigned>(value.textureCount) : 0);
+                material_copied ? static_cast<int>(value.techniqueSet != nullptr) : -1, material_copied ? static_cast<int>(value.textureCount) : -1);
         }
         void rig_assets(std::uint64_t observation_id)
         {
@@ -233,9 +233,9 @@ namespace paris_model_diagnostics
             const int identity = copied ? exact_name(value.name, key) : -1;
             console::info("[Paris rig asset snapshot] observation_id=%llu role=client stage=after_agent_arm tick_ms=%llu atomic_snapshot_verified=0 entity_dobj=unmeasured gpu_resource_verified=0 draw_verified=0\n",
                 static_cast<unsigned long long>(observation_id), GetTickCount64());
-            console::info("[Paris rig asset snapshot] material=%s lookup_returned=%u lookup_present=%u default_status=%d readable=%u name_match=%d technique_set_present=%u textures=%u\n",
-                key, static_cast<unsigned>(returned), static_cast<unsigned>(returned && header.material != nullptr), static_cast<int>(is_default),
-                static_cast<unsigned>(copied), identity, static_cast<unsigned>(copied && value.techniqueSet != nullptr), copied ? static_cast<unsigned>(value.textureCount) : 0);
+            console::info("[Paris rig asset snapshot] material=%s lookup_returned=%u lookup_present=%d default_status=%d readable=%u name_match=%d technique_set_present=%d textures=%d\n",
+                key, static_cast<unsigned>(returned), returned ? static_cast<int>(header.material != nullptr) : -1, static_cast<int>(is_default),
+                static_cast<unsigned>(copied), identity, copied ? static_cast<int>(value.techniqueSet != nullptr) : -1, copied ? static_cast<int>(value.textureCount) : -1);
             const auto* named = copied && identity == 1 && is_default != default_status::default_asset ? header.material : nullptr;
             rig_model("paris_doom_skin_two_bone_first_a", "paris_doom_skin_two_bone_first_a_lod0", named);
             rig_model("paris_doom_skin_two_bone_second_a", "paris_doom_skin_two_bone_second_a_lod0", named);
