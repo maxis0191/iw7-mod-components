@@ -38,13 +38,25 @@ The pinned packed SDK declaration instead places its `classname` member at
 not qualify that layout. The diagnostic records the SDK member/offset and the
 producer's raw compared word separately, without renaming either as the other.
 
-The next source candidate preserves the current admission guard. It logs raw
+The Native14 source candidate preserves the current admission guard. It logs raw
 contents/link/class IDs before refusal and reads the producer's two runtime
 class-ID globals only after checking their exact RIP-relative instruction
 signatures. It also verifies the link-byte producer. This read-only diagnostic
-has not been compiled or executed. It neither accepts0x2080, drops linking,
+compiled successfully on 2026-10-14; it has not run in the engine. It neither accepts0x2080, drops linking,
 forces contents nor bypasses the guard. A future separately pinned build/run
 must observe the effective values before choosing a corrective policy.
+
+The full Release build and existing required fixtures passed from sealed clean
+source `02eab0c73d41a842e18caad13e9b6ffe6c480b89` (318 files, 2,992,655 bytes).
+Of its36 native raw sources,35 match the previous B78 build; only the read-only
+`collision_provider.cpp` diagnostic differs. The existing Build-Voice body
+preserved available native overlays/output before its first compiler action.
+EXE/PDB/manifest hashes were observed inside the same original build reservation
+before release. Original build host and caller exited0; the owned job was empty
+before disposal and fresh observations found the exact processes absent and
+the registry empty. No dedicated/client started, no Main file was deployed and
+no runtime collision or owner acceptance was claimed. B78 and failed probe A
+remain separate retained evidence.
 
 Source inspection identified the strided-vertices factory and its 56-byte
 configuration constructor in the retained, already patched IW7 code snapshot.
@@ -173,15 +185,16 @@ hash-bound prepared server-helper package. The route reuses existing resource,
 bank isolation, transaction, original process-handle, UDP, fatal-diagnostic and
 restoration helpers. It adds no scheduler and changes no shared server file.
 
-The admitted image is the separately compiled NativeScene source
-`56a2ef7cab451830cc506449291e748d5f9ff7b1`, EXE
-`B78B6020C1E0AFDD9E548B81FC3910C68477C253ABFB43EDE159AED36D9752CE`,
-manifest `CA4249B2FCF4EB4C6BD11F0A6434C34B0FE1A10656039A444101115A3CE97526`
-and PDB `6961C40B11196ED20F48A5A4F331CB6A526E7CE2B4D4D81A2AC019E51BB48A61`.
+The next admitted image is the separately compiled Native14 diagnostic source
+`02eab0c73d41a842e18caad13e9b6ffe6c480b89`, EXE
+`5931CD975C5CD2086900D599A7F79B2BF1969E64899D1E0360B6ED40225DF874`,
+manifest `81105E9B5E7FF92BB160BB375B18C4E39B55D3C13FD8671F38A2A2AC8389799C`
+and PDB `7BD65750C12A119953181DDF529394B92BC47E7183653056FBC523CC8F59ECCD`.
 It declares `CollisionProvider=true` and 36 sources. There is no
-`CollisionProbeCapability` field. Both provider source hashes are byte-identical
-to the reviewed c32 candidate; no C++ rebuild is needed for this route. The old
-c32 executable, symbols, failed proposals and receipts remain intact.
+`CollisionProbeCapability` field. The consumer pins that actual compiled tuple;
+the collision guard and shared lifecycle/transport are unchanged. No further
+C++ rebuild is required for the next diagnostic-only zero-client run. The old
+c32/B78 executables, symbols, failed proposals and receipts remain intact.
 
 The runtime group contains one marked retained dedicated on loopback UDP27116,
 zero clients and no FF/asset build or debugger. Its generated config uses a
@@ -234,7 +247,8 @@ entry at0x140B4A000. Retained retail `scripts/mp/utility.gsc::getplant` uses
 `bullettrace(start,end,0,undefined)` and its fraction/position/normal fields.
 No retail script bytes are copied into this product. Pure transcript tests
 pass, including numeric, identity, order, allocation/removal, partial-line and
-terminal TAB/CRLF refusals. The fixture and runner have not run in a game.
+terminal TAB/CRLF refusals. The corrected undefined-result fixture and this
+Native14 consumer tuple have not run in a game.
 
 Use the separately identified compiled candidate under the next coordinated
 heavy workload slot. Do not reuse native958's executable or runtime evidence.
