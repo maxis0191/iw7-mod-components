@@ -2,6 +2,10 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "bo3_zombies_hud_source",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "ops/Test-BO3HUDSource.ps1"]
+    },
+    {
       "id": "raygun_weapon_authoring_test",
       "command": ["python", "-B", "tests/ops/raygun_weapon_authoring_test.py"]
     },
