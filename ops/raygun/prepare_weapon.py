@@ -14,6 +14,7 @@ import re
 ATTACHMENTS = tuple("attachments" + (str(i) if i > 1 else "") for i in range(1, 7))
 PRIVATE_NAME = re.compile(r"sdk_[a-z0-9_]{1,55}\Z")
 ASSET_NAME = re.compile(r"[A-Za-z0-9_./+\-]{1,160}\Z")
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def require(condition, message):
@@ -33,13 +34,25 @@ def positive(value, field):
             "Positive native weapon field required: " + field)
 
 
-def renamed(value, old, new):
-    # Exact serialized references only; no substring or slot guessing.
-    if isinstance(value, dict):
-        return {key: renamed(item, old, new) for key, item in value.items()}
-    if isinstance(value, list):
-        return [renamed(item, old, new) for item in value]
-    return new if value == old else value
+def rename_attachment_references(weapon, slot, old, new):
+    # Paths confirmed by IW7 weapondef.cpp parse_complete/parse overrides.
+    # Other strings, including unknown fields and ammunition names, are data.
+    weapon[slot] = [new if item == old else item for item in weapon[slot]]
+    paths = [(weapon, "notetrackOverrides", ("attachment",))]
+    paths.extend((weapon["weapDef"], field, ("attachment1", "attachment2"))
+                 for field in ("animOverrides", "sfxOverrides", "vfxOverrides"))
+    for parent, field, keys in paths:
+        entries = parent.get(field)
+        if entries is None:
+            continue
+        require(isinstance(entries, list), "Native attachment override array required: " + field)
+        for entry in entries:
+            if entry is None:
+                continue
+            require(isinstance(entry, dict), "Native attachment override object required: " + field)
+            for key in keys:
+                if entry.get(key) == old:
+                    entry[key] = new
 
 
 def author(weapon, pap, name="sdk_raygun_zm", pap_name="sdk_raygun_pap_zm", refs=None):
@@ -77,7 +90,8 @@ def author(weapon, pap, name="sdk_raygun_zm", pap_name="sdk_raygun_pap_zm", refs
                     asset_name(value)
             slots.extend(slot for value in values if value == source_pap)
     require(len(slots) == 1, "PAP template must occur exactly once in the base weapon's own attachment lists")
-    output_weapon = renamed(weapon, source_pap, pap_name)
+    output_weapon = copy.deepcopy(weapon)
+    rename_attachment_references(output_weapon, slots[0], source_pap, pap_name)
     output_pap = copy.deepcopy(pap)
     output_weapon["szInternalName"] = name
     output_weapon["szDisplayName"] = "Ray Gun (IW7 prototype)"
@@ -115,9 +129,11 @@ def author(weapon, pap, name="sdk_raygun_zm", pap_name="sdk_raygun_pap_zm", refs
 def read_json(path, expected):
     require(re.fullmatch(r"[A-Fa-f0-9]{64}", expected), "Exact JSON input SHA-256 required")
     path = Path(path)
-    require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 2 * 1024 * 1024,
+    require(path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_JSON_BYTES,
             "Bounded source JSON file required")
-    raw = path.read_bytes()
+    with path.open("rb") as stream:
+        raw = stream.read(MAX_JSON_BYTES + 1)
+    require(len(raw) <= MAX_JSON_BYTES, "Source JSON exceeds byte cap before hash/decode")
     require(hashlib.sha256(raw).hexdigest() == expected.lower(), "Source template hash changed")
     return json.loads(raw.decode("utf-8-sig"))
 

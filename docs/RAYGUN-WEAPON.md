@@ -16,7 +16,10 @@ It takes hash-pinned, complete IW7 source templates: a player primary projectile
 weapon and an existing projectile PAP attachment already listed by that weapon.
 It clones the entire JSON trees, preserves unknown fields and mechanics, changes
 the private asset identities, and replaces that PAP reference in its original
-attachment slot and exact serialized mappings. It does not guess another slot,
+attachment slot and parser-recognized `notetrackOverrides.attachment` and
+`weapDef.{animOverrides,sfxOverrides,vfxOverrides}.{attachment1,attachment2}`.
+Other equal strings, including unknown data/ammunition names, remain unchanged.
+It does not guess another slot,
 append a foreign attachment or author a sparse definition with invented defaults.
 The proposed private identities are `sdk_raygun_zm` and `sdk_raygun_pap_zm`; the
 normal engine variant is `sdk_raygun_zm+sdk_raygun_pap_zm`. These names do not
@@ -101,7 +104,13 @@ Primary source references (pinned, not an upstream update request):
 - x64-zt `fab935826c898806855376662a8a03317b3ad8f1`: IW7
   `assets/weapondef.cpp:1053`/`:1141` and `assets/weaponattachment.cpp:675`.
 
-Local validation: eight synthetic authoring tests cover full-field/mechanics
+Local validation: ten synthetic authoring tests cover full-field/mechanics
 preservation, correct PAP slot/ref rewriting and engine variant, actual source
 file output, complete visual mapping, unsupported definitions/slots/paths and
-changed hashes. They do not run a native serializer or qualify an engine asset.
+changed hashes and capped growth before hash/decode. They do not run a native
+serializer or qualify an engine asset. Independent review rejected source head
+`6abbaa8` for an unbounded read after its size check and a global string rewrite;
+both approaches remain in history. The corrected reader reads at most cap+1
+bytes and refuses growth before hash/decode, while attachment renaming is
+restricted to the recognized paths above. No rejected candidate was built or
+run in game.

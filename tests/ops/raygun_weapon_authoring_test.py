@@ -3,9 +3,11 @@ import copy
 import hashlib
 import importlib.util
 import json
+import io
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("raygun_authoring", ROOT / "ops/raygun/prepare_weapon.py")
@@ -140,6 +142,50 @@ class RayGunAuthoringTests(unittest.TestCase):
             self.assertEqual(authoring.read_json(path, hashlib.sha256(raw).hexdigest()), weapon)
             with self.assertRaisesRegex(ValueError, "hash changed"):
                 authoring.read_json(path, "0" * 64)
+
+    def test_same_string_unknown_data_is_preserved_and_only_known_refs_rename(self):
+        weapon, pap = templates()
+        old = pap["szInternalName"]
+        weapon["private_unknown"]["tag"] = old
+        weapon["private_unknown"]["attachment"] = old
+        weapon["weapDef"]["szAmmoName"] = old
+        for field in ("animOverrides", "sfxOverrides", "vfxOverrides"):
+            weapon["weapDef"][field] = [{"attachment1": old, "attachment2": old,
+                                         "overrides": old, "unknown": old}]
+        result, _, _ = authoring.author(weapon, pap)
+        self.assertEqual(result["private_unknown"], weapon["private_unknown"])
+        self.assertEqual(result["weapDef"]["szAmmoName"], old)
+        for field in ("animOverrides", "sfxOverrides", "vfxOverrides"):
+            row = result["weapDef"][field][0]
+            self.assertEqual(row["attachment1"], "sdk_raygun_pap_zm")
+            self.assertEqual(row["attachment2"], "sdk_raygun_pap_zm")
+            self.assertEqual(row["overrides"], old)
+            self.assertEqual(row["unknown"], old)
+
+    def test_growth_after_stat_reads_cap_plus_one_and_never_hashes_or_decodes(self):
+        class GrowthSpy(io.BytesIO):
+            def __init__(self):
+                super().__init__(b"x" * (authoring.MAX_JSON_BYTES + 100))
+                self.read_sizes = []
+                self.observed = 0
+
+            def read(self, size=-1):
+                self.read_sizes.append(size)
+                data = super().read(size)
+                self.observed += len(data)
+                return data
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "grew-after-stat.json"
+            path.write_text("{}", encoding="utf-8")  # Tiny actual stat result.
+            spy = GrowthSpy()  # Source grows before its first data read.
+            with mock.patch.object(Path, "open", return_value=spy), \
+                 mock.patch.object(authoring.hashlib, "sha256", side_effect=AssertionError("hashed oversize")), \
+                 mock.patch.object(authoring.json, "loads", side_effect=AssertionError("decoded oversize")):
+                with self.assertRaisesRegex(ValueError, "before hash/decode"):
+                    authoring.read_json(path, "0" * 64)
+            self.assertEqual(spy.read_sizes, [authoring.MAX_JSON_BYTES + 1])
+            self.assertEqual(spy.observed, authoring.MAX_JSON_BYTES + 1)
 
 
 if __name__ == "__main__":
