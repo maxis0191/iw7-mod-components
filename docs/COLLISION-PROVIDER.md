@@ -132,6 +132,18 @@ host/parent/dedicated and test port were absent and registry0. Raw A/B/C,
 original result, fatal recovery and separate closure witness remain intact.
 No functional body/query/sweep/removal, player or owner acceptance is claimed.
 
+Primary source review of the retained431-byte54FBD0 wrapper confirms the15
+argument slots currently declared: first ID, second world, third pointer,
+followed by the preserved stack scalars/origin/quaternion/flags. It does not
+prove that the third pointer is a PhysicsAsset object. The retained596-byte
+retail volume caller at56C650 loads the same141BA4500 slot, calls54EC30 with
+that value, and passes the returned pointer as arg3. The current provider
+instead passes the slot value directly. That is a concrete provenance
+difference; the54EC30 transform's semantics and578C00 lookup implementation
+are not present in the already-extracted JSON. A pointer/type/library fix
+requires that missing qualification, not an invented argument shift or blind
+asset replacement. The owner2080 admission is orthogonal to this failure.
+
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
 `fx/update.cpp` supplies its brush mask in that position and provides the larger
