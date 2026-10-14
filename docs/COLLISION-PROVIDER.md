@@ -288,6 +288,40 @@ remain unchanged; no executable/PDB was rehashed after release. This is a build
 and fixture result only: no lifecycle engine run, consumer pin, Main deployment,
 physical-reset qualification, player movement or owner acceptance is implied.
 
+Case E subsequently passed the unique private zero-client engine probe on the
+unchanged Native23 output. Native point controls measured 1 before insertion,
+0.5 with the body present, then 1 after native removal; the actor sweep measured
+1, 0.731249869, then 1. The script owner remained alive through the native
+post-removal queries and was deleted only afterward. The retired instance ID
+was used only as a correlation label, not an engine handle. Retail center/edge
+point controls also measured 1, 0.5, 1. No guard bypass or replay occurred.
+
+All six shared template-counter snapshots were observed in the same provider VM
+episode: before-create (0,0,0), after-native-create (0,0,0), after-manual-increment
+(1,0,0), before-native-destroy (1,0,0), after-native-destroy (1,0,0), and
+after-manual-decrement (0,0,0). This one episode observed no counter delta across
+the native calls and return to its baseline after the owned contribution was
+released. It does not establish those semantics for every asset/world or imply
+exclusive ownership of the shared engine counter. The measured parser flags
+`PostRemovalActorQueryVerified` and `TemplateUsageRestoredVerified` are true.
+[Sanitized E evidence](evidence/2026-10-14-collision-zero-client-E.json) preserves
+the values and narrow qualification without private identifiers or raw logs.
+
+The original dedicated exited 0 after the continuous valid empty-UDP interval.
+Candidate restoration confirmed 28 saved files and 24 protected files, with Main
+static files unchanged, no bank delta and no strict audit error. The actual
+original caller PTY exited 0; fresh host/parent/dedicated and UDP endpoint absence
+plus registry=0 were recorded separately from its earlier pending-exit result.
+No client, world transition, new binding, Main deployment or owner acceptance.
+Exact actor shape/margin, static/sensor behavior, physical world reset and real
+player movement remain unqualified. The next player-contact scenario needs its
+own protected test plan; these server-world sweeps do not prove client prediction.
+
+The D, Native23-build and E JSON evidence files are explicit product exports.
+The earlier missing classification for D/Native23 was a real tracked-tree gate
+failure, corrected by those declarations; it is not covered by the hosted
+pre-run billing exception. Generated historical input packages remain unchanged.
+
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
 `fx/update.cpp` supplies its brush mask in that position and provides the larger
