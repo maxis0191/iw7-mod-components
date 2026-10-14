@@ -30,7 +30,34 @@ function New-Transaction($Case) {
     $context=New-IW7StockLinkTransaction -Plan $plan -OwnerRoot $owner -RetentionKey $Case.Key -LeaseToken $owner.ExpectedToken -ValidateCaller $validator -JournalPath (Join-Path $Case.Root 'journal.jsonl')
     $script:contexts.Add($context);$Case.Context=$context;$context
 }
+function Invoke-StableFixture($Context,$Actual,$Expected,$Links){Assert-IW7StockStableMetadata $Actual $Expected $Links}
 try{
+    $case=New-Case 'volatile-access';$context=New-Transaction $case;Invoke-IW7StockLinkPreflight $context
+    $context.Remove('LastAccessObservations') # Retained 77fa context has no new field.
+    $before=$context.Sources[0].Before;$actual=Get-IW7StockLinkMetadata $context.Sources[0].Path
+    # Synthetic metadata DTO only; no timestamp setter or retail file involved.
+    $actual.LastAccessFileTime=$before.LastAccessFileTime+12345
+    Invoke-StableFixture $context $actual $before $before.Links
+    Check ($context.LastAccessObservations.Count -eq 1 -and $context.LastAccessObservations[0].DeltaTicks -eq 12345) 'LastAccess-only drift was not admitted and recorded'
+    Invoke-StableFixture $context $actual $before $before.Links
+    Check ($context.LastAccessObservations.Count -eq 1) 'Repeated access observation was duplicated'
+    foreach($field in @('Identity','Volume','FileId128','Bytes','AllocatedBytes','Attributes','CreationFileTime','LastWriteFileTime')){
+        $bad=Get-IW7StockLinkMetadata $context.Sources[0].Path
+        if($field -in @('Identity','Volume','FileId128')){$bad.$field+='changed'}else{$bad.$field++}
+        Refuse {Invoke-StableFixture $context $bad $before $before.Links} $field
+    }
+    $bad=Get-IW7StockLinkMetadata $context.Sources[0].Path;$bad.DeletePending=$true
+    Refuse {Invoke-StableFixture $context $bad $before $before.Links} 'type/link-count'
+    Refuse {Invoke-StableFixture $context $actual $before ($before.Links+1)} 'type/link-count'
+    $null=Undo-IW7StockLinkTransaction $context
+    $case=New-Case 'real-write-refused' -ArchiveOnly;$context=New-Transaction $case;$null=Invoke-IW7StockLinkApply $context
+    $source=$context.Sources[0];[IO.File]::WriteAllText($source.Path,('X'*[int]$source.Before.Bytes))
+    Refuse {Undo-IW7StockLinkTransaction $context} 'LastWriteFileTime'
+    Check ((Test-Path -LiteralPath $source.Target) -and !$context.CreatedLinks[0].Removed) 'Actual content write was not preserved on refusal'
+    $case=New-Case 'real-attrs-refused' -ArchiveOnly;$context=New-Transaction $case;$null=Invoke-IW7StockLinkApply $context
+    $source=$context.Sources[0];[IO.File]::SetAttributes($source.Path,[IO.FileAttributes]'ReadOnly,Archive')
+    Refuse {Undo-IW7StockLinkTransaction $context} 'Attributes'
+    Check ((Test-Path -LiteralPath $source.Target) -and !$context.CreatedLinks[0].Removed) 'Actual shared attribute change was not preserved on refusal'
     $case=New-Case 'success';$context=New-Transaction $case
     Check ([object]::ReferenceEquals($case.Owner.StockLinkTransaction,$context) -and !(Test-Path -LiteralPath $case.Target)) 'Context was not published before target creation'
     $prepared=Invoke-IW7StockLinkApply $context

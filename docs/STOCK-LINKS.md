@@ -99,8 +99,11 @@ callers must never invalidate that writer or force cleanup on unknown state.
 ## Identity and shared metadata
 
 Each object is identified by full volume serial plus 128-bit NTFS file ID.
-Live type, size, allocated size, attributes, creation/last-write/last-access
-times and baseline link count are checked. Source aliases sharing an ID are
+Live type, delete-pending state, size, allocated size, attributes, creation and
+last-write times and baseline link count remain strict. Last access is observed
+as volatile OS metadata, with original/observed FILETIME and delta retained in
+the same context and journal; prepared receipts expose these observations.
+Source aliases sharing an ID are
 grouped; aliases outside the pathset remain included in the baseline count.
 The projected count may not exceed 1023. Reparse points, ambiguous relative
 paths, traversal, device names, absent parents and cross-volume fallback refuse.
@@ -109,7 +112,19 @@ Hardlink creation can set the shared Archive bit. Therefore the manifest and
 live source must already have Archive set. Missing Archive refuses before any
 target creation; the helper never sets it on the source. Link count and
 ChangeTime naturally change during link/unlink and are recorded, not described
-as invariant. Other checked metadata must remain unchanged.
+as invariant. Other checked metadata must remain unchanged. No timestamp or
+attribute setter resets observations to conceal a change.
+
+Real PREP on 2026-10-14 stopped under the prior policy: all 1165 distinct file
+identities and expected link counts matched, and size/allocation/attributes/
+creation/write matched; only LastAccess changed for the seven DLL/EXE files.
+The original host, actual guards and lease stayed retained. No prepared result,
+independent initialization or runtime acceptance was published. The particular
+reader/scanner responsible is unknown. Microsoft documents that NTFS last access
+can be deferred up to one hour: [File Times](https://learn.microsoft.com/en-us/windows/win32/sysinfo/file-times).
+This policy correction does not authorize recovering that retained transaction
+or editing its frozen source package; a separately reviewed same-host overlay
+and Root recovery GO are required.
 
 Source handles request read access to enforce denial of concurrent writers;
 the provider calls no retail-content read API. Source ancestor guards deny
