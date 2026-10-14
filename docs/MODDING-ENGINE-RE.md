@@ -1,5 +1,38 @@
 # Agent capabilities and the next engine investigation
 
+## Scene capture admission diagnostics — source candidate, 2026-10-14
+
+The closed RigidControl B run loaded both exact nondefault one-root models and
+saved two native frames, but its entire client log contains no scene snapshot.
+The post-creation ARM and client cursors are correctly ordered. A missing match
+in the scene table would still produce a sampled header, and a pending request
+without a renderer result would normally produce an expiry/cancellation line.
+No admission or renderer callback is established by the fourteen asset rows.
+
+The cached client protection permits input at 500 ms but the scene observer
+requires 250 ms. Ops' fresh server heartbeat is a different observation and
+cannot refresh `client.query_tick`. The precise client cache age at B's capture
+was not logged, so a stale scene admission remains a hypothesis, not its proven
+cause. B78 and its original receipts remain unchanged and failed.
+
+The new source candidate emits one `[Paris rig scene admission]` record per
+explicit rig capture, including inactive-arm and missing-scope refusals. It
+records request/observation correlation, the first refusing guard, input and
+current client query ticks, capture/check ticks, measured age, flags, mode and
+active-arm state. It excludes player identifiers, nonces, challenges, pointers
+and GPU/resource claims. `admitted` means the existing renderer task was queued;
+the existing snapshot with the same observation ID separately reports sampled,
+cancelled or expired. A native frame alone remains a different witness.
+
+No delay, automatic retry, protection threshold, renderer read budget, model
+filter, known engine binding or screenshot behavior is changed. The capture
+bridge and optional protection refusal reason use the existing MAIN path and
+the same protection checks. Source/serialized-log tests pass; new causal C++
+fixtures cover the 250/500 ms boundary and client/server clock distinction but
+are not compiled yet. No new executable or game result exists. Required next
+steps are independent source review, a separately admitted build, and one
+explicitly authorized capture witness before any correction or animation work.
+
 ## Renderer scene table observer — compiled candidate, 2026-10-14
 
 `RigSceneProbe=true` adds `-paris-rig-scene-probe` only with the explicit

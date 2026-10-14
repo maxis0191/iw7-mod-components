@@ -40,7 +40,7 @@ namespace paris_test_fixture
     // Scheduler main only; invalid/foreign/stale state returns an empty value.
     // Reuses the existing server-confirmed protection handshake, without voice
     // flags, input authority, capture authority or a client-world reset promise.
-    client_test_protection client_protection();
+    client_test_protection client_protection(const char** refusal_reason = nullptr);
 }
 
 #ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
