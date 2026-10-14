@@ -34,14 +34,14 @@ if((Read-IW7CollisionPlayerReady $wire $token 42 $nonce 1100 1901).Ready){throw 
 # Only the real GSC fixture reads retail intro/control state. These fixtures
 # verify the publication transport/freshness; they never fabricate that state.
 $created=[datetime]::Parse('2026-10-14T13:00:00Z').ToUniversalTime();$filetime=$created.ToFileTimeUtc()
-$server=[pscustomobject]@{PID=42;Image='C:\candidate\native.exe';CreatedUtc=$created.ToString('o');CreationFileTime=$filetime;SHA256='5F1BF0569FF109A46CF23997E2A2EDF551FE6FD525B1F2B341BC8BEB91287006'}
+$server=[pscustomobject]@{PID=42;Image='C:\candidate\native.exe';CreatedUtc=$created.ToString('o');CreationFileTime=$filetime;SHA256='012E6CDDCD6A91ADC2F041035C86417064998127044A11341895C55F8BD4FC53'}
 $kernel=[pscustomobject]@{PID=42;Image=$server.Image;CreationFileTime=$filetime}
 $hostRecord=[pscustomobject]@{PID=43;Image='C:\tools\pwsh.exe';CreatedUtc=$created.ToString('o')}
 $session=[pscustomobject]@{PairOwnership=$null;Failed=$false;Plan=[pscustomobject]@{ServerPort=27116};Server=$server;LeaseToken=$token}
 $lease=[pscustomobject]@{Kind='Runtime';Token=$token;OwnerIdentity=$hostRecord}
 Assert-IW7CollisionPlayerOwnership $session $server $kernel $lease $hostRecord 43
 $rejected=0
-foreach($change in @('reused-server','reused-host','foreign-owner','wrong-lease','main-port','failed-session')){
+foreach($change in @('reused-server','reused-host','foreign-owner','wrong-lease','main-port','failed-session','retired-native23')){
     $s=$session|ConvertTo-Json -Depth 6|ConvertFrom-Json;$i=$server.PSObject.Copy();$k=$kernel.PSObject.Copy();$l=$lease|ConvertTo-Json -Depth 6|ConvertFrom-Json;$h=$hostRecord.PSObject.Copy()
     switch($change){
         'reused-server' {$k.CreationFileTime++}
@@ -50,6 +50,7 @@ foreach($change in @('reused-server','reused-host','foreign-owner','wrong-lease'
         'wrong-lease' {$l.Token='cccccccccccccccccccccccccccccccc'}
         'main-port' {$s.Plan.ServerPort=27016}
         'failed-session' {$s.Failed=$true}
+        'retired-native23' {$i.SHA256='5F1BF0569FF109A46CF23997E2A2EDF551FE6FD525B1F2B341BC8BEB91287006'}
     }
     try{Assert-IW7CollisionPlayerOwnership $s $i $k $l $h 43}catch{$rejected++;continue};throw 'Ambiguous/reused ownership accepted.'
 }
