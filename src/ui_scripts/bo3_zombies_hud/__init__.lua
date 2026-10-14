@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local state = { version = "0.1.0", hooks = {}, failures = 0, closed = false }
+local state = { version = "0.1.1", hooks = {}, failures = 0, closed = false }
 BO3ZombiesHUD = state
 local pending_nodes
 local function remember(node)
@@ -105,7 +105,8 @@ local function build_ammo(menu, args)
     bind_text(stock, reserve, index)
     bind_text(title, name, index, function(value) return Engine.Localize(value) end)
     local function update_left()
-        clip_left:SetAlpha(dual:GetValue(index) == true and melee:GetValue(index) ~= true and 1 or 0, 0)
+        -- An unresolved classification is not evidence of a usable akimbo gun.
+        clip_left:SetAlpha(dual:GetValue(index) == true and melee:GetValue(index) == false and 1 or 0, 0)
     end
     self:SubscribeToModel(dual:GetModel(index), update_left)
     self:SubscribeToModel(melee:GetModel(index), update_left)
