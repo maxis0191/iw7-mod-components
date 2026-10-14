@@ -5,7 +5,8 @@
 `RigSceneProbe=true` adds `-paris-rig-scene-probe` only with the explicit
 OriginalRigConsole/RigAssetsProbe plan. The manifest capability is
 `RigSceneProbeCapability`; a historical missing field means unavailable.
-The full Release candidate compiles and links; it has not run in the game.
+The full Release candidate compiles and links. The later protected witness
+observes its scene table as recorded below; visual identification remains open.
 The earlier asset-only executable described below does not contain it.
 Normal/native source counts remain 34/36.
 
@@ -106,8 +107,67 @@ The original build host and original PTY exit zero. Its owned job closes every
 descendant, including the compiler service, and records zero active processes
 before disposal. Its reservation is absent; the independent 02:52:31 UTC
 postflight finds zero leases and compilers. The previous 4377 executable/PDB/
-manifest hashes remain exact. Next: a separately authorized consumer admission
-and protected same-run scene observation, with the ordinal clock contract above.
+manifest hashes remain exact. The subsequent consumer witness below is separate
+from this build receipt and keeps the ordinal clock contract above.
+
+### SceneWitness 1: table observed, visible models unresolved
+
+The consumer's closed protected run `20261014-040020-546-80e4e70e` uses the B78
+executable above. Its main publication observes 387 entries before and after,
+two first-model matches, one second-model match and one stock-witness match;
+all four bounded records publish without truncation. Absence from sceneModel
+is therefore refuted for this observation. The count still does not make the
+snapshot atomic or qualify the opaque DObj table, GPU submission or pixels.
+
+| Observed field | Three custom records | Stock record | Scope |
+| --- | --- | --- | --- |
+| Origin / quaternion | Match the three SDK poses | Matches the central pose | Placement agrees; entity-number mapping remains unmeasured. |
+| placement.scale | 1 | 1 | SDK assigns 3 to all; the stock server field is read as 3. Effective geometry scale and setter consumption are unmeasured. |
+| LOD / material LOD | 0 / 0 | 0 / 0 | No observed selection difference. |
+| obj_present / render_flags_raw | 1 / 512 | 1 / 512 | Pointer presence and raw flags; no bone or flag semantics. |
+| radius | 16.4924 | 6.37733 | Custom value matches the source radius; loaded model bounds and culling remain unmeasured. |
+| surfBufSize | 122880 | 122880 | Raw typed draw-info field, despite the historical surface_bytes output label; GPU byte allocation is not qualified. |
+
+Pinned upstream `77e6d4d` declares GfxScaledPlacement/GfxSceneModel in
+`src/client/game/structs.hpp` and XModelDrawInfo in
+`src/client/game/types/database.hpp`. The latter supplies bitfield names, not
+a renderer producer or buffer-size unit contract. XModel.scale, its bounds
+and its static baseMat are distinct typed fields; the B78 output does not
+publish their loaded values. No DObj layout or bone-palette API is supplied.
+
+The two authentic inspected images do not positively identify the stock coin
+or three custom ribbons; the small green feature remains ambiguous. The
+38120203/38120531 metadata belongs to the neutral pre-action frame, not the
+post-Use image. The actual post-Use BMP is written at 04:01:43.346 UTC, copied
+and journaled at 04:01:43.384 UTC, after the client log's scene publication and
+before release/abort. This establishes publication-before-save in the retained
+journal, not a shared atomic frame or a causal explanation of visibility.
+
+The geometry owner's frozen source has eight vertices, six triangles, two
+bones, four mono and four dual blend entries. The primary H1-to-IW7 converter's
+PackIW7BlendVerts uses two ushort words for mono and four for dual, including
+trailing padding: 24 words / 48 bytes is consistent. It also converts H1 bone
+indices by dividing by 64; multiplying IW7 raw indices 0/1 by 64 is not a
+supported correction. Source agreement does not qualify GPU weight consumption.
+
+Retail pin `1dd48a78e55ef9c99519fc5221a206168ce2e98a`,
+`decompiled/scripts/cp/crafted_trap_fireworks.gsc:154` and
+`decompiled/scripts/mp/killstreaks/ims.gsc:201`, uses script_model setmodel before assigning
+scale 3. The SDK assigns scale before setmodel. This is a real source order
+difference, not proof of a reset, setter defect or the custom rendering cause.
+No alternate SetScale API is inferred. Upstream scripting.cpp records native
+class-field registration; scripting/execution.cpp distinguishes registered
+fields from ordinary script-object variables. The actual script_model scale
+registration and its renderer/DObj consumer have not been observed.
+
+Next precise missing fact: qualify that existing server-side registration for
+the actor's actual class and the applied scale producer, with unknown status if
+registration coverage is incomplete. The cold FF readback remains with its
+owner. If typed asset/vertex/blend inputs agree, the following missing layer is
+the qualified fixed-model DObj binding, bone palette and deformed vertices.
+Those cannot be read through invented offsets or opaque COM calls. This
+source-only comparison edits no C++, asset, SDK or runtime and supplies no
+scale fix, orientation flip, ANIMATE or new gameplay authorization.
 
 ## Original rig typed asset snapshot — compiled candidate, 2026-10-14
 
