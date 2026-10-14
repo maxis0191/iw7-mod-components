@@ -59,6 +59,20 @@ $warmup=Write-CollisionInputScenario 'collision-bind' @(@{id='bind';action='wait
 $null=Invoke-IW7AgentScenario -Session $Session -ScenarioPath $warmup
 $wire=Read-IW7AgentWire (Resolve-IW7BasePath $Session.Plan.GameRoot 'iw7-mod/paris-agent.session') -RequireTerminator
 if($wire -cnotmatch ('^'+$Session.Identity.PID+' ([a-f0-9]{32})$')){throw 'Actual native client nonce absent.'};$nonce=$Matches[1]
+# Retail intro/stock-spawn scripts must finish their own position/control work
+# before any placement. This passive wait is outside the measured/arm budget.
+$readyDeadline=[Environment]::TickCount64+180000;$generation=$null
+do{
+    $null=Update-IW7BaseClient $Session
+    $fresh=Read-IW7BaseLog $ServerIdentity.Stdout;$last=$fresh.LastIndexOf("`n")
+    if($last -ge 0){
+        $ready=[regex]::Matches($fresh.Substring(0,$last+1),'(?m)^\[Collision player\] PLAYER_READY token='+$Token+'; server_pid='+$ServerIdentity.PID+'; client_nonce='+$nonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1[\t ]*\r?$')
+        if($ready.Count){$r=$ready[-1];$tick=[long]$r.Groups[2].Value;$now=[Environment]::TickCount64
+            if($tick -ge $Session.StartedTick -and $tick -le $now -and $now-$tick -le 500){$generation=$r.Groups[1].Value;break}}
+    }
+    if([Environment]::TickCount64 -ge $readyDeadline){throw 'Fresh playable/retail-intro readiness unavailable; no placement or collision arm.'}
+    Start-Sleep -Milliseconds 100
+}while($true)
 $steps=@(@{id='settle-controls';action='wait';duration_ms=4000},
     @{id='present-contact';action='assert_log';scope='server';contains="[Collision player] READY_F1 token=$Token";timeout_ms=5000},
     @{id='ordinary-walk';action='hold';button='forward';duration_ms=300},
@@ -72,8 +86,7 @@ $null=Send-IW7CollisionProbeCommand $ServerHandle $ServerIdentity 'set paris_col
 $input=Invoke-IW7AgentScenario -Session $Session -ScenarioPath $scenario
 $null=Update-IW7BaseClient $Session
 $text=Read-IW7BaseLog $ServerIdentity.Stdout
-$stamp=Get-IW7CollisionPlayerOne $text ('(?m)^\[Collision player\] SAMPLE token='+$Token+' phase=F0 sample=1; server_pid='+$ServerIdentity.PID+'; client_nonce='+$nonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=\d+; protected=1;[^\r\n]*[\t ]*\r?$')
-$measurement=Read-IW7CollisionPlayerResult -Text $text -Plan $plan -ServerId $ServerIdentity.PID -ClientNonce $nonce -Generation $stamp.Groups[1].Value -NotBeforeTick $armTick -NowTick ([Environment]::TickCount64)
+$measurement=Read-IW7CollisionPlayerResult -Text $text -Plan $plan -ServerId $ServerIdentity.PID -ClientNonce $nonce -Generation $generation -NotBeforeTick $armTick -NowTick ([Environment]::TickCount64)
 if(!$measurement.Complete){throw 'Player measurements incomplete.'}
 $result=[pscustomobject]@{Schema='iw7.collision-player-measurement/1';MeasurementPassed=$true;Measurements=$measurement;Input=$input;
     LifecycleClosed=$false;LeaseReleased=$false;OriginalHostExitObserved=$false;OwnerAccepted=$false;MainDeployed=$false;

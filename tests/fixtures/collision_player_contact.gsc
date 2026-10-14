@@ -49,11 +49,25 @@ arena_clear()
 safe(state)
 {
     players = getentarray("player", "classname");
-    return !state.failed && isdefined(state.player) && players.size == 1 && players[0] == state.player &&
+    return !state.failed && isdefined(state.player) && isalive(state.player) && players.size == 1 && players[0] == state.player &&
         getdvar("mapname") == "cp_zmb" && getdvarint("dedicated") && getdvarint("net_port") == 27116 &&
         getdvarint("sv_lanOnly") == 1 && getdvar("net_ip") == "127.0.0.1" && getdvar("g_password") != "" &&
         getdvar("paris_collision_probe_token") == state.token && !getdvarint("sv_cheats") && !getdvarint("g_inactivity") &&
         state.player paris_test_protect() && arena_clear();
+}
+
+playable(state)
+{
+    if (!safe(state) || !state.player isonground()) return false;
+    player = state.player;
+    weapon = player getcurrentweapon();
+    velocity = player getvelocity();
+    return isdefined(weapon) && weapon != "" && weapon != "none" && player hasweapon(weapon) &&
+        isdefined(velocity) && distance(velocity, (0,0,0)) <= 1 &&
+        scripts\engine\utility::flag_exist("introscreen_over") && scripts\engine\utility::flag("introscreen_over") &&
+        scripts\engine\utility::flag_exist("intro_gesture_done") && scripts\engine\utility::flag("intro_gesture_done") &&
+        isdefined(player.controlsfrozen) && !player.controlsfrozen &&
+        (!isdefined(player.hostmigrationcontrolsfrozen) || !player.hostmigrationcontrolsfrozen);
 }
 
 sample(state, phase)
@@ -140,6 +154,7 @@ contact()
     state.top = state.anchor[2] + 112;
     state.owner = undefined;
     deadline = gettime() + 180000;
+    stable = -1;
     print("[Collision player] READY token=" + state.token);
     while (gettime() < deadline)
     {
@@ -149,8 +164,19 @@ contact()
             state.player = players[0];
             state.player paris_test_protect();
             print("[Paris agent heartbeat] map=cp_zmb; " + state.player paris_test_safety_snapshot());
-            if (safe(state) && state.player isonground() && getdvarint("paris_collision_probe_arm")) break;
+            stamp = state.player paris_agent_observationstamp();
+            if (playable(state) && isdefined(stamp) && stamp != "" && stamp != "unavailable")
+            {
+                if (stable < 0) stable = gettime();
+                if (gettime() - stable >= 1000)
+                {
+                    print("[Collision player] PLAYER_READY token=" + state.token + "; " + stamp);
+                    if (getdvarint("paris_collision_probe_arm")) break;
+                }
+            }
+            else stable = -1;
         }
+        else stable = -1;
         wait 0.05;
     }
     if (gettime() >= deadline || !audit(state)) { fail(state, "admission_or_clearance"); return; }

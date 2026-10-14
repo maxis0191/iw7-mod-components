@@ -47,7 +47,10 @@ original reservation host ownership and fresh protected playable client. It
 verifies source files before importing those helpers. It uses existing typed
 collision stdin only for the one arm command; normal movement/Use/capture use
 the existing bounded scenario transport. A passive warmup binds that handshake
-before measurements; the real case fits the source 25-second/30-second budgets.
+before measurements. A separate passive wait requires current native-stamped
+playable readiness, completed retail intro flags, unfrozen controls, loaded
+stock weapon and one second of stable ground before the collision arm/placements.
+That readiness wait is outside the measured 25-second/30-second budgets.
 A phase timing failure remains a failure, not a reason to force a PASS.
 
 Before a run, review the entire capsule: exact final source and compiled tuple,
