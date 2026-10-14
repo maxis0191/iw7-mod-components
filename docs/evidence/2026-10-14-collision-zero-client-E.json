@@ -1,0 +1,36 @@
+{
+  "schema": "iw7.collision-zero-client-evidence/1",
+  "date": "2026-10-14",
+  "case": "E",
+  "compiled_source": "d2b73923de9e21fca7446ad5bad4a8742d0c8468",
+  "consumer_source": "38c216ef068bc9a8bb2bdb74ce0be70d33e23b76",
+  "executable_sha256": "5F1BF0569FF109A46CF23997E2A2EDF551FE6FD525B1F2B341BC8BEB91287006",
+  "scope": {"private_dedicated": true, "protocol": 2, "map": "cp_zmb", "clients": 0, "cheats": 0, "inactivity": 0, "world": 0, "minimum": [-256,-192,4080], "maximum": [256,192,4096], "original_vertex_inputs": 8, "body_contents": 1, "template": "physicsvolumedummy", "owner_alive_for_native_before_inside_after": true},
+  "native_point_fractions": {"before": 1, "inside": 0.5, "after_native_removal_owner_alive": 1},
+  "native_actor_fractions": {"before": 1, "inside": 0.731249869, "after_native_removal_owner_alive": 1},
+  "inside_hit": {"normal": [0,0,1], "contents": 1, "hit_type": 1, "hit_id": 2046, "startsolid": false, "allsolid": false},
+  "retail_point_controls": [
+    {"phase": "before", "point": "center", "fraction": 1},
+    {"phase": "before", "point": "edge", "fraction": 1},
+    {"phase": "inside", "point": "center", "fraction": 0.5},
+    {"phase": "inside", "point": "edge", "fraction": 0.5},
+    {"phase": "after_owner_delete", "point": "center", "fraction": 1},
+    {"phase": "after_owner_delete", "point": "edge", "fraction": 1}
+  ],
+  "template_usage_counts_order": ["serverEnt", "clientEnt", "dynEnt"],
+  "template_usage_snapshots": [
+    {"phase": "before_create", "provider_vm_episode": 1, "counts": [0,0,0]},
+    {"phase": "after_native_create", "provider_vm_episode": 1, "counts": [0,0,0]},
+    {"phase": "after_manual_increment", "provider_vm_episode": 1, "counts": [1,0,0]},
+    {"phase": "before_native_destroy", "provider_vm_episode": 1, "counts": [1,0,0]},
+    {"phase": "after_native_destroy", "provider_vm_episode": 1, "counts": [1,0,0]},
+    {"phase": "after_manual_decrement", "provider_vm_episode": 1, "counts": [0,0,0]}
+  ],
+  "counter_scope": "Observed shared counter within this one same-object/context and provider VM episode; no universal native-effect or exclusive ownership claim",
+  "retired_id_is_correlation_label_only": true,
+  "result_passed": true,
+  "guard_bypassed": false,
+  "replayed": false,
+  "closure": {"dedicated_exit_code": 0, "clean_empty_udp_seconds": 30, "candidate_restored": true, "candidate_saved_files": 28, "candidate_protected_files": 24, "main_static_unchanged": true, "main_bank_delta": false, "main_strict_audit_error": null, "actual_original_caller_pty_exit_code": 0, "original_host_parent_dedicated_absent": true, "test_udp_endpoint_absent": true, "registry_leases": 0, "raw_pending_caller_exit_record_preserved": true, "actual_exit_witness_separate": true},
+  "qualification": {"point_plane_verified": true, "post_removal_native_actor_sweep_verified": true, "template_usage_restored_in_observed_episode": true, "exact_actor_shape_and_margin": false, "static_sensor_behavior": false, "physics_world_reset": false, "player_movement": false, "client_prediction": false, "owner_accepted": false, "client_started": false, "main_deployed": false}
+}
