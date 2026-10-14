@@ -45,6 +45,16 @@ namespace collision_provider
             mask_2080_class != no_change_class;
     }
 
+    template <typename Resolve, typename Validate, typename Lookup>
+    inline auto resolve_body_template(const char* name, Resolve resolve, Validate validate, Lookup lookup)
+    {
+        if (!name || !*name) throw std::invalid_argument("Readable nonempty retail template name required");
+        auto* asset = resolve(name);
+        if (!asset || !validate(asset)) throw std::runtime_error("Resolved retail body template is unavailable");
+        if (!lookup(asset)) throw std::runtime_error("Resolved retail body template has no runtime context");
+        return asset;
+    }
+
     struct box
     {
         point minimum, maximum, origin, half;

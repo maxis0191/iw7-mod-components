@@ -25,6 +25,8 @@ namespace collision_provider
         game::symbol<void*(const strided_vertices*, float, const void*)> convex_factory{0x141092130};
         game::symbol<unsigned int(int)> create_instance{0x14054E080};
         game::symbol<void(int, unsigned int, bool)> destroy_instance{0x14054E750};
+        game::symbol<game::PhysicsAsset*(const char*)> find_asset_by_name{0x14054EC30};
+        game::symbol<void*(const game::PhysicsAsset*)> lookup_asset_context{0x140578C00};
         game::symbol<bool(unsigned int, int, game::PhysicsAsset*, unsigned int, unsigned int,
             const float*, const float*, bool, bool, bool, float, float, int, int, bool)> instantiate_capsule{0x14054FBD0};
         game::symbol<void(int, unsigned int, int)> set_contents{0x140550EC0};
@@ -66,6 +68,19 @@ namespace collision_provider
             if (!world_permitted(game::environment::is_dedi(), world)) return false;
             const auto location = reinterpret_cast<void**>(0x144BDF5A0 + static_cast<std::uintptr_t>(world) * 0x358 + 0x30);
             return readable(location, sizeof(void*)) && readable(*location, sizeof(void*));
+        }
+
+        bool readable_template_name(const char* name)
+        {
+            // Bound this laboratory input before the retail byte comparator.
+            // This is a local validation limit, not a claimed engine name limit.
+            if (!name) return false;
+            for (std::size_t index = 0; index < 256; ++index)
+            {
+                if (!readable(name + index, 1)) return false;
+                if (!name[index]) return index != 0;
+            }
+            return false;
         }
 
         bool session_ready()
@@ -143,10 +158,24 @@ namespace collision_provider
                     producer_class_word, target.classname, *mask_2080_class, *no_change_class))
                     throw std::runtime_error("Call the retail solid() method on the script_model before creating its box");
             }
-            auto* asset_slot = reinterpret_cast<game::PhysicsAsset**>(0x141BA4500);
-            if (!readable(asset_slot, sizeof(*asset_slot)) || !readable(*asset_slot, sizeof(game::PhysicsAsset)) ||
-                (*asset_slot)->numRigidBodies < 1 || !(*asset_slot)->havokData)
-                throw std::runtime_error("Retail default PhysicsAsset body template is unavailable");
+            // Retail56C650 passes54EC30(*slot), not the raw slot, to capsule arg3.
+            const auto* name_slot = reinterpret_cast<const char* const*>(0x141BA4500);
+            if (!readable(name_slot, sizeof(*name_slot)))
+                throw std::runtime_error("Retail default body template name is unreadable");
+            const auto* name = *name_slot;
+            if (!readable_template_name(name))
+                throw std::runtime_error("Retail default body template name is unreadable");
+            auto* asset = resolve_body_template(name,
+                [](const char* name) { return find_asset_by_name(name); },
+                [](const game::PhysicsAsset* value) {
+                    return readable(value, sizeof(*value)) && value->numRigidBodies >= 1 && value->havokData;
+                },
+                [](const game::PhysicsAsset* value) {
+                    const auto* context = lookup_asset_context(value);
+                    return readable(context, 0x68); // Includes the retained dereference at+0x60.
+                });
+            // This non-mutating preflight refuses the known null-context path;
+            // it does not lock the engine table through subsequent instantiation.
             // Allocate the record before an engine side effect, avoiding a vector
             // allocation failure after a successfully created physics instance.
             instances.reserve(instances.size() + 1);
@@ -170,7 +199,7 @@ namespace collision_provider
                 replacement_scope scope(request);
                 // Reference system 0 is decoded to world entity 2046 by
                 // 54F040's switch table. The script entity owns teardown.
-                created = instantiate_capsule(id, world, *asset_slot, 0, 0,
+                created = instantiate_capsule(id, world, asset, 0, 0,
                     geometry.origin.data(), rotation.data(), true, true, false, 1.0f, 1.0f, 1, 0, false);
             }
             if (!created || request.consumed != 1)
@@ -179,7 +208,6 @@ namespace collision_provider
                 throw std::runtime_error("Native body creation did not consume exactly one original box shape");
             }
             set_contents(world, id, 1);
-            auto* asset = *asset_slot;
             if (world < 2) ++asset->physicsUsageCounter.serverEnt;
             else ++asset->physicsUsageCounter.clientEnt;
             instances.push_back({world, entity, id, geometry, asset});
@@ -263,6 +291,9 @@ namespace collision_provider
             check(0x14054FBD0, {0x40,0x53,0x55,0x56,0x57});
             check(0x14054E080, {0xe9,0x3b,0x5c,0x02,0x00});
             check(0x14054E750, {0xe9,0x2b,0x80,0x02,0x00});
+            check(0x14054EC30, {0xe9,0xdb,0x8d,0x02,0x00});
+            check(0x140577A10, {0x57,0x48,0x83,0xec,0x20,0x48,0x8b,0xf9});
+            check(0x140578C00, {0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x74,0x24,0x18});
             check(0x14055C9E0, {0x4c,0x8b,0xdc,0x48,0x83,0xec,0x78});
             check(0x140550EC0, {0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c});
             // Bind the diagnostic globals to their retained retail producers,
