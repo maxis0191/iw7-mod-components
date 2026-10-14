@@ -52,9 +52,45 @@ namespace paris_model_diagnostics
         if (!pointer || !first || !second || first == second || (stock && (stock == first || stock == second))) return -1;
         return pointer == first ? 0 : pointer == second ? 1 : stock && pointer == stock ? 2 : -1;
     }
+    // Scalar admission facts only. Flags: client=1, isolated=2, assets=4,
+    // scene=8, optional stock=16. Neither these facts nor their log grant safety.
+    struct scene_capture_facts
+    {
+        std::uint64_t now{}, query_tick{}, arm{};
+        unsigned flags{};
+        bool shutdown{}, active_arm{}, protected_now{}, identity_valid{}, cp_mode{},
+            client_active{}, cgame_initialized{}, connection_active{}, rig_fs_game{};
+    };
+    inline const char* scene_query_refusal(std::uint64_t query, std::uint64_t now, std::uint64_t maximum_age)
+    {
+        if (!query) return "query_tick_missing";
+        if (now < query) return "query_tick_future";
+        if (now - query > maximum_age) return maximum_age == 250 ? "query_age_250" : "query_age_500";
+        return nullptr;
+    }
+    inline const char* scene_capture_refusal(const scene_capture_facts& f)
+    {
+        if (f.shutdown) return "observer_shutdown";
+        if (!f.active_arm || !f.arm) return "inactive_arm";
+        if ((f.flags & 15U) != 15U) return "scope_flags";
+        if (!f.protected_now) return "input_protection_invalid";
+        if (const auto* reason = scene_query_refusal(f.query_tick, f.now, 500)) return reason;
+        if (!f.identity_valid) return "connection_identity_invalid";
+        if (!f.cp_mode) return "game_mode";
+        if (!f.client_active) return "game_client_inactive";
+        if (!f.cgame_initialized) return "cgame_uninitialized";
+        if (!f.connection_active) return "connection_not_active";
+        if (!f.rig_fs_game) return "fs_game";
+        return nullptr;
+    }
     // Main thread only. Caller supplies the existing exact-connection safety
     // result; this observer cannot manufacture protection or a model index.
     void observe_client(bool protected_now, std::uint64_t probe_tick,
         std::string_view client_nonce, std::string_view server_generation,
         std::string_view connection_challenge, bool capture_requested = true, std::uint64_t scene_arm = 0);
+    // One admission record for an explicit capture, including refusals that
+    // previously bypassed observe_client. Does not retry or change any gate.
+    void observe_scene_capture(bool active_arm, std::uint64_t arm, bool protected_now,
+        std::uint64_t probe_tick, std::string_view client_nonce,
+        std::string_view server_generation, std::string_view connection_challenge);
 }

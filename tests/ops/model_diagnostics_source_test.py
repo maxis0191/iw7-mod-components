@@ -160,7 +160,7 @@ class ModelDiagnosticsSourceTests(unittest.TestCase):
 
 class SceneBoundarySourceTests(unittest.TestCase):
     def test_renderer_cannot_call_main_engine_or_publish(self):
-        body = SOURCE[SOURCE.index("void renderer_scene("):SOURCE.index("void request_scene(")]
+        body = SOURCE[SOURCE.index("void renderer_scene("):SOURCE.index("bool request_scene(")]
         for forbidden in ("console::", "DB_", "client_protection(", "Dvar_", "Com_", "CL_",
                           "environment::", "sceneDObj[", "entry.obj->", "GetDesc", "QueryInterface"):
             self.assertNotIn(forbidden, body)
@@ -184,7 +184,7 @@ class SceneBoundarySourceTests(unittest.TestCase):
         self.assertTrue(any("absence_scope=not_observed_in_this_scene_model_table" in s for s in formats))
 
     def test_stock_lookup_is_closed_and_separate(self):
-        body = SOURCE[SOURCE.index("void request_scene("):SOURCE.index("void surface(")]
+        body = SOURCE[SOURCE.index("bool request_scene("):SOURCE.index("void surface(")]
         self.assertIn('has_flag("paris-rig-scene-stock-witness") ? 3 : 2', body)
         self.assertIn('exact_name(model.name, scene_keys[i]) != 1', body)
         self.assertIn('!= default_status::nondefault', body)
@@ -195,12 +195,43 @@ class SceneBoundarySourceTests(unittest.TestCase):
     def test_capture_follows_arm_and_teardown_avoids_engine(self):
         fixture = (ROOT / "src/native/paris_test_fixture.cpp").read_text(encoding="utf-8")
         action = fixture[fixture.index('if (action == "capture")'):fixture.index('else if (vote_input)')]
-        self.assertIn("agent_runtime.client->active() && rig_scene_arm", action)
-        self.assertIn("true, rig_scene_arm", action)
+        self.assertIn("observe_scene_capture(agent_runtime.client && agent_runtime.client->active(), rig_scene_arm", action)
+        self.assertNotIn("active() && rig_scene_arm", action)
         self.assertIn("rig_scene_arm = request.sequence", fixture)
         cancellation = SOURCE[SOURCE.index("// Teardown cancellation"):SOURCE.index("try { maintain_scene(")]
         for forbidden in ("game::", "console::", "client_protection("):
             self.assertNotIn(forbidden, cancellation)
+
+
+class SceneAdmissionSourceTests(unittest.TestCase):
+    def test_one_admission_record_has_clock_domain_and_no_private_identity(self):
+        formats = [s for s in STRINGS if s.startswith("[Paris rig scene admission]")]
+        self.assertEqual(len(formats), 1)
+        fmt = formats[0]
+        for field in ("capture_request_id=", "observation_id=", "scene_arm=", "status=", "reason=",
+                      "input_query_tick_ms=", "query_tick_ms=", "capture_tick_ms=", "checked_tick_ms=",
+                      "query_age_ms=", "age_measured=", "flags_mask=", "mode=", "active_arm="):
+            self.assertIn(field, fmt)
+        for private in ("nonce=", "generation=", "challenge=", "%p", "0x"):
+            self.assertNotIn(private, fmt)
+        body = SOURCE[SOURCE.index("void report_capture("):SOURCE.index("struct provenance_context")]
+        self.assertLess(body.index("if (value.reported) return"), body.index("console::info"))
+        self.assertLess(body.index("value.reported = true"), body.index("console::info"))
+
+    def test_refusal_cannot_schedule_retry_or_claim_renderer_publication(self):
+        body = SOURCE[SOURCE.index("void observe_scene_capture("):SOURCE.index("void observe_client(")]
+        for forbidden in ("sleep", "scheduler::", "renderer_scene(", "SceneModelTableObserved", "draw_verified=1"):
+            self.assertNotIn(forbidden, body)
+        self.assertIn('report_capture(admission, admitted ? "admitted" : "refused"', body)
+        self.assertIn('"observer_exception"', body)
+        self.assertIn("state->pending = false", body)
+        request = SOURCE[SOURCE.index("bool request_scene("):SOURCE.index("void surface(")]
+        self.assertIn("scene_query_refusal(current.query_tick, now, 250)", request)
+        self.assertIn("state->requested_tick + 1000", request)
+        self.assertIn("current.query_tick + 250", request)
+        self.assertEqual(request.count("scheduler::once("), 1)
+        self.assertIn('return refuse("request_pending")', request)
+        self.assertIn('return refuse("arm_consumed")', request)
 
 
 if __name__ == "__main__":

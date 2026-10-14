@@ -8,6 +8,37 @@
 int main()
 {
     using namespace iw7::agent;
+    // Server heartbeat freshness cannot authorize a stale CLIENT query cache.
+    using namespace paris_model_diagnostics;
+    scene_capture_facts capture{};
+    capture.now = 1406; capture.query_tick = 1000; capture.arm = 6; capture.flags = 31;
+    capture.active_arm = capture.protected_now = capture.identity_valid = capture.cp_mode = true;
+    capture.client_active = capture.cgame_initialized = capture.connection_active = capture.rig_fs_game = true;
+    const auto refused_as = [](const char* value, std::string_view expected) {
+        return value && std::string_view(value) == expected;
+    };
+    assert(scene_capture_refusal(capture) == nullptr); // Existing 500ms ARM/input scope.
+    assert(refused_as(scene_query_refusal(capture.query_tick, capture.now, 250), "query_age_250"));
+    const auto fresh_server_heartbeat = capture.now;
+    assert(fresh_server_heartbeat == capture.now &&
+        refused_as(scene_query_refusal(capture.query_tick, capture.now, 250), "query_age_250"));
+    capture.now = 1250;
+    assert(scene_query_refusal(capture.query_tick, capture.now, 250) == nullptr);
+    capture.now = 1251;
+    assert(refused_as(scene_query_refusal(capture.query_tick, capture.now, 250), "query_age_250"));
+    capture.now = 1500; assert(scene_capture_refusal(capture) == nullptr);
+    capture.now = 1501; assert(refused_as(scene_capture_refusal(capture), "query_age_500"));
+    capture.now = 999; assert(refused_as(scene_capture_refusal(capture), "query_tick_future"));
+    capture.now = 1100; capture.query_tick = 0;
+    assert(refused_as(scene_capture_refusal(capture), "query_tick_missing"));
+    capture.query_tick = 1000; capture.active_arm = false;
+    assert(refused_as(scene_capture_refusal(capture), "inactive_arm"));
+    capture.active_arm = true; capture.flags = 7;
+    assert(refused_as(scene_capture_refusal(capture), "scope_flags"));
+    capture.flags = 15; capture.cp_mode = false;
+    assert(refused_as(scene_capture_refusal(capture), "game_mode"));
+    capture.cp_mode = true; capture.shutdown = true;
+    assert(refused_as(scene_capture_refusal(capture), "observer_shutdown"));
     const std::string nonce(32, 'a');
     std::uint32_t key_offset = 0xFFFFFFFF;
     assert(movement_key_offset(button::forward, key_offset) && key_offset == 0);

@@ -76,6 +76,30 @@ namespace paris_model_diagnostics
         // touching a destroyed mutex. Allocated only for the explicit profile.
         std::atomic<scene_request*> scene_state{nullptr};
         std::atomic<bool> scene_shutdown{false};
+        std::uint64_t capture_sequence{}; // MAIN only, separate from asset observations.
+
+        struct capture_admission
+        {
+            scene_capture_facts facts{};
+            std::uint64_t request{}, observation{}, checked_tick{}, input_query_tick{};
+            int mode{-1};
+            bool reported{};
+        };
+        void report_capture(capture_admission& value, const char* status, const char* reason)
+        {
+            if (value.reported) return;
+            value.reported = true; // Logging failure must not create a second record.
+            const auto query_tick = value.facts.query_tick;
+            const bool age_known = query_tick && value.checked_tick >= query_tick;
+            console::info("[Paris rig scene admission] capture_request_id=%llu observation_id=%llu scene_arm=%llu status=%s reason=%s input_query_tick_ms=%llu query_tick_ms=%llu capture_tick_ms=%llu checked_tick_ms=%llu query_age_ms=%llu age_measured=%u flags_mask=%u mode=%d active_arm=%u protected=%u\n",
+                static_cast<unsigned long long>(value.request), static_cast<unsigned long long>(value.observation),
+                static_cast<unsigned long long>(value.facts.arm), status, reason,
+                static_cast<unsigned long long>(value.input_query_tick), static_cast<unsigned long long>(query_tick), static_cast<unsigned long long>(value.facts.now),
+                static_cast<unsigned long long>(value.checked_tick),
+                static_cast<unsigned long long>(age_known ? value.checked_tick - query_tick : 0),
+                static_cast<unsigned>(age_known), value.facts.flags, value.mode,
+                static_cast<unsigned>(value.facts.active_arm), static_cast<unsigned>(value.facts.protected_now));
+        }
 
         struct provenance_context
         {
@@ -424,9 +448,22 @@ namespace paris_model_diagnostics
             if (state->pending && state->permit.request == id && !state->permit.cancelled) state->result = result;
             // MAIN maintenance drains this POD result and revalidates before IO.
         }
-        void request_scene(std::uint64_t id, std::uint64_t arm, const paris_test_fixture::client_test_protection& current)
+        bool request_scene(std::uint64_t id, std::uint64_t arm, const paris_test_fixture::client_test_protection& current,
+            const char** refusal = nullptr, std::uint64_t* checked_tick = nullptr)
         {
-            if (scene_shutdown.load(std::memory_order_acquire) || !arm || !scene_protected(current, GetTickCount64())) return;
+            const auto refuse = [&](const char* reason) {
+                if (refusal) *refusal = reason;
+                if (checked_tick) *checked_tick = GetTickCount64();
+                return false;
+            };
+            const auto now = GetTickCount64();
+            if (checked_tick) *checked_tick = now;
+            if (scene_shutdown.load(std::memory_order_acquire)) return refuse("observer_shutdown");
+            if (!arm) return refuse("inactive_arm");
+            if (!scene_scope()) return refuse("scene_scope_changed");
+            if (!paris_test_fixture::client_protection_current(current, now)) return refuse("protection_snapshot_expired");
+            if (current.map != "cp_zmb") return refuse("scene_map");
+            if (const auto* reason = scene_query_refusal(current.query_tick, now, 250)) return refuse(reason);
             auto* state = scene_state.load(std::memory_order_acquire);
             if (!state)
             {
@@ -435,8 +472,9 @@ namespace paris_model_diagnostics
             }
             {
                 std::lock_guard lock(state->mutex);
-                if (state->pending || (state->consumed_arm == arm && scene_binding_matches(state->nonce, state->generation,
-                    state->challenge, current.nonce, current.generation, current.challenge))) return;
+                if (state->pending) return refuse("request_pending");
+                if (state->consumed_arm == arm && scene_binding_matches(state->nonce, state->generation,
+                    state->challenge, current.nonce, current.generation, current.challenge)) return refuse("arm_consumed");
                 state->consumed_arm = arm;
                 state->nonce = current.nonce; state->generation = current.generation; state->challenge = current.challenge;
             }
@@ -449,18 +487,18 @@ namespace paris_model_diagnostics
                     !lookup_leaf(game::ASSET_TYPE_XMODEL, scene_keys[i], &header) || !snapshot(header.model, model) || exact_name(model.name, scene_keys[i]) != 1)
                 {
                     console::info("[Paris rig scene snapshot] observation_id=%llu table=sceneModel model=%s status=asset_reference_refused observation=NoSceneObservation\n", static_cast<unsigned long long>(id), scene_keys[i]);
-                    return;
+                    return refuse("asset_reference_refused");
                 }
                 models[i] = reinterpret_cast<std::uintptr_t>(header.model);
             }
             if (fixed_scene_model(models[0], models[0], models[1], models[2]) != 0)
             {
                 console::info("[Paris rig scene snapshot] observation_id=%llu table=sceneModel status=asset_reference_alias observation=NoSceneObservation\n", static_cast<unsigned long long>(id));
-                return;
+                return refuse("asset_reference_alias");
             }
             {
                 std::lock_guard lock(state->mutex);
-                if (state->pending) return;
+                if (state->pending) return refuse("request_pending");
                 state->requested_tick = GetTickCount64();
                 state->permit = {id, arm, state->requested_tick + 1000, current.query_tick + 250, GetCurrentProcessId(), false};
                 state->models = models; state->result = {}; state->pending = true;
@@ -481,6 +519,8 @@ namespace paris_model_diagnostics
                     catch (const std::exception&) {}
                 }
             }, scheduler::renderer);
+            if (checked_tick) *checked_tick = GetTickCount64();
+            return true;
         }
         void surface(const char* label, const game::XSurface* pointer, const provenance_context* context = nullptr)
         {
@@ -553,6 +593,71 @@ namespace paris_model_diagnostics
             const char* first{};
             if (strings_valid && strings.entryCount == 1 && snapshot(strings.stringList, first))
                 console::info("[Paris model diagnostic] ncs_entry0=%s client_model_index=unmeasured entity_dobj=unmeasured gpu_draw=unmeasured\n", name(first).c_str());
+        }
+    }
+    void observe_scene_capture(bool active_arm, std::uint64_t arm, bool protected_now,
+        std::uint64_t probe_tick, std::string_view client_nonce,
+        std::string_view server_generation, std::string_view connection_challenge)
+    {
+        capture_admission admission{};
+        admission.facts.now = GetTickCount64();
+        admission.checked_tick = admission.facts.now;
+        admission.facts.query_tick = probe_tick;
+        admission.input_query_tick = probe_tick;
+        admission.facts.arm = arm;
+        admission.facts.active_arm = active_arm;
+        admission.facts.protected_now = protected_now;
+        admission.facts.shutdown = scene_shutdown.load(std::memory_order_acquire);
+        try
+        {
+            if (capture_sequence == std::numeric_limits<std::uint64_t>::max())
+            { report_capture(admission, "refused", "capture_id_exhausted"); return; }
+            admission.request = ++capture_sequence;
+            admission.facts.flags = (utils::flags::has_flag("paris-server-client-test") ? 1U : 0U) |
+                (utils::flags::has_flag("paris-isolated-lab") ? 2U : 0U) |
+                (utils::flags::has_flag("paris-rig-assets-probe") ? 4U : 0U) |
+                (utils::flags::has_flag("paris-rig-scene-probe") ? 8U : 0U) |
+                (utils::flags::has_flag("paris-rig-scene-stock-witness") ? 16U : 0U);
+            if (game::environment::is_dedi()) { report_capture(admission, "refused", "dedicated_process"); return; }
+            admission.facts.identity_valid = iw7::agent::nonce_valid(client_nonce) &&
+                iw7::agent::nonce_valid(server_generation) && !connection_challenge.empty();
+            admission.mode = static_cast<int>(game::Com_GameMode_GetActiveGameMode());
+            admission.facts.cp_mode = admission.mode == static_cast<int>(game::GAME_MODE_CP);
+            admission.facts.client_active = game::CL_IsGameClientActive(0);
+            admission.facts.cgame_initialized = game::clientUIActives[0].cgameInitialized;
+            admission.facts.connection_active = game::clientUIActives[0].connectionState == game::CA_ACTIVE;
+            admission.facts.rig_fs_game = exact_string_dvar("fs_game", "mods/sdk_original_rig_probe");
+            if (const auto* reason = scene_capture_refusal(admission.facts))
+            { report_capture(admission, "refused", reason); return; }
+            const char* reason{};
+            const auto protection = paris_test_fixture::client_protection(&reason);
+            admission.checked_tick = GetTickCount64();
+            if (reason) { report_capture(admission, "refused", reason); return; }
+            admission.facts.query_tick = protection.query_tick;
+            if (!paris_test_fixture::client_protection_current(protection, admission.checked_tick))
+            { report_capture(admission, "refused", "protection_snapshot_invalid"); return; }
+            if (!scene_binding_matches(client_nonce, server_generation, connection_challenge,
+                protection.nonce, protection.generation, protection.challenge))
+            { report_capture(admission, "refused", "protection_binding"); return; }
+            if (protection.map != "cp_zmb") { report_capture(admission, "refused", "scene_map"); return; }
+            maintain_scene(protected_now, arm);
+            if (observation_sequence == std::numeric_limits<std::uint64_t>::max())
+            { report_capture(admission, "refused", "observation_id_exhausted"); return; }
+            admission.observation = ++observation_sequence;
+            const auto admitted = request_scene(admission.observation, arm, protection, &reason, &admission.checked_tick);
+            report_capture(admission, admitted ? "admitted" : "refused", admitted ? "none" : reason);
+        }
+        catch (const std::exception&)
+        {
+            // A failed queue cannot leave a phantom admitted renderer request.
+            if (auto* state = scene_state.load(std::memory_order_acquire))
+            {
+                try { std::lock_guard lock(state->mutex); if (state->pending && state->permit.request == admission.observation)
+                    { state->permit.cancelled = true; state->pending = false; } }
+                catch (const std::exception&) {}
+            }
+            try { admission.checked_tick = GetTickCount64(); report_capture(admission, "refused", "observer_exception"); }
+            catch (const std::exception&) {}
         }
     }
     void observe_client(bool protected_now, std::uint64_t probe_tick, std::string_view client_nonce,
