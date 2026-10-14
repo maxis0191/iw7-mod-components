@@ -8,6 +8,7 @@
     "tests/ops/collision_player_result_test.ps1",
     "tests/ops/collision_player_source_test.ps1",
     "docs/COLLISION-PLAYER-CONTACT.md",
+    "docs/evidence/2026-10-14-collision-player-native25.json",
     "tests/ops/collision_probe_transport_test.ps1",
     "ops/Run-CollisionProbe.ps1",
     "ops/Collision-Probe.Core.ps1",

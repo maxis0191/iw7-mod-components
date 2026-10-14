@@ -24,7 +24,7 @@ function Get-IW7CollisionPlayerStableStart($Rows,[scriptblock]$Predicate) {
 }
 
 function Assert-IW7CollisionPlayerOwnership($Session,$Identity,$Kernel,$Lease,$CurrentHost,[int]$CallerPid) {
-    $expected='5F1BF0569FF109A46CF23997E2A2EDF551FE6FD525B1F2B341BC8BEB91287006'
+    $expected='012E6CDDCD6A91ADC2F041035C86417064998127044A11341895C55F8BD4FC53'
     if(!$Session -or !$Identity -or !$Kernel -or !$Lease -or !$CurrentHost -or $CallerPid -le 0 -or
         $Session.PairOwnership -or $Session.Failed -or $Session.Plan.ServerPort -ne 27116 -or
         $Session.Server.PID -ne $Identity.PID -or $Session.Server.Image -ine $Identity.Image -or $Identity.SHA256 -cne $expected -or
