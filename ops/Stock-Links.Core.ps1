@@ -66,11 +66,29 @@ function Write-IW7StockLinkJournal($Context,$Record) {
     $bytes=[Text.UTF8Encoding]::new($false).GetBytes(($Record|ConvertTo-Json -Depth 8 -Compress)+"`n")
     $Context.JournalStream.Write($bytes,0,$bytes.Length);$Context.JournalStream.Flush($true)
 }
+function Register-IW7StockLastAccessObservation($Context,$Actual,$Expected) {
+    if($Actual.LastAccessFileTime -eq $Expected.LastAccessFileTime){return}
+    Assert-IW7StockLinkContext $Context
+    if(!$Context.Contains('LastAccessObservations')){$Context.LastAccessObservations=[Collections.Generic.List[object]]::new()}
+    $seen=@($Context.LastAccessObservations|Where-Object {$_.Identity -ceq $Actual.Identity -and $_.BeforeFileTime -eq $Expected.LastAccessFileTime -and $_.AfterFileTime -eq $Actual.LastAccessFileTime})
+    if($seen.Count){return}
+    $record=@{Event='SourceLastAccessObserved';Policy='ObservedVolatileNTFS';Identity=$Actual.Identity;
+        BeforeFileTime=$Expected.LastAccessFileTime;AfterFileTime=$Actual.LastAccessFileTime;
+        DeltaTicks=([long]$Actual.LastAccessFileTime-[long]$Expected.LastAccessFileTime)}
+    $Context.LastAccessObservations.Add($record)
+    if($Context.JournalStream){Write-IW7StockLinkJournal $Context $record}
+}
 function Assert-IW7StockStableMetadata($Actual,$Expected,[long]$Links) {
-    foreach($key in @('Identity','Volume','FileId128','Bytes','AllocatedBytes','Attributes','CreationFileTime','LastWriteFileTime','LastAccessFileTime')){
+    foreach($key in @('Identity','Volume','FileId128','Bytes','AllocatedBytes','Attributes','CreationFileTime','LastWriteFileTime')){
         if($Actual.$key -cne $Expected.$key){throw "Shared stock invariant differs: $key"}
     }
     if($Actual.Directory -or $Actual.DeletePending -or $Actual.Links -ne $Links){throw 'Shared stock type/link-count differs.'}
+    # Existing callers (including a retained older Undo) expose their original
+    # Context parameter in the caller scope. Never reconstruct it from JSON.
+    $callerContext=Get-Variable -Name Context -Scope 1 -ValueOnly -ErrorAction SilentlyContinue
+    if($callerContext -is [Collections.IDictionary] -and $callerContext.Schema -ceq 'iw7.stock-link-transaction/1'){
+        Register-IW7StockLastAccessObservation $callerContext $Actual $Expected
+    }
 }
 function Assert-IW7StockManifestRow($Actual,$Row) {
     if($Actual.Directory -or $Actual.Volume -cne $Row.volume.ToString() -or $Actual.FileIdLow -cne $Row.file_id.ToString() -or
@@ -96,7 +114,7 @@ function New-IW7StockLinkTransaction {
         LeaseToken=$LeaseToken;ValidateCaller=$ValidateCaller;Plan=$Plan;Phase='PublishedBeforePreflight';Failure=$null;Closed=$false;
         JournalPath=$JournalPath;JournalStream=$null;JournalMetadata=$null;Sources=[Collections.Generic.List[object]]::new();
         Groups=@{};SourceDirectories=@{};CreatedLinks=[Collections.Generic.List[object]]::new();CreatedDirectories=[Collections.Generic.List[object]]::new();
-        Guards=[Collections.Generic.List[object]]::new();UnknownCreation=$false;SourcePreserved=$false;Prepared=$false;RollbackClosed=$false;RetailDataBytesCopied=0}
+        Guards=[Collections.Generic.List[object]]::new();LastAccessObservations=[Collections.Generic.List[object]]::new();UnknownCreation=$false;SourcePreserved=$false;Prepared=$false;RollbackClosed=$false;RetailDataBytesCopied=0}
     $OwnerRoot[$TransactionSlot]=$context # Actual objects published before any alias/factory side effect.
     Assert-IW7StockLinkContext $context
     $context
@@ -194,10 +212,11 @@ function Invoke-IW7StockLinkApply($Context) {
         }
         foreach($source in $Context.Sources){$group=$Context.Groups[$source.Before.Identity];Assert-IW7StockStableMetadata (Get-IW7StockLinkMetadata $source.Path) $source.Before ($group.Before.Links+$group.Created)}
         $Context.SourcePreserved=$true;$Context.Prepared=$true;$Context.Phase='Prepared'
-        Write-IW7StockLinkJournal $Context @{Event='Prepared';SourcePreserved=$true;CreatedLinks=$Context.CreatedLinks.Count;RetailDataBytesCopied=0}
+        Write-IW7StockLinkJournal $Context @{Event='Prepared';SourcePreserved=$true;CreatedLinks=$Context.CreatedLinks.Count;RetailDataBytesCopied=0;LastAccessPolicy='ObservedVolatileNTFS';LastAccessChanges=$Context.LastAccessObservations.Count}
         Close-IW7StockLinkGuards $Context;$Context.Closed=$true
         [pscustomobject]@{Schema='iw7.stock-links-prepared/1';Prepared=$true;SourcePreserved=$true;TargetRoot=$Context.Plan.TargetRoot;
-            CreatedLinks=$Context.CreatedLinks.Count;LogicalBytes=$Context.Plan.LogicalBytes;RetailDataBytesCopied=0;RuntimeValidated=$false;JournalPath=$Context.JournalPath}
+            CreatedLinks=$Context.CreatedLinks.Count;LogicalBytes=$Context.Plan.LogicalBytes;RetailDataBytesCopied=0;RuntimeValidated=$false;JournalPath=$Context.JournalPath;
+            LastAccessPolicy='ObservedVolatileNTFS';LastAccessObservations=@($Context.LastAccessObservations.ToArray())}
     }catch{$Context.Phase='Unknown';$Context.Failure=$_.Exception.Message;$Context.Closed=$false;throw}
 }
 function Undo-IW7StockLinkTransaction($Context) {
