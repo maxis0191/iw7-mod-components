@@ -173,6 +173,7 @@ checks += 1
 lua = LuaRuntime()
 lua.execute(setup)
 lua.execute(r'''
+printed={};print=function(message) printed[#printed+1]=message end
 frontend=false;aliens=true;profileText=profilePayload -- raw engine flags remain unregistered/empty
 model("inGame.CP.zombies.waveNumber",21)
 model("inGame.player.currentWeapon.clipAmmoRightDisplay","12")
@@ -238,6 +239,10 @@ check('string.find(BO3ZombiesHUD.messages["failure:ZMHUD"],"retry=1",1,true)~=ni
 check('BO3ZombiesHUD.messages["bind:ZMHUD:1"]==nil')
 lua.execute('manager.nextHud.waveNumber._widget.WaveNumber=savedWave;LUI.HudManager.CreateHud(manager)')
 check('BO3ZombiesHUD.messages["bind:ZMHUD:1"]~=nil')
+lua.execute('manager.nextHud.waveNumber._widget.WaveNumber=nil;LUI.HudManager.CreateHud(manager)')
+check('BO3ZombiesHUD.messages["bind:ZMHUD:1"]==nil')
+lua.execute('failureCount=0;for _,message in ipairs(printed) do if string.find(message,"binding_failure",1,true) and string.find(message,"root_seq=2",1,true) then failureCount=failureCount+1 end end')
+check('failureCount==2')
 lua.execute('unrelated=stock_hud();unrelated.id="MPHUD";manager.nextHud=unrelated;LUI.HudManager.CreateHud(manager)')
 check('not unrelated.__bo3HudLayout')
 lua.execute('retired=MenuBuilder.BuildRegisteredType;MenuBuilder.BuildRegisteredType=original;tick()')

@@ -298,7 +298,11 @@ local function try_root(root)
     emit("root:" .. token(root.id) .. ":" .. token(root.controllerIndex), "root version=" .. state.version
         .. " id=" .. token(root.id) .. " controller=" .. token(root.controllerIndex) .. " root_seq=" .. state.roots[root])
     local ok, error = pcall(adapt_root, root)
-    if not ok then
+    if ok then
+        -- A later recurrence of the same failure must invalidate external bind
+        -- evidence again, rather than be hidden by the state-change cache.
+        state.messages["failure:" .. token(root.id)] = nil
+    else
         state.messages["bind:" .. token(root.id) .. ":" .. token(root.controllerIndex)] = nil
         emit("failure:" .. token(root.id), "binding_failure version=" .. state.version
             .. " root=" .. token(root.id) .. " root_seq=" .. state.roots[root]
