@@ -75,6 +75,21 @@ against arbitrary external changes. Hardlink aliases share the original data:
 the caller must not write retail content through them. No automatic attribute
 change makes them readonly.
 
+For its independent small mutable files, the caller may reuse the same provider
+after `Initialize-IW7StockLinkNtfs`. `IW7StockLinksV1.Ntfs.CreateDirectoryOwned`
+returns the original create-only directory SafeFileHandle. Publish it in the
+same caller root before continuing; `Inspect(handle)` supplies its full identity.
+A caller-created `FileStream(CreateNew, ...)` likewise exposes its original
+`SafeFileHandle` for identity capture. These entries are not added to the stock
+transaction's ownership lists. The caller alone owns their data writes, limits,
+receipt and recovery. Before cleanup, validate the original root/lease, close
+only known original writers/guards, then use `OpenOwnedDelete(path)`, compare
+`Inspect(handle).Identity` with the original record and `UnlinkByHandle(handle)`.
+Dispose the bound deletion handle after completion. Never adopt a replacement,
+clear shared attributes, recursively remove directories, or release on unknown
+identity. This exposes the existing small filesystem primitives, not a new
+process controller.
+
 ## Identity and shared metadata
 
 Each object is identified by full volume serial plus 128-bit NTFS file ID.
@@ -120,3 +135,8 @@ sharing guard effective. This correction and the passing fixture do not prove
 real stock preparation or engine startup. No real stock Apply, stock-content
 scan/hash, production reservation, full game copy, C++ build, game launch, Main
 mutation or owner gameplay acceptance is claimed by this change.
+
+The first concurrent source merge temporarily combined two check entries into
+an invalid JSON object. That local source-check attempt stopped before running
+tests; a corrective commit preserves both entries. The corrected, freshly
+composed source package passes the stock, path, source-workspace and HUD groups.
