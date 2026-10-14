@@ -230,6 +230,39 @@ deployment, accepted tag or owner gameplay acceptance is claimed. Issue #8
 stays open for those next controls and a separately authorized protected player
 contact test.
 
+The next same-world lifecycle controls are source preparation only. An optional
+observed create mode samples native point/actor baselines before inserting the
+body; explicit `collision_clearboxprobe()` retains only a CPU query zone, clears
+the native body, then queries while its script owner is still alive. The retired
+ID is a log label and is never reused as a native handle. The fixture deletes
+the owner only after those queries. Exact actor shape/margin, static/sensor
+semantics, player movement and physical world reset remain outside this step.
+
+Observed template counters include all three shared SDK ints at before-create,
+after-native-create, after-manual-increment, before-native-destroy,
+after-native-destroy before decrement, and after-manual-decrement. Any observed
+delta across native creation/destruction refuses the corresponding manual write,
+including a still-positive value. INT_MAX/nonpositive guards prevent overflow
+or a blind second decrement; no shared counter is assigned a saved baseline.
+Fresh name resolution must match the current object/context, module VM episode
+and world marker before reads/writes. These are consistency checks within the
+synchronous episode, not proof against a native physical-generation ABA.
+
+Partial allocation/creation and manual contribution states are retained before
+fallible observations. Destruction and manual release commit before post-effect
+reads; retries cannot repeat a retired ID or released contribution. Unknown
+context or interrupted VM episodes quarantine their records and block reuse.
+Queued operations capture the VM episode. The existing VM shutdown callback
+is reused; no new engine binding or detour is added. A future level-transition
+capsule is separate, and `PhysicsWorldResetVerified` stays false.
+
+The pure transcript fixtures retain D's narrower result and reject incomplete,
+reordered, obstructed or interfered lifecycle samples. New C++ helper fixtures
+cover counter deltas, underflow/overflow and failed observations after destruction,
+but have not been compiled or run yet. No new executable tuple exists. The runner
+still pins Native19; a separately reviewed build and actual tuple consumer update
+are required before any lifecycle engine run. Source tests do not qualify E.
+
 Primary consumer evidence is upstream77e6d4d `fx/engine.hpp`: the eighth
 argument of `PhysicsQuery_LegacyTrace` at0x14055C9E0 is named `contentMask`;
 `fx/update.cpp` supplies its brush mask in that position and provides the larger

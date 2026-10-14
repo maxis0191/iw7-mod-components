@@ -35,7 +35,7 @@ collision_probe()
     collision_trace("before", "edge", 220, 160, token);
     floor = spawn("script_model", (0, 0, 4088));
     floor solid();
-    instance = floor collision_createbox((-256, -192, 4080), (256, 192, 4096));
+    instance = floor collision_createbox((-256, -192, 4080), (256, 192, 4096), 1);
     if (!isdefined(instance))
     {
         println("[Collision probe] FAIL token=" + token + " reason=create_refused");
@@ -48,7 +48,14 @@ collision_probe()
     collision_trace("inside", "edge", 220, 160, token);
     executecommand("collision_box_probe 0 " + instance);
     wait 1;
-    floor collision_clearboxes();
+    removed = floor collision_clearboxprobe();
+    if (!isdefined(removed) || removed != 1)
+    {
+        println("[Collision probe] FAIL token=" + token + " reason=native_post_removal");
+        floor collision_clearboxes();
+        floor delete();
+        return;
+    }
     floor delete();
     collision_trace("after", "center", 0, 0, token);
     collision_trace("after", "edge", 220, 160, token);

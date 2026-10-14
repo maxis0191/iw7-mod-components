@@ -35,7 +35,7 @@ namespace collision_provider
             int, int, int, void*, int)> legacy_trace{0x14055C9E0};
 
         utils::hook::detour capsule_factory_hook;
-        struct replacement { void* shape{}; unsigned int consumed{}; };
+        struct replacement { void* shape{}; unsigned int consumed{}; void** ownership_state{}; };
         thread_local replacement* pending{};
         struct replacement_scope
         {
@@ -50,9 +50,42 @@ namespace collision_provider
             unsigned int id;
             box geometry;
             game::PhysicsAsset* body_template;
+            void* template_context;
+            void* world_marker;
+            std::string template_name;
+            std::uint64_t epoch;
+            usage_counts before_create{}, after_native_create{}, after_increment{};
+            void* unused_shape{};
+            bool instance_allocated{}, native_created{}, native_alive{true}, destroy_in_progress{}, manual_contribution{}, observe{};
         };
+        struct query_zone
+        {
+            int world;
+            unsigned int id; // Correlation only: never passed as a native handle.
+            box geometry;
+            std::uint64_t epoch;
+            std::uintptr_t world_marker;
+        };
+        query_zone copied_zone(const instance& item)
+        {
+            return {item.world, item.id, item.geometry, item.epoch, reinterpret_cast<std::uintptr_t>(item.world_marker)};
+        }
         std::recursive_mutex mutex;
         std::vector<instance> instances;
+        std::atomic<std::uint64_t> vm_epoch{1};
+        std::atomic<bool> shutting_down{}, quarantined{};
+        bool operation_active{}; // Protected by mutex, including VM callbacks.
+        struct operation_scope
+        {
+            bool held;
+            explicit operation_scope(bool internal = false) : held(!internal)
+            {
+                if (internal && !operation_active) throw std::runtime_error("Internal collision operation has no original episode");
+                if (held && operation_active) throw std::runtime_error("Reentrant collision operation refused");
+                if (held) operation_active = true;
+            }
+            ~operation_scope() { if (held) operation_active = false; }
+        };
 
         bool readable(const void* pointer, std::size_t size)
         {
@@ -64,12 +97,13 @@ namespace collision_provider
             return address >= begin && address - begin <= region.RegionSize && size <= region.RegionSize - (address - begin);
         }
 
-        bool world_ready(int world)
+        void* world_marker(int world)
         {
-            if (!world_permitted(game::environment::is_dedi(), world)) return false;
+            if (!world_permitted(game::environment::is_dedi(), world)) return nullptr;
             const auto location = reinterpret_cast<void**>(0x144BDF5A0 + static_cast<std::uintptr_t>(world) * 0x358 + 0x30);
-            return readable(location, sizeof(void*)) && readable(*location, sizeof(void*));
+            return readable(location, sizeof(void*)) && readable(*location, sizeof(void*)) ? *location : nullptr;
         }
+        bool world_ready(int world) { return world_marker(world) != nullptr; }
 
         bool readable_template_name(const char* name)
         {
@@ -95,6 +129,34 @@ namespace collision_provider
                 bind && bind->type == game::DVAR_TYPE_STRING && bind->current.string && !std::strcmp(bind->current.string, "127.0.0.1");
         }
 
+        usage_counts sample_usage(const instance& item, const char* phase)
+        {
+            // VM epoch and pointer markers are consistency checks in this
+            // synchronous episode, not a claimed native physics generation.
+            const auto fail = [] {
+                quarantined = true;
+                throw std::runtime_error("Collision template/world episode changed; quarantine original records without stale asset access");
+            };
+            if (quarantined || item.epoch != vm_epoch || world_marker(item.world) != item.world_marker) fail();
+            const auto* current_asset = find_asset_by_name(item.template_name.c_str());
+            if (quarantined || item.epoch != vm_epoch || world_marker(item.world) != item.world_marker ||
+                current_asset != item.body_template || !readable(current_asset, sizeof(*current_asset))) fail();
+            const auto* current_context = lookup_asset_context(current_asset);
+            if (quarantined || item.epoch != vm_epoch || world_marker(item.world) != item.world_marker ||
+                current_context != item.template_context || !readable(current_context, 0x68))
+            {
+                fail();
+            }
+            const auto& value = item.body_template->physicsUsageCounter;
+            const usage_counts result{value.serverEnt, value.clientEnt, value.dynEnt};
+            if (item.observe && phase)
+                console::info("[Collision provider] template_usage phase=%s world=%d entity=%d instance=%u epoch=%llu server=%d client=%d dyn=%d\n",
+                    phase, item.world, item.entity, item.id, static_cast<unsigned long long>(item.epoch), result[0], result[1], result[2]);
+            return result;
+        }
+
+        bool query_geometry(const query_zone& item, const char* phase);
+
         void remove_reference(void* shape)
         {
             if (!shape) return;
@@ -112,7 +174,14 @@ namespace collision_provider
             }
         }
 
-        void replacement_scope::remove_unused() { remove_reference(request.shape); request.shape = nullptr; }
+        void replacement_scope::remove_unused()
+        {
+            if (quarantined) return; // Preserve unresolved original shape ownership.
+            const auto shape = request.shape;
+            request.shape = nullptr;
+            if (request.ownership_state) *request.ownership_state = nullptr;
+            remove_reference(shape);
+        }
 
         void* capsule_factory(const float* center, float half_height, float radius, int segments, bool cache)
         {
@@ -123,16 +192,18 @@ namespace collision_provider
                 {
                     auto* result = pending->shape;
                     pending->shape = nullptr;
+                    if (pending->ownership_state) *pending->ownership_state = nullptr;
                     return result;
                 }
             }
             return capsule_factory_hook.invoke<void*>(center, half_height, radius, segments, cache);
         }
 
-        unsigned int add_box(int world, int entity, const box& geometry)
+        unsigned int add_box(int world, int entity, const box& geometry, bool observe = false)
         {
             std::lock_guard lock(mutex);
-            if (!session_ready() || !world_ready(world) || entity < 0 || entity >= 2046 || pending)
+            operation_scope operation;
+            if (quarantined || shutting_down || !session_ready() || !world_ready(world) || entity < 0 || entity >= 2046 || pending)
                 throw std::runtime_error("Collision provider requires a ready owned world and a script entity reference");
             if (game::environment::is_dedi())
             {
@@ -175,70 +246,141 @@ namespace collision_provider
                     const auto* context = lookup_asset_context(value);
                     return readable(context, 0x68); // Includes the retained dereference at+0x60.
                 });
+            instance item{world, entity, 0xffffffffU, geometry, asset, lookup_asset_context(asset),
+                world_marker(world), std::string(name), vm_epoch};
+            item.observe = observe;
+            item.before_create = sample_usage(item, "before_create");
+            if (!manual_increment_permitted(item.before_create))
+                throw std::runtime_error("Template usage counter cannot accept an owned contribution");
+            // The sentinel is a log label, never a handle: there is no native
+            // instance yet. Keep actor/point baseline ahead of shape allocation.
+            if (observe && !query_geometry(copied_zone(item), "before"))
+                throw std::runtime_error("Native baseline is obstructed before original body insertion");
             // This non-mutating preflight refuses the known null-context path;
             // it does not lock the engine table through subsequent instantiation.
             // Allocate the record before an engine side effect, avoiding a vector
             // allocation failure after a successfully created physics instance.
             instances.reserve(instances.size() + 1);
+            instances.push_back(std::move(item));
+            auto& tracked = instances.back();
             alignas(16) std::array<unsigned char, 0x38> config{};
             config_ctor(config.data());
+            (void)sample_usage(tracked, nullptr);
             const float zero = 0;
             std::memcpy(config.data(), &zero, sizeof(zero));
             config[4] = 0; // Same choices as the retail capsule factory.
             const strided_vertices input{geometry.vertices.data(), 8, 16};
-            replacement request{convex_factory(&input, 0.0f, config.data()), 0};
+            tracked.unused_shape = convex_factory(&input, 0.0f, config.data());
+            (void)sample_usage(tracked, nullptr);
+            replacement request{tracked.unused_shape, 0, &tracked.unused_shape};
             if (!request.shape) throw std::runtime_error("Native Havok convex factory refused the box");
             const auto id = create_instance(world);
+            tracked.id = id;
+            tracked.instance_allocated = id != 0xffffffffU;
+            (void)sample_usage(tracked, nullptr);
             if (id == 0xffffffffU)
             {
-                remove_reference(request.shape);
+                const auto shape = request.shape;
+                tracked.unused_shape = nullptr;
+                remove_reference(shape);
                 throw std::runtime_error("Native physics instance allocation failed");
             }
             bool created = false;
             const std::array<float, 4> rotation{0, 0, 0, 1};
+            const auto before_insert = sample_usage(tracked, "before_native_body_insert");
+            if (before_insert != tracked.before_create)
+            {
+                quarantined = true;
+                throw std::runtime_error("Shared template counter changed before body insertion; preserve original allocation");
+            }
             {
                 replacement_scope scope(request);
                 // Reference system 0 is decoded to world entity 2046 by
                 // 54F040's switch table. The script entity owns teardown.
                 created = instantiate_capsule(id, world, asset, 0, 0,
                     geometry.origin.data(), rotation.data(), true, true, false, 1.0f, 1.0f, 1, 0, false);
+                tracked.native_created = created;
             }
+            tracked.unused_shape = request.shape;
             if (!created || request.consumed != 1)
             {
-                destroy_instance(world, id, true);
+                // Keep allocated/created state for the existing original-owner
+                // cleanup path; no untracked ID or guessed counter rollback.
                 throw std::runtime_error("Native body creation did not consume exactly one original box shape");
             }
+            tracked.after_native_create = sample_usage(tracked, "after_native_create");
+            if (tracked.after_native_create != tracked.before_create || !manual_increment_permitted(tracked.after_native_create))
+            {
+                quarantined = true;
+                throw std::runtime_error("Observed shared counter delta across native creation; manual increment refused");
+            }
             set_contents(world, id, 1);
+            if (sample_usage(tracked, "before_manual_increment") != tracked.after_native_create)
+            {
+                quarantined = true;
+                throw std::runtime_error("Shared template counter changed before manual increment; preserve original body");
+            }
             if (world < 2) ++asset->physicsUsageCounter.serverEnt;
             else ++asset->physicsUsageCounter.clientEnt;
-            instances.push_back({world, entity, id, geometry, asset});
+            tracked.manual_contribution = true;
+            tracked.after_increment = sample_usage(tracked, "after_manual_increment");
             console::info("[Collision provider] created world=%d entity=%d instance=%u original_vertices=8 contents=1 template=%s\n",
                 world, entity, id, asset->name ? asset->name : "<unnamed>");
             return id;
         }
 
-        void clear_boxes(int entity = -1)
+        void clear_boxes(int entity = -1, bool internal = false)
         {
             std::lock_guard lock(mutex);
+            operation_scope operation(internal);
             for (auto it = instances.begin(); it != instances.end();)
             {
                 if (entity >= 0 && it->entity != entity) { ++it; continue; }
-                if (!world_ready(it->world))
+                if (quarantined || it->destroy_in_progress || !world_ready(it->world))
+                {
+                    quarantined = true;
                     throw std::runtime_error("Physics world closed before owned collision teardown");
-                destroy_instance(it->world, it->id, true);
-                if (it->world < 2) --it->body_template->physicsUsageCounter.serverEnt;
-                else --it->body_template->physicsUsageCounter.clientEnt;
+                }
+                const auto before = sample_usage(*it, "before_native_destroy");
+                if (it->instance_allocated && it->native_alive)
+                {
+                    destroy_owned_once(it->native_alive, it->destroy_in_progress,
+                        [&] { destroy_instance(it->world, it->id, true); });
+                }
+                const auto after_native = sample_usage(*it, "after_native_destroy");
+                if (it->manual_contribution)
+                {
+                    if (!manual_decrement_permitted(before, after_native))
+                    {
+                        quarantined = true;
+                        throw std::runtime_error("Observed shared counter delta or nonpositive value across native destroy; manual decrement refused");
+                    }
+                    if (it->world < 2) --it->body_template->physicsUsageCounter.serverEnt;
+                    else --it->body_template->physicsUsageCounter.clientEnt;
+                    it->manual_contribution = false;
+                }
+                const auto after_manual = sample_usage(*it, "after_manual_decrement");
+                if (it->unused_shape)
+                {
+                    const auto shape = it->unused_shape;
+                    it->unused_shape = nullptr;
+                    remove_reference(shape);
+                }
+                if (it->observe)
+                    console::info("[Collision provider] template_usage_result world=%d entity=%d instance=%u epoch=%llu restored=%d\n",
+                        it->world, it->entity, it->id, static_cast<unsigned long long>(it->epoch),
+                        usage_episode_restored(it->before_create, it->after_native_create, it->after_increment, before, after_native, after_manual));
                 console::info("[Collision provider] destroyed world=%d entity=%d instance=%u\n", it->world, it->entity, it->id);
                 it = instances.erase(it);
             }
         }
 
-        void probe(int world, unsigned int id)
+        bool query_geometry(const query_zone& item, const char* phase)
         {
-            std::lock_guard lock(mutex);
-            const auto found = std::find_if(instances.begin(), instances.end(), [=](const instance& item) { return item.world == world && item.id == id; });
-            if (found == instances.end() || !world_ready(world)) throw std::runtime_error("Owned live collision instance required");
-            const auto& shape = found->geometry;
+            if (quarantined || shutting_down || !session_ready() || item.epoch != vm_epoch ||
+                reinterpret_cast<std::uintptr_t>(world_marker(item.world)) != item.world_marker)
+                throw std::runtime_error("Original live query episode required; no removed handle is used");
+            const auto& shape = item.geometry;
             const point point_start{shape.origin[0], shape.origin[1], shape.maximum[2] + 80};
             const point point_end{shape.origin[0], shape.origin[1], shape.maximum[2] - 80};
             const point sweep_end{shape.origin[0], shape.origin[1], shape.maximum[2] + 20};
@@ -247,17 +389,44 @@ namespace collision_provider
                 // FX supplies trace_t plus 16 bytes: the engine writes beyond
                 // the SDK trace_t, including a float at 0x40.
                 alignas(16) std::array<unsigned char, 128> result{};
-                legacy_trace(world, result.data(), point_start.data(), end.data(), &bounds, 2047, 0, 1, 0, nullptr, 0);
+                legacy_trace(item.world, result.data(), point_start.data(), end.data(), &bounds, 2047, 0, 1, 0, nullptr, 0);
+                if (quarantined || item.epoch != vm_epoch || reinterpret_cast<std::uintptr_t>(world_marker(item.world)) != item.world_marker)
+                    throw std::runtime_error("Collision query episode changed across native trace; discard result");
                 game::trace_t trace{};
                 std::memcpy(&trace, result.data(), sizeof(trace));
                 console::info("[Collision provider] engine_query=%s world=%d instance=%u fraction=%.9f normal=%.6f,%.6f,%.6f contents=%d hitType=%d hitId=%u startsolid=%d allsolid=%d\n",
-                    name, world, id, trace.fraction, trace.normal[0], trace.normal[1], trace.normal[2], trace.contents,
+                    name, item.world, item.id, trace.fraction, trace.normal[0], trace.normal[1], trace.normal[2], trace.contents,
                     static_cast<int>(trace.hitType), trace.hitId, trace.startsolid, trace.allsolid);
+                return trace.fraction == 1.0f && !trace.startsolid && !trace.allsolid;
             };
-            query("point_floor", point_end, game::Bounds{});
+            const auto point_clear = query(!std::strcmp(phase, "before") ? "point_floor_before" :
+                !std::strcmp(phase, "removed") ? "point_floor_removed" : "point_floor", point_end, game::Bounds{});
             game::Bounds actor{};
             actor.halfSize[0] = 15; actor.halfSize[1] = 15; actor.halfSize[2] = 36;
-            query("actor_floor", sweep_end, actor);
+            const auto actor_clear = query(!std::strcmp(phase, "before") ? "actor_floor_before" :
+                !std::strcmp(phase, "removed") ? "actor_floor_removed" : "actor_floor", sweep_end, actor);
+            return point_clear && actor_clear;
+        }
+
+        void probe(int world, unsigned int id)
+        {
+            std::lock_guard lock(mutex);
+            operation_scope operation;
+            const auto found = std::find_if(instances.begin(), instances.end(), [=](const instance& item) { return item.world == world && item.id == id && item.native_alive && item.native_created && item.manual_contribution; });
+            if (found == instances.end()) throw std::runtime_error("Owned live collision instance required");
+            (void)query_geometry(copied_zone(*found), "inside");
+        }
+
+        bool clear_and_probe(int entity)
+        {
+            std::lock_guard lock(mutex);
+            operation_scope operation;
+            const auto count = std::count_if(instances.begin(), instances.end(), [=](const instance& item) { return item.entity == entity; });
+            const auto found = std::find_if(instances.begin(), instances.end(), [=](const instance& item) { return item.entity == entity && item.world == 0 && item.observe && item.native_alive && item.native_created && item.manual_contribution; });
+            if (count != 1 || found == instances.end()) throw std::runtime_error("Exactly one observed owner body required");
+            const auto query_record = copied_zone(*found); // No old asset/context/body handle retained.
+            clear_boxes(entity, true);
+            return query_geometry(query_record, "removed");
         }
 
         float number(const char* text)
@@ -336,7 +505,8 @@ namespace collision_provider
                     const auto world = integer<int>(args[1]);
                     const auto entity = integer<int>(args[2]);
                     const auto geometry = make_box({number(args[3]),number(args[4]),number(args[5])}, {number(args[6]),number(args[7]),number(args[8])});
-                    scheduler::once([=] { try { (void)add_box(world, entity, geometry); } catch (const std::exception& error) { console::error("[Collision provider] %s\n", error.what()); } },
+                    const auto queued_epoch = vm_epoch.load();
+                    scheduler::once([=] { try { if (queued_epoch != vm_epoch || shutting_down || quarantined) throw std::runtime_error("Stale collision create callback refused"); (void)add_box(world, entity, geometry); } catch (const std::exception& error) { console::error("[Collision provider] %s\n", error.what()); } },
                         game::environment::is_dedi() ? scheduler::server : scheduler::main);
                 }
                 catch (const std::exception& error) { console::error("[Collision provider] %s\n", error.what()); }
@@ -348,17 +518,18 @@ namespace collision_provider
                     if (args.size() != 3) throw std::runtime_error("Usage: collision_box_probe world instance");
                     const auto world = integer<int>(args[1]);
                     const auto id = integer<unsigned int>(args[2]);
-                    scheduler::once([=] { try { probe(world, id); } catch (const std::exception& error) { console::error("[Collision provider] %s\n", error.what()); } },
+                    const auto queued_epoch = vm_epoch.load();
+                    scheduler::once([=] { try { if (queued_epoch != vm_epoch || shutting_down || quarantined) throw std::runtime_error("Stale collision probe callback refused"); probe(world, id); } catch (const std::exception& error) { console::error("[Collision provider] %s\n", error.what()); } },
                         game::environment::is_dedi() ? scheduler::server : scheduler::main);
                 }
                 catch (const std::exception& error) { console::error("[Collision provider] %s\n", error.what()); }
             });
-            command::add("collision_box_clear", [] { scheduler::once([] { try { clear_boxes(); } catch (const std::exception& error) { console::error("[Collision provider] %s\n", error.what()); } },
+            command::add("collision_box_clear", [] { const auto queued_epoch = vm_epoch.load(); scheduler::once([queued_epoch] { try { if (queued_epoch != vm_epoch || shutting_down || quarantined) throw std::runtime_error("Stale collision clear callback refused"); clear_boxes(); } catch (const std::exception& error) { console::error("[Collision provider] %s\n", error.what()); } },
                 game::environment::is_dedi() ? scheduler::server : scheduler::main); });
             gsc::method::add("collision_createbox", [](game::scr_entref_t entity, const gsc::function_args& args) -> scripting::script_value
             {
-                if (!game::environment::is_dedi() || entity.classnum || args.size() != 2)
-                    throw std::runtime_error("Dedicated script-model collision_createbox(minimum, maximum) required");
+                if (!game::environment::is_dedi() || entity.classnum || (args.size() != 2 && args.size() != 3))
+                    throw std::runtime_error("Dedicated collision_createbox(minimum, maximum, optionalObserved) required");
                 const auto* target = game::GetEntity(entity);
                 const auto* classname = target ? game::SL_ConvertToString(target->classname) : nullptr;
                 if (!target || target->client || target->agent ||
@@ -366,7 +537,19 @@ namespace collision_provider
                     throw std::runtime_error("An owned static script_model is required");
                 const auto a = args[0].as<scripting::vector>(), b = args[1].as<scripting::vector>();
                 const auto geometry = make_box({a.get_x(),a.get_y(),a.get_z()}, {b.get_x(),b.get_y(),b.get_z()});
-                return static_cast<int>(add_box(0, entity.entnum, geometry));
+                const auto observed = args.size() == 3 ? args[2].as<int>() : 0;
+                if (observed != 0 && observed != 1) throw std::runtime_error("Observed mode must be 0 or 1");
+                return static_cast<int>(add_box(0, entity.entnum, geometry, observed == 1));
+            });
+            gsc::method::add("collision_clearboxprobe", [](game::scr_entref_t entity, const gsc::function_args& args) -> scripting::script_value
+            {
+                if (!game::environment::is_dedi() || entity.classnum || args.size() || !session_ready())
+                    throw std::runtime_error("Private dedicated owner collision_clearboxprobe() required");
+                const auto* target = game::GetEntity(entity);
+                const auto* classname = target ? game::SL_ConvertToString(target->classname) : nullptr;
+                if (!target || target->client || target->agent || !classname || std::strcmp(classname, "script_model"))
+                    throw std::runtime_error("An owned static script_model is required");
+                return static_cast<int>(clear_and_probe(entity.entnum));
             });
             gsc::method::add("collision_clearboxes", [](game::scr_entref_t entity, const gsc::function_args&) -> scripting::script_value
             {
@@ -378,9 +561,20 @@ namespace collision_provider
             {
                 if (!post && game::environment::is_dedi())
                 {
+                    std::lock_guard lock(mutex);
+                    shutting_down = true;
+                    if (operation_active)
+                    {
+                        quarantined = true;
+                        ++vm_epoch;
+                        console::error("[Collision provider] VM shutdown interrupted an original operation; quarantine records without stale cleanup\n");
+                        return;
+                    }
                     try { clear_boxes(); }
-                    catch (const std::exception& error) { console::error("[Collision provider] shutdown teardown refused: %s\n", error.what()); }
+                    catch (const std::exception& error) { quarantined = true; console::error("[Collision provider] shutdown teardown refused: %s\n", error.what()); }
+                    ++vm_epoch; // VM episode only; not a native world generation.
                 }
+                if (post && game::environment::is_dedi()) shutting_down = false;
             });
             console::info("[Collision provider] experimental native convex box factory installed; no runtime or player acceptance yet\n");
         }

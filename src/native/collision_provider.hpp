@@ -3,11 +3,51 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 
 namespace collision_provider
 {
     using point = std::array<float, 3>;
+    using usage_counts = std::array<int, 3>;
+
+    inline bool manual_increment_permitted(const usage_counts& value)
+    {
+        return value[0] >= 0 && value[0] < std::numeric_limits<int>::max() &&
+            value[1] >= 0 && value[2] >= 0;
+    }
+
+    inline bool usage_episode_restored(const usage_counts& baseline,
+        const usage_counts& after_native_create, const usage_counts& after_increment,
+        const usage_counts& before_destroy, const usage_counts& after_native_destroy,
+        const usage_counts& after_decrement)
+    {
+        if (!manual_increment_permitted(baseline)) return false;
+        auto contributed = baseline;
+        ++contributed[0];
+        // These are observed conditions, never instructions to restore a shared
+        // engine counter. Native or external changes must remain visible.
+        return after_native_create == baseline && after_increment == contributed &&
+            before_destroy == contributed && after_native_destroy == contributed &&
+            after_decrement == baseline;
+    }
+
+    inline bool manual_decrement_permitted(const usage_counts& before_destroy, const usage_counts& after_native_destroy)
+    {
+        return before_destroy == after_native_destroy && after_native_destroy[0] > 0 &&
+            after_native_destroy[1] >= 0 && after_native_destroy[2] >= 0;
+    }
+
+    template <typename Destroy>
+    inline void destroy_owned_once(bool& alive, bool& in_progress, Destroy destroy)
+    {
+        if (!alive) return;
+        if (in_progress) throw std::runtime_error("Original native destroy is unresolved; do not retry its ID");
+        in_progress = true;
+        destroy();
+        alive = false; // Commit before any fallible post-destroy observation.
+        in_progress = false;
+    }
 
     struct alignas(16) vertex
     {
