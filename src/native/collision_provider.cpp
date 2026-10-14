@@ -140,7 +140,7 @@ namespace collision_provider
                     world, entity, classname, static_cast<unsigned int>(target.classname), offsetof(game::gentity_s, classname), producer_class_word, static_cast<unsigned int>(contents),
                     static_cast<unsigned int>(linked), static_cast<unsigned int>(*no_change_class), static_cast<unsigned int>(*mask_2080_class));
                 if (!owner_solid_permitted(static_cast<std::uint32_t>(contents), linked,
-                    producer_class_word, *mask_2080_class, *no_change_class))
+                    producer_class_word, target.classname, *mask_2080_class, *no_change_class))
                     throw std::runtime_error("Call the retail solid() method on the script_model before creating its box");
             }
             auto* asset_slot = reinterpret_cast<game::PhysicsAsset**>(0x141BA4500);

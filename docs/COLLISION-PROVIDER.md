@@ -78,7 +78,8 @@ and separate original-host closure witness remain intact; A was not rewritten.
 
 The next source correction preserves linked bit1 admission and adds only the
 exact observed retail script_model case: linked byte1, contents exactly0x2080,
-producer raw class matching the current nonzero mask0x2080 global, with a
+producer raw class matching both the SDK script_model ID and the current
+nonzero mask0x2080 global, with a
 separate nonzero no-change global. Dedicated/static script_model classification,
 producer signatures/readability, ready world, loopback/password/LAN-only and
 all allocation/teardown checks stay in force. Other even/nonzero/partial masks,
