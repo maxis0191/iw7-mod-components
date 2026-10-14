@@ -1,4 +1,13 @@
 # Pure parsing of one fresh launch-owned transcript. No engine or OS actions.
+function Send-IW7CollisionProbeCommand($Handle,$Identity,[string]$Command) {
+    if($Command -cnotin @('set paris_collision_probe_arm 1','quit')){throw 'Only the two fixed collision commands are accepted.'}
+    if(!$Handle -or !$Identity -or $Handle.Id -ne $Identity.PID -or !$Handle.CollisionProbeConsoleEnabled -or $Handle.HasExited){throw 'Exact original collision dedicated handle required.'}
+    $kernel=$Handle.ReadIdentity()
+    if($kernel.PID -ne $Identity.PID -or $kernel.Image -ine $Identity.Image -or $kernel.CreationFileTime -ne $Identity.CreationFileTime){throw 'Collision console kernel identity differs.'}
+    $bytes=$Handle.WriteCollisionProbeCommand($Command,$Identity.Image,[long]$Identity.CreationFileTime)
+    [pscustomobject]@{Command=$Command;BytesWritten=$bytes;PID=$kernel.PID;CreationFileTime=$kernel.CreationFileTime;
+        Transport='original-owned-stdin-wincon';EngineConsumed=$false}
+}
 function Read-IW7CollisionProbeResult([string]$Text,[string]$Token) {
     if($Token -cnotmatch '^[a-f0-9]{32}$'){throw 'Collision run token required.'}
     $last=$Text.LastIndexOf("`n");if($last -lt 0){return [pscustomobject]@{Ready=$false;Complete=$false}}

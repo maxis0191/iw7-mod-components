@@ -2,6 +2,10 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "collision_probe_transport_test",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_probe_transport_test.ps1"]
+    },
+    {
       "id": "collision_probe_result_test",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_probe_result_test.ps1"]
     },

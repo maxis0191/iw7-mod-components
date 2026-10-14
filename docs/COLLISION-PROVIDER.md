@@ -161,6 +161,23 @@ The actor's exact shape/margin, post-removal actor query, static/sensor flags,
 template usage-counter restitution, reset lifetime and player movement remain
 unqualified. Point0.5 and actor44/60 are expectations, not measured results.
 
+Review of the first runner found a real transport refusal before execution:
+the shared `Send-ServerCommand.py --module-client` accepts only its three fixed
+client connect/disconnect/quit strings, and refused the probe's arm command.
+Its normal console route also does not establish owned stdin for the NUL-input
+launcher. No failed game run is invented; those source candidates are retained.
+The correction uses the existing `IW7LabProcess` launcher and original kernel
+handle with a separate dedicated collision stdin role and upstream `-wincon`.
+Only the exact arm command and quit are permitted, each once, on that role's
+private pipe. Rig commands, client targets, reopened handles and arbitrary text
+are refused. The shared sender and original eight-command rig policy are not
+expanded. Runtime C# comes from the reviewed operation package; B78 C++ bytes
+and the compiled56 manifest remain unchanged. Compiled policy and actual caller
+dispatch to a mocked owned transport pass, including foreign PID/image/creation,
+role, exited-handle and command refusal. Existing48 rig policy and5 caller lease
+checks still pass. A pipe-write result is not engine consumption; only the
+fixture's fresh subsequent measurements can prove execution.
+
 Before staging, Run acquires the shared lease, verifies prepared sources and
 36 raw source hashes, hashes EXE/PDB under that lease and snapshots candidate
 files/profile/bank with a separate read-only Main audit. The staged image is

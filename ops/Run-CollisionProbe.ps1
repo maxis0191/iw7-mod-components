@@ -143,13 +143,13 @@ set sv_mapRotation "gametype zombie map cp_zmb"
 set sv_mapRotationCurrent ""
 "@
     [IO.File]::WriteAllText((Resolve-IW7BasePath $candidateRoot $configRelative),$config,[Text.UTF8Encoding]::new($false))
-    if(!('IW7LabProcess' -as [type])){Add-Type -Path (Join-Path $helperRoot 'ops/native/LabProcess.cs')}
+    if(!('IW7LabProcess' -as [type])){Add-Type -Path "$PSScriptRoot/native/LabProcess.cs"}
     $stdout=Join-Path $outputRoot 'server.stdout.log';$stderr=Join-Path $outputRoot 'server.stderr.log'
     $dumps=Resolve-IW7BasePath $candidateRoot 'minidumps';$beforeDumps=@()
     if(Test-Path -LiteralPath $dumps){$beforeDumps=@(Get-ChildItem -LiteralPath $dumps -Filter '*.zip' -File|ForEach-Object FullName)}
     $desktop='IW7ParisLab_'+[guid]::NewGuid().ToString('N')
-    $arguments='-dedicated -allow_root_io -noupdate -nosteam -cpMode -stdout -paris-server-test -paris-isolated-lab -paris-collision-provider +set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port 27116 +exec server_collision_test.cfg +map_rotate'
-    $server=[IW7LabProcess]::StartOwned($serverImage,$arguments,$candidateRoot,$stdout,$stderr,$desktop,$false)
+    $arguments='-dedicated -wincon -allow_root_io -noupdate -nosteam -cpMode -stdout -paris-server-test -paris-isolated-lab -paris-collision-provider +set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port 27116 +exec server_collision_test.cfg +map_rotate'
+    $server=[IW7LabProcess]::StartOwned($serverImage,$arguments,$candidateRoot,$stdout,$stderr,$desktop,$false,$false,$true)
     [pscustomobject]@{PID=$server.Id;Image=$serverImage;LeaseToken=$lease.Token;Desktop=$desktop;Arguments=$arguments}|
         ConvertTo-Json|Set-Content -LiteralPath (Join-Path $outputRoot 'server.launch.local.json')
     $kernel=$server.ReadIdentity()
@@ -175,8 +175,8 @@ set sv_mapRotationCurrent ""
     $private|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $outputRoot 'private-protocol2.local.json')
     $null=Read-CollisionPrivateInfo
     $armTick=[Environment]::TickCount64
-    & python (Join-Path $helperRoot 'ops/Send-ServerCommand.py') --module-client $server.Id 'set paris_collision_probe_arm 1' | Out-Null
-    if($LASTEXITCODE){throw 'Owned arm dispatch failed.'}
+    Send-IW7CollisionProbeCommand $server $identity 'set paris_collision_probe_arm 1'|
+        ConvertTo-Json|Set-Content -LiteralPath (Join-Path $outputRoot 'arm-write.local.json')
     $deadline=[Environment]::TickCount64+15000
     do{
         Assert-CollisionOriginal;$null=Read-CollisionPrivateInfo
@@ -221,8 +221,7 @@ finally{
                             }while($true)
                             Assert-CollisionOriginal
                             $closure.Stop=Invoke-IW7OwnedStop -Handle $server -TimeoutMs 10000 -StopAction {
-                                & python (Join-Path $helperRoot 'ops/Send-ServerCommand.py') --module-client $server.Id 'quit'|Out-Null
-                                if($LASTEXITCODE){throw 'Owned dedicated quit failed.'}
+                                $null=Send-IW7CollisionProbeCommand $server $identity 'quit'
                             }
                         }
                     }
