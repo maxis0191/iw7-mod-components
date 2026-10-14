@@ -87,6 +87,11 @@ function New-IW7StockLinkTransaction {
     if($Plan.Schema -cne 'iw7.stock-link-plan/1' -or ![object]::ReferenceEquals([AppDomain]::CurrentDomain.GetData($RetentionKey),$OwnerRoot) -or
        $OwnerRoot.Contains($TransactionSlot)){throw 'Original caller root and unused transaction slot required before preparation.'}
     Assert-IW7StockAbsolutePath $JournalPath
+    foreach($stockRoot in @($Plan.SourceRoot,$Plan.TargetRoot)){
+        if($JournalPath -ieq $stockRoot -or $JournalPath.StartsWith($stockRoot.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){
+            throw 'Independent stock journal outside source/target roots required.'
+        }
+    }
     $context=@{Schema='iw7.stock-link-transaction/1';HostPID=$PID;OwnerRoot=$OwnerRoot;RetentionKey=$RetentionKey;TransactionSlot=$TransactionSlot;
         LeaseToken=$LeaseToken;ValidateCaller=$ValidateCaller;Plan=$Plan;Phase='PublishedBeforePreflight';Failure=$null;Closed=$false;
         JournalPath=$JournalPath;JournalStream=$null;JournalMetadata=$null;Sources=[Collections.Generic.List[object]]::new();

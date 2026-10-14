@@ -35,7 +35,7 @@ older package or retained launch helper.
    `New-IW7StockLinkTransaction -Plan <plan> -OwnerRoot <original IDictionary>
    -RetentionKey <same AppDomain key> -TransactionSlot <unused key>
    -LeaseToken <current caller token> -ValidateCaller <scriptblock>
-   -JournalPath <new local JSONL outside target>`. The scriptblock accepts
+   -JournalPath <new local JSONL outside source and target>`. The scriptblock accepts
    `(LeaseToken, TargetRoot)` and **throws** unless the original caller's actual
    host protection, lease, target and operation authorization remain valid.
    It must check existing native/resource helpers, not reconstruct proof from

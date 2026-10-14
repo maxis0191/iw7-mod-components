@@ -3,110 +3,43 @@
   "checks": [
     {
       "id": "stock_links_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/stock_links_test.ps1"
-      ]
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/stock_links_test.ps1"]
     },
     {
       "id": "raygun_weapon_authoring_test",
-      "command": [
-        "python",
-        "-B",
-        "tests/ops/raygun_weapon_authoring_test.py"
-      ]
+      "command": ["python", "-B", "tests/ops/raygun_weapon_authoring_test.py"]
     },
     {
       "id": "collision_player_result_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/collision_player_result_test.ps1"
-      ]
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_player_result_test.ps1"]
     },
     {
       "id": "collision_player_source_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/collision_player_source_test.ps1"
-      ]
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_player_source_test.ps1"]
     },
     {
       "id": "collision_probe_transport_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/collision_probe_transport_test.ps1"
-      ]
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_probe_transport_test.ps1"]
     },
     {
       "id": "collision_probe_result_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/collision_probe_result_test.ps1"
-      ]
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_probe_result_test.ps1"]
     },
     {
       "id": "rig_assets_probe_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/rig_assets_probe_test.ps1"
-      ]
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/rig_assets_probe_test.ps1"]
     },
     {
       "id": "original_rig_console_caller_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/original_rig_console_caller_test.ps1"
-      ]
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/original_rig_console_caller_test.ps1"]
     },
     {
       "id": "original_rig_console_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/original_rig_console_test.ps1"
-      ]
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/original_rig_console_test.ps1"]
     },
     {
       "id": "collision_provider_build_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/collision_provider_build_test.ps1"
-      ]
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_provider_build_test.ps1"]
     },
     {
       "id": "base_client_context_test",
