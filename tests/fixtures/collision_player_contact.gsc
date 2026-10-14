@@ -1,7 +1,7 @@
 // Private authoritative movement witness. No client collider or prediction claim.
 main()
 {
-    if (!getdvarint("dedicated") || !getdvarint("paris_collision_player_test") ||
+    if (!getdvarint("dedicated") || !getdvarint("paris_collision_player_test") || !getdvarint("paris_collision_player_anchor_current") ||
         !getdvarint("paris_isolated_lab") || getdvar("mapname") != "cp_zmb" ||
         getdvarint("net_port") != 27116 || getdvarint("sv_lanOnly") != 1 ||
         getdvar("net_ip") != "127.0.0.1" || getdvar("g_password") == "" ||
@@ -149,9 +149,7 @@ contact()
     state.failed = false;
     state.sample_id = 0;
     state.token = getdvar("paris_collision_probe_token");
-    state.anchor = (getdvarfloat("paris_collision_player_x"), getdvarfloat("paris_collision_player_y"), getdvarfloat("paris_collision_player_z"));
-    state.start = state.anchor + (0,0,208);
-    state.top = state.anchor[2] + 112;
+    state.anchor_frozen = false;
     state.owner = undefined;
     deadline = gettime() + 180000;
     stable = -1;
@@ -161,22 +159,41 @@ contact()
         players = getentarray("player", "classname");
         if (players.size == 1)
         {
+            if (state.anchor_frozen && state.player != players[0]) { fail(state, "anchor_player_changed"); return; }
             state.player = players[0];
             state.player paris_test_protect();
             print("[Paris agent heartbeat] map=cp_zmb; " + state.player paris_test_safety_snapshot());
             stamp = state.player paris_agent_observationstamp();
             if (playable(state) && isdefined(stamp) && stamp != "" && stamp != "unavailable")
             {
+                if (state.anchor_frozen && distance(state.player.origin, state.anchor) > 1) { fail(state, "anchor_pose_changed_before_arm"); return; }
                 if (stable < 0) stable = gettime();
                 if (gettime() - stable >= 1000)
                 {
-                    print("[Collision player] PLAYER_READY token=" + state.token + "; " + stamp);
+                    if (!state.anchor_frozen)
+                    {
+                        // Existing retail getter, before either declared placement.
+                        state.anchor = state.player.origin;
+                        state.start = state.anchor + (0,0,208);
+                        state.top = state.anchor[2] + 112;
+                        state.anchor_frozen = true;
+                    }
+                    print("[Collision player] PLAYER_READY token=" + state.token + "; " + stamp +
+                        "; anchor_x=" + state.anchor[0] + "; anchor_y=" + state.anchor[1] + "; anchor_z=" + state.anchor[2]);
                     if (getdvarint("paris_collision_probe_arm")) break;
                 }
             }
-            else stable = -1;
+            else
+            {
+                if (state.anchor_frozen) { fail(state, "frozen_anchor_readiness_lost"); return; }
+                stable = -1;
+            }
         }
-        else stable = -1;
+        else
+        {
+            if (state.anchor_frozen) { fail(state, "frozen_anchor_player_lost"); return; }
+            stable = -1;
+        }
         wait 0.05;
     }
     if (gettime() >= deadline || !audit(state)) { fail(state, "admission_or_clearance"); return; }

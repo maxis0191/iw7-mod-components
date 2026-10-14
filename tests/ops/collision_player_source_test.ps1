@@ -16,21 +16,61 @@ $plan=& (Join-Path $root 'ops/Invoke-CollisionPlayerContact.ps1') -Anchor @(10,2
 if($plan.PlannedClients -ne 1 -or $plan.ClientCollider -or $plan.ClearanceQualified -or $plan.OwnerAccepted -or
     $plan.Minimum[2] -ne 126 -or $plan.Maximum[2] -ne 142 -or $plan.Start[2] -ne 238){throw 'Source Plan overclaims or changes reviewed geometry.'}
 $refused=$false
-try{& (Join-Path $root 'ops/Invoke-CollisionPlayerContact.ps1') -Action Run -Anchor @(10,20,30) -Token $token}catch{
+try{& (Join-Path $root 'ops/Invoke-CollisionPlayerContact.ps1') -Action Run -Token $token}catch{
     if($_.Exception.Message -notmatch 'retained original server/client session'){throw};$refused=$true
 }
 if(!$refused -or $effects.Count){throw 'Missing-owned-context Run or default Plan performed a live effect.'}
+$pending=& (Join-Path $root 'ops/Invoke-CollisionPlayerContact.ps1') -Token $token|ConvertFrom-Json
+if(!$pending.CoordinatesPending -or $null -ne $pending.Anchor -or $pending.ClearanceQualified){throw 'Pure selector Plan fabricated a live anchor.'}
+$previewRefused=$false
+try{& (Join-Path $root 'ops/Invoke-CollisionPlayerContact.ps1') -Action Run -Anchor @(10,20,30) -Token $token}catch{
+    if($_.Exception.Message -notmatch 'preview only'){throw};$previewRefused=$true
+}
+if(!$previewRefused -or $effects.Count){throw 'Preview coordinate entered a live Run.'}
+foreach($badPreview in @(@(0),@())){
+    $rejectedPreview=$false
+    try{& (Join-Path $root 'ops/Invoke-CollisionPlayerContact.ps1') -Action Run -Anchor $badPreview -Token $token}catch{
+        if($_.Exception.Message -notmatch 'preview only'){throw};$rejectedPreview=$true
+    }
+    if(!$rejectedPreview){throw 'Explicit zero/empty preview bypassed live selector refusal.'}
+}
 . (Join-Path $root 'ops/Collision-Player.Core.ps1')
 $nonce='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';$generation='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
-$wire="[Collision player] PLAYER_READY token=$token; server_pid=42; client_nonce=$nonce; server_generation=$generation; slot=0; native_tick_ms=1400; protected=1`n"
+$wire="[Collision player] PLAYER_READY token=$token; server_pid=42; client_nonce=$nonce; server_generation=$generation; slot=0; native_tick_ms=1400; protected=1; anchor_x=10; anchor_y=20; anchor_z=30`n"
 $ready=Read-IW7CollisionPlayerReady $wire $token 42 $nonce 1100 1500
-if(!$ready.Ready -or $ready.Generation -cne $generation){throw 'Fresh bound readiness publication rejected.'}
+if(!$ready.Ready -or $ready.Generation -cne $generation -or ($ready.Anchor -join ',') -cne '10,20,30'){throw 'Fresh bound real-pose publication rejected.'}
 $readyRefusals=0
 foreach($case in @($wire.TrimEnd("`n"),$wire.Replace('native_tick_ms=1400','native_tick_ms=1099'),$wire.Replace('native_tick_ms=1400','native_tick_ms=1501'),
     $wire.Replace('client_nonce='+$nonce,'client_nonce=cccccccccccccccccccccccccccccccc'),$wire.Replace('slot=0','slot=1'),$wire.Replace('protected=1','protected=0'))){
-    if((Read-IW7CollisionPlayerReady $case $token 42 $nonce 1100 1500).Ready){throw 'Partial/stale/future/foreign/unprotected readiness accepted.'};$readyRefusals++
+    try{$r=Read-IW7CollisionPlayerReady $case $token 42 $nonce 1100 1500}catch{$readyRefusals++;continue}
+    if($r.Ready){throw 'Partial/stale/future/foreign/unprotected readiness accepted.'};$readyRefusals++
 }
 if((Read-IW7CollisionPlayerReady $wire $token 42 $nonce 1100 1901).Ready){throw 'Expired readiness accepted.'};$readyRefusals++
+$poseRefusals=0
+foreach($case in @($wire.Replace('; anchor_x=10; anchor_y=20; anchor_z=30',''),$wire.Replace('anchor_x=10','anchor_x=NaN'))){
+    try{$r=Read-IW7CollisionPlayerReady $case $token 42 $nonce 1100 1500}catch{$poseRefusals++;continue}
+    if($r.Ready){throw 'Missing/nonfinite anchor accepted.'};$poseRefusals++
+}
+foreach($value in @('30001','1e309')){
+    try{$null=Read-IW7CollisionPlayerReady ($wire.Replace('anchor_x=10','anchor_x='+$value)) $token 42 $nonce 1100 1500}catch{$poseRefusals++;continue};throw 'Out-of-range/nonfinite pose accepted.'
+}
+try{$null=Read-IW7CollisionPlayerReady ($wire+"[Collision player] FAIL token=$token reason=anchor_pose_changed_before_arm`n") $token 42 $nonce 1100 1500}catch{$poseRefusals++}
+if($poseRefusals -ne 5){throw 'Fixture failure did not invalidate the earlier ready publication.'}
+Assert-IW7CollisionPlayerFrozenReady $ready $ready
+foreach($change in @('expired','generation','pose')){
+    $current=$ready.PSObject.Copy()
+    switch($change){'expired'{$current.Ready=$false}'generation'{$current.Generation='cccccccccccccccccccccccccccccccc'}'pose'{$current.Anchor=@(11,20,30)}}
+    try{Assert-IW7CollisionPlayerFrozenReady $ready $current}catch{$poseRefusals++;continue};throw 'Frozen pose/generation/readiness changed before arm.'
+}
+foreach($badLast in @($wire.Replace('anchor_x=10','anchor_x=NaN'),$wire.Replace('client_nonce='+$nonce,'client_nonce=cccccccccccccccccccccccccccccccc'))){
+    try{$null=Read-IW7CollisionPlayerReady ($wire+$badLast) $token 42 $nonce 1100 1500}catch{$poseRefusals++;continue};throw 'Earlier good publication hid a malformed/foreign later pose.'
+}
+foreach($partialLast in @($wire.Replace('anchor_x=10','anchor_x=NaN').TrimEnd("`n"),$wire.Replace('slot=0','slot=1').TrimEnd("`n"),"[Collision player] FAIL token=$token reason=anchor_pose_changed_before_arm")){
+    if((Read-IW7CollisionPlayerReady ($wire+$partialLast) $token 42 $nonce 1100 1500).Ready){throw 'Valid predecessor hid a partial malformed/foreign latest own pose.'};$poseRefusals++
+}
+foreach($noise in @('[unrelated] partial diagnostic',$wire.Replace('token='+$token,'token=cccccccccccccccccccccccccccccccc').TrimEnd("`n"))){
+    if(!(Read-IW7CollisionPlayerReady ($wire+$noise) $token 42 $nonce 1100 1500).Ready){throw 'Unrelated partial noise blocked the fresh owned pose.'}
+}
 # Only the real GSC fixture reads retail intro/control state. These fixtures
 # verify the publication transport/freshness; they never fabricate that state.
 $created=[datetime]::Parse('2026-10-14T13:00:00Z').ToUniversalTime();$filetime=$created.ToFileTimeUtc()
@@ -61,4 +101,4 @@ if($GscToolPath){
         @($output|Where-Object{"$_" -match '^parsed iw7/collision_player_contact.gsc$'}).Count -ne 1){throw 'GSC source grammar failed.'}
     Write-Output 'PASS pinned GSC grammar; Aurora/runtime compilation remains untested.'
 }
-Write-Output "PASS collision player source grammar, default Plan, missing-original, $rejected identity and $readyRefusals readiness-wire refusals; live effects=0; no fake retail intro state."
+Write-Output "PASS collision player source grammar, pending/preview Plan, missing-original, $rejected identity, $readyRefusals readiness and $poseRefusals pose refusals; live effects=0; no fake retail intro/terrain state."

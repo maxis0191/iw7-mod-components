@@ -1,6 +1,6 @@
 param(
     [ValidateSet('Plan','Run')][string]$Action='Plan',
-    [Parameter(Mandatory)][double[]]$Anchor,
+    [double[]]$Anchor,
     [Parameter(Mandatory)][ValidatePattern('^[a-f0-9]{32}$')][string]$Token,
     [string]$HelperRoot,[string]$HelperReceiptSHA256,[string]$SourceReceiptSHA256,
     $Session,$ServerHandle,$ServerIdentity,
@@ -8,9 +8,15 @@ param(
 )
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/Collision-Player.Core.ps1"
-$plan=New-IW7CollisionPlayerPlan $Anchor $Token
-$plan|Add-Member FixtureSHA256 (Get-FileHash -LiteralPath "$PSScriptRoot/../tests/fixtures/collision_player_contact.gsc").Hash
-if($Action -ceq 'Plan'){$plan|ConvertTo-Json -Depth 6;return}
+$anchorProvided=$PSBoundParameters.ContainsKey('Anchor')
+$fixtureHash=(Get-FileHash -LiteralPath "$PSScriptRoot/../tests/fixtures/collision_player_contact.gsc").Hash
+if($Action -ceq 'Plan'){
+    if($anchorProvided){$plan=New-IW7CollisionPlayerPlan $Anchor $Token;$plan|Add-Member PreviewOnly $true}
+    else{$plan=[pscustomobject]@{Schema='iw7.collision-player-plan/1';Token=$Token;Anchor=$null;CoordinatesPending=$true;AnchorSelection='Fresh protected stock-spawn pose after actual retail readiness';PlannedClients=1;ClearanceQualified=$false;ClientCollider=$false;OwnerAccepted=$false;Config="set paris_collision_player_test 1`nset paris_collision_player_anchor_current 1`nset paris_collision_probe_arm 0`nset paris_collision_probe_token `"$Token`"`n"}}
+    $plan|Add-Member FixtureSHA256 $fixtureHash
+    $plan|ConvertTo-Json -Depth 6;return
+}
+if($anchorProvided){throw 'Run selects actual frozen stock pose from native-stamped readiness; explicit coordinates are preview only.'}
 # This is a measurement operation inside the caller's original protected
 # session. The reviewed caller alone owns preparation/launch/cleanup/restoration.
 # Never instantiate a process, add/release a lease or overwrite a game file here.
@@ -65,10 +71,17 @@ $readyDeadline=[Environment]::TickCount64+180000;$generation=$null
 do{
     $null=Update-IW7BaseClient $Session
     $ready=Read-IW7CollisionPlayerReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64)
-    if($ready.Ready){$generation=$ready.Generation;break}
+    if($ready.Ready){$generation=$ready.Generation;$firstReady=$ready;break}
     if([Environment]::TickCount64 -ge $readyDeadline){throw 'Fresh playable/retail-intro readiness unavailable; no placement or collision arm.'}
     Start-Sleep -Milliseconds 100
 }while($true)
+$plan=New-IW7CollisionPlayerPlan $firstReady.Anchor $Token
+$plan|Add-Member FixtureSHA256 $fixtureHash
+$plan|Add-Member AnchorSelection 'Actual frozen protected stock-spawn pose'
+$plan|Add-Member ReadinessTick $firstReady.Tick
+$planPath=Join-Path $Session.OutputRoot ('collision-player-anchor-'+$Token+'.local.json')
+$writer=[IO.StreamWriter]::new([IO.File]::Open($planPath,'CreateNew','Write','Read'),[Text.UTF8Encoding]::new($false))
+try{$writer.Write(($plan|ConvertTo-Json -Depth 6))}finally{$writer.Dispose()}
 $steps=@(@{id='settle-controls';action='wait';duration_ms=4000},
     @{id='present-contact';action='assert_log';scope='server';contains="[Collision player] READY_F1 token=$Token";timeout_ms=5000},
     @{id='ordinary-walk';action='hold';button='forward';duration_ms=300},
@@ -77,6 +90,8 @@ if($Capture){$steps+=@{id='standing-frame';action='capture'}}
 $steps+=@(@{id='request-removal';action='press';button='use'},
     @{id='removed-fall';action='assert_log';scope='server';contains="[Collision player] DONE token=$Token";timeout_ms=5000})
 $scenario=Write-CollisionInputScenario 'collision-contact' $steps
+$currentReady=Read-IW7CollisionPlayerReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64)
+Assert-IW7CollisionPlayerFrozenReady $firstReady $currentReady
 $armTick=[Environment]::TickCount64
 $null=Send-IW7CollisionProbeCommand $ServerHandle $ServerIdentity 'set paris_collision_probe_arm 1'
 $input=Invoke-IW7AgentScenario -Session $Session -ScenarioPath $scenario
