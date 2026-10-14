@@ -1,0 +1,65 @@
+{
+  "schema": "iw7.collision-zero-client-evidence/1",
+  "date": "2026-10-14",
+  "case": "D",
+  "compiled_source": "f2e5362fe8c1536396d56ee14f55735374384091",
+  "consumer_source": "04a05f4fb77fd145afc38c5aa0e3b58dd9737017",
+  "executable_sha256": "4E8885EACBF01ACBCE57F8A3EB05A8347F06CB2A515B78516AF8FB39D37E3E9F",
+  "scope": {
+    "private_dedicated": true,
+    "protocol": 2,
+    "map": "cp_zmb",
+    "clients": 0,
+    "cheats": 0,
+    "inactivity": 0,
+    "world": 0,
+    "minimum": [-256, -192, 4080],
+    "maximum": [256, 192, 4096],
+    "original_vertices": 8,
+    "body_contents": 1,
+    "template": "physicsvolumedummy"
+  },
+  "retail_point_controls": [
+    {"phase": "before", "point": "center", "fraction": 1},
+    {"phase": "before", "point": "edge", "fraction": 1},
+    {"phase": "inside", "point": "center", "fraction": 0.5},
+    {"phase": "inside", "point": "edge", "fraction": 0.5},
+    {"phase": "after_clear_and_owner_delete", "point": "center", "fraction": 1},
+    {"phase": "after_clear_and_owner_delete", "point": "edge", "fraction": 1}
+  ],
+  "native_queries": [
+    {"kind": "point_floor", "fraction": 0.5, "normal": [0, 0, 1], "contents": 1, "hit_type": 1, "hit_id": 2046, "startsolid": false, "allsolid": false},
+    {"kind": "actor_floor", "fraction": 0.731249869, "normal": [0, 0, 1], "contents": 1, "hit_type": 1, "hit_id": 2046, "startsolid": false, "allsolid": false}
+  ],
+  "sequence": ["created", "retail_inside_points", "native_point_and_sweep", "destroyed", "retail_clear_points", "done"],
+  "result_passed": true,
+  "closure": {
+    "dedicated_exit_code": 0,
+    "normal_stop": "clean after continuous valid empty UDP for 30 seconds",
+    "candidate_restored": true,
+    "candidate_saved_files": 28,
+    "candidate_protected_files": 24,
+    "main_static_unchanged": true,
+    "main_bank_delta": false,
+    "main_strict_audit_error": null,
+    "original_caller_pty_exit_code": 0,
+    "original_host_parent_dedicated_absent": true,
+    "test_udp_endpoint_absent": true,
+    "registry_leases": 0,
+    "raw_caller_exit_pending_record_preserved": true,
+    "actual_caller_exit_observed_separately": true
+  },
+  "qualification": {
+    "point_plane_verified": true,
+    "post_removal_retail_points_clear": true,
+    "post_removal_native_actor_sweep_verified": false,
+    "exact_actor_shape_and_margin": false,
+    "static_sensor_behavior": false,
+    "template_usage_restored": false,
+    "physics_world_reset": false,
+    "player_movement": false,
+    "owner_accepted": false,
+    "client_started": false,
+    "main_deployed": false
+  }
+}
