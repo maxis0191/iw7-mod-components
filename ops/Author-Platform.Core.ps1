@@ -2,7 +2,7 @@
 . "$PSScriptRoot/Collision-Player.Core.ps1"
 
 function Get-IW7AuthorPlatformSDKContract {
-    [pscustomobject]@{Product='iw7-creator-sdk';Revision='662c548965e11c9c881abe7dc8d74042d9f1aec6';
+    [pscustomobject]@{Product='iw7-creator-sdk';Revision='6dcfc719e0535509f109c593fa4342ce201b5523';
         Script='sdk/modding/examples/original-authoring/platform-contact/sdk_author_platform.gsc';
         Bytes=5404;SHA256='3B6F34FDF6F5176BECEFC5294B992E658751921F5B07931E28A31D05634EFD25';
         DeployedScript='iw7-mod/custom_scripts/cp/sdk_author_platform.gsc'}

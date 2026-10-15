@@ -1,4 +1,4 @@
-param([string]$GscToolPath,[string]$SDKSourceRoot)
+param([string]$GscToolPath,[string]$SDKSourceRoot,[string]$SDKSourceReceiptSHA256)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $root=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -26,14 +26,20 @@ foreach($argsValue in @(@{Action='Run';Token=$token},@{Action='Run';Token=$token
 if($effects.Count){throw 'Author Source Plan/refusal performed a live effect.'}
 . (Join-Path $root 'ops/Author-Platform.Core.ps1')
 $contract=Get-IW7AuthorPlatformSDKContract
+if($contract.Revision -cne '6dcfc719e0535509f109c593fa4342ce201b5523' -or $contract.Bytes -ne 5404 -or
+    $contract.SHA256 -cne '3B6F34FDF6F5176BECEFC5294B992E658751921F5B07931E28A31D05634EFD25'){
+    throw 'Merged SDK adoption changed the script interface or retained an obsolete revision.'
+}
 $receipt=[pscustomobject]@{product=$contract.Product;revisions=[pscustomobject]@{'iw7-creator-sdk'=$contract.Revision};
     files=@([pscustomobject]@{path=$contract.Script;bytes=$contract.Bytes;sha256=$contract.SHA256})}
 $sdkRefusals=0
-foreach($change in @('product','revision','revision-array','bytes-string','hash','duplicate','path')){
+foreach($change in @('product','revision','old-sdk-revision','unmerged-sdk-head','revision-array','bytes-string','hash','duplicate','path')){
     $r=$receipt|ConvertTo-Json -Depth 6|ConvertFrom-Json
     switch($change){
         'product' {$r.product='other'}
         'revision' {$r.revisions.'iw7-creator-sdk'='ffffffffffffffffffffffffffffffffffffffff'}
+        'old-sdk-revision' {$r.revisions.'iw7-creator-sdk'='662c548965e11c9c881abe7dc8d74042d9f1aec6'}
+        'unmerged-sdk-head' {$r.revisions.'iw7-creator-sdk'='6e19a7ff45ea23b301a3088c51c6fd30db67ae6e'}
         'revision-array' {$r.revisions.'iw7-creator-sdk'=@($contract.Revision,$contract.Revision)}
         'bytes-string' {$r.files[0].bytes='5404'}
         'hash' {$r.files[0].sha256='F'*64}
@@ -46,8 +52,12 @@ foreach($change in @('product','revision','revision-array','bytes-string','hash'
 }
 if($SDKSourceRoot){
     . (Join-Path $root 'ops/Base-Client.Core.ps1')
-    Assert-IW7AuthorPlatformSDKSource $receipt $SDKSourceRoot
-    Write-Output 'PASS exact separately owned SDK GSC Source bytes; no VM/runtime qualification.'
+    $receiptPath=Resolve-IW7BasePath $SDKSourceRoot 'source-workspace.json'
+    if($SDKSourceReceiptSHA256 -cnotmatch '^[a-fA-F0-9]{64}$' -or (Get-Item -LiteralPath $receiptPath).Length -gt 1MB -or
+        (Get-FileHash -LiteralPath $receiptPath).Hash -ine $SDKSourceReceiptSHA256){throw 'Exact sealed SDK Source receipt required for the positive adoption test.'}
+    $actualReceipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
+    Assert-IW7AuthorPlatformSDKSource $actualReceipt $SDKSourceRoot
+    Write-Output 'PASS actual merged SDK Source receipt and unchanged GSC bytes; no VM/runtime qualification.'
 }
 if($GscToolPath){
     if((Get-FileHash -LiteralPath $GscToolPath).Hash -cne '1ADFD67414A9B886CBAD57EE0378F622EED485BCEF7711322AEE478E298FADCB'){throw 'Pinned GSC parser differs.'}
