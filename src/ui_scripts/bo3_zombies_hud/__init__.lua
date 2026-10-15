@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.11.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.12.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -9,6 +9,9 @@ state.roots = setmetatable({}, {__mode = "k"})
 -- In Lua5.1 a weak key alone would retain old roots through the hook closure.
 state.refreshHooks = setmetatable({}, {__mode = "kv"})
 state.cardCores = setmetatable({}, {__mode = "kv"})
+state.cardIdentities = setmetatable({}, {__mode = "kv"})
+state.identityDiagnostics = setmetatable({}, {__mode = "k"})
+state.nextIdentityDiagnostic = 0
 state.cardDiagnostics = setmetatable({}, {__mode = "k"})
 state.nextCardDiagnostic = 0
 state.nextRoot = 0
@@ -263,6 +266,119 @@ local function style_fan(self)
         bar(self, "BO3FanRule", 76.5, 156.5, 254, 258, 0xA49E8B)
         self.__bo3FanBack = true
     end
+    return self
+end
+local identity_keys = {"name", "icon", "backing", "rarity"}
+local function selected_card_models()
+    local z = DataSources and DataSources.inGame and DataSources.inGame.CP and DataSources.inGame.CP.zombies
+    if not z then return nil end
+    return {name=z.consumableDeckSelectName, icon=z.consumableDeckSelectIcon,
+        backing=z.consumableDeckSelectBacking, rarity=z.consumableDeckSelectRarity}
+end
+local function selected_card_value(models, index)
+    if not models then return nil, "models_missing" end
+    local values = {}
+    for _, key in ipairs(identity_keys) do
+        local model = models[key]
+        if not model then return nil, key .. "_reader" end
+        local ok, value = pcall(function() return model.GetValue and model:GetValue(index) end)
+        if not ok or type(value) ~= "string" then return nil, key .. "_value" end
+        values[key] = value
+    end
+    if values.name == "" or values.icon == "" then return nil, "identity_empty" end
+    -- Exact CardBacking/CardRarity pairs in the pinned retail loot master.
+    -- A backing class is not the selected card's name, effect or readiness.
+    if values.backing == "zm_wc_fate_card_base" and values.rarity == "" then
+        values.family = "FATE"
+    elseif values.backing == "zm_wc_fortune_card_base" and
+        (values.rarity == "common" or values.rarity == "rare" or values.rarity == "legendary" or values.rarity == "epic") then
+        values.family = "FORTUNE"
+    else return nil, "backing_rarity_pair" end
+    return values
+end
+local function identity_trace(self, index, stage, reason, value)
+    local record = state.identityDiagnostics[self]
+    if not record then
+        state.nextIdentityDiagnostic = state.nextIdentityDiagnostic + 1
+        record = {sequence=state.nextIdentityDiagnostic, count=0};state.identityDiagnostics[self] = record
+    end
+    local signature = stage .. ":" .. reason .. ":" .. (value and value.family or "unknown") .. ":" .. (value and value.rarity or "unknown")
+    if record.signature == signature or record.count > 32 then return end
+    record.signature = signature;record.count = record.count + 1
+    if record.count == 33 then stage, reason, value = "suppressed", "transition_limit", nil end
+    -- Optional, bounded branch evidence. No raw name/icon, native render ID,
+    -- sampled alpha or claim that the native name/icon are currently visible.
+    print("[BO3 HUD] identity version=" .. DIAGNOSTIC_VERSION .. " widget_seq=" .. record.sequence
+        .. " controller=" .. token(index) .. " stage=" .. stage .. " reason=" .. reason
+        .. " family=" .. (value and value.family or "unknown") .. " rarity=" .. token(value and value.rarity or "unknown")
+        .. " pixels=unverified instance=" .. state.instance)
+end
+local function native_card_identity(owner)
+    owner.mask:SetAlpha(1, 0);owner.view:SetAlpha(0, 0);owner.mode = "native"
+end
+local function style_card_identity(self, index)
+    if not self then return self end
+    local models, owner = selected_card_models(), self.__bo3CardIdentity
+    if owner then
+        if owner.index ~= index then owner.disabled = true end
+        owner.update();return self
+    end
+    if type(index) ~= "number" or index < 0 or index > 3 or index ~= math.floor(index) then
+        identity_trace(self, index, "native", "controller");return self
+    end
+    local leaves = {self.cardBack, self.name, self.icon}
+    local child = self.getFirstChild and self:getFirstChild()
+    for i=1,3 do
+        if not child or child ~= leaves[i] or not child.getParent or not child.getNextSibling or child:getParent() ~= self then
+            identity_trace(self, index, "native", "shape");return self
+        end
+        child = child:getNextSibling()
+    end
+    if child then identity_trace(self, index, "native", "shape");return self end
+    local value, reason = selected_card_value(models, index)
+    if not value then identity_trace(self, index, "native", reason);return self end
+    local pointers = {}
+    for _, key in ipairs(identity_keys) do
+        local ok, pointer = pcall(function() return models[key].GetModel and models[key]:GetModel(index) end)
+        if not ok or not pointer then identity_trace(self, index, "native", key .. "_pointer");return self end
+        pointers[key] = pointer
+    end
+    local mask, view = panel("BO3NativeSelectedBacking", 155, 203), panel("BO3SelectedIdentity", 155, 203)
+    mask:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0);view:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0)
+    bar(view, "BO3SelectedSurface", 0, 177, -106, 164, 0x171713)
+    bar(view, "BO3SelectedTop", 0, 177, -106, -103, 0xA49E8B)
+    bar(view, "BO3SelectedLeft", 0, 3, -103, 164, 0xA49E8B)
+    bar(view, "BO3SelectedRight", 174, 177, -103, 164, 0xA49E8B)
+    bar(view, "BO3SelectedBottom", 3, 174, 161, 164, 0xA49E8B)
+    bar(view, "BO3SelectedHeaderRule", 8, 169, -39, -37, 0xA49E8B)
+    local family = text(view, "BO3SelectedFamily", 28, 8, 169, -100, -70)
+    local rarity = text(view, "BO3SelectedRarity", 24, 8, 169, -68, -40, 0xA49E8B)
+    family:SetAlignment(LUI.Alignment.Center);rarity:SetAlignment(LUI.Alignment.Center)
+    -- The new header is outside both native name/icon position variants.
+    -- Keep their objects, fonts, bounds, alpha/color sequences and field refs.
+    reparent(self.cardBack, mask)
+    self:removeElement(self.name);self:removeElement(self.icon)
+    self:addElement(mask);self:addElement(view);self:addElement(self.name);self:addElement(self.icon)
+    owner = {mask=mask, view=view, family=family, rarity=rarity, index=index, models=models, leaves=leaves}
+    owner.update = function()
+        local current_models = selected_card_models()
+        local same = current_models and mask:getParent() == self and view:getParent() == self
+            and self.cardBack == leaves[1] and leaves[1]:getParent() == mask
+            and self.name == leaves[2] and leaves[2]:getParent() == self and self.icon == leaves[3] and leaves[3]:getParent() == self
+        for _, key in ipairs(identity_keys) do same = same and current_models[key] == models[key] end
+        if not same then owner.disabled = true end
+        if state.closed or owner.disabled then
+            identity_trace(self, index, "native", state.closed and "closed" or "ownership");native_card_identity(owner);return
+        end
+        local value, reason = selected_card_value(models, index)
+        if not value then identity_trace(self, index, "native", reason);native_card_identity(owner);return end
+        family:setText(value.family);rarity:setText(string.upper(value.rarity));rarity:SetAlpha(value.rarity == "" and 0 or 1, 0)
+        mask:SetAlpha(0, 0);view:SetAlpha(1, 0);owner.mode = value.family
+        identity_trace(self, index, "custom", "known_pair", value)
+    end
+    self.__bo3CardIdentity = owner;state.cardIdentities[self] = owner
+    for _, pointer in pairs(pointers) do view:SubscribeToModel(pointer, owner.update) end
+    owner.update()
     return self
 end
 local function card_feeds()
@@ -527,6 +643,9 @@ local function adapt_bottom(original, menu, args)
         for i = 1, 4 do
             local fan = self.FateCardWidget["fanCard" .. i]
             if fan then style_fan(fan) end
+        end
+        if self.FateCardWidget.FateCardOnDeck then
+            style_card_identity(self.FateCardWidget.FateCardOnDeck, controller_index(self, args))
         end
         if self.FateCardWidget.FateCardDevilWidget then
             style_card_core(self.FateCardWidget.FateCardDevilWidget, controller_index(self, args))
@@ -817,6 +936,10 @@ local replacements = {
     weaponinfoZM = function(_, menu, args) return build_ammo(menu, args) end,
     CPPerkIcon = function(_, menu, args) return build_perk(menu, args) end,
     FateFanCard = function(original, menu, args) return style_fan(remember(original(menu, args))) end,
+    FateCardOnDeck = function(original, menu, args)
+        local self = remember(original(menu, args))
+        return style_card_identity(self, controller_index(self, args))
+    end,
     FateCardDevilWidget = function(original, menu, args)
         local self = remember(original(menu, args))
         return style_card_core(self, controller_index(self, args))
@@ -898,6 +1021,7 @@ end
 function state.shutdown()
     state.closed = true
     for _, owner in pairs(state.cardCores) do native_card_core(owner) end
+    for _, owner in pairs(state.cardIdentities) do native_card_identity(owner) end
     for owner, hook in pairs(state.refreshHooks) do
         hook.retired = true
         if owner.RefreshRows == hook.wrapper then owner.RefreshRows = hook.original end

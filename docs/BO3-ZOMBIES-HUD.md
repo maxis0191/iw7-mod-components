@@ -3,8 +3,9 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.11.0 adds an original angular charge panel
-for the exact known native canvas, preserving its live IW7 fill and feedback;
+weapons, quests and states. Content0.12.0 gives the selected card an original
+identity surface with verified family/rarity while preserving its actual native
+name/icon and selection presentation; the0.11 angular charge panel is retained;
 the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
@@ -264,7 +265,7 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 ## Bounded binding diagnostics
 
 Since content0.8.0, `VERSION` is separate from `DIAGNOSTIC_VERSION=0.7.0`. Every
-current initialization emits `module version=0.7.0 content_version=0.11.0 instance=... initialized=1`.
+current initialization emits `module version=0.7.0 content_version=0.12.0 instance=... initialized=1`.
 Every versioned marker uses the diagnostic contract version. The content version
 is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
 the authorized content. A compatible authored skin needs no new Ops enum entry.
@@ -301,7 +302,7 @@ factory_applied/bind does not prove this new presentation or known core feeds.
 [Ops264](https://github.com/maxis0191/iw7-paris-server/pull/264) is that reviewed
 extension: it accepts exact diagnostic contracts0.6.0/0.7.0 in addition to the
 older cases, with the same default0.2.0 and cross-version refusal. Its parser
-already accepts bounded extra module fields such as content_version. Content0.11
+already accepts bounded extra module fields such as content_version. Content0.12
 uses the existing explicit BO3HUDDiagnosticVersion0.7.0 setting. V3/V4,
 Source0.4, V5, Source0.6 and Source0.7 stay frozen, including all inputs/frames.
 
@@ -497,6 +498,92 @@ identity stays readable, and status/equipment/ammo have no clipping or overlap.
 No new Game/native/FF/asset/build/lease operation follows from this Source work.
 Authentic textures, perk identity adaptation, all other full-HUD states and owner
 acceptance remain separate open work; BO3 is inspiration, not a completion ceiling.
+
+## Actual0.11 and selected-card identity Source0.12
+
+The closed case `20261015-081313-329-9807e647` is recorded in
+[server PR269](https://github.com/maxis0191/iw7-paris-server/pull/269), merge
+aa8a18f94f829ec203c6cf5519e1d956f3abadb9. Root, Ops and UI independently viewed
+three original1280x720 BMPs. The thin angular frame/empty rail, CARDS5 and clear
+UNKNOWN below the deck are visible; the old backing/hoops of that gauge are not
+visible in these three poses. Ammo12/48 to11/48 to12/47 and the visible essentials
+remain readable. Native card/fan/triangle and perk art still make a hybrid HUD.
+EMPTY0 remains trace-only; no nonzero fill, glow/readiness progression or exact
+nine-child runtime identity/alpha readback follows from the frames or bind.
+The UI's8968B/ADD82F1B5728460CFFAD3EE18D588813C377BF04DA9893B9E93846D575ACBFBC
+review was passive; direct closure/PTY/fresh proof belongs to Ops and Root.
+
+Source0.12 addresses the observed selected-card identity surface. At the same
+retail pin2305708efff4227ba7cb14495ff2c31bcf6e53cf, `FateCardOnDeck` has exactly
+three original children: cardBack, name, icon. Their model subscribers remain
+alive and keep native nonnil-only updates. The localized name is used directly;
+it is not looked up, localized again, uppercased or replaced by a family label.
+
+| Native selected model | Proven authority and boundary |
+| --- | --- |
+| consumableDeckSelectName | Selected slot → actual controller/Coop zombiePlayerLoadout/zombie_consumables reference → localized CSV Name; negative slot gives empty string |
+| consumableDeckSelectIcon | Same real selection → CSV Icon; negative slot gives nil, and native retains its last image until its own callbacks/visibility change it |
+| consumableDeckSelectBacking | Same selection → CSV CardBacking; negative slot gives nil, not proof of a neutral or empty card |
+| consumableDeckSelectRarity | Same selection → CSV CardRarity; separate from readiness or activation |
+
+CSVUtils identifies the authority as `cp/loot/iw7_zombiefatefortune_loot_master.csv`,
+not the similarly named `cp/cp_consumables.csv`. Name/Icon/CardBacking/CardRarity
+are columns4/10/21/22. All62 pinned rows have25 columns and exactly five backing/
+rarity pairs: zm_wc_fate_card_base with empty rarity, or zm_wc_fortune_card_base
+with common/rare/legendary/epic. These are the entire new eligibility allowlist.
+No item names/effects or BO3 equivalences are guessed; actual name/icon remain
+the original widgets and images. Unknown future pairs retain native artwork.
+
+The new face is an authored white-material dark surface/open frame with a clear
+FATE/FORTUNE family heading and the exact nonempty rarity in a second row. Its
+header avoids the union of native name/icon positions, including the child's
+meterFull sequence. Original name/icon fonts, bounds, alpha, color, references,
+subscriptions and sequences are not changed. Only the old cardBack rendering
+has an owned same-canvas mask, with that original object/material callback still
+alive for fallback. Exact three-child identities/order/parents and all four
+typed models/pointers/controller are required before any reparenting. The new
+painter order keeps the original background behind the actual name and icon.
+
+The parent FateCardWidget still owns all19 OnDeck alpha writes,37 position writes,
+26 alpha writes for each name/icon,16 name color writes, count/selection/refill/
+Fire/arrows and input. Activation4 selects the original refill sequence;
+dpadPressed1 selects cardCycleN; ready1 chooses meterFullN/FireOn outside refill;
+ready0 chooses initialN/FireOff; remaining0 chooses noMoreCards. No new state
+machine reimplements them. Triangle is a distinct animated sibling, not the
+selected backing, and remains outside this lot with the0.11 gauge and glows.
+
+In particular, readiness-1 alone does not say whether a native selection phase
+has shown name/icon. Original initial/refill states intentionally hide them;
+cycle/meterFull states can reveal them through native callbacks. The new surface
+does not force that visibility. If valid selected values exist but native name/
+icon are hidden, only the new backing's family/rarity presentation can show with
+the native parent. No selected name/icon/backing/rarity values were measured in
+actual0.11, so those count/fill/ready snapshots do not predict0.12 eligibility or
+identity pixels. A future separately authorized capture must establish them.
+
+Missing/invalid values or pairs reveal the original backing and hide the new
+surface; legal values can recover. Controller/model-object/field/parent changes
+retire only this surface until normal HUD recreation, without retargeting native
+callbacks or moving a foreign-owned object back. Shutdown reveals the native
+backing. Repeated root refresh adds no more nodes or subscriptions. An optional
+`identity` marker emits only branch/family/rarity changes, at most32 transitions
+plus one suppression notice per weakly held widget. It prints no actual name/icon,
+uses diagnostic0.7 and is ignored by the existing essentials parser. Its local
+widget_seq is no native render/root identity, alpha sample or pixel guarantee.
+
+The197 Lua5.1 Source/mock controls include21 new causal checks for the five real
+pairs, original identity updates and nonnil behavior, hidden/refill/cycle/end
+phases, native child positions/colors, controller/model/parent retirement,
+unknown recovery, malformed model/reader/pointer refusal, repeated refresh, shutdown and bounded
+diagnostics. No coordinate-mirror assertions, bitmap, native ABI, Ops enum or
+runtime CSV/player-data reader was added. New references stay outside Git:
+CSVUtils42298B/707B2AF6E3C4E2B861729C2533F78AF69C608DF645F264FB528035B00FB8EB7B;
+loot master13642B/CFC47923771129CB3A2FF26DE57F35227696BE682305A1E9EEFF64D6BE8EAE30.
+The preserved OnDeck3569B/980CA8B0D290F6A84C3882A8080C6D0B1BB5AF48F0D77EF4C97B6EDA29A04DC6,
+parent73245B/78885351291D84DE552A4E92D89DF26576303203307F922923CB6E8DA40DD8CC
+and models112038B/16D6D198A19C4615023B55D78BF3F74DCE8C493FDFBE472A138450F38817FE44
+provide the callback/model contract. No dump body or player nickname is committed.
+All0.11/0.10/0.9 evidence stays frozen; no new Game or full-HUD acceptance follows.
 
 ## Source references and implemented essentials
 
