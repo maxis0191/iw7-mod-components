@@ -6,7 +6,7 @@ fixture. `collision_player_contact.gsc`, `Collision-Player.Core.ps1` and
 launcher, lease controller, asset serializer or generic event bus is added.
 
 The content owner is Creator SDK commit
-`662c548965e11c9c881abe7dc8d74042d9f1aec6`. Its
+`6dcfc719e0535509f109c593fa4342ce201b5523` (SDK PR27 merge). Its
 `sdk/modding/examples/original-authoring/platform-contact/sdk_author_platform.gsc`
 is 5404 bytes, SHA-256
 `3B6F34FDF6F5176BECEFC5294B992E658751921F5B07931E28A31D05634EFD25`.
@@ -14,6 +14,16 @@ These are Source interface pins, not a runtime result. The operation receives
 that separately sealed SDK Source product; the SDK implementation is not copied
 into this product. The caller must verify the same script and the same reviewed
 `mod.ff` in both roles before launching the dedicated/base client.
+
+The original Native PR44 package admitted SDK commit
+`662c548965e11c9c881abe7dc8d74042d9f1aec6`. The final merged SDK changed the
+platform authoring JSON to diffuse texture slot 1; its GSC remains byte-identical
+at the hash above, with the same four functions, Use state and placement. This
+Source adoption changes only the exact SDK revision gate. It refuses both the
+old SDK revision and the unmerged feature head even with identical GSC bytes.
+Old Native/SDK packages and receipts remain immutable; the caller must use a new
+Native Source package and the separately sealed merged SDK package. No C++, FF
+or native binary rebuild is implied or performed.
 
 ## Fixed geometry and ownership
 
@@ -86,8 +96,12 @@ render/bounds, client prediction or owner acceptance.
 ## Source checks and next action
 
 The two Source tests cover pending/preview plans, three unowned/preview Run
-refusals with zero live effects, the frozen physics transcript's 22 causal
-refusals, and Author lifecycle/identity/transform/count/time/order mutations.
+refusals with zero live effects, nine SDK contract refusals including old and
+unmerged revisions, the frozen physics transcript's 22 causal refusals, and
+Author lifecycle/identity/transform/count/time/order mutations. The optional
+positive SDK test reads the actual separately sealed merge receipt and GSC,
+using `SDKSourceRoot` and `SDKSourceReceiptSHA256`; synthetic receipt metadata
+is used only by the pure refusal cases.
 Pinned gsc-tool parsing checks grammar only; engine compilation is untested.
 
 No Author fastfile, native build, visual runtime, actual Use trigger, player
