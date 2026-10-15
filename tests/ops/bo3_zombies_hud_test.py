@@ -24,6 +24,7 @@ scheduler={once=function(fn) pending[#pending+1]=fn end}
 FONTS={MainBold={File="stock-bold"},GetFont=function(value) return value end}
 SWATCHES={HUD={warning={r=1,g=0.25,b=0}}}
 RegisterMaterial=function(value) return value end
+CONDITIONS={IsDLC4=function(self) return self.nativeDlc4 or false end}
 function node()
  local n={children={},alpha=1,closed=false}
  function n:SetAnchorsAndPosition(...) self.bounds={...} end
@@ -39,6 +40,7 @@ function node()
  function n:setText(value) self.text=value end
  function n:setImage(value) self.image=value end
  function n:setEndTime(value) self.endTime=value end
+ function n:SetProgress(value) self.progress=value end
  function n:addElement(child) self.children[#self.children+1]=child;child.parent=self end
  function n:removeElement(child)
   child.detached=true;child.parent=nil
@@ -62,7 +64,7 @@ function node()
  nodes[#nodes+1]=n
  return n
 end
-LUI={UIElement={new=node},UIText={new=node},UIImage={new=node},Alignment={Left=0},
+LUI={UIElement={new=node},UIText={new=node},UIImage={new=node},Alignment={Left=0,Center=1},
  HudManager={CreateHud=function(self) self.activeHud=self.nextHud;return "retained",nil,7 end}}
 function model(path,value)
  local m={value=value,listeners={},indices={}}
@@ -93,6 +95,25 @@ function original(key,args)
  if key=="FateFanCard" then
   n.fanCard=node();n.fanCard.image="zm_wc_card_fan";n:addElement(n.fanCard)
   n.fanOverlay=node();n.fanOverlay.image="zm_wc_card_fan_overlay";n.fanOverlay.color=0x263626;n.fanOverlay.alpha=0.6;n:addElement(n.fanOverlay)
+ end
+ if key=="FateCardDevilWidget" then
+  n.nativeDlc4=args and args.nativeDlc4 or false
+  n.devilHead=node();n.devilJaw=node();n.sadDevil=node();n.Circle=node();n.glowRing=node()
+  n.radialAlphaLarge=node();n.radialAlphaLarge.circleFill=node();n.radialAlphaLarge:addElement(n.radialAlphaLarge.circleFill)
+  for _,leaf in ipairs({n.Circle,n.glowRing,n.radialAlphaLarge,n.devilJaw,n.devilHead,n.sadDevil}) do n:addElement(leaf) end
+  n.nativeUpdate=function()
+   local count=models["inGame.CP.zombies.consumablesRemaining"]:GetValue(args.controllerIndex)
+   local fill=models["inGame.CP.zombies.dpadUpFillPercent"]:GetValue(args.controllerIndex)
+   local ready=models["inGame.CP.zombies.consumableDeckSelectReady"]:GetValue(args.controllerIndex)
+   local boss=models["inGame.CP.zombies.dlc4.mephBattle"]:GetValue(args.controllerIndex)
+   n.devilHead.image=n.nativeDlc4 and boss==1 and "cp_final_meph_head_full" or "zm_wc_devil_head_top"
+   n.devilHead.alpha=count and count>0 and 1 or 0;n.devilJaw.alpha=n.devilHead.alpha;n.sadDevil.alpha=count==0 and 1 or 0
+   n.radialAlphaLarge.circleFill:SetProgress(fill);n.glowRing.alpha=ready==1 and 1 or 0
+  end
+  for _,path in ipairs({"consumablesRemaining","dpadUpFillPercent","consumableDeckSelectReady","dlc4.mephBattle"}) do
+   n:SubscribeToModel(models["inGame.CP.zombies."..path],n.nativeUpdate)
+  end
+  n.nativeUpdate()
  end
  return n
 end
@@ -316,6 +337,7 @@ function stock_hud(root_id,player_key,index)
  bottom.ZomWeaponInfo.UnlimitedAmmoIcon=node();bottom.ZomWeaponInfo.UnlimitedAmmoIcon:BindAlphaToModel(models["inGame.CP.ammo.unlimitedAlpha"])
  bottom.FateCardWidget=node()
  local deck=bottom.FateCardWidget
+ deck.FateCardDevilWidget=original("FateCardDevilWidget",{controllerIndex=r.controllerIndex,nativeDlc4=r.id=="ZMHUDDLC4"});deck:addElement(deck.FateCardDevilWidget)
  for i=1,4 do deck["fanCard"..i]=original("FateFanCard",{controllerIndex=r.controllerIndex});deck:addElement(deck["fanCard"..i]) end
  deck.Fire=node();deck.upArrow=node();deck.FateCardOnDeck=node();deck.FateCardOnDeck.image="native-selected-card"
  deck:addElement(deck.Fire);deck:addElement(deck.upArrow);deck:addElement(deck.FateCardOnDeck)
@@ -333,6 +355,7 @@ function stock_hud(root_id,player_key,index)
 end
 model("inGame.CP.currentPlayerCash",4270)
 model("inGame.CP.zombies.consumableDeckSelectReady",0)
+model("inGame.CP.zombies.consumablesRemaining",5);model("inGame.CP.zombies.dpadUpFillPercent",0.25);model("inGame.CP.zombies.dlc4.mephBattle",0)
 for _,prefix in ipairs({"primary","secondary"}) do
  local p="inGame.player."..prefix.."Power."
  model(p.."numCharges",4);model(p.."numAlpha",1);model(p.."iconAlpha",1);model(p.."icon","native-"..prefix);model(p.."color",0xFFAABB)
@@ -374,6 +397,25 @@ check('fan.alpha==0.4 and fan.zrotation==-30 and fan.fanOverlay.color==0x445566 
 lua.execute('freshFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=2});freshFan:SetAlpha(0);tick()')
 check('freshFan.__bo3FanBack and freshFan.alpha==0 and freshFan.fanOverlay.alpha==0.6')
 check('deck.FateCardOnDeck.image=="native-selected-card" and deck.Fire.alpha==1 and deck.upArrow.alpha==1')
+lua.execute('core=deck.FateCardDevilWidget;coreOwner=core.__bo3CardCore;nativeCoreUpdate=core.nativeUpdate;meter=core.radialAlphaLarge.circleFill;nativeMeterParent=meter:getParent()')
+check('coreOwner.count.text=="5" and coreOwner.status.text=="READY" and coreOwner.title.text=="CARDS" and coreOwner.mask.alpha==0')
+check('coreOwner.mask.children[1]==core.devilJaw and coreOwner.mask.children[2]==core.devilHead and coreOwner.mask.children[3]==core.sadDevil and meter:getParent()==nativeMeterParent')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(0);models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.75);models["inGame.CP.zombies.consumablesRemaining"]:set(3);tick()')
+check('coreOwner.count.text=="3" and coreOwner.status.text=="CHARGING" and meter.progress==0.75 and core.nativeUpdate==nativeCoreUpdate')
+lua.execute('models["inGame.CP.zombies.consumablesRemaining"]:set(0);tick()')
+check('coreOwner.count.text=="0" and coreOwner.status.text=="EMPTY" and core.sadDevil.alpha==1 and coreOwner.mask.alpha==0')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(nil);tick()')
+check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0 and core.sadDevil.alpha==1')
+lua.execute('models["inGame.CP.zombies.consumablesRemaining"]:set(5);models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1);tick();oldCoreChildren=#core.children;tick()')
+check('coreOwner.count.text=="5" and coreOwner.status.text=="READY" and core.glowRing.alpha==1 and #core.children==oldCoreChildren')
+lua.execute('bossCore=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=2,nativeDlc4=true});models["inGame.CP.zombies.dlc4.mephBattle"]:set(1)')
+check('bossCore.__bo3CardCore.title.text=="BOSS" and bossCore.__bo3CardCore.mode=="boss" and bossCore.devilHead.image=="cp_final_meph_head_full" and bossCore.__bo3CardCore.mask.alpha==0')
+lua.execute('models["inGame.CP.zombies.dlc4.mephBattle"]:set(nil)')
+check('bossCore.__bo3CardCore.mask.alpha==1 and bossCore.__bo3CardCore.view.alpha==0')
+lua.execute('models["inGame.CP.zombies.dlc4.mephBattle"]:set(0);savedDLC=CONDITIONS.IsDLC4;CONDITIONS.IsDLC4=nil;models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.5)')
+check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
+lua.execute('CONDITIONS.IsDLC4=savedDLC;models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.25);core:SetAlpha(0.3);tick()')
+check('coreOwner.mask.alpha==0 and coreOwner.view.alpha==1 and core.alpha==0.3')
 lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(0);tick()')
 check('deck.Fire.alpha==0 and deck.upArrow.alpha==0 and deck.alpha==0.6')
 check('existing.wonderCard._widget.WonderCardFillWidget.ToggleList0.image=="native-active-card" and existing.wonderCard._widget.WonderCardFillWidget.scale==nil')
@@ -546,6 +588,8 @@ check('mapFixtures[3].info.chiStyle.image=="native-chi-style" and mapFixtures[4]
 check('mapFixtures[5].info.InventorySlot1.image=="native-recycled-inventory" and mapFixtures[5].info.InventorySlot1.alpha==1')
 lua.execute('models["inGame.CP.zombies.quests.questFuseAlphaFilter"]:set(0);models["inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Alpha"]:set(0)')
 check('mapFixtures[1].root.nativeFuse.alpha==0 and mapFixtures[5].info.InventorySlot1.alpha==0')
+lua.execute('changedController=mapFixtures[2].root;changedController.controllerIndex=3;LUI.HudManager.CreateHud({nextHud=changedController});changedCore=changedController.wonderCard._widget.FateCardWidget.FateCardDevilWidget.__bo3CardCore')
+check('changedCore.mask.alpha==1 and changedCore.view.alpha==0 and changedCore.disabled')
 lua.execute('unrelated=stock_hud();unrelated.id="MPHUD";manager.nextHud=unrelated;LUI.HudManager.CreateHud(manager)')
 check('not unrelated.__bo3HudLayout')
 lua.execute('retired=MenuBuilder.BuildRegisteredType;MenuBuilder.BuildRegisteredType=original;tick()')
@@ -564,6 +608,7 @@ lua.execute('BO3ZombiesHUD.shutdown()')
 check('MenuBuilder.BuildRegisteredType==original')
 check('existing.mainPlayerInfo._widget.PlayerCash.RefreshRows==existing.retainedTeamRefresh')
 check('manager.activeHud.mainPlayerInfo._widget.PlayerCash.RefreshRows==otherRefresh')
+check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
 lua.execute('roster[1].name="After shutdown";retiredTeam(existing.mainPlayerInfo._widget.PlayerCash)')
 check('hero.BO3Name.text=="Live beyond startup"')
 print(f"PASS {checks} authored Lua5.1 source controls; mocked UI/models only, no HKS/game/pixels")

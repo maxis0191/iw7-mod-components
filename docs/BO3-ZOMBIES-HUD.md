@@ -3,8 +3,8 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Version0.6.0 adds original fan-card backplates to
-the equipment/status/inventory layout observed in the frozen0.5/V5 case;
+weapons, quests and states. Version0.7.0 adds an original card-count/state core
+to the authored0.6 backplates and the layout observed in the frozen0.5/V5 case;
 the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
@@ -191,7 +191,7 @@ receipt) distinguish these roles:
 | Selected card | Runtime consumableDeckSelectName/Icon/Backing and native selection/activation | Preserve name/icon and dynamic backing until each role/value is mapped; add an authored frame under the same parent |
 | Fan backs | Two static images fanCard/fanOverlay; parent animation carries count/depth/pose | Source0.6 replaces their art with authored flat backs/rims, retaining the same image objects, parent pose/count/selection and native overlay depth tint/alpha |
 | Charge and ready effects | radialAlphaLarge.circleFill uses dpadUpFillPercent; native ready/glow/arrow behavior | Keep progress/mask/segment materials and callbacks; adapt the surrounding frame without covering the meter or glyphs |
-| Demon faces | Jaw Chomp reacts to fill; sadDevil signals zero cards; head becomes Mephistopheles in DLC4 mephBattle | A neutral core needs a real remaining count and equivalent charge/empty/ready cues; keep the native boss face and fall back on unknown state |
+| Demon faces | Jaw Chomp reacts to fill; sadDevil signals zero cards; head becomes Mephistopheles in DLC4 mephBattle | Source0.7 uses actual count/state and known BOSS title, retaining meter/glows; unresolved state falls back to native art |
 | Active-card effects | Runtime icon/name/fill and actual lifetime | Preserve identity and radial progress; change a surrounding frame only |
 
 Source0.6 implements that first surface-only step. The two original fan image
@@ -222,9 +222,48 @@ no HKS/raster proof yet and authorizes no new Game/CPP/FF operation. Its authore
 backplates replace generic IW7 fan art; perk identity images, selected-card art
 and the stateful demon remain native pending the next mapped adaptation.
 
+## Source0.7 card core and state fallback
+
+The next mapped step now replaces the demon's visible center when the required
+values are known. An original text core shows the actual remaining count and
+EMPTY/CHARGING/READY. A known DLC4 mephBattle1 shows the explicit BOSS title;
+normal known state shows CARDS. These are read-only presentations of existing
+feeds, not invented inventory or a new boss detector.
+
+| Feed or condition | Required known value | Ownership |
+| --- | --- | --- |
+| consumablesRemaining | Integer0..5 | Original count/list callbacks plus a new read-only count subscriber |
+| dpadUpFillPercent | Finite0..1 | Original radial circleFill:SetProgress remains authoritative; the new view never writes progress |
+| consumableDeckSelectReady | Numeric0/1 | Original glows/ready/refill/arrows remain; new status text reads the same value |
+| CONDITIONS.IsDLC4 | Actual boolean | Same native predicate used by the original widget; no guessed map identity |
+| dlc4.mephBattle on DLC4 | Numeric0/1 | Known1 becomes BOSS; missing/other values use the native presentation |
+
+Only devilJaw/devilHead/sadDevil move into an owned same-canvas ancestor. Their
+original order, objects, images and animation references remain alive. Known
+state masks that ancestor and shows the new count/title/status; native circles,
+radial masks/progress, glows, card names/icons/backings, fan poses and input paths
+are untouched. Their parent still owns whole-widget visibility/selection/scale.
+This replaces the jaw/sad/boss pictures with explicit count/state/boss reading
+while retaining real meter movement and original ready/refill feedback.
+
+Unresolved values/predicate reveal the original images and hide the new view.
+No nil-to-zero boss inference or clamped/fabricated count is allowed. Controller
+or feed-object identity changes disable that view until normal HUD recreation;
+the adapter does not retarget the original constructor's callbacks. New model
+subscriptions belong to the owned view; weak ownership avoids retaining an old
+root through a module table. Shutdown reveals the native image ancestor and
+hides this view; complete styled-HUD rollback still requires normal VM teardown.
+No extra timer or bitmap is added.
+
+The title/count/status coordinates use the native meter center. Their readability,
+boss/empty/ready/refill appearance, unknown-state fallback, parent fades and all
+map/controller transitions have no real HKS/raster acceptance yet. Native art is
+an intentional temporary fallback for unresolved state, not the final visual
+goal. Perk identity remapping and remaining selected-card art are still open.
+
 ## Bounded binding diagnostics
 
-Every module initialization emits `module version=0.6.0 instance=... initialized=1`.
+Every module initialization emits `module version=0.7.0 instance=... initialized=1`.
 The alphanumeric instance tag is local to the module object; it is not a globally
 unique native VM identifier. Reset the parser epoch at every module delimiter,
 even if an address/tag is reused. All later markers carry the same instance.
@@ -249,10 +288,12 @@ The grammar is unchanged from0.2.0.
 [Ops262](https://github.com/maxis0191/iw7-paris-server/pull/262), merge442130b5,
 extends the exact-per-case allowlist to0.2.0/0.3.0/0.4.0/0.5.0 and retains
 default0.2.0; cross-version markers are refused. The added factory key
-ZomPowerupIcon does not certify placement. Source0.6 adds only the factory-key
-value FateFanCard, with unchanged marker grammar; Ops262 intentionally does not
-accept this new version until a separately reviewed extension. V3/V4, Source0.4
-and V5 stay frozen, including every operational input and original frame.
+ZomPowerupIcon does not certify placement. Source0.6 adds FateFanCard and0.7 adds
+FateCardDevilWidget as factory-key values, with unchanged marker grammar. An
+adapter can return cleanly while intentionally keeping a native core fallback;
+factory_applied/bind does not prove this new presentation or known core feeds.
+Ops262 accepts neither0.6 nor0.7 until a separately reviewed extension. V3/V4,
+Source0.4, V5 and Source0.6 stay frozen, including all inputs/original frames.
 
 ## Source references and implemented essentials
 
@@ -322,7 +363,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-134 source controls cover default-off/private opt-in/frontend/MP, controller1,
+146 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -359,6 +400,12 @@ polls, no duplicate rim nodes, a fresh hidden factory remaining hidden, and
 retained selected-card/fire/arrow state. These are mocked Source controls;
 actual card footprint, depth, all-count animation and contrast need new original
 frames when Root authorizes a suitable larger case.
+Twelve Source0.7 controls cover the real-count/ready/charge/empty/refill readouts,
+unchanged native meter callback/object/parent, retained face ordering, known boss
+presentation and its still-updated native image, unknown boss/predicate/value
+fallback, unchanged parent alpha, idempotent view creation, controller-identity
+fallback and shutdown native visibility. These explicit mocks exercise Source
+ownership and feeds only, not actual HKS model types or rendered state acceptance.
 Root review of candidate3706 found that the failure cache survived a successful
 recovery, suppressing a recurrence of the same fault and leaving stale external
 bind evidence. Success now resets that failure key. The same-root/sequence
