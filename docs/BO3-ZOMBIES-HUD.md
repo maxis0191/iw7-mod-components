@@ -3,8 +3,8 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Version0.7.0 adds an original card-count/state core
-to the authored0.6 backplates and the layout observed in the frozen0.5/V5 case;
+weapons, quests and states. Content0.8.0 corrects a card-core eligibility guard
+and adds bounded branch diagnostics to the original0.7 core and0.6 backplates;
 the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
@@ -263,7 +263,13 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 
 ## Bounded binding diagnostics
 
-Every module initialization emits `module version=0.7.0 instance=... initialized=1`.
+Content0.8.0 separates `VERSION` from `DIAGNOSTIC_VERSION=0.7.0`. Every module
+initialization emits `module version=0.7.0 content_version=0.8.0 instance=... initialized=1`.
+Every versioned marker uses the diagnostic contract version. The content version
+is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
+the authorized content. A compatible authored skin needs no new Ops enum entry.
+A real grammar/semantic break still requires a separately reviewed contract;
+there is no wildcard, inferred version or dynamic protocol negotiation.
 The alphanumeric instance tag is local to the module object; it is not a globally
 unique native VM identifier. Reset the parser epoch at every module delimiter,
 even if an address/tag is reused. All later markers carry the same instance.
@@ -292,8 +298,52 @@ ZomPowerupIcon does not certify placement. Source0.6 adds FateFanCard and0.7 add
 FateCardDevilWidget as factory-key values, with unchanged marker grammar. An
 adapter can return cleanly while intentionally keeping a native core fallback;
 factory_applied/bind does not prove this new presentation or known core feeds.
-Ops262 accepts neither0.6 nor0.7 until a separately reviewed extension. V3/V4,
-Source0.4, V5 and Source0.6 stay frozen, including all inputs/original frames.
+[Ops264](https://github.com/maxis0191/iw7-paris-server/pull/264) is that reviewed
+extension: it accepts exact diagnostic contracts0.6.0/0.7.0 in addition to the
+older cases, with the same default0.2.0 and cross-version refusal. Its parser
+already accepts bounded extra module fields such as content_version. Content0.8
+uses the existing explicit BO3HUDDiagnosticVersion0.7.0 setting. V3/V4,
+Source0.4, V5, Source0.6 and Source0.7 stay frozen, including all inputs/frames.
+
+## Actual0.7 result and Source0.8 core follow-up
+
+The three original1280x720 BMPs in case `20261015-032243-766-191d0100` were
+independently viewed by Root, Ops55 and the UI owner. Portrait/cash/round/ticket,
+equipment and actual12/48 to11/48 to12/47 ammo remain readable. Pale fan/rim
+lines are visible, but neither the intended backplate identity nor custom core
+is qualified: the native demon/ring remain and no CARDS/BOSS/EMPTY/READY/CHARGING
+label or custom remaining count is readable. Essential bind and factory_applied
+do not qualify that missing presentation. The captured logs contain no actual
+card feed values, eligibility reason or core mode; missing measurements are
+not measured nil/zero values. The closed/restored case is retained in
+[Ops265](https://github.com/maxis0191/iw7-paris-server/pull/265). No identical
+replay is requested and issue260 remains open.
+
+Source0.8 fixes one demonstrated logical overconstraint, without claiming it
+caused that run. With a known boolean false IsDLC4 predicate, CARDS needs only
+remaining/fill/ready readers, pointers, subscriptions and stable identities.
+An absent boss object or boss pointer is irrelevant on that path and is never
+read or required. On actual DLC4, the original known0/1 boss value, valid pointer
+and subscription remain mandatory. Unknown predicates, invalid counts/fill/
+ready/boss, unexpected native structure/parents and controller/required-feed
+identity changes still retain Native. A later predicate change also returns
+Native until it matches the constructed core's classification or HUD recreation;
+it never silently enters a boss view without the required subscription.
+
+One optional `core` console trace now records the decision stage/reason, local
+controller and module-local widget sequence, observed feed types/bounded values,
+shape/parent bits, pointer status and mode where inspected. Unread values say
+not_read; boss outside known DLC4 says not_required. False remains a measured
+boolean false, not nil. Values have at most40 ASCII token characters; unsupported
+types are labelled unsupported without invoking their tostring metamethod.
+Only a stage/reason transition emits a snapshot: fill/count changes in the same
+branch do not stream values. Each widget permits32 transition records plus one
+suppression notice. Weak-key records retain no widget. The existing factory/
+refresh/model callbacks own all calls: no new timer, model write, inventory input,
+native hook or runtime API is added. Shape/pointer/parent fields say not_checked
+when uninspected; preflight_ok describes the original pointer check. The trace
+is ignored by the existing essential-bind parser and never qualifies pixels.
+No0.8 HKS/game/raster acceptance is acquired by these Source changes.
 
 ## Source references and implemented essentials
 
@@ -363,7 +413,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-146 source controls cover default-off/private opt-in/frontend/MP, controller1,
+152 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -380,6 +430,11 @@ After draining all480 startup callbacks, a stock team refresh still updates the
 hero name/mic with no queued work. Shutdown restores owned refreshes, preserves
 an external replacement and makes a captured retired wrapper inert. These are
 mock source causals, not real cooperative or visual acceptance.
+The six0.8 controls add content/contract separation across actual emitted
+markers, absent boss object and absent boss pointer with paired non-DLC4 versus
+DLC4 outcomes, an invalid boolean-ready value retained as false in the trace,
+and silent same-branch fill updates followed by the33-record transition cap.
+They do not identify which branch occurred in the frozen0.7 HKS case.
 Version0.4 adds native readiness/fire/arrow updates through successive layout
 polls with unchanged parent alpha, callback identity, selected-card image and
 child count. The separate active-card list keeps its native image and scale.

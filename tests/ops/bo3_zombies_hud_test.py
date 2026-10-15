@@ -14,6 +14,7 @@ source = (root / "src/ui_scripts/bo3_zombies_hud/__init__.lua").read_text(encodi
 lua = LuaRuntime()
 setup = r'''
 _1080p=1
+printed={};print=function(message) printed[#printed+1]=message end
 config={}; frontend=true; aliens=false; profileText=""; ui_root=nil; pending={}; originals=0; nodes={}; models={}
 Engine={GetDvarString=function(name) return config[name] or "" end,
  InFrontend=function() return frontend end, IsAliensMode=function() return aliens end,
@@ -129,6 +130,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
+check('BO3ZombiesHUD.version=="0.8.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.8.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -416,6 +418,50 @@ lua.execute('models["inGame.CP.zombies.dlc4.mephBattle"]:set(0);savedDLC=CONDITI
 check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
 lua.execute('CONDITIONS.IsDLC4=savedDLC;models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.25);core:SetAlpha(0.3);tick()')
 check('coreOwner.mask.alpha==0 and coreOwner.view.alpha==1 and core.alpha==0.3')
+lua.execute(r'''
+-- The native mock still owns its own model; only the adapter's public feed is absent.
+savedBoss=DataSources.inGame.CP.zombies.dlc4.mephBattle
+DataSources.inGame.CP.zombies.dlc4.mephBattle=nil
+noBoss=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
+needsBoss=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0,nativeDlc4=true})
+''')
+check('noBoss.__bo3CardCore and noBoss.__bo3CardCore.title.text=="CARDS" and not needsBoss.__bo3CardCore and BO3ZombiesHUD.cardDiagnostics[needsBoss].signature=="values:boss_value"')
+lua.execute(r'''
+DataSources.inGame.CP.zombies.dlc4.mephBattle=savedBoss
+bossPointerCalls=0;savedBossPointer=savedBoss.GetModel
+savedBoss.GetModel=function() bossPointerCalls=bossPointerCalls+1;return nil end
+noBossPointer=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
+nonDLCPointerCalls=bossPointerCalls
+needsBossPointer=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0,nativeDlc4=true})
+savedBoss.GetModel=savedBossPointer
+''')
+check('noBossPointer.__bo3CardCore and nonDLCPointerCalls==0 and bossPointerCalls==1 and not needsBossPointer.__bo3CardCore and BO3ZombiesHUD.cardDiagnostics[needsBossPointer].signature=="pointer:boss"')
+lua.execute(r'''
+models["inGame.CP.zombies.consumableDeckSelectReady"].value=false
+falseReady=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
+falseReadyTrace=printed[#printed]
+for i=#printed,1,-1 do if string.find(printed[i],"[BO3 HUD] core ",1,true) then falseReadyTrace=printed[i];break end end
+models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1)
+''')
+check('not falseReady.__bo3CardCore and string.find(falseReadyTrace,"reason=ready_value",1,true) and string.find(falseReadyTrace,"ready_type=boolean ready_value=false",1,true)')
+lua.execute(r'''
+bounded=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
+boundedOwner=bounded.__bo3CardCore;boundedRecord=BO3ZombiesHUD.cardDiagnostics[bounded]
+beforeSame=#printed
+for i=1,10 do models["inGame.CP.zombies.dpadUpFillPercent"]:set(i/10) end
+afterSame=#printed
+for i=1,40 do models["inGame.CP.zombies.consumableDeckSelectReady"]:set(2);models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1) end
+boundedLines=0;boundedSuppression=0
+for _,line in ipairs(printed) do
+ if string.find(line,"[BO3 HUD] core version=0.7.0 widget_seq="..boundedRecord.sequence.." ",1,true) then
+  boundedLines=boundedLines+1
+  if string.find(line,"stage=suppressed reason=transition_limit",1,true) then boundedSuppression=boundedSuppression+1 end
+ end
+end
+''')
+check('beforeSame==afterSame and boundedLines==33 and boundedSuppression==1 and boundedRecord.count==33 and boundedOwner.mask.alpha==0 and boundedOwner.view.alpha==1')
+lua.execute('compatibleVersions=true;for _,line in ipairs(printed) do if string.find(line,"[BO3 HUD] ",1,true) and string.find(line,"version=",1,true) and not string.find(line,"version=0.7.0",1,true) then compatibleVersions=false end end')
+check('compatibleVersions')
 lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(0);tick()')
 check('deck.Fire.alpha==0 and deck.upArrow.alpha==0 and deck.alpha==0.6')
 check('existing.wonderCard._widget.WonderCardFillWidget.ToggleList0.image=="native-active-card" and existing.wonderCard._widget.WonderCardFillWidget.scale==nil')
