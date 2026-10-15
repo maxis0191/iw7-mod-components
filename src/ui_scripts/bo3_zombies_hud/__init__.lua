@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.9.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.10.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -392,7 +392,9 @@ local function style_card_core(self, index)
     view:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0);self:addElement(view)
     local title = text(view, "BO3CardTitle", 28, 2.5, 166.5, -28, 2)
     local count = text(view, "BO3CardCount", 40, 34.5, 134.5, 58, 102)
-    local status = text(view, "BO3CardStatus", 26, 2.5, 166.5, 174, 202)
+    -- Own status gets a separate lane below the observed native card cluster.
+    -- Keep the native card name/art and this view's original visibility owner.
+    local status = text(view, "BO3CardStatus", 32, -27.5, 196.5, 274, 312)
     title:SetAlignment(LUI.Alignment.Center);count:SetAlignment(LUI.Alignment.Center);status:SetAlignment(LUI.Alignment.Center)
     owner = {mask=mask, view=view, index=index, feeds=feeds, required=required, dlc4=value.dlc4, title=title, count=count, status=status}
     owner.update = function()

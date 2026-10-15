@@ -3,8 +3,8 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.9.0 keeps legal retail readiness sentinels
-local to an UNKNOWN status instead of vetoing the independently known card core;
+weapons, quests and states. Content0.10.0 moves the owned status line away from
+the overlap observed in0.9, retaining its legal local readiness presentation;
 the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
@@ -264,7 +264,7 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 ## Bounded binding diagnostics
 
 Since content0.8.0, `VERSION` is separate from `DIAGNOSTIC_VERSION=0.7.0`. Every
-current initialization emits `module version=0.7.0 content_version=0.9.0 instance=... initialized=1`.
+current initialization emits `module version=0.7.0 content_version=0.10.0 instance=... initialized=1`.
 Every versioned marker uses the diagnostic contract version. The content version
 is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
 the authorized content. A compatible authored skin needs no new Ops enum entry.
@@ -301,7 +301,7 @@ factory_applied/bind does not prove this new presentation or known core feeds.
 [Ops264](https://github.com/maxis0191/iw7-paris-server/pull/264) is that reviewed
 extension: it accepts exact diagnostic contracts0.6.0/0.7.0 in addition to the
 older cases, with the same default0.2.0 and cross-version refusal. Its parser
-already accepts bounded extra module fields such as content_version. Content0.9
+already accepts bounded extra module fields such as content_version. Content0.10
 uses the existing explicit BO3HUDDiagnosticVersion0.7.0 setting. V3/V4,
 Source0.4, V5, Source0.6 and Source0.7 stay frozen, including all inputs/frames.
 
@@ -401,6 +401,42 @@ CP omnvars12456B/f15f6656b31633054e892b4965d9acaca1051498bb2470adc24d3048a7ec9da
 model112038B/16d6d198a19c4615023b55d78bf3f74dce8c493fdfbe472a138450f38817fe44;
 card controller127414B/fb2b3f029bb173375be9adf230d7ecb1f6dc4ea6dab87128dd4bdc419245ab21;
 gametype47542B/b75a4d0327c3efb015befbd0da6bf7bc1cae083359a3210c0bf8cae37c863bc1.
+
+## Actual0.9 pixels and owned status clearance Source0.10
+
+Case `20261015-060409-854-5006e581` loaded actual content0.9/diagnostic0.7.
+Root, Ops55 and the UI owner viewed three original1280x720 BMPs: CARDS and the
+actual count5 are clearly visible; UNKNOWN is identifiable but small/overlapped
+with deck text/graphics. The central demon face seen in0.8 is no longer visible
+at the circle center, while native card artwork and intentional rings remain.
+Ammo12/48 to11/48 to12/47, portrait/cash/round/equipment, prompts and crosshair
+remain readable. This is a limited real custom core gain, still a hybrid HUD.
+No nickname or original image/log body is committed.
+
+The two snapshots report custom/empty0 then custom/unknown5 with ready-1,
+known false map predicate, required pointers and owned parents. EMPTY/count0
+is trace-only; all three frames already show5/UNKNOWN. Neither continuous feed
+history nor ready0/1/refill/activation/boss/cooperative coverage follows. Ops
+preserved a restored result and actual same-host/true-PTY/fresh closure evidence;
+the UI owner read those receipts without another process query or runtime action.
+No full-HUD, all-art-removal, owner acceptance or retroactive0.7 claim is made.
+
+Source0.10 changes only BO3CardStatus's owned text size and bounds: font26 to32,
+same horizontal center84.5 with width164 to224 (x-27.5..196.5), and y174..202 to
+y274..312. Its center moves down105 source units to a separate status lane.
+It remains a child of the same BO3CardCore view, so Native fallback and parent
+visibility ownership remain intact. Title/count, legal readiness values, all
+subscriptions/callbacks, three-face mask, rings, selection/Fire/input and native
+card name/art are unchanged. No extra native leaf is hidden or reparented.
+The known FateCardOnDeck.name carries card identity; its presence in Source
+does not prove it owns the exact overlapping pixels in this case. No speculative
+masking or tree crawl is introduced to remove it.
+
+The geometry is a Source proposal, not a newly measured clear lane. A separately
+reviewed/authorized capture must verify the new status is visible, unclipped and
+clear of native card text/art plus equipment/ammo at the actual resolution and
+pose. Other card poses, maps, controllers and safe-area variants remain open.
+No0.10 Game/HKS/raster, new asset/FF/native build or Ops contract is acquired.
 
 ## Source references and implemented essentials
 
