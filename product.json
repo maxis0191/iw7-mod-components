@@ -7,6 +7,7 @@
     "tests/fixtures/author_platform_contact.gsc",
     "tests/ops/author_platform_result_test.ps1",
     "tests/ops/author_platform_source_test.ps1",
+    "tests/ops/author_platform_display_test.ps1",
     "docs/AUTHOR-PLATFORM-CONTACT.md",
     "ops/Stock-Links.Core.ps1",
     "ops/native/StockLinks.cs",

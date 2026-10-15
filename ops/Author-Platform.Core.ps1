@@ -20,10 +20,12 @@ function Assert-IW7AuthorPlatformSDKSource($Receipt,[string]$Root) {
     if((Get-Item -LiteralPath $path).Length -ne $c.Bytes -or (Get-FileHash -LiteralPath $path).Hash -cne $c.SHA256){throw 'Author SDK Source bytes changed.'}
 }
 
-function New-IW7AuthorPlatformPlan([double[]]$Anchor,[string]$Token) {
+function New-IW7AuthorPlatformPlan([double[]]$Anchor,[string]$Token,[ValidateSet('Contact','DisplayOnly',IgnoreCase=$false)][string]$Phase='Contact') {
     $p=New-IW7CollisionPlayerPlan $Anchor $Token
     $p.Schema='iw7.author-platform-plan/1'
     $p.Config+="set paris_author_platform_contact 1`nset sdk_author_platform_enable 1`nset fs_game mods/sdk_author_platform`n"
+    $p.Config+="set paris_author_platform_display_only $(if($Phase -ceq 'DisplayOnly'){1}else{0})`n"
+    $p|Add-Member Phase $Phase
     $p|Add-Member VisualOrigin @($Anchor[0],$Anchor[1],($Anchor[2]+96))
     $p|Add-Member VisualAngles @(0,0,0)
     $p|Add-Member VisualScale 1
@@ -37,6 +39,76 @@ function New-IW7AuthorPlatformPlan([double[]]$Anchor,[string]$Token) {
     $p|Add-Member RendererVerified $false
     $p|Add-Member RenderBoundsQualified $false
     $p
+}
+
+function Read-IW7AuthorDisplayReady {
+    param([string]$Text,[string]$Token,[int]$ServerId,[string]$ClientNonce,[long]$NotBeforeTick,[long]$NowTick)
+    if($Text.Length -gt 16MB -or $Token -cnotmatch '^[a-f0-9]{32}$' -or $ServerId -le 0 -or
+        $ClientNonce -cnotmatch '^[a-f0-9]{32}$' -or $NowTick -lt $NotBeforeTick){throw 'Bounded launch-owned display transcript required.'}
+    $raw=$Text
+    $last=$Text.LastIndexOf("`n")
+    if($last -lt 0){return [pscustomobject]@{Ready=$false}}
+    $tail=$Text.Substring($last+1);$text=$Text.Substring(0,$last+1)
+    if($tail -cmatch '^\[SDK author platform\] RESTORE_PENDING(?=;|\r?$)' -or
+        $tail.StartsWith('[Author display] READY token='+$Token,[StringComparison]::Ordinal) -or
+        ($tail.StartsWith('[SDK author platform] ',[StringComparison]::Ordinal) -and $tail.Contains('token='+$Token)) -or
+        ($tail.StartsWith('[Author contact] USE_',[StringComparison]::Ordinal) -and $tail.Contains('token='+$Token))){
+        return [pscustomobject]@{Ready=$false;Pending='Latest display/SDK publication is not terminated.'}
+    }
+    if($text -cmatch '(?m)^\[SDK author platform\] RESTORE_PENDING(?=;|\r?$)' -or
+        $text -cmatch ('(?m)^\[SDK author platform\] (?:USED|VISUAL_REMOVED); token='+$Token+';') -or
+        $text -cmatch ('(?m)^\[Collision player\] (?:AUDIT|PLACED|SAMPLE|F0_CLEAR|CREATED|READY_F1|MOVED|REMOVED|OWNER_DELETED|DONE) token='+$Token+'\b') -or
+        $text -cmatch '(?m)^\[Collision provider\] created ' -or
+        $text -cmatch ('(?m)^\[Author contact\] USE_(?:ARMED|EDGE|ACK) token='+$Token+'\b')){throw 'Display-only episode ran contact/Use or lost visual ownership.'}
+    $pose=Read-IW7CollisionPlayerReady $raw $Token $ServerId $ClientNonce $NotBeforeTick $NowTick
+    if(!$pose.Ready){return [pscustomobject]@{Ready=$false}}
+    $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)';$culture=[Globalization.CultureInfo]::InvariantCulture
+    $prefix='(?m)^\[Author display\] READY token='+$Token
+    $rows=[regex]::Matches($text,$prefix+'; server_pid='+$ServerId+'; client_nonce='+$ClientNonce+
+        '; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1; anchor_x='+$n+'; anchor_y='+$n+'; anchor_z='+$n+
+        '; entity=(\d+); instance=(\d+); x='+$n+'; y='+$n+'; z='+$n+'; angles=0,0,0; scale=1; uses=0; sdk_armed=0; collision_arm=0[\t ]*\r?$')
+    if($rows.Count -ne [regex]::Matches($text,$prefix+'\b[^\r\n]*\r?$').Count){throw 'Malformed/foreign display publication.'}
+    if(!$rows.Count){return [pscustomobject]@{Ready=$false}}
+    $entity=$null;$instance=$null;$tick=-1L
+    foreach($r in $rows){
+        $anchor=@(3..5|ForEach-Object{[double]::Parse($r.Groups[$_].Value,$culture)})
+        $p=New-IW7AuthorPlatformPlan $anchor $Token 'DisplayOnly'
+        $e=[int]::Parse($r.Groups[6].Value,$culture);$i=[long]::Parse($r.Groups[7].Value,$culture);$t=[long]::Parse($r.Groups[2].Value,$culture)
+        if($null -eq $entity){$entity=$e;$instance=$i}
+        if($r.Groups[1].Value -cne $pose.Generation -or ($anchor -join ',') -cne ($pose.Anchor -join ',') -or
+            $e -gt 2047 -or $e -ne $entity -or $i -ne $instance -or $t -le $tick -or $t -gt $NowTick){throw 'Display identity, frozen P or native clock changed.'}
+        foreach($axis in 0..2){$v=[double]::Parse($r.Groups[8+$axis].Value,$culture)
+            if(![double]::IsFinite($v) -or [math]::Abs($v-$p.VisualOrigin[$axis]) -gt 0.001){throw 'Display visual transform changed.'}}
+        $tick=$t
+    }
+    if($tick -lt $NotBeforeTick -or $NowTick-$tick -gt 500 -or $tick -ne $pose.Tick){return [pscustomobject]@{Ready=$false}}
+    if([regex]::Matches($text,'(?m)^\[SDK author platform\] SCENE_READY; token='+$Token+';[^\r\n]*\r?$').Count -ne 1){throw 'One SDK visual instance is required.'}
+    $null=Get-IW7CollisionPlayerOne $text ('(?m)^\[SDK author platform\] SCENE_READY; token='+$Token+'; entity='+$entity+'; instance='+$instance+'; uses=0; physics_unverified=1; runtime_ready=0\.[\t ]*\r?$')
+    [pscustomobject]@{Ready=$true;Generation=$pose.Generation;Tick=$tick;Anchor=$pose.Anchor;Entity=$entity;Instance=$instance;CollisionArm=0;SDKUses=0}
+}
+
+function New-IW7AuthorDisplayResult($Before,$After,$CaptureInput,$CaptureRows,[long]$CaptureStartedTick,[long]$CaptureCompletedTick) {
+    Assert-IW7CollisionPlayerFrozenReady $Before $After
+    if($Before.Entity -ne $After.Entity -or $Before.Instance -ne $After.Instance -or $Before.Tick -gt $CaptureStartedTick -or
+        $CaptureCompletedTick -lt $CaptureStartedTick -or $After.Tick -lt $CaptureCompletedTick -or
+        $Before.CollisionArm -ne 0 -or $After.CollisionArm -ne 0 -or $Before.SDKUses -ne 0 -or $After.SDKUses -ne 0 -or
+        $CaptureInput.Passed -isnot [bool] -or !$CaptureInput.Passed -or $CaptureInput.Name -cne 'author-platform-display' -or $CaptureInput.GameplayAssertions -ne 0){throw 'Display capture is not bracketed by the same unarmed protected visual.'}
+    $captures=@($CaptureRows|Where-Object type -CEQ 'capture')
+    $done=@($CaptureRows|Where-Object type -CEQ 'complete')
+    $starts=@($CaptureRows|Where-Object type -CEQ 'step_start');$steps=@($CaptureRows|Where-Object type -CEQ 'step_complete')
+    $types=@($CaptureRows|ForEach-Object {$_.type}|Where-Object {$_ -cne 'scenario'})
+    if(($types -join ',') -cne 'step_start,capture,step_complete,released,complete' -or
+        $captures.Count -ne 1 -or $captures[0].id -cne 'display-original-frame' -or $captures[0].sha256 -cnotmatch '^[a-fA-F0-9]{64}$' -or
+        ![IO.Path]::IsPathFullyQualified($captures[0].path) -or [IO.Path]::GetExtension($captures[0].path) -cne '.bmp' -or
+        $starts.Count -ne 1 -or $starts[0].id -cne 'display-original-frame' -or $starts[0].action -cne 'capture' -or
+        $steps.Count -ne 1 -or $steps[0].id -cne 'display-original-frame' -or $steps[0].action -cne 'capture' -or $steps[0].witness -cne 'native_frame' -or
+        @($CaptureRows|Where-Object type -CEQ 'released').Count -ne 1 -or
+        $done.Count -ne 1 -or $done[0].passed -isnot [bool] -or !$done[0].passed -or
+        @($CaptureRows|Where-Object{$_.type -cin @('failure','cleanup_gap')}).Count){throw 'One fresh original native capture and normal input release are required.'}
+    [pscustomobject]@{Schema='iw7.author-platform-display/1';Phase='DisplayOnly';DisplayEpisodeExecuted=$true;ContactNotRun=$true;
+        Before=$Before;After=$After;OriginalCapture=$captures[0];Input=$CaptureInput;PixelsVerified=$false;RenderedBoundsVerified=$false;
+        ClientPredictionVerified=$false;LifecycleClosed=$false;LeaseReleased=$false;OriginalHostExitObserved=$false;OwnerAccepted=$false;MainDeployed=$false;
+        Meaning='Original native frame recorded; pixels require inspection. Contact was not run. Original caller still owns normal close/restore.'}
 }
 
 function Read-IW7AuthorPlatformResult {

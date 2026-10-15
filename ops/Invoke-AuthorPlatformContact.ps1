@@ -1,5 +1,6 @@
 param(
     [ValidateSet('Plan','Run')][string]$Action='Plan',
+    [ValidateSet('Contact','DisplayOnly',IgnoreCase=$false)][string]$Phase='Contact',
     [double[]]$Anchor,
     [Parameter(Mandatory)][ValidatePattern('^[a-f0-9]{32}$')][string]$Token,
     [string]$HelperRoot,[string]$HelperReceiptSHA256,[string]$SourceReceiptSHA256,
@@ -12,10 +13,14 @@ $ErrorActionPreference='Stop'
 $anchorProvided=$PSBoundParameters.ContainsKey('Anchor')
 $fixtureHash=(Get-FileHash -LiteralPath "$PSScriptRoot/../tests/fixtures/author_platform_contact.gsc").Hash
 if($Action -ceq 'Plan'){
-    if($anchorProvided){$plan=New-IW7AuthorPlatformPlan $Anchor $Token;$plan|Add-Member PreviewOnly $true}
+    if($anchorProvided){$plan=New-IW7AuthorPlatformPlan $Anchor $Token $Phase;$plan|Add-Member PreviewOnly $true}
     else{$plan=[pscustomobject]@{Schema='iw7.author-platform-plan/1';Token=$Token;Anchor=$null;CoordinatesPending=$true;AnchorSelection='Fresh protected stock-spawn pose after actual retail readiness';PlannedClients=1;ClearanceQualified=$false;ClientCollider=$false;OwnerAccepted=$false;Config="set paris_collision_player_test 1`nset paris_collision_player_anchor_current 1`nset paris_author_platform_contact 1`nset sdk_author_platform_enable 1`nset fs_game mods/sdk_author_platform`nset paris_collision_probe_arm 0`nset paris_collision_probe_token `"$Token`"`n"}}
     $plan|Add-Member FixtureSHA256 $fixtureHash
-    if(!$anchorProvided){$plan|Add-Member SDKContract (Get-IW7AuthorPlatformSDKContract)}
+    if(!$anchorProvided){
+        $plan|Add-Member SDKContract (Get-IW7AuthorPlatformSDKContract)
+        $plan|Add-Member Phase $Phase
+        $plan.Config+="set paris_author_platform_display_only $(if($Phase -ceq 'DisplayOnly'){1}else{0})`n"
+    }
     $plan|ConvertTo-Json -Depth 6;return
 }
 if($anchorProvided){throw 'Run selects actual frozen stock pose from native-stamped readiness; explicit coordinates are preview only.'}
@@ -75,18 +80,52 @@ if($wire -cnotmatch ('^'+$Session.Identity.PID+' ([a-f0-9]{32})$')){throw 'Actua
 $readyDeadline=[Environment]::TickCount64+180000;$generation=$null
 do{
     $null=Update-IW7BaseClient $Session
-    $ready=Read-IW7CollisionPlayerReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64)
+    $readyText=Read-IW7BaseLog $ServerIdentity.Stdout
+    $ready=if($Phase -ceq 'DisplayOnly'){
+        Read-IW7AuthorDisplayReady $readyText $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64)
+    }else{Read-IW7CollisionPlayerReady $readyText $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64)}
     if($ready.Ready){$generation=$ready.Generation;$firstReady=$ready;break}
     if([Environment]::TickCount64 -ge $readyDeadline){throw 'Fresh playable/retail-intro readiness unavailable; no placement or collision arm.'}
     Start-Sleep -Milliseconds 100
 }while($true)
-$plan=New-IW7AuthorPlatformPlan $firstReady.Anchor $Token
+$plan=New-IW7AuthorPlatformPlan $firstReady.Anchor $Token $Phase
 $plan|Add-Member FixtureSHA256 $fixtureHash
 $plan|Add-Member AnchorSelection 'Actual frozen protected stock-spawn pose'
 $plan|Add-Member ReadinessTick $firstReady.Tick
 $planPath=Join-Path $Session.OutputRoot ('author-platform-anchor-'+$Token+'.local.json')
 $writer=[IO.StreamWriter]::new([IO.File]::Open($planPath,'CreateNew','Write','Read'),[Text.UTF8Encoding]::new($false))
 try{$writer.Write(($plan|ConvertTo-Json -Depth 6))}finally{$writer.Dispose()}
+if($Phase -ceq 'DisplayOnly'){
+    # Capture only. Native input arm/abort belongs to the existing capture API;
+    # the collision arm remains zero. No contact command, placement or Use.
+    $before=Read-IW7AuthorDisplayReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64)
+    Assert-IW7CollisionPlayerFrozenReady $firstReady $before
+    $scenario=Write-CollisionInputScenario 'author-platform-display' @(@{id='display-original-frame';action='capture'})
+    $captureStarted=[Environment]::TickCount64
+    $displayInput=Invoke-IW7AgentScenario -Session $Session -ScenarioPath $scenario
+    $captureCompleted=[Environment]::TickCount64
+    $displayDeadline=$captureCompleted+1000
+    do{
+        $null=Update-IW7BaseClient $Session
+        $after=Read-IW7AuthorDisplayReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $captureCompleted ([Environment]::TickCount64)
+        if($after.Ready){break}
+        if([Environment]::TickCount64 -ge $displayDeadline){throw 'Fresh same-visual display observation unavailable after capture.'}
+        Start-Sleep -Milliseconds 50
+    }while($true)
+    $evidence=[IO.Path]::GetFullPath($displayInput.Evidence)
+    if([IO.Path]::GetExtension($evidence) -cne '.jsonl' -or
+        !$evidence.StartsWith([IO.Path]::GetFullPath($Session.OutputRoot)+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or
+        (Get-Item -LiteralPath $evidence).Length -gt 1MB){throw 'Original capture scenario evidence must remain bounded inside the session output.'}
+    $rows=@(Get-Content -LiteralPath $evidence|ForEach-Object {ConvertFrom-Json $_})
+    $result=New-IW7AuthorDisplayResult $before $after $displayInput $rows $captureStarted $captureCompleted
+    if(![IO.Path]::GetFullPath($result.OriginalCapture.path).StartsWith([IO.Path]::GetFullPath($Session.OutputRoot)+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){
+        throw 'Original frame must remain inside the retained session output.'
+    }
+    $path=Join-Path $Session.OutputRoot ('author-platform-display-'+$Token+'.local.json')
+    $writer=[IO.StreamWriter]::new([IO.File]::Open($path,'CreateNew','Write','Read'),[Text.UTF8Encoding]::new($false))
+    try{$writer.Write(($result|ConvertTo-Json -Depth 9))}finally{$writer.Dispose()}
+    $result;return
+}
 $steps=@(@{id='settle-controls';action='wait';duration_ms=4000},
     @{id='present-contact';action='assert_log';scope='server';contains="[Collision player] READY_F1 token=$Token";timeout_ms=5000},
     @{id='ordinary-walk';action='hold';button='forward';duration_ms=300},

@@ -8,6 +8,7 @@ main()
         getdvarint("net_port") != 27116 || getdvarint("sv_lanOnly") != 1 ||
         getdvar("net_ip") != "127.0.0.1" || getdvar("g_password") == "" ||
         getdvarint("sv_cheats") || getdvarint("g_inactivity")) return;
+    if (getdvarint("paris_author_platform_display_only") != 0 && getdvarint("paris_author_platform_display_only") != 1) return;
     level thread quiet_arena();
     level thread contact();
 }
@@ -52,6 +53,8 @@ safe(state)
 {
     players = getentarray("player", "classname");
     return !state.failed && isdefined(state.player) && isalive(state.player) && players.size == 1 && players[0] == state.player &&
+        getdvarint("paris_author_platform_display_only") == state.display_only &&
+        (!state.display_only || !getdvarint("paris_collision_probe_arm")) &&
         getdvar("fs_game") == "mods/sdk_author_platform" && getdvarint("sdk_author_platform_enable") == 1 &&
         getdvarint("paris_author_platform_contact") == 1 && getdvarint("sv_maxclients") == 1 &&
         getdvar("mapname") == "cp_zmb" && getdvarint("dedicated") && getdvarint("net_port") == 27116 &&
@@ -80,6 +83,18 @@ author_snapshot(state, phase)
     print("[Author contact] VISUAL token=" + state.token + " phase=" + phase + " entity=" + sdk.entity +
         " instance=" + sdk.instance_id + " uses=" + sdk.uses + " x=" + p[0] + " y=" + p[1] + " z=" + p[2] +
         " angles=0,0,0 scale=1 game_ms=" + gettime());
+    return true;
+}
+
+author_display_ready(state, stamp)
+{
+    if (!state.display_only || !playable(state) || !author_scene_valid(state) || state.sdk.uses != 0 || state.sdk.armed ||
+        getdvarint("paris_collision_probe_arm")) return false;
+    p = state.sdk.model.origin;
+    print("[Author display] READY token=" + state.token + "; " + stamp +
+        "; anchor_x=" + state.anchor[0] + "; anchor_y=" + state.anchor[1] + "; anchor_z=" + state.anchor[2] +
+        "; entity=" + state.sdk.entity + "; instance=" + state.sdk.instance_id + "; x=" + p[0] + "; y=" + p[1] + "; z=" + p[2] +
+        "; angles=0,0,0; scale=1; uses=0; sdk_armed=0; collision_arm=0");
     return true;
 }
 
@@ -174,6 +189,7 @@ contact()
     level endon("game_ended");
     state = spawnstruct();
     state.failed = false;
+    state.display_only = getdvarint("paris_author_platform_display_only");
     state.sample_id = 0;
     state.token = getdvar("paris_collision_probe_token");
     state.anchor_frozen = false;
@@ -185,7 +201,17 @@ contact()
     print("[Collision player] READY token=" + state.token);
     while (gettime() < deadline)
     {
+        // The existing SDK owns visual teardown on disconnect/game_ended.
+        // A stopped display does not enter contact during original caller close.
+        if (state.display_only && isdefined(state.sdk) && state.sdk.stopped) return;
         players = getentarray("player", "classname");
+        if (state.display_only && state.anchor_frozen && (players.size != 1 || !isdefined(state.player) || players[0] != state.player))
+        {
+            // Normal original-caller disconnect has no contact failure outcome.
+            // During capture, teardown/lost fresh READY still refuses display.
+            if (isdefined(state.sdk)) custom_scripts\cp\sdk_author_platform::teardown(state.sdk);
+            return;
+        }
         if (players.size == 1)
         {
             if (state.anchor_frozen && state.player != players[0]) { fail(state, "anchor_player_changed"); return; }
@@ -213,7 +239,11 @@ contact()
                     if (!author_scene_valid(state) || state.sdk.uses != 0) { fail(state, "sdk_readiness_changed"); return; }
                     print("[Collision player] PLAYER_READY token=" + state.token + "; " + stamp +
                         "; anchor_x=" + state.anchor[0] + "; anchor_y=" + state.anchor[1] + "; anchor_z=" + state.anchor[2]);
-                    if (getdvarint("paris_collision_probe_arm")) break;
+                    if (state.display_only)
+                    {
+                        if (!author_display_ready(state, stamp)) { fail(state, "display_readiness_lost"); return; }
+                    }
+                    else if (getdvarint("paris_collision_probe_arm")) break;
                 }
             }
             else
@@ -229,6 +259,7 @@ contact()
         }
         wait 0.05;
     }
+    if (state.display_only) { fail(state, "display_readiness_expired"); return; }
     if (gettime() >= deadline || !audit(state)) { fail(state, "admission_or_clearance"); return; }
     state.deadline = gettime() + 25000;
     if (!author_snapshot(state, "F0")) { fail(state, "sdk_F0_snapshot"); return; }
