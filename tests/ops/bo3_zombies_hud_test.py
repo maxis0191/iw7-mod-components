@@ -167,7 +167,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.15.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.15.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.16.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.16.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -1241,4 +1241,87 @@ lua.execute('allFanRows=0;limitFanRows=0;for _,line in ipairs(printed) do if con
 check('allFanRows<=529 and limitFanRows==1 and shutdownFan.__bo3FanBack==fanForgedTag')
 lua.execute('roster[1].name="After shutdown";retiredTeam(existing.mainPlayerInfo._widget.PlayerCash)')
 check('hero.BO3Name.text=="Live beyond startup"')
+
+def capture_fan_wire(module_source, failed_sample=False, empty_discovery=False):
+    """Run the authored module; capture actual print arguments outside Lua."""
+    runtime = LuaRuntime()
+    runtime.execute(setup)
+    messages = []
+    runtime.globals().print = messages.append
+    runtime.globals().fail_sample = failed_sample
+    runtime.globals().empty_discovery = empty_discovery
+    runtime.execute(r'''
+profileText=profilePayload;frontend=false;aliens=true;faultHits=0
+if empty_discovery then
+ local ordinaryPairs=pairs
+ pairs=function(value)
+  if type(value)=="table" and (rawget(value,"image_read")~=nil or rawget(value,"readback")~=nil) then
+   faultHits=faultHits+1;return function() return nil end,value,nil
+  end
+  return ordinaryPairs(value)
+ end
+ for _ in pairs({image_read="unknown"}) do error("Boundary fault was not installed") end
+end
+nextFanShape=function(f)
+ f.fanCard.getLocalRect=function() return 11,22,33,44 end
+ f.fanOverlay.getLocalRect=function() return 51,52,53,54 end
+ if fail_sample then f.getParent=function() error("controlled collection failure") end end
+end
+''')
+    runtime.execute(module_source)
+    runtime.execute('wireFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=0});wireFan.fanOverlay:SetAnchorsAndPosition(0,1,0,1,301,302,303,304);wireFan:SetAlpha(0.35,18)')
+    return runtime, messages
+
+
+def assert_fan_wire_contract(module_source):
+    """Empty-discovery is a boundary counterexample, not an HKS diagnosis.
+
+    No copy of fan_trace or its formatter produces these captured messages.
+    """
+    expected = set("""sample_status readback slot root_seq_seen slot_match native_phase
+        back_id overlay_id back_type overlay_type alpha_read image_read alpha_intent
+        overlay_alpha_intent overlay_rgb_intent hooks hook_stop initial_writes_returned
+        parent_read parent_l parent_t parent_r parent_b back_read back_l back_t back_r back_b
+        overlay_read overlay_l overlay_t overlay_r overlay_b origin intent duration
+        intent_l intent_r intent_t intent_b image_argument_type same_adapter_argument""".split())
+    assert len(expected) == 42
+    common = {"version", "widget_seq", "controller", "stage", "reason", "field_count", "pixels", "instance"}
+    max_line_bytes = len("[BO3 HUD] fan ") + sum(len(key) + 1 + 40 + 1 for key in expected | common)
+    assertions = 0
+    for failed_sample, empty_discovery in [(False, False), (True, False), (False, True), (True, True)]:
+        runtime, messages = capture_fan_wire(module_source, failed_sample, empty_discovery)
+        emitted = []
+        for message in messages:
+            if message.startswith("[BO3 HUD] fan "):
+                fields = dict(part.split("=", 1) for part in message.split()[3:])
+                assert fields.get("field_count") == "42", "Fan print omitted the wire field count"
+                assert expected <= fields.keys(), f"Fan print omitted fields: {expected - fields.keys()}"
+                assert len(fields) == 50, "Fan print has missing, extra or duplicate wire fields"
+                assert len(message.split()[3:]) == len(fields), "Fan print contains duplicate fields"
+                emitted.append(fields)
+                assertions += 4
+        assert len(emitted) == 3, "The actual emitter must reach print for apply, geometry and alpha"
+        assert emitted[0]["stage"] == "applied" and emitted[1]["stage"] == "overlay_rect" and emitted[2]["stage"] == "parent_alpha"
+        assert all(row["image_read"] == "unknown" and row["alpha_read"] == "unknown" for row in emitted)
+        assertions += 3
+        assert all(len(value) <= 40 for row in emitted for value in row.values())
+        assert all(len(message.encode("ascii")) + 1 <= max_line_bytes for message in messages if message.startswith("[BO3 HUD] fan "))
+        assertions += 2
+        if failed_sample:
+            assert all(row["sample_status"] == "failed" and row["readback"] == "unknown_error" for row in emitted)
+            assert all(row["back_read"] == "unknown" and row["back_l"] == "unknown" and row["root_seq_seen"] == "unknown" for row in emitted)
+            assertions += 2
+        else:
+            assert all(row["sample_status"] == "complete" and row["back_read"] == "known" and row["overlay_read"] == "known" for row in emitted)
+            assert emitted[1]["intent_l"] == "301.000" and emitted[1]["back_l"] == "11.000" and emitted[1]["overlay_l"] == "51.000"
+            assert emitted[2]["alpha_intent"] == "0.350" and emitted[2]["native_phase"] == "unknown"
+            assertions += 3
+        if empty_discovery:
+            assert runtime.globals().faultHits == 1, "The fixed emitter must not invoke dynamic sample-key discovery"
+            assertions += 1
+        runtime.execute('BO3ZombiesHUD.shutdown()')
+    return assertions
+
+wire_checks = assert_fan_wire_contract(source)
+checks += wire_checks
 print(f"PASS {checks} authored Lua5.1 source controls; mocked UI/models only, no HKS/game/pixels")
