@@ -1009,6 +1009,60 @@ foreignHookAction.SetHeader=foreignHeader;foreignActionChild=node();foreignHookA
 LUI.HudManager.CreateHud({nextHud=foreignHookRoot})
 ''')
 check('foreignHookOwner.retired and foreignHookOwner.view.closed and foreignHookAction.SetHeader==foreignHeader and foreignActionChild:getParent()==foreignHookAction.Accent and #foreignHookAction.Accent.children==1')
+lua.execute(r'''
+forgedRoot=stock_hud();LUI.HudManager.CreateHud({nextHud=forgedRoot})
+forgedAction=forgedRoot.reviveBarContainer._widget;realOwnerBeforeForgery=forgedAction.__bo3ActionView
+forgedParent=node();forgedView=node();forgedView.alpha=0.73;forgedParent:addElement(forgedView)
+forgedTag={view=forgedView,accent=forgedParent,index=forgedRoot.controllerIndex}
+forgedAction.__bo3ActionView=forgedTag;LUI.HudManager.CreateHud({nextHud=forgedRoot})
+''')
+check('forgedAction.__bo3ActionView==forgedTag and forgedView.alpha==0.73 and not forgedView.closed and forgedView:getParent()==forgedParent and realOwnerBeforeForgery.retired and realOwnerBeforeForgery.view.closed and nativeActionIntact(forgedRoot)')
+lua.execute(r'''
+tagReplacementCases={}
+for _,kind in ipairs({"nil","number","boolean","object"}) do
+ local r=stock_hud();LUI.HudManager.CreateHud({nextHud=r})
+ local a=r.reviveBarContainer._widget;local owner=a.__bo3ActionView
+ local entry={root=r,action=a,view=owner.view,weakOwner=setmetatable({owner},{__mode="v"})}
+ if kind=="number" then entry.tag=17
+ elseif kind=="boolean" then entry.tag=false
+ elseif kind=="object" then
+  entry.foreignParent=node();entry.foreignView=node();entry.foreignView.alpha=0.61;entry.foreignParent:addElement(entry.foreignView)
+  entry.tag={view=entry.foreignView,accent=entry.foreignParent,index=r.controllerIndex}
+ end
+ a.__bo3ActionView=entry.tag;tagReplacementCases[#tagReplacementCases+1]=entry
+end
+collectgarbage("collect");collectgarbage("collect")
+tagOwnersSurvived=true
+for _,entry in ipairs(tagReplacementCases) do tagOwnersSurvived=tagOwnersSurvived and entry.weakOwner[1]~=nil and not entry.view.closed end
+''')
+check('tagOwnersSurvived')
+lua.execute(r'''
+tagReplacementProtected=true
+for _,entry in ipairs(tagReplacementCases) do
+ LUI.HudManager.CreateHud({nextHud=entry.root})
+ tagReplacementProtected=tagReplacementProtected and entry.action.__bo3ActionView==entry.tag
+  and entry.view.closed and entry.view:getParent()==nil and entry.view.__bo3ActionLifetime==nil
+  and nativeActionIntact(entry.root)
+ if entry.foreignView then tagReplacementProtected=tagReplacementProtected
+  and entry.foreignView.alpha==0.61 and not entry.foreignView.closed and entry.foreignView:getParent()==entry.foreignParent end
+end
+''')
+check('tagReplacementProtected')
+lua.execute(r'''
+collectgarbage("collect");collectgarbage("collect")
+tagReplacementNotAdopted=true
+for _,entry in ipairs(tagReplacementCases) do
+ LUI.HudManager.CreateHud({nextHud=entry.root})
+ tagReplacementNotAdopted=tagReplacementNotAdopted and entry.action.__bo3ActionView==entry.tag
+  and #entry.action.Accent.children==0 and entry.view.closed
+end
+pretagRoot=stock_hud();pretagAction=pretagRoot.reviveBarContainer._widget
+pretagParent=node();pretagView=node();pretagParent:addElement(pretagView)
+pretag={view=pretagView,accent=pretagParent,index=pretagRoot.controllerIndex}
+pretagAction.__bo3ActionView=pretag;LUI.HudManager.CreateHud({nextHud=pretagRoot})
+''')
+check('tagReplacementNotAdopted')
+check('pretagAction.__bo3ActionView==pretag and not pretagView.closed and pretagView.alpha==1 and pretagView:getParent()==pretagParent and #pretagAction.Accent.children==0 and nativeActionIntact(pretagRoot)')
 lua.execute('actionBeforeController=mapFixtures[2].root.reviveBarContainer._widget.__bo3ActionView')
 lua.execute('changedController=mapFixtures[2].root;changedController.controllerIndex=3;LUI.HudManager.CreateHud({nextHud=changedController});changedCore=changedController.wonderCard._widget.FateCardWidget.FateCardDevilWidget.__bo3CardCore')
 check('changedCore.mask.alpha==1 and changedCore.view.alpha==0 and changedCore.disabled')
@@ -1028,6 +1082,13 @@ lua.execute('originalCount=Game.GetCPNumScoreboardPlayers;Game.GetCPNumScoreboar
 check('hero.BO3Name.text=="" and hero.BO3Speaker.alpha==0')
 lua.execute('Game.GetCPNumScoreboardPlayers=originalCount;existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
 lua.execute('otherRefresh=function() return "external" end;manager.activeHud.mainPlayerInfo._widget.PlayerCash.RefreshRows=otherRefresh;retiredTeam=existing.mainPlayerInfo._widget.PlayerCash.RefreshRows')
+lua.execute(r'''
+shutdownTagRoot=stock_hud();LUI.HudManager.CreateHud({nextHud=shutdownTagRoot})
+shutdownTagAction=shutdownTagRoot.reviveBarContainer._widget;shutdownOwnedView=shutdownTagAction.__bo3ActionView.view
+shutdownForeignParent=node();shutdownForeignView=node();shutdownForeignView.alpha=0.49;shutdownForeignParent:addElement(shutdownForeignView)
+shutdownForeignTag={view=shutdownForeignView,accent=shutdownForeignParent,index=shutdownTagRoot.controllerIndex}
+shutdownTagAction.__bo3ActionView=shutdownForeignTag;collectgarbage("collect")
+''')
 lua.execute('BO3ZombiesHUD.shutdown()')
 check('MenuBuilder.BuildRegisteredType==original')
 check('existing.mainPlayerInfo._widget.PlayerCash.RefreshRows==existing.retainedTeamRefresh')
@@ -1036,6 +1097,7 @@ check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
 check('gauge.backing.alpha==1 and gauge.meter.alpha==1 and gauge.view.alpha==0 and nativePainterOrder(core,coreOwner) and core.nativeUpdate==nativeCoreUpdate and core.nativeRefill==nativeRefill')
 check('selectedOwner.mask.alpha==1 and selectedOwner.view.alpha==0 and boundedSelectedOwner.mask.alpha==1 and boundedSelectedOwner.view.alpha==0 and selected.nativeIdentityCallbacks==selectedCallbacks and selected.name==selectedNativeName and selected.icon==selectedNativeIcon')
 check('actionOwner.retired and actionOwner.view.closed and actionOwner.view:getParent()==nil and nativeActionIntact(mapFixtures[4].root) and foreignActionChild:getParent()==foreignHookAction.Accent and foreignHookAction.SetHeader==foreignHeader')
+check('shutdownOwnedView.closed and shutdownOwnedView:getParent()==nil and shutdownOwnedView.__bo3ActionLifetime==nil and shutdownTagAction.__bo3ActionView==shutdownForeignTag and not shutdownForeignView.closed and shutdownForeignView.alpha==0.49 and shutdownForeignView:getParent()==shutdownForeignParent and nativeActionIntact(shutdownTagRoot)')
 lua.execute('roster[1].name="After shutdown";retiredTeam(existing.mainPlayerInfo._widget.PlayerCash)')
 check('hero.BO3Name.text=="Live beyond startup"')
 print(f"PASS {checks} authored Lua5.1 source controls; mocked UI/models only, no HKS/game/pixels")

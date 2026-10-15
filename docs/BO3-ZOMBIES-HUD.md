@@ -638,6 +638,19 @@ our view under the captured accent; it never moves a native field or restores a
 foreign hook. Existing Source0.5 wrapper placement/palette remains for an eligible
 action; instantiated HUDs still need normal VM teardown for complete rollback.
 
+Independent review rejected initial candidate7d11f78: its replaceable public
+widget marker was incorrectly treated as the owner record, allowing a forged
+record to hide/remove/close a foreign view. A causal executed against that exact
+old candidate reproduces the violation. The correction keeps authority in a
+captured local weak registry and compares marker identity before any retirement;
+the marker and foreign record are never adopted or inspected as an owner. A live
+owned view strongly retains its real record, so marker replacement plus GC cannot
+discard ownership before refresh/shutdown. After retirement, a weak-key boolean
+prevents silent readoption even if the real record is collected and the marker
+was erased. These records do not strongly retain dead HUD trees. Object/nil/
+incorrect-type replacements, forced GC and shutdown are covered separately;
+the rejected candidate remains in Git history.
+
 Original SetHeader retains localization, font, text measurement and header
 sizing. Original SetProgress retains its actual clamped stencil geometry and
 duration, original Fill/Mask images and callbacks. secureState/ui_securing and
@@ -649,7 +662,7 @@ world-anchored ReviveBar and downed/self-revive controls are unchanged. Creators
 already using this native action path can reuse this small presentation function;
 it does not claim a new generic objective interface or a new gameplay capability.
 
-216 Lua5.1 Source controls pass, including19 new causals: five distinct schemas,
+222 Lua5.1 Source controls pass, including25 new causals: five distinct schemas,
 native object/material/stencil/callback retention, true callback-driven
 start/progress/cancel/Skeeball and unknown state, unchanged measured title and
 duration, no extra subscriptions, controller isolation, malformed/late schemas,
@@ -659,8 +672,8 @@ bodies across all five variants:45 assertions pass, including native callback
 identity, material/mask geometry, no extra subscribers and Show/Hide endpoints.
 UI nodes, text metrics, animation timing and the untouched nested header
 background are mocked in that cross-check; it is not HKS or rendered gameplay.
-Its2620B receipt SHA256 is
-8B7A053AA29EC8B8DDD451E942581CC4F953B605C368B86E1F265C4CF6737067.
+Its2735B receipt SHA256 is
+1C418BB2B0124B9644AD2EA08F2BC5AC184864E55B2C4341B6C5300885E5DB1F.
 
 Next: exact-head Source review/CI/merge, then a separately reviewed caller and
 Root Game decision for natural action progress/cancel/return. Real co-op revive,

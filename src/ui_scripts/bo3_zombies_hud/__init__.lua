@@ -10,7 +10,10 @@ state.roots = setmetatable({}, {__mode = "k"})
 state.refreshHooks = setmetatable({}, {__mode = "kv"})
 state.cardCores = setmetatable({}, {__mode = "kv"})
 state.cardIdentities = setmetatable({}, {__mode = "kv"})
-state.actionViews = setmetatable({}, {__mode = "kv"})
+-- Local authority, independent of the replaceable widget marker. A live owned
+-- view retains its own record; the weak registry cannot retain dead HUD trees.
+local action_views = setmetatable({}, {__mode = "kv"})
+local retired_actions = setmetatable({}, {__mode = "k"})
 state.identityDiagnostics = setmetatable({}, {__mode = "k"})
 state.nextIdentityDiagnostic = 0
 state.cardDiagnostics = setmetatable({}, {__mode = "k"})
@@ -781,7 +784,9 @@ local function action_shape(self, owner)
     child = self.Accent:getFirstChild()
     return owner and child == owner.view and child:getNextSibling() == nil or not owner and child == nil
 end
-local function retire_action(owner)
+local function retire_action(self, owner)
+    if action_views[self] ~= owner then return end
+    retired_actions[self] = true
     owner.retired = true
     owner.view:SetAlpha(0, 0)
     -- A foreign parent/child is never moved back or removed. Only our view
@@ -790,10 +795,11 @@ local function retire_action(owner)
         owner.accent:removeElement(owner.view)
         owner.view:close()
     end
+    owner.view.__bo3ActionLifetime = nil
 end
 local function style_action(self, index)
     if not self then return end
-    local owner = self.__bo3ActionView
+    local owner = action_views[self]
     if owner then
         if owner.retired then return end
         local ok, intact = pcall(function()
@@ -803,13 +809,14 @@ local function style_action(self, index)
                 and self.ProgressBar.Mask == owner.mask and self.SetHeader == owner.setHeader
                 and self.ProgressBar.SetProgress == owner.setProgress and action_shape(self, owner)
         end)
-        if state.closed or owner.index ~= index or not ok or not intact then
-            retire_action(owner)
+        if state.closed or self.__bo3ActionView ~= owner or owner.index ~= index or not ok or not intact then
+            retire_action(self, owner)
         end
         return not owner.retired
     end
     local ok, shape = pcall(action_shape, self)
-    if state.closed or type(index) ~= "number" or index < 0 or index > 3 or index ~= math.floor(index)
+    if state.closed or retired_actions[self] or self.__bo3ActionView ~= nil
+        or type(index) ~= "number" or index < 0 or index > 3 or index ~= math.floor(index)
         or not ok or not shape then return end
     local view = panel("BO3ActionView", 256, 64)
     view:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0)
@@ -825,7 +832,8 @@ local function style_action(self, index)
     owner = {id=self.id, view=view, accent=self.Accent, header=self.Header, label=self.Header.MessageText,
         progress=self.ProgressBar, fill=self.ProgressBar.Fill, mask=self.ProgressBar.Mask,
         setHeader=self.SetHeader, setProgress=self.ProgressBar.SetProgress, index=index}
-    self.__bo3ActionView = owner;state.actionViews[self] = owner
+    view.__bo3ActionLifetime = owner
+    self.__bo3ActionView = owner;action_views[self] = owner
     -- Native Accent alpha/Show/Hide owns the entire underlay. Keep the actual
     -- label, measured header, fill material/geometry/stencil, state/progress
     -- callbacks and original child order. No copied title, %, target or clock.
@@ -1113,7 +1121,7 @@ local function visit_root()
 end
 function state.shutdown()
     state.closed = true
-    for _, owner in pairs(state.actionViews) do retire_action(owner) end
+    for self, owner in pairs(action_views) do retire_action(self, owner) end
     for _, owner in pairs(state.cardCores) do native_card_core(owner) end
     for _, owner in pairs(state.cardIdentities) do native_card_identity(owner) end
     for owner, hook in pairs(state.refreshHooks) do
