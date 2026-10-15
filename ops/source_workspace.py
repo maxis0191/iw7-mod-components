@@ -178,8 +178,11 @@ def prepare(project, revision, bindings, output, cache=None, package=None):
             # Export committed content with Git's checkout filters. Reading the
             # object instead of mutable worktree bytes prevents a change/read/
             # restore race from forging the recorded revision. The physical
-            # checkout is still required clean and checked again below.
-            raw = subprocess.check_output(['git', '-C', str(root), 'cat-file', '--filters', commit + ':' + relative])
+            # checkout is still required clean and checked again below. Resolve
+            # versioned attributes from that same commit, including when sparse
+            # checkout omits .gitattributes and local autocrlf differs.
+            raw = subprocess.check_output(['git', '-C', str(root), '--attr-source=' + commit,
+                                           'cat-file', '--filters', commit + ':' + relative])
             raw.decode('utf-8-sig')
             if b'\x00' in raw or len(raw) > MAX_FILE or total + len(raw) > MAX_TOTAL:
                 raise ValueError('Non-text or oversized filtered source input refused')
@@ -190,7 +193,8 @@ def prepare(project, revision, bindings, output, cache=None, package=None):
         # source contracts without pretending a Git blob is a checkout-byte hash.
         names = source['files']
         if names:
-            hashes = subprocess.check_output(['git', '-C', str(root), 'hash-object', '--stdin-paths'],
+            hashes = subprocess.check_output(['git', '-C', str(root), '--attr-source=' + commit,
+                                              'hash-object', '--stdin-paths'],
                 input='\n'.join(names) + '\n', encoding='utf-8').splitlines()
             if hashes != [tree[name] for name in names]:
                 raise ValueError('Source input changed or differs from its Git revision')
