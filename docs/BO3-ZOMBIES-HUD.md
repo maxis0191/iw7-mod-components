@@ -3,10 +3,10 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.12.0 gives the selected card an original
-identity surface with verified family/rarity while preserving its actual native
-name/icon and selection presentation; the0.11 angular charge panel is retained;
-the actual-player team layout remains Source-tested;
+weapons, quests and states. Content0.13.0 adds a framed native-action underlay,
+retaining the actual localized title, progress, stencil and native visibility.
+The0.12 selected-card identity surface, native name/icon presentation and0.11
+angular charge panel are retained; the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
 ## Ownership and loading
@@ -265,7 +265,7 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 ## Bounded binding diagnostics
 
 Since content0.8.0, `VERSION` is separate from `DIAGNOSTIC_VERSION=0.7.0`. Every
-current initialization emits `module version=0.7.0 content_version=0.12.0 instance=... initialized=1`.
+current initialization emits `module version=0.7.0 content_version=0.13.0 instance=... initialized=1`.
 Every versioned marker uses the diagnostic contract version. The content version
 is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
 the authorized content. A compatible authored skin needs no new Ops enum entry.
@@ -302,7 +302,7 @@ factory_applied/bind does not prove this new presentation or known core feeds.
 [Ops264](https://github.com/maxis0191/iw7-paris-server/pull/264) is that reviewed
 extension: it accepts exact diagnostic contracts0.6.0/0.7.0 in addition to the
 older cases, with the same default0.2.0 and cross-version refusal. Its parser
-already accepts bounded extra module fields such as content_version. Content0.12
+already accepts bounded extra module fields such as content_version. Content0.13
 uses the existing explicit BO3HUDDiagnosticVersion0.7.0 setting. V3/V4,
 Source0.4, V5, Source0.6 and Source0.7 stay frozen, including all inputs/frames.
 
@@ -585,6 +585,102 @@ and models112038B/16D6D198A19C4615023B55D78BF3F74DCE8C493FDFBE472A138450F38817FE
 provide the callback/model contract. No dump body or player nickname is committed.
 All0.11/0.10/0.9 evidence stays frozen; no new Game or full-HUD acceptance follows.
 
+## Actual0.12 and Source0.13 native action block
+
+[Server PR270](https://github.com/maxis0191/iw7-paris-server/pull/270), merge
+5235fd1e07744584924edd3bf6353a3c85ea2b7d, records the closed actual0.12 case.
+Root, Ops and UI viewed three original BMPs: the selected surface and
+FORTUNE/EPIC header, CARDS5 and UNKNOWN are visible; ammo remains12/48 to11/48
+to12/47. The selected effect name/icon are not identified. The later known_pair
+event implies four valid strings under pinned Source, not independent raw
+name/icon or alpha readback. ready-1 does not establish a native animation phase.
+There is no alpha correction or new card-selection/use scenario in Source0.13.
+All0.12 files, capsule and evidence remain immutable.
+
+The next finite block is the existing native local-action container. Its real
+localized title and progress remain the information source. An owned dark
+surface with a fine rim is added **inside the original Accent**, which already
+precedes Header and ProgressBar in the original painter order. This supplies an
+underlay without reparenting native fields, replacing their models or guessing
+an insert/depth API. It stretches with that map's original accent canvas rather
+than imposing a common fill shape. Native Accent image/blend/geometry and alpha
+stay intact; original Show/Hide animations also control the underlay. Actual
+blend, contrast, native accent residuals and readability still need Game evidence.
+
+The complete five outer containers and the five additional DLC bodies were read
+at pin2305708efff4227ba7cb14495ff2c31bcf6e53cf before extending the candidate.
+The four DLC progress factories retain the same actual secureProgress
+subscription and Mask/Fill structure as the base; their material names differ.
+Attack's fill bounds also differ and remain unchanged. All four DLC outer
+containers instantiate HeaderDLC1, whose single MessageText differs from the
+base header's nested Background plus MessageText.
+
+| Read DLC body | Bytes | SHA256 |
+| --- | ---: | --- |
+| ReviveBarHeaderDLC1 | 1108 | C6B184C68AAF9516787088932916C444F358A6A1FB0346C3338F372A165A8DD8 |
+| ReviveProgressBarDLC1 | 1814 | 5C76B070BA04B9A3D0721A6193322CE8EA66521126A9691246654F8175E01C8C |
+| ReviveProgressBarDLC2 | 1814 | 6EFEB5A1328625CAFEFA246B54B1977FF5AE49A76EFF16F39456FCCA79079F36 |
+| ReviveProgressBarDLC3 | 1814 | A50762407325893722ED2679844BA402AA610FEFECBA07EF4E4C628E61ACB47D |
+| ReviveProgressBarDLC4 | 1815 | EC970FFB808B031332B95A367DFEB5C2A325A754FB22100C80FBDD015210C176 |
+
+These text bodies and their Git-blob/byte receipts remain outside Git. No bitmap,
+dump body, new native ABI, diagnostic kind or gameplay publisher is added.
+
+Before adding anything, the finite style function requires a known container
+identity, exact native outer/header/progress child order and parents, original
+SetHeader/SetProgress methods, and an empty native accent. Base and DLC schemas
+are checked separately. An unknown/incomplete/foreign structure stays native
+without invalidating the essential HUD bind and can recover before ownership is
+established. Once installed, a field/parent/child/callback/container/controller
+change retires only the added view; a foreign child/hook/parent is preserved.
+Checks run during existing root refresh, not continuously. Shutdown removes only
+our view under the captured accent; it never moves a native field or restores a
+foreign hook. Existing Source0.5 wrapper placement/palette remains for an eligible
+action; instantiated HUDs still need normal VM teardown for complete rollback.
+
+Independent review rejected initial candidate7d11f78: its replaceable public
+widget marker was incorrectly treated as the owner record, allowing a forged
+record to hide/remove/close a foreign view. A causal executed against that exact
+old candidate reproduces the violation. The correction keeps authority in a
+captured local weak registry and compares marker identity before any retirement;
+the marker and foreign record are never adopted or inspected as an owner. A live
+owned view strongly retains its real record, so marker replacement plus GC cannot
+discard ownership before refresh/shutdown. After retirement, a weak-key boolean
+prevents silent readoption even if the real record is collected and the marker
+was erased. These records do not strongly retain dead HUD trees. Object/nil/
+incorrect-type replacements, forced GC and shutdown are covered separately;
+the rejected candidate remains in Git history.
+
+Original SetHeader retains localization, font, text measurement and header
+sizing. Original SetProgress retains its actual clamped stencil geometry and
+duration, original Fill/Mask images and callbacks. secureState/ui_securing and
+secureProgress/ui_securing_progress remain untouched. Off0, Reviving3 and
+Skeeball21 are native states; unknown nonzero states keep native behavior,
+including an empty title. No duplicate title, target, percentage, countdown,
+progress prediction, model write, subscription or timer is added. The separate
+world-anchored ReviveBar and downed/self-revive controls are unchanged. Creators
+already using this native action path can reuse this small presentation function;
+it does not claim a new generic objective interface or a new gameplay capability.
+
+222 Lua5.1 Source controls pass, including25 new causals: five distinct schemas,
+native object/material/stencil/callback retention, true callback-driven
+start/progress/cancel/Skeeball and unknown state, unchanged measured title and
+duration, no extra subscriptions, controller isolation, malformed/late schemas,
+foreign ownership/callback changes, retirement, repeated refresh and shutdown.
+A separate local cross-check executes the12 pinned retail outer/header/progress
+bodies across all five variants:45 assertions pass, including native callback
+identity, material/mask geometry, no extra subscribers and Show/Hide endpoints.
+UI nodes, text metrics, animation timing and the untouched nested header
+background are mocked in that cross-check; it is not HKS or rendered gameplay.
+Its2735B receipt SHA256 is
+1C418BB2B0124B9644AD2EA08F2BC5AC184864E55B2C4341B6C5300885E5DB1F.
+
+Next: exact-head Source review/CI/merge, then a separately reviewed caller and
+Root Game decision for natural action progress/cancel/return. Real co-op revive,
+normal-damage/downed acceptance, all five maps, split/safe area/localization,
+full HUD and owner acceptance remain unqualified. No Game/native/FF/stock/lease
+operation follows from this Source change.
+
 ## Source references and implemented essentials
 
 The official Aurora source API and a pinned public decompilation were read:
@@ -605,6 +701,7 @@ current VM/runtime ABI. No decompiled body is copied into tracked implementation
 | Team identity/currency/status/mic | PlayerCash CPPlayerInfo grid, filtered GetCPScoreboardRowData(row, target, true), complete scoreboard mic flags | Original three teammate rows refreshed by retail, actual name/currency/status; hero identity/mic refreshed after native RefreshRows |
 | Perks | CP.zombies.perks.activePerks/activePerkBits; element data.icon | New CPPerkIcon, dynamic runtime image; original toggle-list/order/lifetime retained |
 | Offhands | primaryPower/secondaryPower charge, icon, color and alpha models | Original ZomWeaponInfo children retained, not hidden by replacing the ammo leaf |
+| Local action | CP.zombies.secureState/secureProgress, native SetHeader/SetProgress | Owned underlay inside native Accent on five checked schemas; actual title/fill/stencil/order/visibility retained |
 
 Version0.1.1 requires an explicit non-melee classification before showing the
 left akimbo count: dual must be true and melee must be false. The prior source
@@ -627,7 +724,7 @@ tagged created adaptations, saved in the owning project and never called retail.
 | --- | --- | --- |
 | Four players, join/leave, score sort, mic/status | Source0.3 reuses the native three-row PlayerCash grid and refresh; original scoreboard/nameplates/talkers remain | Real cooperative/spectator/row-recycle and long-name verification; no player count fabricated |
 | Downed/last stand/self revive | Source0.5 styles native timer/title while keeping end-time/visibility/token callbacks | Real downed countdown, current buttons and normal damage versus script-entered test |
-| Revive progress/cancel/return | Source0.5 moves/colors original ReviveBarContainer/DLC1..4, retaining mask/state/progress | Actual target/use/cancel/Skeeball/return flow under scoped protection |
+| Revive progress/cancel/return | Source0.13 adds a checked Accent underlay to original ReviveBarContainer/DLC1..4, retaining title/mask/state/progress/visibility | Actual native action/revive/cancel/Skeeball/return flow, contrast and blend under scoped protection |
 | Perk grant/loss/order/DC | Original activePerks/activePerkBits and image source | Grant/loss/respawn/DC and all image readiness; no color-only state |
 | Reload, alt mode, akimbo, melee, zero/infinite ammo | Live ammo display/alpha; original AmmoWarning/UnlimitedAmmoIcon | Reload/alt/name/zero/infinite transitions and controller glyphs |
 | Equipment/charges/crafted/Mule | Source0.5 arranges original quantity/icon/warning/crafted/Mule/infinite widgets | Real zero/positive charges, glyphs, warning colors, third-weapon/infinite state and overlap |
