@@ -3,8 +3,8 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.8.0 corrects a card-core eligibility guard
-and adds bounded branch diagnostics to the original0.7 core and0.6 backplates;
+weapons, quests and states. Content0.9.0 keeps legal retail readiness sentinels
+local to an UNKNOWN status instead of vetoing the independently known card core;
 the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
@@ -230,7 +230,7 @@ EMPTY/CHARGING/READY. A known DLC4 mephBattle1 shows the explicit BOSS title;
 normal known state shows CARDS. These are read-only presentations of existing
 feeds, not invented inventory or a new boss detector.
 
-| Feed or condition | Required known value | Ownership |
+| Feed or condition | Required known value in Source0.7 (readiness extended in0.9 below) | Ownership |
 | --- | --- | --- |
 | consumablesRemaining | Integer0..5 | Original count/list callbacks plus a new read-only count subscriber |
 | dpadUpFillPercent | Finite0..1 | Original radial circleFill:SetProgress remains authoritative; the new view never writes progress |
@@ -263,8 +263,8 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 
 ## Bounded binding diagnostics
 
-Content0.8.0 separates `VERSION` from `DIAGNOSTIC_VERSION=0.7.0`. Every module
-initialization emits `module version=0.7.0 content_version=0.8.0 instance=... initialized=1`.
+Since content0.8.0, `VERSION` is separate from `DIAGNOSTIC_VERSION=0.7.0`. Every
+current initialization emits `module version=0.7.0 content_version=0.9.0 instance=... initialized=1`.
 Every versioned marker uses the diagnostic contract version. The content version
 is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
 the authorized content. A compatible authored skin needs no new Ops enum entry.
@@ -301,7 +301,7 @@ factory_applied/bind does not prove this new presentation or known core feeds.
 [Ops264](https://github.com/maxis0191/iw7-paris-server/pull/264) is that reviewed
 extension: it accepts exact diagnostic contracts0.6.0/0.7.0 in addition to the
 older cases, with the same default0.2.0 and cross-version refusal. Its parser
-already accepts bounded extra module fields such as content_version. Content0.8
+already accepts bounded extra module fields such as content_version. Content0.9
 uses the existing explicit BO3HUDDiagnosticVersion0.7.0 setting. V3/V4,
 Source0.4, V5, Source0.6 and Source0.7 stay frozen, including all inputs/frames.
 
@@ -344,6 +344,63 @@ native hook or runtime API is added. Shape/pointer/parent fields say not_checked
 when uninspected; preflight_ok describes the original pointer check. The trace
 is ignored by the existing essential-bind parser and never qualifies pixels.
 No0.8 HKS/game/raster acceptance is acquired by these Source changes.
+
+## Actual0.8 refusal and Source0.9 retail readiness
+
+The closed0.8 case `20261015-052934-332-f36dcefa` loaded the fresh content0.8
+module with diagnostic0.7. Root, Ops55 and the UI owner viewed three original
+1280x720 frames: portrait/cash/round/equipment and12/48 to11/48 to12/47 ammo
+remain readable, but the demon remains and no custom core label/count is
+positively identified. The single core snapshot reports ready_value refusal:
+boolean false map predicate, numeric remaining0/fill0/ready-1, boss not_required,
+shape11111, pointers/parents/mode not_checked. It precedes owner construction.
+Its deduplication records branch changes, not every value or frame; it does not
+prove these values stayed fixed all run or explain the older0.7 case. Essential
+bind and three scenario assertions passed; optional core/full-HUD pixels did not.
+Ops/Root own direct closure evidence; the UI owner read the preserved restored
+result and closure receipts without making another runtime/process query.
+
+The exact model is a direct Omnvar source, with no Lua conversion:
+[InGameCoopDataSources at pin2305708](https://github.com/deshayu/iw7-dump/blob/2305708efff4227ba7cb14495ff2c31bcf6e53cf/ui/utils/cp/ingamecoopdatasources.dec.lua#L1725).
+The [retail CP declaration](https://github.com/deshayu/iw7-dump/blob/2305708efff4227ba7cb14495ff2c31bcf6e53cf/cp/omnvars.csv#L145)
+sets initial/minimum-1 and maximum30. The targeted decompiled
+[card controller](https://github.com/deshayu/iw7-dump/blob/2305708efff4227ba7cb14495ff2c31bcf6e53cf/scripts/3417.gsc#L174)
+initializes the deck and starts charging without writing ready0. An empty deck
+can return after remaining0/fill0; otherwise meter-full starts the ready1 path.
+Reset/consumption write0. The
+[HUD refresh](https://github.com/deshayu/iw7-dump/blob/2305708efff4227ba7cb14495ff2c31bcf6e53cf/scripts/cp/gametypes/zombie.gsc#L1600)
+pulses20 before restoring0/1. Thus-1 is a legal default that may persist before
+first full meter, not a proven universal unavailable state or corrupted0.
+Even ready1 does not guarantee every input is currently permitted: the original
+controller still performs its own denial checks. Source0.9 preserves those.
+
+| Actual readiness | New local presentation when critical state is known |
+| --- | --- |
+| Integer1 | Existing READY label; native feedback remains authoritative |
+| Integer0 | Existing CHARGING label; no charge value is fabricated |
+| Other integer within-1..30, including initial-1 and refresh20 | UNKNOWN status; actual count/title remain visible |
+| Actual remaining0 with any legal readiness integer | EMPTY, independently of readiness, as in the native count branch |
+| Nil, wrong type, fractional, NaN/infinite or outside-1..30 | Retain Native; the legal integer domain does not validate arbitrary data |
+
+Only the readiness meaning becomes local. Actual count0..5, finite fill0..1,
+known map predicate, original shape/parents, required model readers/pointers/
+subscriptions/stable identities and strict DLC4 boss0/1 remain required.
+Readiness transport is still required for an owned live subscription; it is not
+silently dropped or retargeted. Known non-DLC4 still skips the boss feed entirely.
+Only the same three native faces are masked; radial/rings/glow/Fire/arrows,
+original callbacks, selection/input, parent fading and real values stay intact.
+No model/Omnvar write, normalization to0, card input, timer, tree crawler, new
+native hook, asset or Ops contract is added. The bounded optional trace retains
+the real type/value and can report custom unknown; it never certifies pixels.
+The next separately authorized case must verify the actual count plus EMPTY or
+UNKNOWN on the genuine sentinel path. No0.9 Game/HKS/raster or owner acceptance
+is acquired by the Source patch.
+
+Reference bytes remain outside Git; no decompiled body is shipped. SHA256s:
+CP omnvars12456B/f15f6656b31633054e892b4965d9acaca1051498bb2470adc24d3048a7ec9da4;
+model112038B/16d6d198a19c4615023b55d78bf3f74dce8c493fdfbe472a138450f38817fe44;
+card controller127414B/fb2b3f029bb173375be9adf230d7ecb1f6dc4ea6dab87128dd4bdc419245ab21;
+gametype47542B/b75a4d0327c3efb015befbd0da6bf7bc1cae083359a3210c0bf8cae37c863bc1.
 
 ## Source references and implemented essentials
 
@@ -413,7 +470,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-152 source controls cover default-off/private opt-in/frontend/MP, controller1,
+158 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -435,6 +492,11 @@ markers, absent boss object and absent boss pointer with paired non-DLC4 versus
 DLC4 outcomes, an invalid boolean-ready value retained as false in the trace,
 and silent same-branch fill updates followed by the33-record transition cap.
 They do not identify which branch occurred in the frozen0.7 HKS case.
+Six0.9 causals add fresh construction with ready-1/count0, positive count with
+local UNKNOWN, refresh20 and upper-bound30, recovery to0/1, unexpected typed or
+out-of-domain values, and remaining/fill/DLC4 boss refusals despite legal-1.
+They retain raw diagnostic values and original meter/callback objects. These are
+mock Source causals; they do not turn an UNKNOWN label into real READY evidence.
 Version0.4 adds native readiness/fire/arrow updates through successive layout
 polls with unchanged parent alpha, callback identity, selected-card image and
 child count. The separate active-card list keeps its native image and scale.

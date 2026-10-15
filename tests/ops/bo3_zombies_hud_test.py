@@ -130,7 +130,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.8.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.8.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.9.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.9.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -418,6 +418,47 @@ lua.execute('models["inGame.CP.zombies.dlc4.mephBattle"]:set(0);savedDLC=CONDITI
 check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
 lua.execute('CONDITIONS.IsDLC4=savedDLC;models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.25);core:SetAlpha(0.3);tick()')
 check('coreOwner.mask.alpha==0 and coreOwner.view.alpha==1 and core.alpha==0.3')
+lua.execute(r'''
+models["inGame.CP.zombies.consumablesRemaining"]:set(0)
+models["inGame.CP.zombies.dpadUpFillPercent"]:set(0)
+models["inGame.CP.zombies.consumableDeckSelectReady"]:set(-1)
+defaultReady=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
+defaultOwner=defaultReady.__bo3CardCore;defaultNativeCallback=defaultReady.nativeUpdate
+for i=#printed,1,-1 do if string.find(printed[i],"[BO3 HUD] core ",1,true) then defaultTrace=printed[i];break end end
+''')
+check('defaultOwner and defaultOwner.count.text=="0" and defaultOwner.status.text=="EMPTY" and defaultOwner.mask.alpha==0 and defaultOwner.view.alpha==1 and models["inGame.CP.zombies.consumableDeckSelectReady"].value==-1 and string.find(defaultTrace,"ready_type=number ready_value=-1",1,true)')
+lua.execute('models["inGame.CP.zombies.consumablesRemaining"]:set(3);models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.25)')
+check('defaultOwner.count.text=="3" and defaultOwner.status.text=="UNKNOWN" and defaultReady.radialAlphaLarge.circleFill.progress==0.25 and defaultReady.nativeUpdate==defaultNativeCallback')
+lua.execute(r'''
+models["inGame.CP.zombies.consumableDeckSelectReady"]:set(20)
+refreshReady=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
+for i=#printed,1,-1 do if string.find(printed[i],"[BO3 HUD] core ",1,true) then refreshTrace=printed[i];break end end
+models["inGame.CP.zombies.consumableDeckSelectReady"]:set(30)
+''')
+check('refreshReady.__bo3CardCore.status.text=="UNKNOWN" and defaultOwner.status.text=="UNKNOWN" and models["inGame.CP.zombies.consumableDeckSelectReady"].value==30 and string.find(refreshTrace,"ready_type=number ready_value=20",1,true) and string.find(refreshTrace,"reason=unknown",1,true)')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(0);notReadyText=defaultOwner.status.text;models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1)')
+check('notReadyText=="CHARGING" and defaultOwner.status.text=="READY" and defaultReady.nativeUpdate==defaultNativeCallback and defaultReady.glowRing.alpha==1')
+lua.execute(r'''
+invalidReadyRefused=true
+for _,case in ipairs({{}, {value=false}, {value=true}, {value="1"}, {value={}}, {value=-2}, {value=31}, {value=0.5}, {value=0/0}, {value=math.huge}}) do
+ models["inGame.CP.zombies.consumableDeckSelectReady"]:set(case.value)
+ local widget=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
+ invalidReadyRefused=invalidReadyRefused and not widget.__bo3CardCore and BO3ZombiesHUD.cardDiagnostics[widget].signature=="values:ready_value"
+end
+models["inGame.CP.zombies.consumableDeckSelectReady"]:set(-1)
+models["inGame.CP.zombies.consumablesRemaining"]:set(6)
+badCount=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
+models["inGame.CP.zombies.consumablesRemaining"]:set(3)
+models["inGame.CP.zombies.dpadUpFillPercent"]:set(0/0)
+badFill=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
+models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.25)
+models["inGame.CP.zombies.dlc4.mephBattle"]:set(nil)
+unknownBoss=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0,nativeDlc4=true})
+models["inGame.CP.zombies.dlc4.mephBattle"]:set(0)
+models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1)
+''')
+check('invalidReadyRefused')
+check('not badCount.__bo3CardCore and BO3ZombiesHUD.cardDiagnostics[badCount].signature=="values:remaining_value" and not badFill.__bo3CardCore and BO3ZombiesHUD.cardDiagnostics[badFill].signature=="values:fill_value" and not unknownBoss.__bo3CardCore and BO3ZombiesHUD.cardDiagnostics[unknownBoss].signature=="values:boss_value"')
 lua.execute(r'''
 -- The native mock still owns its own model; only the adapter's public feed is absent.
 savedBoss=DataSources.inGame.CP.zombies.dlc4.mephBattle
