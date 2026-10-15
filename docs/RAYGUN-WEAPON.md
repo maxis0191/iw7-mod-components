@@ -122,3 +122,9 @@ forged around the schema. The existing valid PROJECTILE3/3 validation, deep copy
 mechanics preservation and serialized output behavior are unchanged. No enum1
 acceptance or conversion is introduced. The extra synthetic rejection test is
 Source-only; it does not qualify a retail pair or new native profile execution.
+
+The later explicit neutral IW7 clone profile is documented in
+[IW7-NEUTRAL-CLONE.md](IW7-NEUTRAL-CLONE.md). It preserves the observed Shredder
+base1/PAP0 trees for a separate clone/roundtrip path; this PROJECTILE3/3 author
+remains unchanged. Neither Source implementation qualifies a playable Ray Gun,
+name-specific Shredder callbacks, a native roundtrip or retail PAP purchase.

@@ -38,6 +38,10 @@
       "command": ["python", "-B", "tests/ops/raygun_weapon_authoring_test.py"]
     },
     {
+      "id": "iw7_neutral_clone_test",
+      "command": ["python", "-B", "tests/ops/iw7_neutral_clone_test.py"]
+    },
+    {
       "id": "collision_player_result_test",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_player_result_test.ps1"]
     },
