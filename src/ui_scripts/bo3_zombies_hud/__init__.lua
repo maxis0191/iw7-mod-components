@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.8.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.9.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -299,7 +299,12 @@ local function card_values(self, feeds, index)
         return nil, "remaining_value", observed
     end
     if type(fill) ~= "number" or fill ~= fill or fill < 0 or fill > 1 then return nil, "fill_value", observed end
-    if ready ~= 0 and ready ~= 1 then return nil, "ready_value", observed end
+    -- Retail initializes this integer to-1 and pulses20 during HUD refresh.
+    -- Only0/1 have known ready-state meaning; other legal integers are local
+    -- UNKNOWN status, not a veto on the independently known count/boss view.
+    if type(ready) ~= "number" or ready < -1 or ready > 30 or ready ~= math.floor(ready) then
+        return nil, "ready_value", observed
+    end
     local boss = 0
     if dlc4 then boss = read("boss") end
     if boss ~= 0 and boss ~= 1 then return nil, "boss_value", observed end
@@ -408,10 +413,12 @@ local function style_card_core(self, index)
         mask:SetAlpha(0, 0);view:SetAlpha(1, 0)
         title:setText(value.boss and "BOSS" or "CARDS")
         count:setText(tostring(value.remaining))
-        status:setText(value.remaining == 0 and "EMPTY" or value.ready == 1 and "READY" or "CHARGING")
+        status:setText(value.remaining == 0 and "EMPTY" or value.ready == 1 and "READY"
+            or value.ready == 0 and "CHARGING" or "UNKNOWN")
         owner.mode = value.boss and "boss" or "cards"
         current.mode = owner.mode
-        card_trace(self, index, "custom", value.boss and "boss" or value.remaining == 0 and "empty" or value.ready == 1 and "ready" or "charging", current)
+        card_trace(self, index, "custom", value.boss and "boss" or value.remaining == 0 and "empty"
+            or value.ready == 1 and "ready" or value.ready == 0 and "charging" or "unknown", current)
     end
     self.__bo3CardCore = owner;state.cardCores[self] = owner
     -- Native image references and animations remain alive under a same-canvas
