@@ -1,5 +1,61 @@
 # Source Author platform contact adapter
 
+## Typed DisplayOnly phase
+
+`Invoke-AuthorPlatformContact.ps1 -Phase DisplayOnly` is a Source-only addition
+until a separate reviewed Runtime capsule receives explicit GO. `Contact` is
+the case-sensitive default and retains the existing complete F0/F1/Use/F2 path.
+The caller must select the SAME Phase for Plan and Run, seal the new operation
+Source/fixture pins, and stage its generated config. Display config adds
+`paris_author_platform_display_only=1` while `paris_collision_probe_arm=0`;
+Contact config explicitly sets display_only=0. A phase mismatch cannot qualify
+display readiness. Existing frozen packages are never edited or relabelled.
+
+DisplayOnly stops at the already-existing protected retail readiness and SDK
+visual creation. The fixture publishes fresh native-stamped P and the same
+visual token/entity/instance, checks zero uses and both arm values at zero, and
+never reaches contact audit, placement, native createbox, movement or Use.
+The operation runs ONE existing native capture step, without an aim pulse or
+any new input driver, then requires a subsequent fresh protected observation
+of that same visual/P. The original frame remains the existing capture API's
+unaltered BMP artifact with its recorded SHA256. Its freshness/dispatch and
+normal input release are evidence of a captured frame, not visible pixels.
+
+The returned schema is `iw7.author-platform-display/1`, with `Phase=DisplayOnly`,
+`DisplayEpisodeExecuted=true`, `ContactNotRun=true`, `OriginalCapture` and
+`Input`. It deliberately has no `MeasurementPassed` property. `PixelsVerified`,
+rendered bounds, prediction, owner acceptance, lifecycle closure, lease release
+and real original-host exit all remain false. Sidecar is
+`author-platform-display-<token>.local.json`; the actual frozen anchor plan is
+still `author-platform-anchor-<token>.local.json`, now with its explicit Phase.
+Caller55 must accept this typed outcome and run its usual original close,
+restoration, Main/bank audit and retained-handle/lease path. The fixture cannot
+fall through to contact while it waits for that close; SDK still owns visual
+teardown on disconnect/game_ended. Full Contact remains a separate later choice.
+
+Compiled GAME provenance is source `785ddd43d18c4eebd599bab10880e83d73a950e9`,
+EXE6153728/SHA012E6CDD... and manifest16536/SHA63E6270E..., with Source receipt
+CE89219B.... These are the already-recorded identities in
+`docs/evidence/2026-10-14-collision-player-native25.json`, not a new PE read or
+build. Inspection of that exact compiled commit confirms protection/stamp,
+ordinary native input and capture; retail script_model/precachemodel/setmodel
+need no newly compiled observer or native handler. Later operation Source
+`785e9832...` and current main helpers are distinct from the compiled GAME image.
+
+Runtime SDK stays exactly `6dcfc719e0535509f109c593fa4342ce201b5523`. D6 StageSDK
+`24edc27ff7f379613d51ae9d91b3f10054d67b6a` and ConsumerSDK
+`62cf38834a0cbcd7243a3d52ce6100c1edbd9cdc` remain different roles/identities even
+when GSC5404/SHA3B6F and geometry bytes match; both are explicit refusal cases.
+D6 final publication failed and is known closed. Its FF1904/SHA6A4C9743... and
+readback metadata are not reopened or adopted here. World owns exact geometry,
+FF/readback and original-frame interpretation; no FF rebuild follows this edit.
+
+Source tests cover the actual display branch with metadata-only doubles, fresh
+visual/clock/phase guards, partial publications, forbidden contact/Use, capture
+ordering/release and accurate provisional result fields. They create no BMP,
+native process, lease, game or opaque artifact. GSC runtime linking/compilation
+and pixels remain untested; this Source scope did not execute a PE parser.
+
 This is a separate, project-specific derivative of the frozen a572 player
 fixture. `collision_player_contact.gsc`, `Collision-Player.Core.ps1` and
 `Invoke-CollisionPlayerContact.ps1` remain unchanged. No native ABI, process
@@ -81,6 +137,8 @@ There is no hybrid Rig+collision session or reinterpretation of a frozen E asset
 Run parameters are `Token`, `HelperRoot`, `HelperReceiptSHA256`,
 `SourceReceiptSHA256`, `SDKSourceRoot`, `SDKSourceReceiptSHA256`, and the retained
 actual `Session`, `ServerHandle`, `ServerIdentity`; `Capture` is optional.
+`Phase` defaults to `Contact`; DisplayOnly always takes its single capture,
+independently of the optional Contact `Capture` switch.
 The operation retains no replacement lifecycle object. The original caller owns
 prestart FF/script staging, the original lease and handles, valid zero-client
 shutdown, restoration, bank/Main comparison and observation of real host exit.
@@ -95,8 +153,8 @@ render/bounds, client prediction or owner acceptance.
 
 ## Source checks and next action
 
-The two Source tests cover pending/preview plans, three unowned/preview Run
-refusals with zero live effects, nine SDK contract refusals including old and
+The Source tests cover pending/preview plans, three unowned/preview Run
+refusals with zero live effects, eleven SDK contract refusals including old and
 unmerged revisions, the frozen physics transcript's 22 causal refusals, and
 Author lifecycle/identity/transform/count/time/order mutations. The optional
 positive SDK test reads the actual separately sealed merge receipt and GSC,

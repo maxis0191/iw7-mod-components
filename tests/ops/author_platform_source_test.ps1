@@ -33,13 +33,15 @@ if($contract.Revision -cne '6dcfc719e0535509f109c593fa4342ce201b5523' -or $contr
 $receipt=[pscustomobject]@{product=$contract.Product;revisions=[pscustomobject]@{'iw7-creator-sdk'=$contract.Revision};
     files=@([pscustomobject]@{path=$contract.Script;bytes=$contract.Bytes;sha256=$contract.SHA256})}
 $sdkRefusals=0
-foreach($change in @('product','revision','old-sdk-revision','unmerged-sdk-head','revision-array','bytes-string','hash','duplicate','path')){
+foreach($change in @('product','revision','old-sdk-revision','unmerged-sdk-head','stage-sdk','consumer-sdk','revision-array','bytes-string','hash','duplicate','path')){
     $r=$receipt|ConvertTo-Json -Depth 6|ConvertFrom-Json
     switch($change){
         'product' {$r.product='other'}
         'revision' {$r.revisions.'iw7-creator-sdk'='ffffffffffffffffffffffffffffffffffffffff'}
         'old-sdk-revision' {$r.revisions.'iw7-creator-sdk'='662c548965e11c9c881abe7dc8d74042d9f1aec6'}
         'unmerged-sdk-head' {$r.revisions.'iw7-creator-sdk'='6e19a7ff45ea23b301a3088c51c6fd30db67ae6e'}
+        'stage-sdk' {$r.revisions.'iw7-creator-sdk'='24edc27ff7f379613d51ae9d91b3f10054d67b6a'}
+        'consumer-sdk' {$r.revisions.'iw7-creator-sdk'='62cf38834a0cbcd7243a3d52ce6100c1edbd9cdc'}
         'revision-array' {$r.revisions.'iw7-creator-sdk'=@($contract.Revision,$contract.Revision)}
         'bytes-string' {$r.files[0].bytes='5404'}
         'hash' {$r.files[0].sha256='F'*64}
