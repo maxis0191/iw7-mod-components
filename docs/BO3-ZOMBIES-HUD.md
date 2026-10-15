@@ -3,8 +3,9 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Version0.4.0 follows the confirmed solo0.3 layout
-with a smaller native card deck; the actual-player team layout remains Source-tested;
+weapons, quests and states. Version0.5.0 adds native equipment, power-up,
+down/revive and map-inventory arrangement beyond the frozen0.4 compact deck;
+the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
 ## Ownership and loading
@@ -130,9 +131,41 @@ The next separately authorized capture must check every card-count/readiness/
 selection animation, active-effect coexistence, arrow/charge readability and
 screen margins. Equipment/power-up/down/revive/quest composition remains open.
 
+## Equipment, status and inventory Source0.5
+
+This lot uses the existing HKS widget/model contracts at the same pinned retail
+reference, not reconstructed gameplay logic. Existing and fourteen additional
+small text references cover the five MainPlayerInfo variants, revive containers/progress/
+header, LastStandTimer, afterlifeSelfReviveProgress, ability base and crafted
+weapon. Their Git blobs and SHA256s are retained outside Git; no dump is shipped.
+The frozen0.3/V4 and0.4 Source packages remain unchanged. No new game, CPP, FF or
+asset generation occurred for this lot.
+
+| Information | Source arrangement | Native authority retained |
+| --- | --- | --- |
+| Primary/secondary offhands | Two rows to the right of ammo, clear of the deck; larger ability group and24-unit quantities | Original icon/data source, numCharges, independent iconAlpha/numAlpha, color and PlayerAbilityWarning animations; no new glyph/control |
+| Crafted/Mule/infinite | Badges and crafted control label have separate lanes beside ammo | Crafted image pulses, PC empty-menu-stack/DLC4/controller text, Mule model alpha and unlimitedAlpha; numerical ammo visibility stays native |
+| Active power-ups | Upper status rail; original list unrotated, existing/fresh cells52 units with inset runtime images | activePowerups, activePowerupBits, activePowerupAnimationBits, ordering/add/remove, FadeIn and Flash events; no fake duration |
+| Power-up activation | Name uses the shared bold font; remaining popup geometry stays native | UIMessageQueue, actual icon/name, flight, scale, completion and simultaneous messages |
+| Revive/secure progress | Center rail below aim; pale native header and muted-gold fill | secureState/secureProgress, original SetHeader measurement, SetProgress clamping/mask, Show/Hide and Skeeball; no mask anchor write |
+| Downed timer | Native countdown/icon move to a separate center-right region;36-unit count in a48-unit text box | zm_ui_laststand_end_milliseconds, original setEndTime and visible/default parent transitions, including late binding |
+| Afterlife/self-revive | Shared title font/color, original full-width canvas | Soul progress, token/arcade models, message/controller glyphs, Bootup/ShowTokenMessage and native geometry |
+| Quest/Rave/chi/element/inventory | Remaining original MainPlayerInfo group moves to an inventory shelf away from hero cash; DLC3 element label enlarged for the group scale | All original children, hierarchy, per-map masks/images/text, fuse/inventory alphas, Rave fill and other callbacks; no synthetic inventory |
+
+The inventory parent retains its282x219 declared size at left650/right932,
+bottom-260/-41 within its original container, with scale delta-0.25. Portrait and
+cash are already separate original objects in the hero. This moves the whole
+native quest group, including the Spaceland ticket/souvenir that was too close
+under cash in V4; unknown children are kept with it. It does not reparent those
+quest leaves or overwrite their masks/alpha. DLC3's actual element text remains
+model-owned. All positions/scales are Source proposals until new native frames
+verify readable quantities, crafted control strings, inventory, status overlap,
+safe area and every map/state. The Source fixtures exercise five class aliases
+and controller indices0..3, not five real map runs or four-player acceptance.
+
 ## Bounded binding diagnostics
 
-Every module initialization emits `module version=0.4.0 instance=... initialized=1`.
+Every module initialization emits `module version=0.5.0 instance=... initialized=1`.
 The alphanumeric instance tag is local to the module object; it is not a globally
 unique native VM identifier. Reset the parser epoch at every module delimiter,
 even if an address/tag is reused. All later markers carry the same instance.
@@ -144,7 +177,8 @@ even if an address/tag is reused. All later markers carry the same instance.
   The counter identifies that root object within this module epoch.
 - `bind`: same root/controller/sequence, `round=1 ammo=1 portrait=1` and the actual
   count of perk icons styled. Existing subscriptions are retained. This proves
-  completed style calls, never pixels; every marker says `pixels=unverified`.
+  completed essential style calls, never pixels; every marker says `pixels=unverified`.
+  It does not certify equipment, power-ups, down/revive or quest coverage.
 - `binding_failure` / `factory_fallback`: bounded reason and `retry=1`; transient
   missing leaves may recover. A binding failure clears prior bind evidence and
   recovery emits a fresh bind. Require the latest valid CP gate and concordant
@@ -153,8 +187,8 @@ even if an address/tag is reused. All later markers carry the same instance.
 Markers emit only on state changes; startup polling remains bounded. No player
 names, balances, GUIDs or credentials are emitted by these diagnostics.
 The grammar is unchanged from0.2.0. The current server-owned caller allowlist
-supports0.2.0/0.3.0, with default0.2.0. It must reject this new0.4.0 tuple until a
-separate reviewed Ops extension explicitly permits it. V3 and V4 remain frozen;
+supports0.2.0/0.3.0, with default0.2.0. It must reject this new0.5.0 tuple until a
+separate reviewed Ops extension explicitly permits it. V3/V4 and Source0.4 remain frozen;
 this Source follow-up authorizes no immediate capsule or Game replay.
 
 ## Source references and implemented essentials
@@ -198,16 +232,16 @@ tagged created adaptations, saved in the owning project and never called retail.
 | State/information | Current preservation | Required future replacement/verification |
 | --- | --- | --- |
 | Four players, join/leave, score sort, mic/status | Source0.3 reuses the native three-row PlayerCash grid and refresh; original scoreboard/nameplates/talkers remain | Real cooperative/spectator/row-recycle and long-name verification; no player count fabricated |
-| Downed/last stand/self revive | LastStandTimer, afterlifeSelfReviveProgress | Styled timer and current buttons; distinguish normal damage from script-entered test |
-| Revive progress/cancel/return | ReviveBarContainer/DLC1..4 and real retail models | Keep actual target/use/cancel flow; P2 test under scoped protection |
+| Downed/last stand/self revive | Source0.5 styles native timer/title while keeping end-time/visibility/token callbacks | Real downed countdown, current buttons and normal damage versus script-entered test |
+| Revive progress/cancel/return | Source0.5 moves/colors original ReviveBarContainer/DLC1..4, retaining mask/state/progress | Actual target/use/cancel/Skeeball/return flow under scoped protection |
 | Perk grant/loss/order/DC | Original activePerks/activePerkBits and image source | Grant/loss/respawn/DC and all image readiness; no color-only state |
 | Reload, alt mode, akimbo, melee, zero/infinite ammo | Live ammo display/alpha; original AmmoWarning/UnlimitedAmmoIcon | Reload/alt/name/zero/infinite transitions and controller glyphs |
-| Equipment/charges/crafted/Mule | Original quantity/icon/alpha/CraftedWeapon/Mule widgets | BO3 arrangement without dropping offhand or third-weapon state |
-| Power-ups and activation/timer expiry | ZomPowerupWidget/ZomPowerupActive/message queue | Actual duration/icon/stack/cancel transitions, not static icon rows |
+| Equipment/charges/crafted/Mule | Source0.5 arranges original quantity/icon/warning/crafted/Mule/infinite widgets | Real zero/positive charges, glyphs, warning colors, third-weapon/infinite state and overlap |
+| Power-ups and activation/timer expiry | Source0.5 arranges original toggle-list; activation queue remains native | Actual icon/stack/cancel/Flash/expiry and queue concurrency; no static icon rows or invented timer |
 | Fate/Fortune cards | Source0.3 separation confirmed solo; Source0.4 compacts the whole native deck with every child/state intact | New scaled card/fan/charge/active-list overlap, glyph readability, selection/input and activation feedback |
 | Interaction prompts/prices | Hints/InteractiveObjectPopup/interactionNotification | Keep actual key/glyph, text/price/focus and priorities; never blank through a HUD parent |
 | Hit markers/damage indicators | PlayerDamaged/HitMarker/HitMarkerIcon/CPDamageIndicator | Preserve aim, contrast and damage meaning |
-| Quest/map-specific inventory | MainPlayerInfo inventory/quest children, challenge/sticker/ghost/escape/boss/PAP timers | Map-specific adaptive layouts across all five maps with no missing item |
+| Quest/map-specific inventory | Source0.5 moves original MainPlayerInfo quest group away from cash; challenge/sticker/ghost/escape/boss/PAP timers remain native | Real five-map inventory/text/Rave/chi/element flow, no clipping or missing item |
 | Round/intermission/boss/endgame splash | Wave parent/message queues/splash widgets remain | Native transition timing and overlap with vote/server UI |
 | Spectator/death/respawn/menus/frontend | Original HUD visibility parents, spectator and popup flows | No stale callbacks/widgets, focus/glyph preservation and safe rollback |
 | Resolution/safe area/split controllers | Stock HUD parent lifecycle and _1080p scale; actual controller index | 720/1080/1440/ultrawide, safe-area, split-screen and scaling with readable text |
@@ -225,7 +259,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-97 source controls cover default-off/private opt-in/frontend/MP, controller1,
+128 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -246,6 +280,15 @@ Version0.4 adds native readiness/fire/arrow updates through successive layout
 polls with unchanged parent alpha, callback identity, selected-card image and
 child count. The separate active-card list keeps its native image and scale.
 The overflow geometry control includes the deck transform around its center.
+Source0.5 controls update independent offhand charge/image/color/visibility,
+crafted glyph text, Mule/infinite alpha, late/fresh/expired/removed power-ups and
+native activation messages. Revive3/Skeeball21/off0 transitions retain native
+SetHeader/SetProgress identity and the progress mask through each poll. A positive
+downed end time and later cancellation retain the native countdown/parent state.
+Self-revive token messages and full-width progress remain native. Five mocked
+root/player aliases retain fuse/inventory image/alpha, Rave fill and DLC3 element
+text after the inventory group moves; these are Source-only callbacks, not real
+damage/revive/controller/cooperative/map or rendered layout evidence.
 Root review of candidate3706 found that the failure cache survived a successful
 recovery, suppressing a recurrence of the same fault and leaving stale external
 bind evidence. Success now resets that failure key. The same-root/sequence

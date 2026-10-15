@@ -32,12 +32,13 @@ function node()
  function n:SetAlignment(value) end
  function n:SetRGBFromInt(value) self.color=value end
  function n:SetRGBFromTable(value) self.color=value end
- function n:SetYRotation(value) end
- function n:SetZRotation(value) end
+ function n:SetYRotation(value) self.yrotation=value end
+ function n:SetZRotation(value) self.zrotation=value end
  function n:SetScale(value) self.scale=value end
  function n:SetAlpha(value) self.alpha=value end
  function n:setText(value) self.text=value end
  function n:setImage(value) self.image=value end
+ function n:setEndTime(value) self.endTime=value end
  function n:addElement(child) self.children[#self.children+1]=child;child.parent=self end
  function n:removeElement(child)
   child.detached=true;child.parent=nil
@@ -83,6 +84,10 @@ function original(key,args)
    n.PlayerCash:SubscribeToModel(models["inGame.CP.currentPlayerCash"],function() n.PlayerCash:setText(models["inGame.CP.currentPlayerCash"].value) end)
   end
   n.box=node(); n.dollarSign=node(); n.questFuse=node(); n:addElement(n.questFuse)
+ end
+ if key=="ZomPowerupIcon" then
+  n.PowerupIcon=node();n:addElement(n.PowerupIcon);n.PowerupIcon.image="retail-powerup";n.PowerupIcon.alpha=0
+  n.NativeFlash=function() n.PowerupIcon:SetAlpha(0) end
  end
  return n
 end
@@ -198,8 +203,62 @@ function stock_text(parent,id,path)
  local m=models[path];n:SubscribeToModel(m,function() n.text=tostring(m.value) end);n.text=tostring(m.value)
  return n
 end
-function stock_hud()
- local r=node();r.id="ZMHUD";r.controllerIndex=1
+function stock_ability(parent,prefix,index)
+ local ability=node();ability.AbilityIcon=node();ability.PlayerAbilityWarning=node()
+ ability:addElement(ability.AbilityIcon);ability:addElement(ability.PlayerAbilityWarning)
+ parent:addElement(ability);parent[prefix.."Ability"]=ability
+ local quantity=node();parent:addElement(quantity);parent[prefix.."AbilityQuantity"]=quantity
+ local path="inGame.player."..string.lower(prefix).."Power."
+ local function update()
+  ability.alpha=models[path.."iconAlpha"]:GetValue(index)
+  ability.AbilityIcon.image=models[path.."icon"]:GetValue(index)
+  quantity.text=models[path.."numCharges"]:GetValue(index)
+  quantity.alpha=models[path.."numAlpha"]:GetValue(index)
+  quantity.color=models[path.."color"]:GetValue(index)
+ end
+ for _,key in ipairs({"iconAlpha","icon","numCharges","numAlpha","color"}) do ability:SubscribeToModel(models[path..key],update) end
+ update()
+end
+function stock_status(r,index)
+ r.activePowerups=node();r.activePowerups._widget=node()
+ r.activePowerups._widget.ZomPowerupWidget=node()
+ r.powerupActivated=node();r.powerupActivated._widget=node()
+ r.powerupActivated._widget.PowerUpName=node();r.powerupActivated._widget.PowerUpIcon=node()
+ r.powerupActivated._widget.NativeMessage=function(name,image)
+  r.powerupActivated._widget.PowerUpName.text=name;r.powerupActivated._widget.PowerUpIcon.image=image
+ end
+ r.reviveBarContainer=node();local revive=node();r.reviveBarContainer._widget=revive
+ revive.Header=node();revive.Header.MessageText=node();revive.ProgressBar=node()
+ revive.ProgressBar.Fill=node();revive.ProgressBar.Mask=node()
+ revive.SetHeader=function(self,value) self.Header.MessageText:setText(value) end
+ revive.ProgressBar.SetProgress=function(self,value) self.Mask:SetAnchorsAndPosition(0,1-value,0,0,0,0,0,0) end
+ local function state()
+  local value=models["inGame.CP.zombies.secureState"]:GetValue(index)
+  revive.visible=value~=0;revive.alpha=revive.visible and 1 or 0
+  revive:SetHeader(value==3 and "REVIVING" or value==21 and "SKEEBALL" or "")
+ end
+ revive:SubscribeToModel(models["inGame.CP.zombies.secureState"],state);state()
+ revive.ProgressBar:SubscribeToModel(models["inGame.CP.zombies.secureProgress"],function()
+  revive.ProgressBar:SetProgress(models["inGame.CP.zombies.secureProgress"]:GetValue(index))
+ end)
+ r.retainedSetHeader=revive.SetHeader;r.retainedSetProgress=revive.ProgressBar.SetProgress
+ r.lastStand=node();r.lastStand._widget=node();local timerParent=node();timerParent.alpha=0
+ r.lastStand._widget:addElement(timerParent)
+ local countdown=node();countdown.id="laststand_countdown";timerParent:addElement(countdown)
+ local icon=node();icon.id="laststand_icon";icon.image="alien_icon_laststand";timerParent:addElement(icon)
+ r.omnvarHandlers={["zm_ui_laststand_end_milliseconds"]=function(value)
+  if value>0 then countdown:setEndTime(value);timerParent.alpha=1 else timerParent.alpha=0 end
+ end}
+ r.nativeDownParent=timerParent;r.nativeCountdown=countdown
+ r.afterlifeSelfReviveProgress=node();r.afterlifeSelfReviveProgress._widget=node()
+ local afterlife=r.afterlifeSelfReviveProgress._widget
+ afterlife.SoulPowerTitle=node();afterlife.ProgressBar=node();afterlife.ProgressBar.bounds={"full-width-native-progress"}
+ afterlife.Message=node();afterlife.Message.MessageText=node()
+ afterlife.NativeToken=function(value) afterlife.Message.MessageText:setText(value==1 and "NATIVE USE GLYPH" or "NATIVE SOUL POWER") end
+ afterlife:SubscribeToModel(models["inGame.CP.zombies.afterlifeHasSelfReviveToken"],function() afterlife.NativeToken(models["inGame.CP.zombies.afterlifeHasSelfReviveToken"]:GetValue(index)) end)
+end
+function stock_hud(root_id,player_key,index)
+ local r=node();r.id=root_id or "ZMHUD";r.controllerIndex=index or 1
  r.waveNumber=node();r.waveNumber.bounds={"full-screen-canvas"};r.waveNumber._widget=node()
  local wave=node();r.waveNumber._widget.WaveNumber=wave
  wave.waveNum=stock_text(wave,"waveNum","inGame.CP.zombies.waveNumber")
@@ -207,8 +266,25 @@ function stock_hud()
  r.activePerks=node();r.activePerks._widget={PerkList=node()}
  for i=1,2 do local icon=node();icon.PerkIcon=node();icon.PerkIcon.image="actual-perk-"..i;icon:addElement(icon.PerkIcon);r.activePerks._widget.PerkList:addElement(icon) end
  r.mainPlayerInfo=node();local player=node();r.mainPlayerInfo._widget=player
- player.MainPlayerInfo=original("MainPlayerInfo",{});player:addElement(player.MainPlayerInfo)
- player.MainPlayerInfo:addElement(player.MainPlayerInfo.PlayerIcon);player.MainPlayerInfo:addElement(player.MainPlayerInfo.PlayerCash)
+ local key=player_key or "MainPlayerInfo";local info=original(key,{controllerIndex=r.controllerIndex});player[key]=info;player:addElement(info)
+ info:addElement(info.PlayerIcon);info:addElement(info.PlayerCash)
+ local fuseKey=key=="MainPlayerInfoDLC3" and "FusesCopy" or key=="MainPlayerInfoDLC4" and "FusesCopyCopy0" or "Fuses"
+ info[fuseKey]=node();info:addElement(info[fuseKey]);info[fuseKey].image="cp_zmb_sticker_fuse"
+ info[fuseKey]:BindAlphaToModel(models["inGame.CP.zombies.quests.questFuseAlphaFilter"]);r.nativeFuse=info[fuseKey]
+ if key=="MainPlayerInfoDLC1" or key=="MainPlayerInfoDLC3" or key=="MainPlayerInfoDLC4" then
+  info.InventorySlot1=node();info:addElement(info.InventorySlot1)
+  local icon=models["inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Icon"]
+  local function update() info.InventorySlot1.image=icon:GetValue(r.controllerIndex) end
+  info.InventorySlot1:SubscribeToModel(icon,update);update()
+  info.InventorySlot1:BindAlphaToModel(models["inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Alpha"])
+ end
+ if key=="MainPlayerInfoDLC1" then
+  info.RaveFill=node();info:addElement(info.RaveFill)
+  info.RaveFill:SubscribeToModel(models["inGame.CP.zombies.dlc1.raveFill"],function() info.RaveFill.nativeBottom=models["inGame.CP.zombies.dlc1.raveFill"]:GetValue(r.controllerIndex) end)
+ end
+ if key=="MainPlayerInfo" then info.ZomTickets=node();info.ZomTickets.text="0";info:addElement(info.ZomTickets) end
+ if key=="MainPlayerInfoDLC2" then info.chiStyle=node();info.chiStyle.image="native-chi-style";info:addElement(info.chiStyle) end
+ if key=="MainPlayerInfoDLC3" then info.elementName=stock_text(info,"elementName","inGame.CP.zombies.dlc3.elementIndexNameFilter") end
  player.PlayerCash=node();player.PlayerCash.Players=node();player.PlayerCash:addElement(player.PlayerCash.Players);player:addElement(player.PlayerCash)
  function player.PlayerCash:RefreshRows()
   for _,shell in ipairs(self.Players.children) do
@@ -229,7 +305,11 @@ function stock_hud()
  ammo.box=node();ammo:addElement(ammo.box);ammo.bar=node();ammo:addElement(ammo.bar)
  ammo.weaponDescriptionZM=node();ammo.weaponDescriptionZM.TextWeaponName=node();ammo.weaponDescriptionZM.TextAltMode=node()
  ammo.weaponDescriptionZM.TextAltMode.text="actual-alt-mode"
- bottom.ZomWeaponInfo.PrimaryAbility=node();bottom.FateCardWidget=node()
+ stock_ability(bottom.ZomWeaponInfo,"Primary",r.controllerIndex);stock_ability(bottom.ZomWeaponInfo,"Secondary",r.controllerIndex)
+ bottom.ZomWeaponInfo.CraftedWeapon=node();bottom.ZomWeaponInfo.CraftedWeapon.ButtonFont=node();bottom.ZomWeaponInfo.CraftedWeapon:addElement(bottom.ZomWeaponInfo.CraftedWeapon.ButtonFont)
+ bottom.ZomWeaponInfo.muleWeaponIndicator=node();bottom.ZomWeaponInfo.muleWeaponIndicator:BindAlphaToModel(models["inGame.CP.zombies.perks.muleMunchiesWeapIcon"])
+ bottom.ZomWeaponInfo.UnlimitedAmmoIcon=node();bottom.ZomWeaponInfo.UnlimitedAmmoIcon:BindAlphaToModel(models["inGame.CP.ammo.unlimitedAlpha"])
+ bottom.FateCardWidget=node()
  local deck=bottom.FateCardWidget
  deck.Fire=node();deck.upArrow=node();deck.FateCardOnDeck=node();deck.FateCardOnDeck.image="native-selected-card"
  deck:addElement(deck.Fire);deck:addElement(deck.upArrow);deck:addElement(deck.FateCardOnDeck)
@@ -241,11 +321,23 @@ function stock_hud()
  deck.nativeReadyCallback()
  bottom.WonderCardFillWidget=node();bottom.WonderCardFillWidget.ToggleList0=node()
  bottom.WonderCardFillWidget.ToggleList0.image="native-active-card";bottom.WonderCardFillWidget:addElement(bottom.WonderCardFillWidget.ToggleList0)
- r.hints=node();r.reviveBarContainer=node();r.cashEarned=node()
+ stock_status(r,r.controllerIndex)
+ r.hints=node();r.cashEarned=node()
  return r
 end
 model("inGame.CP.currentPlayerCash",4270)
 model("inGame.CP.zombies.consumableDeckSelectReady",0)
+for _,prefix in ipairs({"primary","secondary"}) do
+ local p="inGame.player."..prefix.."Power."
+ model(p.."numCharges",4);model(p.."numAlpha",1);model(p.."iconAlpha",1);model(p.."icon","native-"..prefix);model(p.."color",0xFFAABB)
+end
+model("inGame.CP.zombies.secureState",0);model("inGame.CP.zombies.secureProgress",0)
+model("inGame.CP.zombies.afterlifeHasSelfReviveToken",0)
+model("inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Icon","native-inventory")
+model("inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Alpha",0)
+model("inGame.CP.zombies.quests.questFuseAlphaFilter",0)
+model("inGame.CP.zombies.dlc1.raveFill",0);model("inGame.CP.zombies.dlc3.elementIndexNameFilter","NATIVE ELEMENT")
+model("inGame.CP.zombies.perks.muleMunchiesWeapIcon",0);model("inGame.CP.ammo.unlimitedAlpha",0)
 existing=stock_hud() -- created BEFORE custom Lua load, bypassing our dispatcher
 ui_root=node();ui_root.hudManager={activeHud=existing}
 ''')
@@ -276,6 +368,55 @@ check('existing.wonderCard._widget.WonderCardFillWidget.ToggleList0.image=="nati
 check('existing.waveNumber._widget.WaveNumber.bounds[5]>25+existing.mainPlayerInfo._widget.BO3Hero.bounds[6]')
 lua.execute('models["inGame.CP.currentPlayerCash"]:set(37)')
 check('existing.mainPlayerInfo._widget.MainPlayerInfo.PlayerCash.text==37')
+lua.execute(r'''
+equipment=existing.wonderCard._widget.ZomWeaponInfo
+models["inGame.player.primaryPower.numCharges"]:set(2)
+models["inGame.player.secondaryPower.numCharges"]:set(7)
+models["inGame.player.primaryPower.color"]:set(0xFF0000)
+models["inGame.player.primaryPower.icon"]:set("native-changed-primary")
+tick()
+''')
+check('equipment.PrimaryAbilityQuantity.text==2 and equipment.SecondaryAbilityQuantity.text==7')
+check('equipment.PrimaryAbilityQuantity.color==0xFF0000 and equipment.PrimaryAbility.AbilityIcon.image=="native-changed-primary"')
+check('equipment.PrimaryAbilityQuantity.bounds[5]>378 and equipment.PrimaryAbility.PlayerAbilityWarning')
+lua.execute('models["inGame.player.primaryPower.numAlpha"]:set(0);models["inGame.player.secondaryPower.iconAlpha"]:set(0);tick()')
+check('equipment.PrimaryAbilityQuantity.alpha==0 and equipment.SecondaryAbility.alpha==0 and equipment.SecondaryAbilityQuantity.alpha==1')
+lua.execute('equipment.CraftedWeapon.ButtonFont:setText("NATIVE CONTROLLER GLYPH");models["inGame.CP.ammo.unlimitedAlpha"]:set(1);models["inGame.CP.zombies.perks.muleMunchiesWeapIcon"]:set(1);tick()')
+check('equipment.UnlimitedAmmoIcon.alpha==1 and equipment.muleWeaponIndicator.alpha==1')
+check('equipment.CraftedWeapon.ButtonFont.text=="NATIVE CONTROLLER GLYPH" and equipment.CraftedWeapon.ButtonFont.bounds[6]<100')
+lua.execute('models["inGame.CP.ammo.unlimitedAlpha"]:set(0);models["inGame.CP.zombies.perks.muleMunchiesWeapIcon"]:set(0);tick()')
+check('equipment.UnlimitedAmmoIcon.alpha==0 and equipment.muleWeaponIndicator.alpha==0')
+lua.execute(r'''
+powerList=existing.activePowerups._widget.ZomPowerupWidget
+power=original("ZomPowerupIcon",{controllerIndex=1});local shell=node();shell:addElement(power);powerList:addElement(shell)
+power.PowerupIcon.image="native-double-points";power.PowerupIcon.alpha=1
+existing.powerupActivated._widget.NativeMessage("NATIVE MAX AMMO","native-max-ammo")
+tick()
+''')
+check('power.PowerupIcon.image=="native-double-points" and power.PowerupIcon.alpha==1 and powerList.zrotation==0')
+check('existing.powerupActivated._widget.PowerUpName.text=="NATIVE MAX AMMO" and existing.powerupActivated._widget.PowerUpIcon.image=="native-max-ammo"')
+lua.execute('nativeFlash=power.NativeFlash;power:NativeFlash();tick()')
+check('power.PowerupIcon.alpha==0 and power.NativeFlash==nativeFlash')
+lua.execute('powerList:removeElement(powerList.children[1]);tick()')
+check('#powerList.children==0')
+lua.execute('freshPower=MenuBuilder.BuildRegisteredType("ZomPowerupIcon",{controllerIndex=2})')
+check('freshPower.PowerupIcon.image=="retail-powerup" and freshPower.PowerupIcon.alpha==0 and freshPower.bounds[6]==52 and freshPower.NativeFlash')
+lua.execute('models["inGame.CP.zombies.secureState"]:set(3);models["inGame.CP.zombies.secureProgress"]:set(0.4);tick();revive=existing.reviveBarContainer._widget')
+check('revive.visible and revive.alpha==1 and revive.Header.MessageText.text=="REVIVING"')
+check('math.abs(revive.ProgressBar.Mask.bounds[2]-0.6)<0.0001 and revive.SetHeader==existing.retainedSetHeader and revive.ProgressBar.SetProgress==existing.retainedSetProgress')
+lua.execute('models["inGame.CP.zombies.secureState"]:set(21);tick()')
+check('revive.visible and revive.Header.MessageText.text=="SKEEBALL"')
+lua.execute('models["inGame.CP.zombies.secureState"]:set(0);models["inGame.CP.zombies.secureProgress"]:set(0);tick()')
+check('not revive.visible and revive.alpha==0 and revive.ProgressBar.Mask.bounds[2]==1')
+lua.execute('existing.omnvarHandlers["zm_ui_laststand_end_milliseconds"](12345);tick()')
+check('existing.nativeCountdown.endTime==12345 and existing.nativeDownParent.alpha==1 and existing.nativeCountdown.size==36')
+lua.execute('existing.omnvarHandlers["zm_ui_laststand_end_milliseconds"](0);tick()')
+check('existing.nativeDownParent.alpha==0 and existing.nativeCountdown.endTime==12345')
+lua.execute('models["inGame.CP.zombies.afterlifeHasSelfReviveToken"]:set(1);tick()')
+check('existing.afterlifeSelfReviveProgress._widget.Message.MessageText.text=="NATIVE USE GLYPH" and existing.afterlifeSelfReviveProgress._widget.ProgressBar.bounds[1]=="full-width-native-progress"')
+lua.execute('models["inGame.CP.zombies.afterlifeHasSelfReviveToken"]:set(0);tick();info=existing.mainPlayerInfo._widget.MainPlayerInfo')
+check('existing.afterlifeSelfReviveProgress._widget.Message.MessageText.text=="NATIVE SOUL POWER"')
+check('info.ZomTickets:getParent()==info and info.bounds[5]>existing.mainPlayerInfo._widget.BO3Hero.bounds[6] and info.PlayerCash:getParent()==existing.mainPlayerInfo._widget.BO3Hero')
 lua.execute(r'''
 roster={
  {clientNum=0,name="Actual local",currency=25000,isMicOn=false,isMuted=false},
@@ -368,6 +509,27 @@ lua.execute('manager.nextHud.waveNumber._widget.WaveNumber=nil;LUI.HudManager.Cr
 check('BO3ZombiesHUD.messages["bind:ZMHUD:1"]==nil')
 lua.execute('failureCount=0;for _,message in ipairs(printed) do if string.find(message,"binding_failure",1,true) and string.find(message,"root_seq=2",1,true) then failureCount=failureCount+1 end end')
 check('failureCount==2')
+lua.execute(r'''
+mapFixtures={}
+for i,key in ipairs({"MainPlayerInfo","MainPlayerInfoDLC1","MainPlayerInfoDLC2","MainPlayerInfoDLC3","MainPlayerInfoDLC4"}) do
+ local id=i==1 and "ZMHUD" or "ZMHUDDLC"..(i-1)
+ local hud=stock_hud(id,key,(i-1)%4);local instance={nextHud=hud};LUI.HudManager.CreateHud(instance)
+ mapFixtures[#mapFixtures+1]={root=hud,info=hud.mainPlayerInfo._widget[key],key=key}
+end
+models["inGame.CP.zombies.quests.questFuseAlphaFilter"]:set(1)
+models["inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Icon"]:set("native-recycled-inventory")
+models["inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Alpha"]:set(1)
+models["inGame.CP.zombies.dlc1.raveFill"]:set(0.75)
+models["inGame.CP.zombies.dlc3.elementIndexNameFilter"]:set("NATIVE CHANGED ELEMENT")
+''')
+check('#mapFixtures==5')
+for i in range(1,6):
+    check(f'mapFixtures[{i}].root.__bo3HudLayout and mapFixtures[{i}].root.nativeFuse.alpha==1 and mapFixtures[{i}].root.nativeFuse:getParent()==mapFixtures[{i}].info')
+check('mapFixtures[2].info.RaveFill.nativeBottom==0.75 and mapFixtures[2].info.InventorySlot1.image=="native-recycled-inventory"')
+check('mapFixtures[3].info.chiStyle.image=="native-chi-style" and mapFixtures[4].info.elementName.text=="NATIVE CHANGED ELEMENT" and mapFixtures[4].info.elementName.size==28')
+check('mapFixtures[5].info.InventorySlot1.image=="native-recycled-inventory" and mapFixtures[5].info.InventorySlot1.alpha==1')
+lua.execute('models["inGame.CP.zombies.quests.questFuseAlphaFilter"]:set(0);models["inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Alpha"]:set(0)')
+check('mapFixtures[1].root.nativeFuse.alpha==0 and mapFixtures[5].info.InventorySlot1.alpha==0')
 lua.execute('unrelated=stock_hud();unrelated.id="MPHUD";manager.nextHud=unrelated;LUI.HudManager.CreateHud(manager)')
 check('not unrelated.__bo3HudLayout')
 lua.execute('retired=MenuBuilder.BuildRegisteredType;MenuBuilder.BuildRegisteredType=original;tick()')

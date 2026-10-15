@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local state = { version = "0.4.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
+local state = { version = "0.5.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
 -- Values are weak too: each live owner's installed wrapper retains its hook.
@@ -204,12 +204,44 @@ end
 local function adapt_player(original, menu, args)
     return style_player(remember(original(menu, args)))
 end
+local function style_equipment(self)
+    -- Keep the original ability, warning, datasource and independent quantity
+    -- alpha/color callbacks. Put the two offhands beside, not over, ammo/cards.
+    for i, prefix in ipairs({"Primary", "Secondary"}) do
+        local ability, count = self[prefix .. "Ability"], self[prefix .. "AbilityQuantity"]
+        local y = (i - 1) * 83
+        if ability then
+            ability:SetScale(-0.55, 0)
+            rect(ability, 365, 495, y - 8, y + 117)
+        end
+        if count then
+            count:SetFontSize(scale(24))
+            rect(count, 462, 500, y + 31, y + 57)
+        end
+    end
+    if self.muleWeaponIndicator then rect(self.muleWeaponIndicator, -72, -37, 32, 70) end
+    if self.UnlimitedAmmoIcon then
+        self.UnlimitedAmmoIcon:SetScale(0, 0)
+        rect(self.UnlimitedAmmoIcon, 286, 350, 76, 108)
+    end
+    if self.CraftedWeapon then
+        -- Keep crafted-image pulses and the original PC/controller/DLC4 glyph
+        -- callbacks; the label gets its own lane to the left of the weapon name.
+        self.CraftedWeapon:SetScale(0, 0)
+        rect(self.CraftedWeapon, -72, -34, 84, 123)
+        if self.CraftedWeapon.ButtonFont then
+            self.CraftedWeapon.ButtonFont:SetFontSize(scale(18))
+            rect(self.CraftedWeapon.ButtonFont, -272, 64, 44, 64)
+        end
+    end
+end
 local function adapt_bottom(original, menu, args)
     local self = remember(original(menu, args))
     assert(self and self.ZomWeaponInfo, "Actual IW7 ammo container required")
     self.ZomWeaponInfo:SetYRotation(0, 0)
     self.ZomWeaponInfo:SetZRotation(0, 0)
     self.ZomWeaponInfo:SetAnchorsAndPosition(1, 0, 1, 0, scale(-560), scale(-182), scale(-210), scale(-48))
+    style_equipment(self.ZomWeaponInfo)
     -- Compact the complete native deck, including charge, fan and selection
     -- feedback. Do not hide individual parts or shrink the active-card list.
     if self.FateCardWidget then
@@ -301,6 +333,59 @@ local function style_perks(list)
     end)
     return icons
 end
+local function style_powerup(self)
+    assert(self and self.PowerupIcon, "Actual power-up image required")
+    -- Alpha/Flash/FadeIn remain native, including the bitfield animation event.
+    rect(self, 0, 52, 0, 52)
+    rect(self.PowerupIcon, 4, 48, 4, 48)
+    return self
+end
+local function style_status(root)
+    if root.activePowerups then
+        root.activePowerups:SetAnchorsAndPosition(1, 0, 0, 1, scale(-920), scale(-280), scale(48), scale(112))
+        local list = assert(unwrap(root.activePowerups).ZomPowerupWidget, "Actual power-up list required")
+        list:SetZRotation(0, 0)
+        walk_leaves(list, function(child)
+            if child.PowerupIcon then style_powerup(child) end
+        end)
+    end
+    if root.powerupActivated then
+        local popup = unwrap(root.powerupActivated)
+        if popup.PowerUpName then popup.PowerUpName:SetFont(FONTS.GetFont(FONTS.MainBold.File)) end
+        -- The message queue owns its icon/name, flight, scaling and completion.
+    end
+    if root.reviveBarContainer then
+        local revive = unwrap(root.reviveBarContainer)
+        assert(revive.Header and revive.Header.MessageText and revive.ProgressBar, "Actual revive elements required")
+        root.reviveBarContainer:SetAnchorsAndPosition(0.5, 0.5, 0.5, 0.5, scale(-128), scale(128), scale(60), scale(124))
+        revive.Header.MessageText:SetRGBFromInt(0xF5F1E7, 0)
+        if revive.ProgressBar.Fill then revive.ProgressBar.Fill:SetRGBFromInt(0xA49E8B, 0) end
+        -- Never resize the progress mask or override SetProgress/SetHeader,
+        -- secureState/secureProgress or the native Show/Hide/Skeeball paths.
+    end
+    if root.lastStand then
+        local timer = unwrap(root.lastStand)
+        local count = timer:getFirstDescendentById("laststand_countdown")
+        assert(count, "Actual downed countdown required")
+        root.lastStand:SetAnchorsAndPosition(0.5, 0.5, 1, 0, scale(150), scale(350), scale(-500), scale(-300))
+        count:SetFont(FONTS.GetFont(FONTS.MainBold.File));count:SetFontSize(scale(36))
+        count:SetRGBFromInt(0xB83226, 0)
+        rect(count, 0, 100, -12, 36)
+        local icon = timer:getFirstDescendentById("laststand_icon")
+        if icon then rect(icon, -44, -12, 0, 32) end
+        -- The original omnvar handler still sets the real UICountdown end time
+        -- and owns the parent's visible/default states, including late binds.
+    end
+    if root.afterlifeSelfReviveProgress then
+        local afterlife = unwrap(root.afterlifeSelfReviveProgress)
+        if afterlife.SoulPowerTitle then
+            afterlife.SoulPowerTitle:SetFont(FONTS.GetFont(FONTS.MainBold.File))
+            afterlife.SoulPowerTitle:SetRGBFromInt(0xF5F1E7, 0)
+        end
+        -- Full-width soul progress, token/arcade messages, glyphs and native
+        -- Bootup/ShowTokenMessage animations keep their original geometry.
+    end
+end
 local function reparent(leaf, parent)
     local previous = leaf:getParent()
     if previous == parent then return end
@@ -379,6 +464,14 @@ local function style_team(root, container, info)
     end
     hero:SetAnchorsAndPosition(0, 1, 1, 0, scale(24), scale(368), scale(-168), scale(-56))
     reparent(info.PlayerIcon, hero); reparent(info.PlayerCash, hero);style_player(info)
+    -- The remaining original group is map-specific quest/Rave/chi/element
+    -- inventory. Moving it as a whole retains every child, mask and callback.
+    info:SetYRotation(0, 0);info:SetZRotation(0, 0);info:SetScale(-0.25, 0)
+    info:SetAnchorsAndPosition(0, 1, 1, 0, scale(650), scale(932), scale(-260), scale(-41))
+    if info.elementName then
+        info.elementName:SetFontSize(scale(28))
+        rect(info.elementName, 200.5, 457.5, 152.94, 180.94)
+    end
     rect(hero.BO3Speaker, 314, 336, 12, 34)
     local current = client_data(current_client())
     hero.BO3Name:setText(current and type(current.name) == "string" and current.name or "");mic(hero.BO3Speaker, current)
@@ -418,6 +511,7 @@ local function adapt_root(root)
     assert(bottom and bottom.ZomWeaponInfo and bottom.ZomWeaponInfo.weaponinfoZM, "Weapon container leaf required")
     adapt_bottom(function() return bottom end)
     style_ammo(bottom.ZomWeaponInfo.weaponinfoZM)
+    style_status(root)
     -- Root's stock per-map visibility lists still own all these original fields.
     root.__bo3HudLayout = true
     emit("bind:" .. token(root.id) .. ":" .. token(root.controllerIndex), "bind version=" .. state.version
@@ -448,6 +542,7 @@ local replacements = {
     WaveNumber = function(_, menu, args) return build_wave(menu, args) end,
     weaponinfoZM = function(_, menu, args) return build_ammo(menu, args) end,
     CPPerkIcon = function(_, menu, args) return build_perk(menu, args) end,
+    ZomPowerupIcon = function(original, menu, args) return style_powerup(original(menu, args)) end,
     MainPlayerInfo = adapt_player,
     MainPlayerInfoDLC1 = adapt_player,
     MainPlayerInfoDLC2 = adapt_player,
