@@ -1,12 +1,13 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local state = { version = "0.6.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
+local state = { version = "0.7.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
 -- Values are weak too: each live owner's installed wrapper retains its hook.
 -- In Lua5.1 a weak key alone would retain old roots through the hook closure.
 state.refreshHooks = setmetatable({}, {__mode = "kv"})
+state.cardCores = setmetatable({}, {__mode = "kv"})
 state.nextRoot = 0
 BO3ZombiesHUD = state
 local pending_nodes
@@ -235,6 +236,12 @@ local function style_equipment(self)
         end
     end
 end
+local function reparent(leaf, parent)
+    local previous = leaf:getParent()
+    if previous == parent then return end
+    if previous then previous:removeElement(leaf) end
+    parent:addElement(leaf)
+end
 local function style_fan(self)
     assert(self and self.fanCard and self.fanOverlay, "Actual native fan surfaces required")
     if not self.__bo3FanBack then
@@ -253,6 +260,83 @@ local function style_fan(self)
         bar(self, "BO3FanRule", 76.5, 156.5, 254, 258, 0xA49E8B)
         self.__bo3FanBack = true
     end
+    return self
+end
+local function card_feeds()
+    local z = DataSources and DataSources.inGame and DataSources.inGame.CP and DataSources.inGame.CP.zombies
+    if not z then return nil end
+    return {remaining=z.consumablesRemaining, fill=z.dpadUpFillPercent,
+        ready=z.consumableDeckSelectReady, boss=z.dlc4 and z.dlc4.mephBattle}
+end
+local function card_values(self, feeds, index)
+    if not feeds or not CONDITIONS or not CONDITIONS.IsDLC4 then return nil end
+    local ok, dlc4 = pcall(CONDITIONS.IsDLC4, self)
+    if not ok or type(dlc4) ~= "boolean" then return nil end
+    local function read(model)
+        if not model or not model.GetValue then return nil end
+        local got, value = pcall(function() return model:GetValue(index) end)
+        return got and value or nil
+    end
+    local remaining, fill, ready = read(feeds.remaining), read(feeds.fill), read(feeds.ready)
+    if type(remaining) ~= "number" or remaining < 0 or remaining > 5 or remaining ~= math.floor(remaining)
+        or type(fill) ~= "number" or fill ~= fill or fill < 0 or fill > 1 or (ready ~= 0 and ready ~= 1) then return nil end
+    local boss = 0
+    if dlc4 then boss = read(feeds.boss) end
+    if boss ~= 0 and boss ~= 1 then return nil end
+    return {remaining=remaining, ready=ready, boss=boss == 1}
+end
+local function native_card_core(owner)
+    owner.mask:SetAlpha(1, 0);owner.view:SetAlpha(0, 0);owner.mode = "native_unknown"
+end
+local function style_card_core(self, index)
+    if not (self and self.devilHead and self.devilJaw and self.sadDevil
+        and self.radialAlphaLarge and self.radialAlphaLarge.circleFill) then return self end
+    local feeds, owner = card_feeds(), self.__bo3CardCore
+    if owner then
+        local same = feeds and owner.index == index
+        for _, key in ipairs({"remaining", "fill", "ready", "boss"}) do
+            same = same and owner.feeds[key] == feeds[key]
+        end
+        if not same then owner.disabled = true end
+        owner.update();return self
+    end
+    -- Unknown feeds/predicate stay wholly native. Existing roots retry through
+    -- their owned refresh; no model value is fabricated to force a new skin.
+    if not card_values(self, feeds, index) then return self end
+    local pointers = {}
+    for key, model in pairs(feeds) do
+        if not model.GetModel then return self end
+        local ok, pointer = pcall(function() return model:GetModel(index) end)
+        if not ok or not pointer then return self end
+        pointers[key] = pointer
+    end
+    for _, leaf in ipairs({self.devilJaw, self.devilHead, self.sadDevil}) do
+        if leaf:getParent() ~= self then return self end
+    end
+    local mask = panel("BO3NativeCardFaces", 168, 173)
+    mask:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0);self:addElement(mask)
+    for _, leaf in ipairs({self.devilJaw, self.devilHead, self.sadDevil}) do reparent(leaf, mask) end
+    local view = panel("BO3CardCore", 168, 173)
+    view:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0);self:addElement(view)
+    local title = text(view, "BO3CardTitle", 28, 2.5, 166.5, -28, 2)
+    local count = text(view, "BO3CardCount", 40, 34.5, 134.5, 58, 102)
+    local status = text(view, "BO3CardStatus", 26, 2.5, 166.5, 174, 202)
+    title:SetAlignment(LUI.Alignment.Center);count:SetAlignment(LUI.Alignment.Center);status:SetAlignment(LUI.Alignment.Center)
+    owner = {mask=mask, view=view, index=index, feeds=feeds, title=title, count=count, status=status}
+    owner.update = function()
+        local value = not state.closed and not owner.disabled and card_values(self, feeds, index)
+        if not value then native_card_core(owner);return end
+        mask:SetAlpha(0, 0);view:SetAlpha(1, 0)
+        title:setText(value.boss and "BOSS" or "CARDS")
+        count:setText(tostring(value.remaining))
+        status:setText(value.remaining == 0 and "EMPTY" or value.ready == 1 and "READY" or "CHARGING")
+        owner.mode = value.boss and "boss" or "cards"
+    end
+    self.__bo3CardCore = owner;state.cardCores[self] = owner
+    -- Native image references and animations remain alive under a same-canvas
+    -- ancestor. Only their rendering is masked while equivalent data is known.
+    for _, pointer in pairs(pointers) do view:SubscribeToModel(pointer, owner.update) end
+    owner.update()
     return self
 end
 local function adapt_bottom(original, menu, args)
@@ -274,6 +358,9 @@ local function adapt_bottom(original, menu, args)
         for i = 1, 4 do
             local fan = self.FateCardWidget["fanCard" .. i]
             if fan then style_fan(fan) end
+        end
+        if self.FateCardWidget.FateCardDevilWidget then
+            style_card_core(self.FateCardWidget.FateCardDevilWidget, controller_index(self, args))
         end
     end
     return self
@@ -410,12 +497,6 @@ local function style_status(root)
         -- Bootup/ShowTokenMessage animations keep their original geometry.
     end
 end
-local function reparent(leaf, parent)
-    local previous = leaf:getParent()
-    if previous == parent then return end
-    if previous then previous:removeElement(leaf) end
-    parent:addElement(leaf)
-end
 local function speaker(parent, id)
     local icon = LUI.UIImage.new(); icon.id = id; icon:SetAlpha(0, 0)
     parent:addElement(icon); return icon
@@ -533,7 +614,7 @@ local function adapt_root(root)
     root.mainPlayerInfo:SetZRotation(0, 0)
     local bottom = unwrap(root.wonderCard)
     assert(bottom and bottom.ZomWeaponInfo and bottom.ZomWeaponInfo.weaponinfoZM, "Weapon container leaf required")
-    adapt_bottom(function() return bottom end)
+    adapt_bottom(function() return bottom end, nil, {controllerIndex=root.controllerIndex})
     style_ammo(bottom.ZomWeaponInfo.weaponinfoZM)
     style_status(root)
     -- Root's stock per-map visibility lists still own all these original fields.
@@ -567,6 +648,10 @@ local replacements = {
     weaponinfoZM = function(_, menu, args) return build_ammo(menu, args) end,
     CPPerkIcon = function(_, menu, args) return build_perk(menu, args) end,
     FateFanCard = function(original, menu, args) return style_fan(remember(original(menu, args))) end,
+    FateCardDevilWidget = function(original, menu, args)
+        local self = remember(original(menu, args))
+        return style_card_core(self, controller_index(self, args))
+    end,
     ZomPowerupIcon = function(original, menu, args) return style_powerup(remember(original(menu, args))) end,
     MainPlayerInfo = adapt_player,
     MainPlayerInfoDLC1 = adapt_player,
@@ -643,6 +728,7 @@ local function visit_root()
 end
 function state.shutdown()
     state.closed = true
+    for _, owner in pairs(state.cardCores) do native_card_core(owner) end
     for owner, hook in pairs(state.refreshHooks) do
         hook.retired = true
         if owner.RefreshRows == hook.wrapper then owner.RefreshRows = hook.original end
