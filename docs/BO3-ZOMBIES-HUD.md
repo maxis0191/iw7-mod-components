@@ -476,13 +476,19 @@ Changing a captured gauge field or its parent retires only the extra gauge,
 reveals its native groups and leaves the foreign parent alone until HUD recreation.
 Repeated refresh creates no further gauge or subscription.
 
-The175 Lua5.1 Source/mock controls cover real fraction endpoints/updates, zero
+The176 Lua5.1 Source/mock controls cover real fraction endpoints/updates, zero
 inventory, known/unknown readiness, preserved native progress callback writes,
 refill/ready feedback and painter order, malformed-value fallback/recovery,
 shape rejection, external reparenting, parent visibility, controller retirement
 and shutdown alongside the existing equipment/map/team cases. These are mocked
 contracts, not HKS/pixels or native alpha readback. Exact diagnostic0.7 remains
 unchanged; content0.11 is informational and is identified by its Source/Lua hash.
+One causal check covers the two actual0.9 value tuples: remaining0/fill0/ready-1
+then remaining5/fill0/ready-1. With the exact known mock shape, both show the new
+frame/empty track; the fill quad stays absent at0, with EMPTY then UNKNOWN text.
+Readiness-1 does not veto the gauge or become READY. The actual0.9 trace did not
+measure all nine child identities/order, so it does not prove shape acceptance
+or new0.11 rendering in the game.
 
 Source0.10 stays frozen and was not played by this lot. New original pixels must
 verify that the extra shape is accepted, native charge circles actually give way

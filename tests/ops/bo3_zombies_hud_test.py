@@ -490,6 +490,12 @@ defaultOwner=defaultReady.__bo3CardCore;defaultNativeCallback=defaultReady.nativ
 for i=#printed,1,-1 do if string.find(printed[i],"[BO3 HUD] core ",1,true) then defaultTrace=printed[i];break end end
 ''')
 check('defaultOwner and defaultOwner.count.text=="0" and defaultOwner.status.text=="EMPTY" and defaultOwner.mask.alpha==0 and defaultOwner.view.alpha==1 and models["inGame.CP.zombies.consumableDeckSelectReady"].value==-1 and string.find(defaultTrace,"ready_type=number ready_value=-1",1,true)')
+lua.execute(r'''
+observedEmpty=defaultOwner.gauge and defaultOwner.gauge.view.alpha==1 and defaultOwner.gauge.backing.alpha==0 and defaultOwner.gauge.meter.alpha==0 and defaultOwner.gauge.fill.alpha==0 and chargeFraction(defaultOwner.gauge)==0
+models["inGame.CP.zombies.consumablesRemaining"]:set(5)
+observedUnknown=defaultOwner.count.text=="5" and defaultOwner.status.text=="UNKNOWN" and defaultOwner.gauge.view.alpha==1 and defaultOwner.gauge.backing.alpha==0 and defaultOwner.gauge.meter.alpha==0 and defaultOwner.gauge.fill.alpha==0 and chargeFraction(defaultOwner.gauge)==0
+''')
+check('observedEmpty and observedUnknown and models["inGame.CP.zombies.dpadUpFillPercent"].value==0 and models["inGame.CP.zombies.consumableDeckSelectReady"].value==-1 and defaultReady.nativeUpdate==defaultNativeCallback')
 lua.execute('models["inGame.CP.zombies.consumablesRemaining"]:set(3);models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.25)')
 check('defaultOwner.count.text=="3" and defaultOwner.status.text=="UNKNOWN" and defaultReady.radialAlphaLarge.circleFill.progress==0.25 and defaultReady.nativeUpdate==defaultNativeCallback')
 check('defaultOwner.gauge and defaultOwner.gauge.view.alpha==1 and math.abs(chargeFraction(defaultOwner.gauge)-0.25)<0.000001 and models["inGame.CP.zombies.consumableDeckSelectReady"].value==-1')
