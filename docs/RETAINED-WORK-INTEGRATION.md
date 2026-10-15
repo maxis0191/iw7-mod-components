@@ -23,7 +23,10 @@ The bounded STARTUP writer-provenance component, predicate test, profile/overlay
 helpers and source fixture are retained with their tests. They are diagnostic
 source, not a proven writer identity or 48-agent result. The helper remains
 PlanOnly by default and requires the exact reviewed 77e6d4d lifecycle source.
-It is not automatically copied/enabled by ordinary builds. The fixture is a
+Build-Voice exposes the retained WordProvenance switch only with ServerModules,
+IsolatedLab and Debugger. Ordinary builds remove only known leftover sources
+and restore only the exact owned lifecycle bytes; they never enable the probe.
+An enabled full diagnostic build/runtime remains unqualified. The fixture is a
 byte-pinned copy of the owner's IW7-Mod fork main.cpp at
 77e6d4d24e918ee363b3feee3735c3b889dff7d7; preserve its upstream attribution and
 the repository's existing upstream license. Profile/copy controls pass 63 cases.
