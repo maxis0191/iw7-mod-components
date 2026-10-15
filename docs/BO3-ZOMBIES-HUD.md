@@ -3,8 +3,9 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.15.0 adds a bounded fan readback probe after
-actual0.14 did not show an evident visual change. The0.14 art, dimensions,
+weapons, quests and states. Content0.16.0 fixes the fan probe's publication
+contract after actual0.15 emitted common fields without its detailed sample.
+The visual cause remains unknown. The0.14 art, dimensions,
 ownership and restoration remain unchanged. The0.13 native-action underlay retains the actual localized title,
 progress, stencil and native visibility.
 The0.12 selected-card identity surface, native name/icon presentation and0.11
@@ -267,7 +268,7 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 ## Bounded binding diagnostics
 
 Since content0.8.0, `VERSION` is separate from `DIAGNOSTIC_VERSION=0.7.0`. Every
-current initialization emits `module version=0.7.0 content_version=0.15.0 instance=... initialized=1`.
+current initialization emits `module version=0.7.0 content_version=0.16.0 instance=... initialized=1`.
 Every versioned marker uses the diagnostic contract version. The content version
 is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
 the authorized content. A compatible authored skin needs no new Ops enum entry.
@@ -830,6 +831,76 @@ frame and same-case fan rows must identify the actual widget, shape branch,
 initial writes, later calls and current rectangle status before any correction.
 Missing/suppressed evidence leaves the cause unknown. No Game, power, charge,
 navigation, FF, PE or native-build authority follows from this probe.
+
+## Actual0.15 and Source0.16 publication contract
+
+The closed actual0.15 stdout from case20261015-155056-423-0e4d5040 is11701B,
+SHA256 DE6BB901C3C8DBB10CF6EA40811850B683CC1B49DED209F36A4E49D42791F9DF.
+Its20 complete raw fan lines cover four module-local widget sequences and five
+stages each: applied, overlay_rgb, overlay_alpha, parent_alpha and deck. Every
+line contains only version/widget_seq/controller/stage/reason/pixels/instance.
+No slot, root checkpoint, reader status, rectangle or setter argument is
+published. The raw bytes contain no NUL; detailed core rows remain present in
+the same file. This is a publication failure, not evidence of a missing getter,
+zero geometry, current render alpha, widget/root identity or the visual cause.
+The original3686454B pre-action BMP SHA256 is
+D4923B1D303EFAACDB636368EB6499ACB01D64673FB9F0B1D0DA7B4E87A7F4BE.
+Root, Ops and UI viewed it: the hybrid Triangle/pale strip remains, with no
+visual correction expected from the0.15 observer alone.
+
+The concrete Source defect is that an ordinary fan row can contain no sample
+fields and no explicit failed-collection state. Source0.15 discovers keys using
+pairs, a dynamically populated array, table.sort and ipairs. Source0.16 replaces
+that discovery with a closed42-key order, direct lookup and numeric iteration.
+Every non-suppressed row publishes all42 keys, with unknown for unavailable
+values; sample_status distinguishes completed collection from its protected
+failure path. Completed collection does not mean that a getter succeeded.
+The field_count header outside the suffix is42 for those rows and0 only for
+the existing suppression notices. The exact reason why the0.15 runtime omitted
+the suffix remains unresolved; no HKS/ABI/global-iterator explanation is claimed.
+
+The pinned upstream77e [print bridge](https://github.com/auroramod/iw7-mod/blob/77e6d4d24e918ee363b3feee3735c3b889dff7d7/src/client/component/ui_scripting.cpp#L294)
+assembles tostring arguments and passes the buffer to console output. This
+Source reference does not verify the current executable or exclude every
+current transport behavior. The correction establishes a complete emitter
+contract; another actual run must still confirm the resulting wire bytes.
+
+The same unknown semantics, seven transparent setters, weak records, callbacks,
+returns/errors and0.14 art/dimensions are preserved. Source0.16 adds no reader,
+model write, timer, subscription, material, Native code or input. Diagnostic0.7
+remains compatible: fan rows are optional and do not qualify essential binding,
+native VM identity, rendered alpha/image or pixels.
+
+An end-to-end Source test loads the authored module and captures its actual
+print arguments in Python, without a formatter replica. Four cases cover normal
+collection, collection failure, controlled empty key discovery, and their
+combination. The immutable0.15 module under the controlled empty-discovery
+counterexample really emits common-only rows; the new module under that same
+condition emits its full matrix. This counterexample is not the runtime HKS
+cause. Independent getter values also disagree with setter intent, preventing
+a mirrored-intent test from passing. In failed collection, every unavailable
+field is explicitly unknown and sample_status is failed.
+
+Source controls pass341 assertions, including80 actual-emitter print checks.
+Every ordinary row has50 unique keys including its eight header keys, and every
+token is at most40 characters. The conservative derived bound is2598 ASCII
+bytes including newline per fan row and1374342B per module at the unchanged529
+row maximum. These are bounds derived from the schema and existing caps, not
+new runtime cutoffs; suppression rows are shorter. The captured test maximum
+is964B per row. No larger Lua module limit is introduced: this Source remains
+within the Ops131072B Lua boundary; configuration remains65536B.
+The external13713B causal receipt SHA256 is
+B6B8E19AFAE59D9760A3A78741D3A7F29E167DE9EF34873C56C21F876A54970E.
+The two pinned retail bodies also retain their358 endpoint assertions. The
+current essential parser accepts16 actually printed mock rows at diagnostic0.7
+and refuses0.6: five fan matrix rows and one zero-field suppression notice are
+ignored optional rows, not binding or getter qualification.
+
+Next: exact-head private Source review/checks/merge, then a separately reviewed
+consumer and distinct Root runtime GO. Future raw fan rows must contain the
+matrix before any getter, geometry, association, overwrite or visual cause can
+be qualified. Preserve all0.15 and earlier artifacts. No new capsule or Game
+follows from this publication correction.
 
 ## Source references and implemented essentials
 

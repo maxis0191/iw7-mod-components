@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.15.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.16.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -257,6 +257,18 @@ local function reparent(leaf, parent)
     if previous then previous:removeElement(leaf) end
     parent:addElement(leaf)
 end
+-- A closed wire matrix, not discovered through pairs/sort on the sample table.
+-- Every ordinary row publishes every key, including unknown/error samples.
+local fan_wire_fields = {
+    "sample_status", "readback", "slot", "root_seq_seen", "slot_match", "native_phase",
+    "back_id", "overlay_id", "back_type", "overlay_type", "alpha_read", "image_read",
+    "alpha_intent", "overlay_alpha_intent", "overlay_rgb_intent", "hooks", "hook_stop", "initial_writes_returned",
+    "parent_read", "parent_l", "parent_t", "parent_r", "parent_b",
+    "back_read", "back_l", "back_t", "back_r", "back_b",
+    "overlay_read", "overlay_l", "overlay_t", "overlay_r", "overlay_b",
+    "origin", "intent", "duration", "intent_l", "intent_r", "intent_t", "intent_b",
+    "image_argument_type", "same_adapter_argument"
+}
 local function fan_trace(self, index, event, reason, fields)
     local record = fan_diagnostics[self]
     if not record then
@@ -264,7 +276,7 @@ local function fan_trace(self, index, event, reason, fields)
             if not fan_diagnostic_limit then
                 fan_diagnostic_limit = true
                 print("[BO3 HUD] fan version=" .. DIAGNOSTIC_VERSION .. " widget_seq=0 controller=unknown stage=suppressed"
-                    .. " reason=widget_limit pixels=unverified instance=" .. state.instance)
+                    .. " reason=widget_limit field_count=0 pixels=unverified instance=" .. state.instance)
             end
             return
         end
@@ -272,15 +284,18 @@ local function fan_trace(self, index, event, reason, fields)
         record = {sequence=fan_diagnostic_count, count=0, signatures={}};fan_diagnostics[self] = record
     end
     fields = fields or {}
-    local keys = {};for key in pairs(fields) do keys[#keys + 1] = key end;table.sort(keys)
-    local suffix = ""
-    for _, key in ipairs(keys) do suffix = suffix .. " " .. key .. "=" .. token(fields[key]) end
+    local suffix, field_count = "", #fan_wire_fields
+    for i=1,field_count do
+        local key = fan_wire_fields[i]
+        local value = fields[key]
+        suffix = suffix .. " " .. key .. "=" .. token(value == nil and "unknown" or value)
+    end
     local signature = reason .. suffix
     if record.signatures[event] == signature or record.count >= 33 then return end
     record.signatures[event] = signature;record.count = record.count + 1
-    if record.count == 33 then event, reason, suffix = "suppressed", "transition_limit", "" end
+    if record.count == 33 then event, reason, suffix, field_count = "suppressed", "transition_limit", "", 0 end
     print("[BO3 HUD] fan version=" .. DIAGNOSTIC_VERSION .. " widget_seq=" .. record.sequence
-        .. " controller=" .. token(index) .. " stage=" .. event .. " reason=" .. reason .. suffix
+        .. " controller=" .. token(index) .. " stage=" .. event .. " reason=" .. reason .. " field_count=" .. field_count .. suffix
         .. " pixels=unverified instance=" .. state.instance)
 end
 local function fan_number(value)
@@ -335,9 +350,10 @@ local function fan_sample(self, index, owner, context, event, reason, extra)
         else fields.back_read = "unknown_field" end
         if fields.overlay_id == "1" and (not owner or self.fanOverlay == owner.overlay) then fan_rect(self.fanOverlay, fields, "overlay")
         else fields.overlay_read = "unknown_field" end
+        fields.sample_status = "complete"
         fan_trace(self, index, event, reason, fields)
     end)
-    if not ok then pcall(fan_trace, self, index, event, reason, {readback="unknown_error"}) end
+    if not ok then pcall(fan_trace, self, index, event, reason, {sample_status="failed", readback="unknown_error"}) end
 end
 local function stop_fan_probe(owner, reason)
     local probe = owner.probe
