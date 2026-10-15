@@ -90,6 +90,10 @@ function original(key,args)
   n.PowerupIcon=node();n:addElement(n.PowerupIcon);n.PowerupIcon.image="retail-powerup";n.PowerupIcon.alpha=0
   n.NativeFlash=function() n.PowerupIcon:SetAlpha(0) end
  end
+ if key=="FateFanCard" then
+  n.fanCard=node();n.fanCard.image="zm_wc_card_fan";n:addElement(n.fanCard)
+  n.fanOverlay=node();n.fanOverlay.image="zm_wc_card_fan_overlay";n.fanOverlay.color=0x263626;n.fanOverlay.alpha=0.6;n:addElement(n.fanOverlay)
+ end
  return n
 end
 MenuBuilder={BuildRegisteredType=original}
@@ -312,6 +316,7 @@ function stock_hud(root_id,player_key,index)
  bottom.ZomWeaponInfo.UnlimitedAmmoIcon=node();bottom.ZomWeaponInfo.UnlimitedAmmoIcon:BindAlphaToModel(models["inGame.CP.ammo.unlimitedAlpha"])
  bottom.FateCardWidget=node()
  local deck=bottom.FateCardWidget
+ for i=1,4 do deck["fanCard"..i]=original("FateFanCard",{controllerIndex=r.controllerIndex});deck:addElement(deck["fanCard"..i]) end
  deck.Fire=node();deck.upArrow=node();deck.FateCardOnDeck=node();deck.FateCardOnDeck.image="native-selected-card"
  deck:addElement(deck.Fire);deck:addElement(deck.upArrow);deck:addElement(deck.FateCardOnDeck)
  deck.nativeReadyCallback=function()
@@ -363,6 +368,12 @@ check('existing.wonderCard._widget.ZomWeaponInfo.bounds[5]==-560')
 lua.execute('nativeReadyCallback=deck.nativeReadyCallback;nativeChildren=#deck.children;deck:SetAlpha(0.6);models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1);tick()')
 check('deck.Fire.alpha==1 and deck.upArrow.alpha==1 and deck.alpha==0.6')
 check('deck.nativeReadyCallback==nativeReadyCallback and #deck.children==nativeChildren and deck.FateCardOnDeck.image=="native-selected-card"')
+lua.execute('fan=deck.fanCard1;fanChildren=#fan.children;nativeFanImage=fan.fanCard;nativeFanOverlay=fan.fanOverlay;fan:SetAlpha(0.4);fan:SetZRotation(-30);fan.fanOverlay:SetRGBFromInt(0x445566);tick();tick()')
+check('fan.fanCard==nativeFanImage and fan.fanOverlay==nativeFanOverlay and fan.fanCard.image=="white" and fan.fanOverlay.image=="white"')
+check('fan.alpha==0.4 and fan.zrotation==-30 and fan.fanOverlay.color==0x445566 and fan.fanOverlay.alpha==0.6 and #fan.children==fanChildren')
+lua.execute('freshFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=2});freshFan:SetAlpha(0);tick()')
+check('freshFan.__bo3FanBack and freshFan.alpha==0 and freshFan.fanOverlay.alpha==0.6')
+check('deck.FateCardOnDeck.image=="native-selected-card" and deck.Fire.alpha==1 and deck.upArrow.alpha==1')
 lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(0);tick()')
 check('deck.Fire.alpha==0 and deck.upArrow.alpha==0 and deck.alpha==0.6')
 check('existing.wonderCard._widget.WonderCardFillWidget.ToggleList0.image=="native-active-card" and existing.wonderCard._widget.WonderCardFillWidget.scale==nil')

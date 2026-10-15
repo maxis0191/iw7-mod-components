@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local state = { version = "0.5.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
+local state = { version = "0.6.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
 -- Values are weak too: each live owner's installed wrapper retains its hook.
@@ -235,6 +235,26 @@ local function style_equipment(self)
         end
     end
 end
+local function style_fan(self)
+    assert(self and self.fanCard and self.fanOverlay, "Actual native fan surfaces required")
+    if not self.__bo3FanBack then
+        -- Authored dark card/rim, not BO3 retail art. Keep the original two
+        -- image objects and native overlay depth tint/alpha. This inset stays
+        -- inside their old quad; parent pose/count/selection remains native.
+        self.fanCard:setImage(RegisterMaterial("white"), 0)
+        self.fanCard:SetRGBFromInt(0x171713, 0)
+        self.fanOverlay:setImage(RegisterMaterial("white"), 0)
+        rect(self.fanCard, 20.5, 212.5, 80, 432)
+        rect(self.fanOverlay, 20.5, 212.5, 80, 432)
+        bar(self, "BO3FanTop", 20.5, 212.5, 80, 84, 0xA49E8B)
+        bar(self, "BO3FanBottom", 20.5, 212.5, 428, 432, 0xA49E8B)
+        bar(self, "BO3FanLeft", 20.5, 24.5, 84, 428, 0xA49E8B)
+        bar(self, "BO3FanRight", 208.5, 212.5, 84, 428, 0xA49E8B)
+        bar(self, "BO3FanRule", 76.5, 156.5, 254, 258, 0xA49E8B)
+        self.__bo3FanBack = true
+    end
+    return self
+end
 local function adapt_bottom(original, menu, args)
     local self = remember(original(menu, args))
     assert(self and self.ZomWeaponInfo, "Actual IW7 ammo container required")
@@ -251,6 +271,10 @@ local function adapt_bottom(original, menu, args)
         -- after the center-based scale, above ammo and left of active effects.
         self.FateCardWidget:SetScale(-0.35, 0)
         self.FateCardWidget:SetAnchorsAndPosition(1, 0, 1, 0, scale(-420), scale(-167), scale(-695), scale(-306))
+        for i = 1, 4 do
+            local fan = self.FateCardWidget["fanCard" .. i]
+            if fan then style_fan(fan) end
+        end
     end
     return self
 end
@@ -542,6 +566,7 @@ local replacements = {
     WaveNumber = function(_, menu, args) return build_wave(menu, args) end,
     weaponinfoZM = function(_, menu, args) return build_ammo(menu, args) end,
     CPPerkIcon = function(_, menu, args) return build_perk(menu, args) end,
+    FateFanCard = function(original, menu, args) return style_fan(remember(original(menu, args))) end,
     ZomPowerupIcon = function(original, menu, args) return style_powerup(remember(original(menu, args))) end,
     MainPlayerInfo = adapt_player,
     MainPlayerInfoDLC1 = adapt_player,
