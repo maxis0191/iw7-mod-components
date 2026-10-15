@@ -29,6 +29,11 @@ CONDITIONS={IsDLC4=function(self) return self.nativeDlc4 or false end}
 function node()
  local n={children={},alpha=1,closed=false}
  function n:SetAnchorsAndPosition(...) self.bounds={...} end
+ function n:getLocalRect()
+  if self.rectError then error("mock native geometry reader failed") end
+  if self.rectOverride then return unpack(self.rectOverride) end
+  if self.bounds then return self.bounds[5],self.bounds[7],self.bounds[6],self.bounds[8] end
+ end
  function n:SetFont(value) self.font=value end
  function n:SetFontSize(value) self.size=value end
  function n:SetAlignment(value) end
@@ -162,7 +167,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.14.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.14.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.15.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.15.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -464,6 +469,64 @@ check('fan.fanCard==nativeFanImage and fan.fanOverlay==nativeFanOverlay and fan.
 check('fan.alpha==0.4 and fan.zrotation==-30 and fan.fanOverlay.color==0x445566 and fan.fanOverlay.alpha==0.6 and #fan.children==fanChildren')
 lua.execute('freshFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=2});freshFan:SetAlpha(0);tick()')
 check('freshFan.__bo3FanBack and freshFan.alpha==0 and freshFan.fanOverlay.alpha==0.6')
+lua.execute(r'''
+function fanLine(stage,sequence)
+ for i=#printed,1,-1 do
+  local line=printed[i]
+  if string.find(line,"[BO3 HUD] fan ",1,true) and string.find(line," widget_seq="..sequence.." ",1,true)
+    and string.find(line," stage="..stage.." ",1,true) then return line end
+ end
+ return ""
+end
+function contains(line,fragment) return string.find(line,fragment,1,true)~=nil end
+probeOwner=fan.__bo3FanBack;probeHooks=probeOwner.probe.hooks
+''')
+check('#probeHooks==7 and probeOwner.probe.active and contains(fanLine("applied",1),"reason=writes_returned") and contains(fanLine("applied",1),"alpha_intent=unknown") and contains(fanLine("applied",1),"image_read=unknown")')
+check('contains(fanLine("deck",1),"slot=1") and contains(fanLine("deck",1),"slot_match=1") and contains(fanLine("deck",1),"root_seq_seen=1") and contains(fanLine("deck",1),"overlay_l=24.500") and contains(fanLine("deck",1),"overlay_r=32.500") and contains(fanLine("deck",1),"overlay_read=known")')
+lua.execute('fan.fanOverlay.rectOverride={101,202,303,404};fan.fanOverlay:SetAnchorsAndPosition(0,1,0,1,24.5,42.5,84,428,37)')
+check('contains(fanLine("overlay_rect",1),"intent_r=42.500") and contains(fanLine("overlay_rect",1),"overlay_l=101.000") and contains(fanLine("overlay_rect",1),"overlay_r=303.000") and contains(fanLine("overlay_rect",1),"reason=setter_returned") and contains(fanLine("overlay_rect",1),"origin=later_call") and fan.fanOverlay.bounds[9]==37')
+lua.execute('fan.fanOverlay.rectOverride=nil;fan.fanOverlay.rectError=true;fan.fanOverlay:SetAnchorsAndPosition(0,1,0,1,24.5,32.5,84,428)')
+check('contains(fanLine("overlay_rect",1),"overlay_read=unknown_error") and fan.fanOverlay.bounds[6]==32.5 and probeOwner.probe.active')
+lua.execute('fan.fanOverlay.rectError=false;probeRectReader=fan.fanOverlay.getLocalRect;fan.fanOverlay.getLocalRect=nil;fan.fanOverlay:SetAnchorsAndPosition(0,1,0,1,24.5,32.5,84,428)')
+check('contains(fanLine("overlay_rect",1),"overlay_read=unknown_missing") and probeOwner.probe.active')
+lua.execute('fan.fanOverlay.getLocalRect=probeRectReader;fan.fanOverlay.rectOverride={0/0,0,1,1};fan.fanOverlay:SetAnchorsAndPosition(0,1,0,1,24.5,32.5,84,428)')
+check('contains(fanLine("overlay_rect",1),"overlay_read=unknown_invalid_numeric") and not contains(fanLine("overlay_rect",1),"overlay_l=0.000")')
+lua.execute('fan.fanOverlay.rectOverride={1e80,0,1,1};fan.fanOverlay:SetAnchorsAndPosition(0,1,0,1,24.5,32.5,84,428)')
+check('contains(fanLine("overlay_rect",1),"overlay_read=unknown_invalid_numeric") and not contains(fanLine("overlay_rect",1),"overlay_l=100000")')
+lua.execute('fan.fanOverlay.rectOverride=nil;fan.fanOverlay:setImage("mock-overwrite-material");fan.fanOverlay:SetRGBFromInt(0x445566);fan.fanOverlay:SetAlpha(0.6,17)')
+check('fan.fanOverlay.image=="mock-overwrite-material" and contains(fanLine("overlay_image",1),"same_adapter_argument=0") and contains(fanLine("overlay_image",1),"image_read=unknown") and contains(fanLine("overlay_alpha",1),"overlay_alpha_intent=0.600") and contains(fanLine("overlay_rgb",1),"overlay_rgb_intent=4478310.000")')
+lua.execute('fan.fanOverlay:setImage("white");fan:SetAlpha(0.4,29)')
+check('contains(fanLine("overlay_image",1),"same_adapter_argument=1") and contains(fanLine("parent_alpha",1),"alpha_intent=0.400") and contains(fanLine("parent_alpha",1),"alpha_read=unknown") and contains(fanLine("parent_alpha",1),"duration=29.000")')
+lua.execute(r'''
+nextFanShape=function(f)
+ f.nativeRectSetter=function(self,...) self.bounds={...};return "native-geometry",nil,19 end
+ f.nativeAlphaSetter=function(self,value,...) if value==99 then error("native-alpha-failure") end;self.alpha=value;return "native-alpha",nil,23 end
+ f.fanOverlay.SetAnchorsAndPosition=f.nativeRectSetter;f.SetAlpha=f.nativeAlphaSetter
+end
+returnFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=2})
+returnOwner=returnFan.__bo3FanBack
+retRectA,retRectB,retRectC=returnFan.fanOverlay:SetAnchorsAndPosition(0,1,0,1,1,2,3,4,71,nil,73)
+retAlphaA,retAlphaB,retAlphaC=returnFan:SetAlpha(0.2,83,nil,89)
+errorOK,errorMessage=pcall(function() returnFan:SetAlpha(99) end)
+borrowedTarget=node();borrowA,borrowB,borrowC=returnFan.SetAlpha(borrowedTarget,0.7)
+''')
+check('retRectA=="native-geometry" and retRectB==nil and retRectC==19 and returnFan.fanOverlay.bounds[9]==71 and returnFan.fanOverlay.bounds[10]==nil and returnFan.fanOverlay.bounds[11]==73')
+check('retAlphaA=="native-alpha" and retAlphaB==nil and retAlphaC==23 and returnFan.alpha==0.2 and not errorOK and contains(errorMessage,"native-alpha-failure") and returnOwner.probe.alphaIntent==0.2')
+check('borrowedTarget.alpha==0.7 and borrowA=="native-alpha" and borrowB==nil and borrowC==23 and returnOwner.probe.alphaIntent==0.2')
+lua.execute('nextFanShape=function(f) f.nativeAlpha=f.SetAlpha;f.SetAlpha=nil end;failedProbeFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=2});failedProbeOwner=failedProbeFan.__bo3FanBack')
+check('failedProbeOwner and not failedProbeOwner.probe.active and failedProbeOwner.probe.stopReason=="install_error" and failedProbeFan.fanCard.setImage==failedProbeOwner.probe.hooks[1].original and failedProbeFan.fanOverlay.SetAnchorsAndPosition==failedProbeOwner.probe.hooks[4].original and failedProbeFan.SetAlpha==nil and failedProbeFan.fanCard.image=="white"')
+lua.execute(r'''
+callbackFan=deck.fanCard2;callbackOwner=callbackFan.__bo3FanBack;callbackNative=callbackOwner.probe.hooks[4].original
+foreignFanSetter=function(self,...) return callbackNative(self,...) end
+callbackFan.fanOverlay.SetAnchorsAndPosition=foreignFanSetter
+existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()
+''')
+check('not callbackOwner.probe.active and callbackOwner.probe.stopReason=="setter_replaced" and callbackFan.fanOverlay.SetAnchorsAndPosition==foreignFanSetter and callbackFan.SetAlpha==callbackOwner.probe.hooks[7].original and callbackFan.fanCard.setImage==callbackOwner.probe.hooks[1].original')
+check('contains(fanLine("deck",2),"hook_stop=setter_replaced") and contains(fanLine("deck",2),"hooks=inactive") and not callbackOwner.retired')
+lua.execute('probeLogCount=#printed;existing.mainPlayerInfo._widget.PlayerCash:RefreshRows();existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
+check('#printed==probeLogCount')
+lua.execute('for i=1,45 do fan.fanOverlay:SetAnchorsAndPosition(0,1,0,1,24.5,32.5+i,84,428) end;fan.fanOverlay:SetAnchorsAndPosition(0,1,0,1,24.5,32.5,84,428);fanTraceCount=0;for _,line in ipairs(printed) do if contains(line,"[BO3 HUD] fan ") and contains(line," widget_seq=1 ") then fanTraceCount=fanTraceCount+1 end end')
+check('fanTraceCount==33 and contains(fanLine("suppressed",1),"reason=transition_limit") and fan.fanOverlay.bounds[6]==32.5 and probeOwner.probe.active')
 check('fan.fanOverlay.bounds[6]-fan.fanOverlay.bounds[5]==8 and fan.fanCard.bounds[6]-fan.fanCard.bounds[5]==192 and fan.children[1]==nativeFanImage and fan.children[2]==nativeFanOverlay and fan.children[3]==fan.__bo3FanBack.view')
 lua.execute(r'''
 fanOwner=fan.__bo3FanBack;nativeFanBounds=fan.bounds;fan:SetScale(-0.5)
@@ -483,10 +546,12 @@ function fanRoot(mutate)
 end
 function refreshFan(r) r.mainPlayerInfo._widget.PlayerCash:RefreshRows() end
 -- Added native/foreign children and field aliases are not an eligible schema.
-unknownFanRoot,unknownFan=fanRoot(function(f) f.extra=node();f:addElement(f.extra) end)
+unknownFanRoot,unknownFan=fanRoot(function(f) f.extra=node();f:addElement(f.extra);f.nativeAlpha=f.SetAlpha;f.nativeImage=f.fanCard.setImage end)
 badFanRoot,badFan=fanRoot(function(f) f.fanOverlay=f.fanCard end)
 ''')
 check('not unknownFan.__bo3FanBack and unknownFan.fanCard.image=="zm_wc_card_fan" and not unknownFan.extra.closed and unknownFanRoot.__bo3HudLayout and not badFan.__bo3FanBack and badFanRoot.__bo3HudLayout')
+lua.execute('unknownShapeTrace="";for _,line in ipairs(printed) do if contains(line,"[BO3 HUD] fan ") and contains(line,"stage=skipped reason=extra_child") then unknownShapeTrace=line end end')
+check('unknownFan.SetAlpha==unknownFan.nativeAlpha and unknownFan.fanCard.setImage==unknownFan.nativeImage and contains(unknownShapeTrace,"initial_writes_returned=0")')
 lua.execute('unknownFan:removeElement(unknownFan.extra);refreshFan(unknownFanRoot)')
 check('unknownFan.__bo3FanBack and unknownFan.fanCard.image=="white"')
 lua.execute(r'''
@@ -1171,6 +1236,9 @@ check('actionOwner.retired and actionOwner.view.closed and actionOwner.view:getP
 check('shutdownOwnedView.closed and shutdownOwnedView:getParent()==nil and shutdownOwnedView.__bo3ActionLifetime==nil and shutdownTagAction.__bo3ActionView==shutdownForeignTag and not shutdownForeignView.closed and shutdownForeignView.alpha==0.49 and shutdownForeignView:getParent()==shutdownForeignParent and nativeActionIntact(shutdownTagRoot)')
 check('shutdownFanView.closed and shutdownFanView:getParent()==nil and shutdownFanView.__bo3FanLifetime==nil and shutdownFan.fanCard.image=="zm_wc_card_fan" and shutdownFan.fanOverlay.image=="zm_wc_card_fan_overlay" and shutdownFan.__bo3FanBack==fanForgedTag and not fanForeignView.closed and fanForeignView.alpha==0.47')
 check('fanOwner.retired and fanOwner.view.closed and fan.fanCard==nativeFanImage and fan.fanOverlay==nativeFanOverlay and fan.alpha==1 and fan.zrotation==-25 and fan.scale==-0.5 and fan.fanOverlay.alpha==0.3 and fan.fanOverlay.color==0x263626 and #fan.children==2 and freshFan.alpha==0')
+check('not probeOwner.probe.active and fan.SetAlpha==probeHooks[7].original and fan.fanOverlay.setImage==probeHooks[3].original and fan.fanOverlay.SetAnchorsAndPosition==probeHooks[4].original and returnFan.SetAlpha==returnFan.nativeAlphaSetter and returnFan.fanOverlay.SetAnchorsAndPosition==returnFan.nativeRectSetter and callbackFan.fanOverlay.SetAnchorsAndPosition==foreignFanSetter')
+lua.execute('allFanRows=0;limitFanRows=0;for _,line in ipairs(printed) do if contains(line,"[BO3 HUD] fan ") then allFanRows=allFanRows+1;if contains(line,"reason=widget_limit") then limitFanRows=limitFanRows+1 end end end')
+check('allFanRows<=529 and limitFanRows==1 and shutdownFan.__bo3FanBack==fanForgedTag')
 lua.execute('roster[1].name="After shutdown";retiredTeam(existing.mainPlayerInfo._widget.PlayerCash)')
 check('hero.BO3Name.text=="Live beyond startup"')
 print(f"PASS {checks} authored Lua5.1 source controls; mocked UI/models only, no HKS/game/pixels")

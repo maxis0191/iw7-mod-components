@@ -3,9 +3,9 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.14.0 gives the four fan backs a dark surface
-with native depth tint confined to an inset stripe, plus checked ownership and
-restoration. The0.13 native-action underlay retains the actual localized title,
+weapons, quests and states. Content0.15.0 adds a bounded fan readback probe after
+actual0.14 did not show an evident visual change. The0.14 art, dimensions,
+ownership and restoration remain unchanged. The0.13 native-action underlay retains the actual localized title,
 progress, stencil and native visibility.
 The0.12 selected-card identity surface, native name/icon presentation and0.11
 angular charge panel are retained; the actual-player team layout remains Source-tested;
@@ -267,7 +267,7 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 ## Bounded binding diagnostics
 
 Since content0.8.0, `VERSION` is separate from `DIAGNOSTIC_VERSION=0.7.0`. Every
-current initialization emits `module version=0.7.0 content_version=0.14.0 instance=... initialized=1`.
+current initialization emits `module version=0.7.0 content_version=0.15.0 instance=... initialized=1`.
 Every versioned marker uses the diagnostic contract version. The content version
 is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
 the authorized content. A compatible authored skin needs no new Ops enum entry.
@@ -742,6 +742,94 @@ Next: exact-head private Source review/checks and merge, then a separate caller
 adoption decision. The frozen0.13 DiscoveryOnly package is unchanged. Any0.14
 HKS/pixel validation, co-op, other maps/resolutions and owner acceptance remain
 unqualified; this change grants no runtime/stock/launch authority.
+
+## Actual0.14 and Source0.15 fan readback probe
+
+The original1280x720 pre-action BMP from case20261015-144108-402-ee24194a
+is3686454B, SHA256
+C51EF882DDF3514CFBA3492E4DD80B3F20190C8BF5095362F31F13773BB2CA2C.
+Root, Ops and UI personally viewed it without cropping or retouching. The pale
+strip below the large Triangle remains visible, with no evident8px difference
+against actual0.13b original3F4401AFE515F924E4D06096E7D474E3768AB2399717ED0D4DAC66821C988E22.
+FORTUNE/EPIC, CARDS5/UNKNOWN and12/48 are readable. No active action bar or
+selected effect name/icon is qualified. The actual0.14 log contains the module
+content0.14/diagnostic0.7 and `factory_applied key=FateFanCard`; the factory was
+called. This does not establish that its exact shape was accepted or that the
+leaf setters held. The before/after binding records are not rendered-fan proof.
+This observation supersedes any expectation that Source0.14 already demonstrated
+a visible correction. It does not justify another art or dimension adjustment.
+
+A deterministic observability gap exists: `style_fan` returns its original
+widget even when preflight refuses it or its protected shape reader errors.
+The generic dispatcher emits `factory_applied` for that successful return.
+It cannot distinguish skipped, applied or retired fan adaptation. In the pinned
+MenuBuilder body914-920, BuildRegisteredType simply calls the registered
+constructor and returns it. The pinned FateCardWidget sets fanOverlay RGB/alpha
+and animates the four fan parents; it does not rewrite these leaves' image or
+local bounds. Its initial sequence writes alpha0 to all four fan parents.
+Actual ready-1 does not establish the current native sequence, alpha or the
+identity of the pale pixels. Target refusal, later writes and visibility/layer
+ownership remain hypotheses until the new observations exist.
+
+Source0.15 adds observation only, preserving the0.14 art and all model/input
+behavior. Optional `[BO3 HUD] fan` rows retain diagnostic0.7; the essential parser
+does not consume them. They distinguish exact preflight reasons, successful
+return from our initial writes, live owned refresh and retirement. Each row has
+a module-local widget sequence and module instance tag. A deck checkpoint
+reports the actual fanCard1..4 field relationship and last root sequence seen.
+The native parent's cardAnimation is reported only for the exact17 known
+initial/cycle/meterFull/noMoreCards names, otherwise unknown. These tags and
+checkpoints do not prove native VM identity or join cases across module epochs.
+
+The only native render-state getter used is existing `getLocalRect`, already
+used by the pinned retail HUD/action code. Its four current values are read in
+pcall for the parent and the captured backing/overlay leaves, with separate
+known/missing/error/invalid-numeric status. Finite values are rounded to three
+decimals; non-finite or oversized values stay unknown. Missing values never become zero or a
+successful match. Numeric rectangles can be unsettled before layout and are
+not transformed screen bounds, an applied-material readback or pixel evidence.
+The probe does not force layout. Rendered alpha and image remain explicitly
+unknown because no corresponding reader has been qualified.
+
+Seven transparent instance wrappers observe later calls: setImage and
+SetAnchorsAndPosition on each original leaf, overlay SetRGBFromInt/SetAlpha,
+and parent SetAlpha. They call the captured original first, preserve every
+argument and return including nil holes, and preserve original errors. Geometry
+arguments, native depth/alpha call intent and a material-argument reference
+comparison are distinct from actual geometry readback. Material reference
+inequality is not proof of different pixels; an alpha call is not sampled
+render alpha. Diagnostic failures cannot block the original callback.
+The initial Source setter calls are recorded only after they returned, before
+later native writes; this does not promote them to verified material state.
+
+Probe hooks are retained by the existing captured fan owner, add no timers or
+subscriptions, and retire before native restoration. Only still-installed
+wrappers are restored; a foreign setter is preserved and the remaining probe
+hooks stop at the next deck checkpoint. Unknown shapes install no wrappers.
+Foreign marker/field/parent/descendant and GC protections from0.14 remain.
+Records are weak-keyed without root/widget closures. At most16 widgets emit
+up to32 changed rows each, plus one suppression row per widget and one global
+widget-limit notice; identical rows are deduplicated per event. Later widgets
+install no probe wrappers. The cap limits observation, not native execution.
+
+Source controls pass261 Lua5.1 assertions, including actual-reader disagreement
+with setter intent, missing/error/non-finite readers, nil-hole returns, original
+errors, borrowed receivers, foreign setter preservation, deduplication,
+suppression and restoration. The two pinned retail bodies pass358 endpoint
+assertions, including real initial alpha calls and untouched sequence tables.
+These APIs, timings and nested widgets are mocked; no0.15 HKS or pixels exist.
+The external953B retail-body receipt SHA256 is
+2133FEA8E6272CB6C3783A26800867C6BE7A2C8CE78EA09078AC1D72F486A7B8.
+The existing Ops264 essential parser accepts16 actually printed mock rows,
+including six optional fan rows, at diagnostic0.7 and refuses0.6. This confirms
+compatibility only; ignored optional rows do not qualify a rendered fan.
+
+Next: exact-head private Source review/checks/merge, followed by a separately
+reviewed probe consumer and a distinct Root runtime decision. A future original
+frame and same-case fan rows must identify the actual widget, shape branch,
+initial writes, later calls and current rectangle status before any correction.
+Missing/suppressed evidence leaves the cause unknown. No Game, power, charge,
+navigation, FF, PE or native-build authority follows from this probe.
 
 ## Source references and implemented essentials
 

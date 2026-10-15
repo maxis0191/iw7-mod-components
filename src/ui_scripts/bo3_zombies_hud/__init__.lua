@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.14.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.15.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -16,6 +16,9 @@ local action_views = setmetatable({}, {__mode = "kv"})
 local retired_actions = setmetatable({}, {__mode = "k"})
 local fan_views = setmetatable({}, {__mode = "kv"})
 local retired_fans = setmetatable({}, {__mode = "k"})
+local fan_diagnostics = setmetatable({}, {__mode = "k"})
+local fan_diagnostic_count = 0
+local fan_diagnostic_limit = false
 state.identityDiagnostics = setmetatable({}, {__mode = "k"})
 state.nextIdentityDiagnostic = 0
 state.cardDiagnostics = setmetatable({}, {__mode = "k"})
@@ -254,26 +257,159 @@ local function reparent(leaf, parent)
     if previous then previous:removeElement(leaf) end
     parent:addElement(leaf)
 end
+local function fan_trace(self, index, event, reason, fields)
+    local record = fan_diagnostics[self]
+    if not record then
+        if fan_diagnostic_count >= 16 then
+            if not fan_diagnostic_limit then
+                fan_diagnostic_limit = true
+                print("[BO3 HUD] fan version=" .. DIAGNOSTIC_VERSION .. " widget_seq=0 controller=unknown stage=suppressed"
+                    .. " reason=widget_limit pixels=unverified instance=" .. state.instance)
+            end
+            return
+        end
+        fan_diagnostic_count = fan_diagnostic_count + 1
+        record = {sequence=fan_diagnostic_count, count=0, signatures={}};fan_diagnostics[self] = record
+    end
+    fields = fields or {}
+    local keys = {};for key in pairs(fields) do keys[#keys + 1] = key end;table.sort(keys)
+    local suffix = ""
+    for _, key in ipairs(keys) do suffix = suffix .. " " .. key .. "=" .. token(fields[key]) end
+    local signature = reason .. suffix
+    if record.signatures[event] == signature or record.count >= 33 then return end
+    record.signatures[event] = signature;record.count = record.count + 1
+    if record.count == 33 then event, reason, suffix = "suppressed", "transition_limit", "" end
+    print("[BO3 HUD] fan version=" .. DIAGNOSTIC_VERSION .. " widget_seq=" .. record.sequence
+        .. " controller=" .. token(index) .. " stage=" .. event .. " reason=" .. reason .. suffix
+        .. " pixels=unverified instance=" .. state.instance)
+end
+local function fan_number(value)
+    if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then return "unknown" end
+    local result = string.format("%.3f", value)
+    return #result <= 32 and result or "unknown"
+end
+local fan_phases = {initial=true, noMoreCards=true}
+for count=1,5 do
+    local suffix = count == 1 and "Card" or "Cards"
+    for _, prefix in ipairs({"initial", "cardCycle", "meterFull"}) do fan_phases[prefix .. count .. suffix] = true end
+end
+local function fan_rect(node, fields, prefix)
+    local status = "missing"
+    local ok, left, top, right, bottom = pcall(function()
+        if not node or not node.getLocalRect then return end
+        status = "error";return node:getLocalRect()
+    end)
+    if ok and fan_number(left) ~= "unknown" and fan_number(top) ~= "unknown"
+        and fan_number(right) ~= "unknown" and fan_number(bottom) ~= "unknown" then
+        status = "known"
+        fields[prefix .. "_l"], fields[prefix .. "_t"] = fan_number(left), fan_number(top)
+        fields[prefix .. "_r"], fields[prefix .. "_b"] = fan_number(right), fan_number(bottom)
+    elseif ok and status ~= "missing" then status = "invalid_numeric" end
+    fields[prefix .. "_read"] = status == "known" and "known" or "unknown_" .. status
+end
+local function fan_sample(self, index, owner, context, event, reason, extra)
+    -- Diagnostics may fail independently; never turn a missing reader into
+    -- evidence of zero alpha, default geometry or successful material state.
+    local ok = pcall(function()
+        local fields = extra or {}
+        local probe = owner and owner.probe
+        local slot = context and context.slot or probe and probe.slot
+        local parent = self.getParent and self:getParent()
+        fields.slot = slot or "unbound"
+        fields.root_seq_seen = context and context.root_seq or probe and probe.root_seq or "unknown"
+        fields.slot_match = slot and parent and parent["fanCard" .. slot] == self and "1" or slot and "0" or "unknown"
+        local phase = parent and parent.cardAnimation
+        fields.native_phase = type(phase) == "string" and fan_phases[phase] and phase or "unknown"
+        fields.back_id = self.fanCard and self.fanCard.id == "fanCard" and "1" or "0"
+        fields.overlay_id = self.fanOverlay and self.fanOverlay.id == "fanOverlay" and "1" or "0"
+        fields.back_type, fields.overlay_type = type(self.fanCard), type(self.fanOverlay)
+        fields.alpha_read, fields.image_read = "unknown", "unknown"
+        fields.alpha_intent = probe and fan_number(probe.alphaIntent) or "unknown"
+        fields.overlay_alpha_intent = probe and fan_number(probe.overlayAlphaIntent) or "unknown"
+        fields.overlay_rgb_intent = probe and fan_number(probe.overlayRGBIntent) or "unknown"
+        fields.hooks = probe and probe.active and "active" or "inactive"
+        fields.hook_stop = probe and probe.stopReason or "none"
+        fields.initial_writes_returned = owner and "1" or "0"
+        fan_rect(self, fields, "parent")
+        if fields.back_id == "1" and (not owner or self.fanCard == owner.back) then fan_rect(self.fanCard, fields, "back")
+        else fields.back_read = "unknown_field" end
+        if fields.overlay_id == "1" and (not owner or self.fanOverlay == owner.overlay) then fan_rect(self.fanOverlay, fields, "overlay")
+        else fields.overlay_read = "unknown_field" end
+        fan_trace(self, index, event, reason, fields)
+    end)
+    if not ok then pcall(fan_trace, self, index, event, reason, {readback="unknown_error"}) end
+end
+local function stop_fan_probe(owner, reason)
+    local probe = owner.probe
+    if not probe then return end
+    probe.active = false
+    probe.stopReason = probe.stopReason or reason
+    for _, hook in ipairs(probe.hooks) do
+        pcall(function() if hook.node[hook.key] == hook.wrapper then hook.node[hook.key] = hook.original end end)
+    end
+end
+local function install_fan_probe(self, owner)
+    local probe = {active=true, hooks={}};owner.probe = probe
+    local function pack(...) return {n=select("#", ...), ...} end
+    local ok = pcall(function()
+        for _, spec in ipairs({{owner.back,"setImage","back_image"},{owner.back,"SetAnchorsAndPosition","back_rect"},
+            {owner.overlay,"setImage","overlay_image"},{owner.overlay,"SetAnchorsAndPosition","overlay_rect"},
+            {owner.overlay,"SetRGBFromInt","overlay_rgb"},{owner.overlay,"SetAlpha","overlay_alpha"},
+            {self,"SetAlpha","parent_alpha"}}) do
+            local node, key, event = spec[1], spec[2], spec[3]
+            local original = node[key];assert(original, "Probe setter missing")
+            local hook = {node=node, key=key, original=original}
+            hook.wrapper = function(target, ...)
+                local args = pack(...)
+                local results = pack(original(target, ...))
+                if probe.active and target == node then
+                    pcall(function()
+                        local fields = {origin="later_call"}
+                        if event == "parent_alpha" or event == "overlay_alpha" then
+                            if event == "parent_alpha" then probe.alphaIntent = args[1] else probe.overlayAlphaIntent = args[1] end
+                            fields.intent, fields.duration = fan_number(args[1]), fan_number(args[2])
+                        elseif event == "overlay_rgb" then probe.overlayRGBIntent = args[1];fields.intent = fan_number(args[1])
+                        elseif key == "SetAnchorsAndPosition" then
+                            fields.intent_l, fields.intent_r = fan_number(args[5]), fan_number(args[6])
+                            fields.intent_t, fields.intent_b = fan_number(args[7]), fan_number(args[8])
+                        else
+                            fields.image_argument_type = type(args[1])
+                            fields.same_adapter_argument = args[1] == (node == owner.back and owner.backMaterial or owner.overlayMaterial) and "1" or "0"
+                        end
+                        fan_sample(self, owner.index, owner, nil, event, "setter_returned", fields)
+                    end)
+                end
+                return unpack(results, 1, results.n)
+            end
+            probe.hooks[#probe.hooks + 1] = hook;node[key] = hook.wrapper
+        end
+    end)
+    if not ok then stop_fan_probe(owner, "install_error") end
+    return ok
+end
 local function fan_shape(self, owner)
     local back, overlay = self.fanCard, self.fanOverlay
-    if not back or not overlay or back == overlay or back.id ~= "fanCard" or overlay.id ~= "fanOverlay"
-        or not self.getFirstChild or not back.getParent or not overlay.getParent
+    if not back or not overlay or back == overlay then return false, "fields" end
+    if back.id ~= "fanCard" or overlay.id ~= "fanOverlay" then return false, "leaf_ids" end
+    if not self.getFirstChild or not back.getParent or not overlay.getParent
         or not back.getNextSibling or not overlay.getNextSibling
-        or back:getParent() ~= self or overlay:getParent() ~= self
-        or self:getFirstChild() ~= back or back:getNextSibling() ~= overlay
-        or back:getFirstChild() or overlay:getFirstChild() then return false end
-    if not owner then return overlay:getNextSibling() == nil end
+        or not back.getFirstChild or not overlay.getFirstChild then return false, "tree_api" end
+    if back:getParent() ~= self or overlay:getParent() ~= self then return false, "leaf_parent" end
+    if self:getFirstChild() ~= back or back:getNextSibling() ~= overlay then return false, "leaf_order" end
+    if back:getFirstChild() or overlay:getFirstChild() then return false, "leaf_children" end
+    if not owner then return overlay:getNextSibling() == nil, "extra_child" end
     if back ~= owner.back or overlay ~= owner.overlay or overlay:getNextSibling() ~= owner.view
-        or owner.view:getParent() ~= self or owner.view:getNextSibling() then return false end
+        or owner.view:getParent() ~= self or owner.view:getNextSibling() then return false, "view_ownership" end
     local child = owner.view:getFirstChild()
     for _, leaf in ipairs(owner.rims) do
-        if child ~= leaf or leaf:getParent() ~= owner.view or leaf:getFirstChild() then return false end
+        if child ~= leaf or leaf:getParent() ~= owner.view or leaf:getFirstChild() then return false, "rim_ownership" end
         child = child:getNextSibling()
     end
-    return child == nil
+    return child == nil, "extra_rim"
 end
-local function retire_fan(self, owner)
+local function retire_fan(self, owner, reason)
     if fan_views[self] ~= owner or owner.retired then return end
+    stop_fan_probe(owner, reason or "closed")
     owner.retired = true;retired_fans[self] = true
     -- Restore only captured native leaves still held by this exact widget.
     -- Never alter a replacement field or a leaf adopted by another parent.
@@ -297,22 +433,37 @@ local function retire_fan(self, owner)
         if not owner.view:getFirstChild() then self:removeElement(owner.view);owner.view:close() end
     end
     owner.view.__bo3FanLifetime = nil
+    fan_sample(self, owner.index, owner, nil, "retired", reason or "closed")
 end
-local function style_fan(self, index)
+local function style_fan(self, index, context)
     if not self then return self end
     local owner = fan_views[self]
     if owner then
         if owner.retired then return self end
-        local ok, intact = pcall(fan_shape, self, owner)
+        local ok, intact, reason = pcall(fan_shape, self, owner)
         if state.closed or self.__bo3FanBack ~= owner or owner.index ~= index or not ok or not intact then
-            retire_fan(self, owner)
+            retire_fan(self, owner, state.closed and "closed" or self.__bo3FanBack ~= owner and "marker"
+                or owner.index ~= index and "controller" or not ok and "shape_error" or reason)
+        else
+            if owner.probe then
+                owner.probe.slot = context and context.slot or owner.probe.slot
+                owner.probe.root_seq = context and context.root_seq or owner.probe.root_seq
+                for _, hook in ipairs(owner.probe.hooks) do
+                    if hook.node[hook.key] ~= hook.wrapper then stop_fan_probe(owner, "setter_replaced");break end
+                end
+            end
+            fan_sample(self, index, owner, context, context and context.stage or "refresh", "owned")
         end
         return self
     end
-    local ok, intact = pcall(fan_shape, self)
+    local ok, intact, reason = pcall(fan_shape, self)
+    local valid_index = type(index) == "number" and index >= 0 and index <= 3 and index == math.floor(index)
     if state.closed or retired_fans[self] or self.__bo3FanBack ~= nil
-        or type(index) ~= "number" or index < 0 or index > 3 or index ~= math.floor(index)
-        or not ok or not intact then return self end
+        or not valid_index or not ok or not intact then
+        reason = state.closed and "closed" or retired_fans[self] and "retired" or self.__bo3FanBack ~= nil and "foreign_marker"
+            or not valid_index and "controller" or not ok and "shape_error" or reason
+        fan_sample(self, index, nil, context, "skipped", reason);return self
+    end
     local view = panel("BO3FanRim", 237, 332)
     local rims = {
         bar(view, "BO3FanTop", 20.5, 212.5, 80, 84, 0xA49E8B),
@@ -321,17 +472,23 @@ local function style_fan(self, index)
         bar(view, "BO3FanRight", 208.5, 212.5, 84, 428, 0xA49E8B),
         bar(view, "BO3FanRule", 76.5, 156.5, 254, 258, 0xA49E8B)
     }
-    self.fanCard:setImage(RegisterMaterial("white"), 0)
+    local back_material, overlay_material = RegisterMaterial("white"), RegisterMaterial("white")
+    self.fanCard:setImage(back_material, 0)
     self.fanCard:SetRGBFromInt(0x171713, 0)
-    self.fanOverlay:setImage(RegisterMaterial("white"), 0)
+    self.fanOverlay:setImage(overlay_material, 0)
     rect(self.fanCard, 20.5, 212.5, 80, 432)
     -- Keep native depth tint/alpha on a narrow inset, rather than washing the
     -- entire dark back gray. All count/selection/empty poses stay on the parent.
     rect(self.fanOverlay, 24.5, 32.5, 84, 428)
     self:addElement(view)
-    owner = {view=view, rims=rims, back=self.fanCard, overlay=self.fanOverlay, index=index}
+    owner = {view=view, rims=rims, back=self.fanCard, overlay=self.fanOverlay, index=index,
+        backMaterial=back_material, overlayMaterial=overlay_material}
     view.__bo3FanLifetime = owner
     self.__bo3FanBack = owner;fan_views[self] = owner
+    local hooked
+    if fan_diagnostics[self] or fan_diagnostic_count < 16 then hooked = install_fan_probe(self, owner) end
+    if owner.probe then owner.probe.slot = context and context.slot;owner.probe.root_seq = context and context.root_seq end
+    fan_sample(self, index, owner, context, "applied", hooked and "writes_returned" or owner.probe and "probe_hook_error" or "probe_limit")
     return self
 end
 local identity_keys = {"name", "icon", "backing", "rarity"}
@@ -690,7 +847,7 @@ local function style_card_core(self, index)
     owner.update()
     return self
 end
-local function adapt_bottom(original, menu, args)
+local function adapt_bottom(original, menu, args, root_context)
     local self = remember(original(menu, args))
     assert(self and self.ZomWeaponInfo, "Actual IW7 ammo container required")
     self.ZomWeaponInfo:SetYRotation(0, 0)
@@ -708,7 +865,7 @@ local function adapt_bottom(original, menu, args)
         self.FateCardWidget:SetAnchorsAndPosition(1, 0, 1, 0, scale(-420), scale(-167), scale(-695), scale(-306))
         for i = 1, 4 do
             local fan = self.FateCardWidget["fanCard" .. i]
-            if fan then style_fan(fan, controller_index(self, args)) end
+            if fan then style_fan(fan, controller_index(self, args), {stage="deck", slot=i, root_seq=root_context and root_context.root_seq}) end
         end
         if self.FateCardWidget.FateCardOnDeck then
             style_card_identity(self.FateCardWidget.FateCardOnDeck, controller_index(self, args))
@@ -1065,7 +1222,7 @@ local function adapt_root(root)
     root.mainPlayerInfo:SetZRotation(0, 0)
     local bottom = unwrap(root.wonderCard)
     assert(bottom and bottom.ZomWeaponInfo and bottom.ZomWeaponInfo.weaponinfoZM, "Weapon container leaf required")
-    adapt_bottom(function() return bottom end, nil, {controllerIndex=root.controllerIndex})
+    adapt_bottom(function() return bottom end, nil, {controllerIndex=root.controllerIndex}, {root_seq=state.roots[root]})
     style_ammo(bottom.ZomWeaponInfo.weaponinfoZM)
     style_status(root)
     -- Root's stock per-map visibility lists still own all these original fields.
@@ -1099,7 +1256,7 @@ local replacements = {
     weaponinfoZM = function(_, menu, args) return build_ammo(menu, args) end,
     CPPerkIcon = function(_, menu, args) return build_perk(menu, args) end,
     FateFanCard = function(original, menu, args)
-        return style_fan(remember(original(menu, args)), controller_index(menu, args))
+        return style_fan(remember(original(menu, args)), controller_index(menu, args), {stage="factory"})
     end,
     FateCardOnDeck = function(original, menu, args)
         local self = remember(original(menu, args))
