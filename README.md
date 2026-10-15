@@ -40,6 +40,16 @@ gates. Feature experiments remain paused until the owner's explicit GO.
 
 ## Evidence and rollback
 
+The base-client lifecycle handles a missing PID lookup by waiting at most one
+second on its already retained, ID-correlated original process handle. Only a
+signaled handle establishes exit; a timeout, unavailable handle, identity
+conflict or other lookup error keeps restoration blocked. Live image, creation
+and executable-hash checks remain in force. Vacancy and transaction checks still
+precede restoration and disposal. The source regression injects a missing lookup
+before a real owned PowerShell child signals, then verifies profile restoration;
+negative controls retain unknown, occupied and conflicting states. This hardens
+cleanup timing and does not identify the cause of a preceding game crash.
+
 Historical documents and pinned plans retain their original bytes and claims.
 Use the recorded original checkout/commit for a frozen experiment. A moved or
 rebuilt source needs a new plan and qualification. Failed results remain failed.

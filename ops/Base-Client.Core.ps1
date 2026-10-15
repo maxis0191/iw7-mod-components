@@ -50,9 +50,11 @@ function Assert-IW7BaseIdentity($Record,$OwnedHandle=$null) {
     if ($OwnedHandle -and $OwnedHandle.HasExited) { return }
     try { $process=Get-Process -Id $Record.PID -ErrorAction Stop }
     catch {
-        # A signaled original kernel handle proves exit even when its PID has
-        # vanished between the first wait and Get-Process. Other errors remain.
-        if ($OwnedHandle -and $OwnedHandle.HasExited -and $_.FullyQualifiedErrorId -like 'NoProcessFoundForGivenId*') { return }
+        # PID lookup may disappear before the original kernel object signals.
+        # Only this retained, ID-correlated handle can prove terminal exit.
+        # A false/failed bounded wait or any other lookup error stays unknown.
+        if ($OwnedHandle -and $_.FullyQualifiedErrorId -like 'NoProcessFoundForGivenId*' -and
+            ($OwnedHandle.HasExited -or $OwnedHandle.WaitForExit(1000))) { return }
         throw
     }
     try {
