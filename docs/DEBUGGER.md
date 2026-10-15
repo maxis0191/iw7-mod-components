@@ -60,6 +60,47 @@ additional image/PDB/DLL/dump access, analysis replay, attach, game launch,
 capture, stack reconstruction or game fix is authorized by this checkpoint.
 A new exact capsule review and distinct Analysis GO are required for execution.
 
+### D2: diagnostic failure stage observed, analysis still Refused
+
+The separately authorized D2 invocation on 2026-10-15 remains `Refused`.
+It records `Stage=Resolve.Native.SymSetOptions`, exception type
+`System.ArgumentNullException`, `HResult=-2147467261`, parameter `path1`, and
+the same error message as C. Its untruncated managed exception stack contains
+`PowerShellAssemblyLoadContext.NativeDllHandler` and
+`Path.Combine(path1, path2, path3)` while resolving the first P/Invoke.
+`InputPdbNonEmpty=true`, `HelperAssemblyLocationEmpty=true`, and
+`LastNativeCallReturned=false` were observed. This localizes this D2 tool failure;
+it does not prove why the underlying native library load failed, establish C's
+unrecorded failure stage, or explain the earlier client018 crash.
+
+`IdentityMatched`, `SymbolFound`, `LineFound`, dump qualification, actual runtime
+layout/source attribution, game cause and reconstructed game stack remain false.
+The exact WER path was missing/unavailable. `CleanupConfirmed=true` is the
+diagnostic helper's cleanup result, separate from analytical qualification.
+
+The same original context/state/capsule and NativeJob owner reached known
+closure: all 25 original SafeFileHandles closed, inputs reverified, original
+lease/token absent, clock stopped, `CanExit=true`, and actual original terminal
+exit 0. Root independently verified the original terminal completion, receipts,
+three original process generations absent and games/compiler/VCTIP/leases empty
+at 20:31:09.0526693 UTC before releasing its coordination slot. No original
+terminal was repolled, no analysis replayed and no opaque input reread after
+release. A metadata helper rejected a duplicated hash character before writing
+closure evidence; an additive helper corrected that transcription while the
+original proof and analytical outputs stayed unchanged.
+
+| D2 receipt | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `tool-result.json` | 2556 | `85CB72EF344B8079E871E0AF42995C51B52D8FD7E868A751D79738C45CA39A25` |
+| `actual-original-preexit.local.json` | 3050 | `29B90B7AAE46D3C1A304BF0FE0AEA7A1F9D957117BDC2541AC5F8FC69D04996F` |
+| `actual-independent-closure.local.json` | 2042 | `EE4FBAEA26F4789CBFC5F601C36F83EB3380180BB7E9D887AF5613B26AD15900` |
+| `actual-closed-review.local.json` | 5508 | `64F796CCC11EE81E797186E02D9F0D8B0BB67F09A0FEF63F0A49B749D8D8FD65` |
+
+D2 capsule: 17542 bytes, SHA-256
+`E301114FFCCC11FAA7ECE62D0FEBD5972F8947F55A13ABADE90AC8AB1A15625C`.
+D was not executed; C/D/D2 and results remain frozen. The next loader correction
+is source-only until a new exact capsule review and distinct Analysis GO.
+
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
 Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
