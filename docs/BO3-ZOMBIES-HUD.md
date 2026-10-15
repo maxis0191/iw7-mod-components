@@ -3,8 +3,8 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Version0.5.0 adds native equipment, power-up,
-down/revive and map-inventory arrangement beyond the frozen0.4 compact deck;
+weapons, quests and states. Version0.6.0 adds original fan-card backplates to
+the equipment/status/inventory layout observed in the frozen0.5/V5 case;
 the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
@@ -152,20 +152,79 @@ asset generation occurred for this lot.
 | Afterlife/self-revive | Shared title font/color, original full-width canvas | Soul progress, token/arcade models, message/controller glyphs, Bootup/ShowTokenMessage and native geometry |
 | Quest/Rave/chi/element/inventory | Remaining original MainPlayerInfo group moves to an inventory shelf away from hero cash; DLC3 element label enlarged for the group scale | All original children, hierarchy, per-map masks/images/text, fuse/inventory alphas, Rave fill and other callbacks; no synthetic inventory |
 
-The inventory parent retains its282x219 declared size at left650/right932,
+The inventory parent uses a282x219 target size at left650/right932,
 bottom-260/-41 within its original container, with scale delta-0.25. Portrait and
 cash are already separate original objects in the hero. This moves the whole
 native quest group, including the Spaceland ticket/souvenir that was too close
 under cash in V4; unknown children are kept with it. It does not reparent those
 quest leaves or overwrite their masks/alpha. DLC3's actual element text remains
-model-owned. All positions/scales are Source proposals until new native frames
-verify readable quantities, crafted control strings, inventory, status overlap,
-safe area and every map/state. The Source fixtures exercise five class aliases
+model-owned. Native DLC2 originally declares282x196; the adapter explicitly sets
+the common target. V5 below qualifies only its observed solo states. Other
+positions/scales remain Source proposals pending readable crafted controls,
+inventory/status overlap, safe area and every map/state. The fixtures exercise five class aliases
 and controller indices0..3, not five real map runs or four-player acceptance.
+
+## V5 observation and next art separation
+
+The frozen UI0.5/native3d3b + Ops262 case
+`20261015-021207-104-cdd2c7bc` has a durable
+[V5 server record](https://github.com/maxis0191/iw7-paris-server/pull/263).
+Root, Ops55 and the UI owner viewed all three original1280x720 BMPs. They show
+a smaller deck, one25000 total, a separated ticket+0, visible DC star, one grenade
+with count4, and clip/reserve12/48 to11/48 to12/47. Actual interaction text/key/
+price and crosshair remain visible. The transient white circle/blue500 matches
+the native interactionNotification cost widget by Source and pixels; its exact
+runtime widget/entity/model was not captured. It qualifies no power-up state.
+Ops/Root closed and restored the case; the UI review alone is pixel evidence.
+Secondary/crafted/Mule/infinite, power-up/expiry, down/revive, other maps, real
+cooperative/controller and owner/full-HUD acceptance remain open in issue260.
+
+The next step is a small art-layer adaptation. Mechanical information requires
+equivalent identity and state cues; it does not require IW7-specific pixels.
+Current native artwork is the fallback until its replacement preserves those
+meanings. Six further pinned text references (28971 bytes, external blob/SHA
+receipt) distinguish these roles:
+
+| Visible layer | Required information/behavior | Safe next surface and boundary |
+| --- | --- | --- |
+| Perk images | Actual data.icon, list/order/grant/loss and perk identity | Authored frames now; replace each icon only with a verified IW7 identity-to-adaptation map; keep unknown icons native |
+| Selected card | Runtime consumableDeckSelectName/Icon/Backing and native selection/activation | Preserve name/icon and dynamic backing until each role/value is mapped; add an authored frame under the same parent |
+| Fan backs | Two static images fanCard/fanOverlay; parent animation carries count/depth/pose | Source0.6 replaces their art with authored flat backs/rims, retaining the same image objects, parent pose/count/selection and native overlay depth tint/alpha |
+| Charge and ready effects | radialAlphaLarge.circleFill uses dpadUpFillPercent; native ready/glow/arrow behavior | Keep progress/mask/segment materials and callbacks; adapt the surrounding frame without covering the meter or glyphs |
+| Demon faces | Jaw Chomp reacts to fill; sadDevil signals zero cards; head becomes Mephistopheles in DLC4 mephBattle | A neutral core needs a real remaining count and equivalent charge/empty/ready cues; keep the native boss face and fall back on unknown state |
+| Active-card effects | Runtime icon/name/fill and actual lifetime | Preserve identity and radial progress; change a surrounding frame only |
+
+Source0.6 implements that first surface-only step. The two original fan image
+objects use the existing white material, with a dark backing and five original
+rim/rule rectangles. The inset20.5/212.5/80/432 stays within their original
+quad-11.5/244.5/0/512; its center is retained. Parent geometry/rotation/alpha and
+all native card-count/selection animations stay unchanged. The native overlay's
+depth tint/alpha is not overwritten. New factories and existing four fan widgets
+are adapted once, with no duplicate rim nodes on subsequent root polls.
+
+The demon is intentionally unchanged in this small lot; its appearance remains
+part of the replacement objective. An unconditional hide would remove meaningful
+empty/boss feedback. The next core should express those states using a new
+presentation: actual remaining count, existing charge and ready feedback, and
+an explicit known boss indicator. A normal-state core can initially fall back
+to native boss/unknown-state presentation until that alternative is validated.
+Source controls should check those real feed transitions and fallback ownership;
+original HKS frames must then check the visible footprint/readability. Perk
+identity remapping follows an actual material inventory, without guessing BO3
+equivalence for IW7 mechanics. Equipment, power-ups, revive, quests and controller
+paths remain untouched by this proposed art work.
+
+No bitmap gap is demonstrated by this inventory. Flat frames and backs use
+the existing native white material and authored Lua shapes. A later generated
+bitmap would be an original BO3-inspired adaptation, never an authentic BO3
+texture; a design preview would not count as an in-game capture. Source0.6 has
+no HKS/raster proof yet and authorizes no new Game/CPP/FF operation. Its authored
+backplates replace generic IW7 fan art; perk identity images, selected-card art
+and the stateful demon remain native pending the next mapped adaptation.
 
 ## Bounded binding diagnostics
 
-Every module initialization emits `module version=0.5.0 instance=... initialized=1`.
+Every module initialization emits `module version=0.6.0 instance=... initialized=1`.
 The alphanumeric instance tag is local to the module object; it is not a globally
 unique native VM identifier. Reset the parser epoch at every module delimiter,
 even if an address/tag is reused. All later markers carry the same instance.
@@ -186,10 +245,14 @@ even if an address/tag is reused. All later markers carry the same instance.
 
 Markers emit only on state changes; startup polling remains bounded. No player
 names, balances, GUIDs or credentials are emitted by these diagnostics.
-The grammar is unchanged from0.2.0. The current server-owned caller allowlist
-supports0.2.0/0.3.0, with default0.2.0. It must reject this new0.5.0 tuple until a
-separate reviewed Ops extension explicitly permits it. V3/V4 and Source0.4 remain frozen;
-this Source follow-up authorizes no immediate capsule or Game replay.
+The grammar is unchanged from0.2.0.
+[Ops262](https://github.com/maxis0191/iw7-paris-server/pull/262), merge442130b5,
+extends the exact-per-case allowlist to0.2.0/0.3.0/0.4.0/0.5.0 and retains
+default0.2.0; cross-version markers are refused. The added factory key
+ZomPowerupIcon does not certify placement. Source0.6 adds only the factory-key
+value FateFanCard, with unchanged marker grammar; Ops262 intentionally does not
+accept this new version until a separately reviewed extension. V3/V4, Source0.4
+and V5 stay frozen, including every operational input and original frame.
 
 ## Source references and implemented essentials
 
@@ -259,7 +322,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-130 source controls cover default-off/private opt-in/frontend/MP, controller1,
+134 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -290,6 +353,12 @@ Self-revive token messages and full-width progress remain native. Five mocked
 root/player aliases retain fuse/inventory image/alpha, Rave fill and DLC3 element
 text after the inventory group moves; these are Source-only callbacks, not real
 damage/revive/controller/cooperative/map or rendered layout evidence.
+Source0.6 adds four focused fan controls: original image-object identity,
+unchanged native parent alpha/rotation and overlay depth/alpha after repeated
+polls, no duplicate rim nodes, a fresh hidden factory remaining hidden, and
+retained selected-card/fire/arrow state. These are mocked Source controls;
+actual card footprint, depth, all-count animation and contrast need new original
+frames when Root authorizes a suitable larger case.
 Root review of candidate3706 found that the failure cache survived a successful
 recovery, suppressing a recurrence of the same fault and leaving stale external
 bind evidence. Success now resets that failure key. The same-root/sequence
