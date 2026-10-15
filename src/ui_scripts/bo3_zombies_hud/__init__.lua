@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.17.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.18.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -10,6 +10,9 @@ state.roots = setmetatable({}, {__mode = "k"})
 state.refreshHooks = setmetatable({}, {__mode = "kv"})
 state.cardCores = setmetatable({}, {__mode = "kv"})
 state.cardIdentities = setmetatable({}, {__mode = "kv"})
+local card_cores = setmetatable({}, {__mode = "kv"})
+local card_decor = setmetatable({}, {__mode = "kv"})
+local retired_decor = setmetatable({}, {__mode = "k"})
 -- Local authority, independent of the replaceable widget marker. A live owned
 -- view retains its own record; the weak registry cannot retain dead HUD trees.
 local action_views = setmetatable({}, {__mode = "kv"})
@@ -582,14 +585,11 @@ local function style_card_identity(self, index)
     end
     local mask, view = panel("BO3NativeSelectedBacking", 155, 203), panel("BO3SelectedIdentity", 155, 203)
     mask:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0);view:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0)
-    bar(view, "BO3SelectedSurface", 0, 177, -106, 164, 0x171713)
-    bar(view, "BO3SelectedTop", 0, 177, -106, -103, 0xA49E8B)
-    bar(view, "BO3SelectedLeft", 0, 3, -103, 164, 0xA49E8B)
-    bar(view, "BO3SelectedRight", 174, 177, -103, 164, 0xA49E8B)
-    bar(view, "BO3SelectedBottom", 3, 174, 161, 164, 0xA49E8B)
-    bar(view, "BO3SelectedHeaderRule", 8, 169, -39, -37, 0xA49E8B)
-    local family = text(view, "BO3SelectedFamily", 28, 8, 169, -100, -70)
-    local rarity = text(view, "BO3SelectedRarity", 24, 8, 169, -68, -40, 0xA49E8B)
+    bar(view, "BO3SelectedSurface", 0, 177, -75, -37, 0x171713)
+    bar(view, "BO3SelectedTop", 0, 177, -75, -73, 0xA49E8B)
+    bar(view, "BO3SelectedBottom", 0, 177, -39, -37, 0xA49E8B)
+    local family = text(view, "BO3SelectedFamily", 20, 8, 96, -68, -44)
+    local rarity = text(view, "BO3SelectedRarity", 14, 100, 169, -65, -47, 0xA49E8B)
     family:SetAlignment(LUI.Alignment.Center);rarity:SetAlignment(LUI.Alignment.Center)
     -- The new header is outside both native name/icon position variants.
     -- Keep their objects, fonts, bounds, alpha/color sequences and field refs.
@@ -718,13 +718,13 @@ local function build_card_layers(self, faces, view)
         view:addElement(presentation)
         -- Original angular frame/rail, made from the existing white material.
         -- Native ready/refill glows remain visible; no opaque cover is added.
-        bar(presentation, "BO3GaugeTopLeft", -19.5, 20.5, 14, 18, 0xA49E8B)
-        bar(presentation, "BO3GaugeTopRight", 148.5, 188.5, 14, 18, 0xA49E8B)
-        bar(presentation, "BO3GaugeLeft", -19.5, -15.5, 18, 162, 0xA49E8B)
-        bar(presentation, "BO3GaugeRight", 184.5, 188.5, 18, 162, 0xA49E8B)
-        bar(presentation, "BO3GaugeBottom", -19.5, 188.5, 162, 166, 0xA49E8B)
-        bar(presentation, "BO3ChargeTrack", 2.5, 166.5, 124, 136, 0x35352F)
-        local fill = bar(presentation, "BO3ChargeFill", 2.5, 2.5, 124, 136, 0xA49E8B)
+        bar(presentation, "BO3GaugeTopLeft", -19.5, 20.5, -8, -5, 0xA49E8B)
+        bar(presentation, "BO3GaugeTopRight", 148.5, 188.5, -8, -5, 0xA49E8B)
+        bar(presentation, "BO3GaugeLeft", -19.5, -16.5, -5, 137, 0xA49E8B)
+        bar(presentation, "BO3GaugeRight", 185.5, 188.5, -5, 137, 0xA49E8B)
+        bar(presentation, "BO3GaugeBottom", -19.5, 188.5, 137, 140, 0xA49E8B)
+        bar(presentation, "BO3ChargeTrack", 2.5, 166.5, 116, 124, 0x35352F)
+        local fill = bar(presentation, "BO3ChargeFill", 2.5, 2.5, 116, 124, 0xA49E8B)
         presentation:SetAlpha(0, 0)
         gauge = {canvas=canvas, backing=backing, meter=meter, view=presentation, fill=fill, leaves={}}
         for _, key in ipairs(card_native_order) do gauge.leaves[key] = self[key] end
@@ -763,14 +763,16 @@ local function update_card_gauge(self, owner, value)
     if gauge.disabled then native_card_gauge(owner);return end
     -- Read the same validated fill/controller as the native radial callback.
     -- Never SetProgress on the native object, write a model or infer readiness.
-    rect(gauge.fill, 2.5, 2.5 + 164 * value.fill, 124, 136)
+    rect(gauge.fill, 2.5, 2.5 + 164 * value.fill, 116, 124)
     gauge.fill:SetAlpha(value.remaining > 0 and value.fill > 0 and 1 or 0, 0)
     gauge.fill:SetRGBFromInt(value.ready == 1 and 0xF5F1E7 or 0xA49E8B, 0)
     gauge.backing:SetAlpha(0, 0);gauge.meter:SetAlpha(0, 0);gauge.view:SetAlpha(1, 0)
 end
+local update_card_decor
 local function native_card_core(owner)
     owner.mask:SetAlpha(1, 0);owner.view:SetAlpha(0, 0);owner.mode = "native_unknown"
     native_card_gauge(owner)
+    if update_card_decor then update_card_decor(owner, false) end
 end
 local function style_card_core(self, index)
     if not (self and self.devilHead and self.devilJaw and self.sadDevil
@@ -782,7 +784,7 @@ local function style_card_core(self, index)
         shape = shape .. (self and self.radialAlphaLarge and self.radialAlphaLarge.circleFill and "1" or "0")
         card_trace(self, index, "shape", "native_shape", {shape=shape});return self
     end
-    local feeds, owner = card_feeds(), self.__bo3CardCore
+    local feeds, owner = card_feeds(), card_cores[self]
     if owner then
         local same = feeds and owner.index == index
         if not same then owner.disabledReason = owner.index ~= index and "controller_changed" or "feeds_missing" end
@@ -795,6 +797,7 @@ local function style_card_core(self, index)
     end
     -- Unknown feeds/predicate stay wholly native. Existing roots retry through
     -- their owned refresh; no model value is fabricated to force a new skin.
+    if self.__bo3CardCore then return self end
     local value, reason, observed = card_values(self, feeds, index)
     observed.shape = "11111"
     if not value then card_trace(self, index, "values", reason, observed);return self end
@@ -819,16 +822,22 @@ local function style_card_core(self, index)
     end
     if observed.parents ~= "111" then card_trace(self, index, "parents", "native_parent", observed);return self end
     local view = card_canvas("BO3CardCore")
-    local title = text(view, "BO3CardTitle", 28, 2.5, 166.5, -28, 2)
-    local count = text(view, "BO3CardCount", 40, 34.5, 134.5, 58, 102)
-    -- Own status gets a separate lane below the observed native card cluster.
-    -- Keep the native card name/art and this view's original visibility owner.
-    local status = text(view, "BO3CardStatus", 32, -27.5, 196.5, 274, 312)
+    local title = text(view, "BO3CardTitle", 20, 2.5, 166.5, 2, 26)
+    local count = text(view, "BO3CardCount", 40, 34.5, 134.5, 32, 76)
+    -- This is readiness metadata, never the selected card's name/effect.
+    local status = text(view, "BO3CardStatus", 14, -9.5, 178.5, 84, 104, 0xA49E8B)
     title:SetAlignment(LUI.Alignment.Center);count:SetAlignment(LUI.Alignment.Center);status:SetAlignment(LUI.Alignment.Center)
     local mask, gauge = build_card_layers(self, faces, view)
     self:addElement(view)
-    owner = {mask=mask, view=view, gauge=gauge, index=index, feeds=feeds, required=required, dlc4=value.dlc4, title=title, count=count, status=status}
+    owner = {widget=self, mask=mask, view=view, gauge=gauge, index=index, feeds=feeds, required=required, dlc4=value.dlc4, title=title, count=count, status=status}
     owner.update = function()
+        if self.__bo3CardCore ~= owner then owner.disabled = true;owner.disabledReason = "marker" end
+        local current_feeds = card_feeds()
+        for _, key in ipairs(required) do
+            if not current_feeds or current_feeds[key] ~= feeds[key] then
+                owner.disabled = true;owner.disabledReason = "feed_changed_" .. key
+            end
+        end
         if state.closed or owner.disabled then
             card_trace(self, index, "owner", state.closed and "closed" or owner.disabledReason or "disabled", {mode="native"})
             native_card_core(owner);return
@@ -847,19 +856,81 @@ local function style_card_core(self, index)
         title:setText(value.boss and "BOSS" or "CARDS")
         count:setText(tostring(value.remaining))
         status:setText(value.remaining == 0 and "EMPTY" or value.ready == 1 and "READY"
-            or value.ready == 0 and "CHARGING" or "UNKNOWN")
+            or value.ready == 0 and "CHARGING" or "STATUS UNAVAILABLE")
         update_card_gauge(self, owner, value)
         owner.mode = value.boss and "boss" or "cards"
+        if update_card_decor then update_card_decor(owner, true) end
         current.mode = owner.mode
         card_trace(self, index, "custom", value.boss and "boss" or value.remaining == 0 and "empty"
             or value.ready == 1 and "ready" or value.ready == 0 and "charging" or "unknown", current)
     end
-    self.__bo3CardCore = owner;state.cardCores[self] = owner
+    self.__bo3CardCore = owner;state.cardCores[self] = owner;card_cores[self] = owner
+    view.__bo3CoreLifetime = owner
     -- Native image references and animations remain alive under a same-canvas
     -- ancestor. Only their rendering is masked while equivalent data is known.
     for _, pointer in pairs(pointers) do view:SubscribeToModel(pointer, owner.update) end
     owner.update()
     return self
+end
+local deck_order = {"Fire", "fanCard4", "fanCard3", "fanCard2", "fanCard1", "FateCardOnDeck", "Triangle", "FateCardDevilWidget", "upArrow", "downArrow"}
+local function decor_shape(self, owner)
+    local child = self.getFirstChild and self:getFirstChild()
+    for _, key in ipairs(deck_order) do
+        local leaf = self[key]
+        local expected = owner and key == "Triangle" and owner.mask or leaf
+        if not child or child ~= expected or not child.getParent or not child.getNextSibling
+            or child:getParent() ~= self then return false end
+        if owner and owner.leaves[key] ~= leaf then return false end
+        child = child:getNextSibling()
+    end
+    local triangle = self.Triangle
+    if child or not triangle or triangle.id ~= "Triangle" or not triangle.getFirstChild
+        or triangle:getFirstChild() then return false end
+    if owner then
+        return triangle == owner.triangle and triangle:getParent() == owner.mask
+            and owner.mask:getFirstChild() == triangle and not triangle:getNextSibling()
+    end
+    return triangle:getParent() == self
+end
+local function retire_card_decor(owner)
+    if card_decor[owner.core] ~= owner or owner.retired then return end
+    owner.retired = true;retired_decor[owner.widget] = true
+    -- Only the captured mask still in our original canvas can be restored.
+    -- A foreign parent/descendant is retained; no foreign tag is authority.
+    if owner.mask:getParent() == owner.widget then
+        owner.mask:SetAlpha(1, 0)
+        if owner.widget.Triangle == owner.triangle and owner.triangle:getParent() == owner.mask then
+            owner.mask:removeElement(owner.triangle);owner.triangle:addElementBefore(owner.mask)
+        end
+        if not owner.mask:getFirstChild() then owner.widget:removeElement(owner.mask);owner.mask:close() end
+    end
+    owner.mask.__bo3DecorLifetime = nil
+end
+update_card_decor = function(core, custom)
+    local owner = card_decor[core]
+    if not owner or owner.retired then return end
+    if state.closed or owner.widget.__bo3CardDecor ~= owner or not decor_shape(owner.widget, owner)
+        or card_cores[core.widget] ~= core or core.widget.__bo3CardCore ~= core
+        or core.view:getParent() ~= core.widget then
+        retire_card_decor(owner);return
+    end
+    owner.mask:SetAlpha(custom and not core.disabled and core.gauge and not core.gauge.disabled and 0 or 1, 0)
+end
+local function style_card_decor(self)
+    if not self or retired_decor[self] then return end
+    local core = self.FateCardDevilWidget and card_cores[self.FateCardDevilWidget]
+    if not core then return end
+    if card_decor[core] then update_card_decor(core, core.mode == "cards" or core.mode == "boss");return end
+    if self.__bo3CardDecor or not core.gauge or core.gauge.disabled or core.disabled
+        or not decor_shape(self) or not self.Triangle.addElementBefore then return end
+    local mask = panel("BO3NativeCardDecor", 253, 389)
+    mask:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0)
+    if not mask.addElementBefore then mask:close();return end
+    local owner = {widget=self, core=core, mask=mask, triangle=self.Triangle, leaves={}}
+    for _, key in ipairs(deck_order) do owner.leaves[key] = self[key] end
+    mask:addElementBefore(self.Triangle);reparent(self.Triangle, mask)
+    card_decor[core] = owner;self.__bo3CardDecor = owner;mask.__bo3DecorLifetime = owner
+    update_card_decor(core, core.mode == "cards" or core.mode == "boss")
 end
 local function adapt_bottom(original, menu, args, root_context)
     local self = remember(original(menu, args))
@@ -887,6 +958,7 @@ local function adapt_bottom(original, menu, args, root_context)
         if self.FateCardWidget.FateCardDevilWidget then
             style_card_core(self.FateCardWidget.FateCardDevilWidget, controller_index(self, args))
         end
+        style_card_decor(self.FateCardWidget)
     end
     return self
 end
@@ -1358,7 +1430,8 @@ function state.shutdown()
     state.closed = true
     for self, owner in pairs(fan_views) do retire_fan(self, owner) end
     for self, owner in pairs(action_views) do retire_action(self, owner) end
-    for _, owner in pairs(state.cardCores) do native_card_core(owner) end
+    for _, owner in pairs(card_cores) do native_card_core(owner) end
+    for _, owner in pairs(card_decor) do retire_card_decor(owner) end
     for _, owner in pairs(state.cardIdentities) do native_card_identity(owner) end
     for owner, hook in pairs(state.refreshHooks) do
         hook.retired = true

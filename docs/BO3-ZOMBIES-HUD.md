@@ -3,15 +3,66 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.17.0 removes only the five authored contour
-rectangles on each fan back after actual0.16 reported the intended narrow-overlay
-geometry while the pale strip remained visible. Pixel attribution and the
-candidate's visual effect remain unqualified. Native leaves, dimensions,
-ownership and restoration remain unchanged. The0.13 native-action underlay retains the actual localized title,
+weapons, quests and states. Content0.18.0 compacts the authored card metadata and
+count/readiness/charge lanes and conditionally masks the known native triangle
+decoration. Native selected-card name/icon objects, data callbacks, parent poses,
+animations and visibility remain authoritative. No selected identity is invented.
+Content0.17.0 removed the five authored contours on each fan. Root and the UI
+worker subsequently inspected the original actual017 frame: the pale mesh seen
+in016 was no longer apparent, while the dark triangle and large card panel
+remained. That is a narrow visual observation, not global pixel attribution or
+full-HUD qualification. The0.13 native-action underlay retains the actual localized title,
 progress, stencil and native visibility.
-The0.12 selected-card identity surface, native name/icon presentation and0.11
-angular charge panel are retained; the actual-player team layout remains Source-tested;
+The0.12 native selected-name/icon presentation and0.11 charge data bindings are
+retained; the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
+
+## Content0.18 card-panel candidate
+
+The existing family/rarity models drive one 38-unit metadata band instead of the
+270-unit authored frame. They describe backing class and rarity, never a card
+name or effect. Actual native name/icon subscriptions and their child and parent
+animation sequences are unchanged. In particular, pinned `initial5Cards` hides
+both native leaves before showing their outer OnDeck container; this is retained.
+No replacement name/icon is drawn to override that phase. The authored counter,
+readiness text and 164-unit charge track now share adjacent local lanes. Remaining
+count, fill and DLC4 boss values keep their existing validation. Only readiness0/1
+means CHARGING/READY; legal other integers show the smaller, muted English status
+`STATUS UNAVAILABLE`. Count0 still means EMPTY. That label is readiness metadata,
+not the selected card name. Unknown/invalid feeds retain the native presentation.
+
+The pinned FateCardWidget constructor has ten direct children in the exact order
+Fire, four fan cards, OnDeck, Triangle, Devil, upArrow, downArrow. Triangle is a
+decorative `zm_wc_triangle` image: parent sequences change its alpha, scale and
+bounds, but it has no own model subscriptions. An exact-shape adapter inserts one
+empty same-canvas UIElement immediately before that captured leaf, then reparents
+only Triangle into it. `addElementBefore` is documented in the pinned LUI binding;
+there is no new native API, global hook, image overlay or change to Triangle's
+own material/alpha/poses. Native field and animation references remain the same.
+Flattening the wrapper preserves the original painter order. It cannot paint
+over the original name/icon or gauge: the mask has no drawing children besides
+Triangle and occupies its original sibling position before Devil.
+
+The mask hides that decoration only while the captured core and its exact gauge
+provide the validated custom view. Invalid values restore native alpha on the
+mask; changed shape, public marker, captured leaf, core view parent, or closure
+retires it. Captured private weak registries provide core/decor authority, and
+their live owned views retain the records. Forged public records never supply
+cleanup targets. Retirement unwraps the captured Triangle at the original mask
+slot when it is still ours; adopted masks/leaves and foreign descendants are
+retained. Only an empty, still-owned mask is closed. A retired deck is not adopted
+again after marker removal. Core model identity is checked on each owned update.
+No extra subscription, timer or native setter hook is introduced for decoration.
+
+Validation: 357 authored Lua5.1 controls pass, including foreign marker/leaf/mask
+adoption, nested foreign descendants, missing API/unknown order, native fallback,
+zero count, readiness sentinel, name/icon refill/meter phases and shutdown. An
+external pinned-retail interop run executes the actual fan, OnDeck, Devil and
+FateCardWidget bodies with 454 assertions across counts5..0, selection, fill,
+ready, empty, refill and teardown. Native name/icon/Triangle/outer poses and
+callbacks remain equivalent to the baseline at mocked animation endpoints.
+Node APIs, renderer and timing are mocked; this is not HKS, pixel, all-map game
+or owner acceptance. No0.18 Game or Ops adoption is authorized by these receipts.
 
 ## Ownership and loading
 
