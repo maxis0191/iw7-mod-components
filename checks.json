@@ -2,6 +2,18 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "voice_speech_cache_test",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/voice_speech_cache_test.ps1"]
+    },
+    {
+      "id": "resource_owned_process_test",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/resource_owned_process_test.ps1"]
+    },
+    {
+      "id": "capacity_word_provenance_test",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/capacity_word_provenance_test.ps1"]
+    },
+    {
       "id": "author_platform_display_test",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/author_platform_display_test.ps1"]
     },

@@ -63,6 +63,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\afk_inactivity
 if errorlevel 1 exit /b 1
 "$runtime\afk-inactivity-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\word_provenance_test.cpp" /Fe:"$runtime\word-provenance-test.exe" /Fo:"$runtime\word-provenance-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\word-provenance-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$testSource" /Fe:"$testExe" /Fo:"$runtime\voice-protocol-test.obj"
 if errorlevel 1 exit /b 1
 "$testExe"
