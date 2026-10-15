@@ -52,7 +52,7 @@ function Read-IW7AuthorPlatformResult {
     $last=$Text.LastIndexOf("`n");$tail=$Text.Substring($last+1);$token=$Plan.Token
     # SDK's ownership-loss row intentionally has no token. Never reuse a prior
     # completion while that latest restoration status is still being written.
-    if($tail.StartsWith('[SDK author platform] RESTORE_PENDING;',[StringComparison]::Ordinal)){
+    if($tail -cmatch '^\[SDK author platform\] RESTORE_PENDING(?=;|\r?$)'){
         return [pscustomobject]@{Complete=$false;Pending='Unterminated SDK restoration status.'}
     }
     foreach($prefix in @('[Author contact] ','[SDK author platform] ','[Collision player] ')){
@@ -61,7 +61,7 @@ function Read-IW7AuthorPlatformResult {
         }
     }
     $text=$Text.Substring(0,$last+1)
-    if($text -match '(?m)^\[SDK author platform\] RESTORE_PENDING;'){throw 'SDK visual ownership/restoration is pending.'}
+    if($text -cmatch '(?m)^\[SDK author platform\] RESTORE_PENDING(?=;|\r?$)'){throw 'SDK visual ownership/restoration is pending.'}
     $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)'
     $culture=[Globalization.CultureInfo]::InvariantCulture
     $visual=@();$entity=$null;$instance=$null;$previous=-1;$previousGame=-1L

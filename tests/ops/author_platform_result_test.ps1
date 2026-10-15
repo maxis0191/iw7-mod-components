@@ -25,7 +25,8 @@ if(!$r.Complete -or !$r.RetailTriggerObservedVerified -or !$r.VisualEntityStable
 # SDK trigger may run immediately before the fixture observes the same edge.
 if(!(Read-Author ($author.Replace("$edge`n$sdkUse", "$sdkUse`n$edge"))).Complete){throw 'Same-frame actual retail trigger order was overconstrained.'}
 $pendingCases=@($author.TrimEnd("`n"),($author+"[Author contact] USE_EDGE token=$token"),($author+"[Collision player] FAIL token=$token reason=late"),
-    ($author+'[SDK author platform] RESTORE_PENDING; reason=ownership_changed'))
+    ($author+'[SDK author platform] RESTORE_PENDING; reason=ownership_changed'),
+    ($author+'[SDK author platform] RESTORE_PENDING'))
 foreach($partial in $pendingCases){
     if((Read-Author $partial).Complete){throw 'Partial latest owned publication accepted.'}
 }
@@ -51,7 +52,8 @@ $bad=@(
     $author.Replace('entity=710','entity=709'),
     $author.Replace($arm,'').Replace("[Collision player] READY_F1 token=$token","$arm`n[Collision player] READY_F1 token=$token"),
     ($author+"[SDK author platform] USED; token=$token; uses=2`n"),
-    ($author+"[SDK author platform] RESTORE_PENDING; reason=ownership_changed; runtime_ready=0.`n")
+    ($author+"[SDK author platform] RESTORE_PENDING; reason=ownership_changed; runtime_ready=0.`n"),
+    ($author+"[SDK author platform] RESTORE_PENDING`n")
 )
 $reject=0
 foreach($case in $bad){if($case -ceq $author){throw 'Causal Author mutation changed nothing.'};try{$null=Read-Author $case}catch{$reject++;continue};throw 'Invalid Author lifecycle/trigger transcript accepted.'}
@@ -60,4 +62,7 @@ foreach($field in @('VisualOrigin','VisualAngles','ModelLocalMaximum','FsGame','
     $plan.$field=switch($field){'VisualOrigin'{@(0,0,95)} 'VisualAngles'{@(0,90,0)} 'ModelLocalMaximum'{@(128,128,17)} 'FsGame'{'mods/other'} default{2}}
     try{$null=Read-Author $author}catch{$reject++;$plan.$field=$old;continue};throw 'Changed canonical Author plan accepted.'
 }
-Write-Output "PASS Author pure transcript: two causal positives, $reject refusals, four pending tails; no engine/render/Game qualification."
+foreach($noise in @('[SDK author platform] RESTORE_PENDING_EXTRA',"[SDK author platform] RESTORE_PENDING_EXTRA`n")){
+    if(!(Read-Author ($author+$noise)).Complete){throw 'A different SDK row type impersonated the critical restoration status.'}
+}
+Write-Output "PASS Author pure transcript: four causal positives, $reject refusals, five pending tails; no engine/render/Game qualification."
