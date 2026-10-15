@@ -60,6 +60,9 @@ def author(weapon, pap, name="sdk_raygun_zm", pap_name="sdk_raygun_pap_zm", refs
             "Two distinct private sdk_ names required")
     require(isinstance(weapon, dict) and isinstance(pap, dict) and "baseAsset" not in weapon,
             "Complete IW7 JSON templates required; baseAsset inheritance is unsupported")
+    require(weapon.get("schema") != "iw7.player-pair-profile/1" and
+            pap.get("schema") != "iw7.player-pair-profile/1",
+            "Pair classification diagnostics are not authoring templates")
     # Preserve the entire full-template tree, including unrecognized fields.
     json.dumps([weapon, pap], allow_nan=False)
     source_name = asset_name(weapon.get("szInternalName"))

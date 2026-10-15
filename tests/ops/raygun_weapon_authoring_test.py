@@ -34,6 +34,15 @@ def templates():
 
 
 class RayGunAuthoringTests(unittest.TestCase):
+    def test_pair_profile_is_ineligible_even_with_forged_full_template_fields(self):
+        weapon, pap = templates()
+        for base, upgrade in (({"schema": "iw7.player-pair-profile/1"}, pap),
+                              ({**weapon, "schema": "iw7.player-pair-profile/1"}, pap),
+                              (weapon, {**pap, "schema": "iw7.player-pair-profile/1"})):
+            with self.subTest(base=base.get("schema"), pap=upgrade.get("schema")):
+                with self.assertRaisesRegex(ValueError, "classification diagnostics"):
+                    authoring.author(base, upgrade)
+
     def test_real_source_artifacts_and_engine_attachment_variant(self):
         weapon, pap = templates()
         before = copy.deepcopy((weapon, pap))

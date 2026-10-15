@@ -104,7 +104,7 @@ Primary source references (pinned, not an upstream update request):
 - x64-zt `fab935826c898806855376662a8a03317b3ad8f1`: IW7
   `assets/weapondef.cpp:1053`/`:1141` and `assets/weaponattachment.cpp:675`.
 
-Local validation: ten synthetic authoring tests cover full-field/mechanics
+Local validation: eleven synthetic authoring tests cover full-field/mechanics
 preservation, correct PAP slot/ref rewriting and engine variant, actual source
 file output, complete visual mapping, unsupported definitions/slots/paths and
 changed hashes and capped growth before hash/decode. They do not run a native
@@ -114,3 +114,11 @@ both approaches remain in history. The corrected reader reads at most cap+1
 bytes and refuses growth before hash/decode, while attachment renaming is
 restricted to the recognized paths above. No rejected candidate was built or
 run in game.
+
+The separate x64 pair-classification diagnostic uses schema
+`iw7.player-pair-profile/1`, not complete weapon/attachment templates. This author
+rejects it explicitly in either input even if positive full-template fields are
+forged around the schema. The existing valid PROJECTILE3/3 validation, deep copy,
+mechanics preservation and serialized output behavior are unchanged. No enum1
+acceptance or conversion is introduced. The extra synthetic rejection test is
+Source-only; it does not qualify a retail pair or new native profile execution.
