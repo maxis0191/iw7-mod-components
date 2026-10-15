@@ -101,6 +101,46 @@ D2 capsule: 17542 bytes, SHA-256
 D was not executed; C/D/D2 and results remain frozen. The next loader correction
 is source-only until a new exact capsule review and distinct Analysis GO.
 
+### E: exact native load refused with access denied
+
+The separately authorized E invocation on 2026-10-15 remains `Refused`, at
+`Resolve.Loader.LoadExactDbgHelp`. Its `System.DllNotFoundException` has
+`HResult=-2146233052` (`0x80131524`); the message reports that the exact pinned
+WinDbg-package `dbghelp.dll` **or one of its dependencies** could not load:
+`Access is denied. (0x80070005 (E_ACCESSDENIED))`. The exception HResult and the
+embedded native load error are distinct. This does not identify the particular
+DLL, ACL, AppModel or dependency condition responsible for that refusal.
+
+`LoaderLoadAttempted=true`, `LoaderLoadReturned=false`, and
+`LoaderReferenceAcquired=false` were observed. No symbol P/Invoke was attempted.
+`LoaderReferenceReleased=true` means no owned reference was returned;
+`CleanupConfirmed=true` is separate from analysis success. Identity, symbol,
+line, dump, runtime-layout/source attribution and game-cause qualification
+remain false; the exact WER path was missing/unavailable. This diagnostic load
+refusal does not explain the earlier client018 game crash.
+
+The same original context/state/capsule and NativeJob owner closed, all 25
+original SafeFileHandles closed, inputs reverified, original lease/token absent,
+clock stopped, `CanExit=true`, and original terminal actually exited 0. Root
+independently verified the receipts and terminal completion, original three
+process generations absent and games/compiler/VCTIP/leases empty at
+20:57:49.0416122 UTC before releasing its slot. No terminal was repolled, no
+analysis replayed, no opaque input reread after release and no permission,
+alternative DLL/host/ABI or live workaround applied.
+
+| E receipt | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `tool-result.json` | 2667 | `D4D2C67F125C06A37CB4B335049B9368E27EC740121D4ED95DC9B4D013CC8EC9` |
+| `actual-original-preexit.local.json` | 3142 | `1E0938DDE5E2F765F070A91A84CE2FEA2BB30E43E54757E8C99DC5BE5FD1884C` |
+| `actual-independent-closure.local.json` | 1985 | `E22AA73733A126D5F0BF3A6CAA9D2DB98282E8457AF22B5073B0871DF09527CC` |
+| `actual-closed-review.local.json` | 5234 | `DA31680D2F88D9745722EA0ED69A1F868818053A13C22B03795467D2B64F870F` |
+
+E capsule: 20829 bytes, SHA-256
+`7F1E185CCDA8105C7490174F0CADD79D6D0CEABF67AAA7AC2466C0D4C1007F7F`.
+E and all predecessors/results remain frozen. Any official tool/configuration
+choice is a source proposal first, with new exact review and authorization
+before installation, acquisition, native loading or EXE/PDB/dump analysis.
+
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
 Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
