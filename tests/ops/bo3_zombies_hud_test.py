@@ -230,10 +230,22 @@ function stock_hud()
  ammo.weaponDescriptionZM=node();ammo.weaponDescriptionZM.TextWeaponName=node();ammo.weaponDescriptionZM.TextAltMode=node()
  ammo.weaponDescriptionZM.TextAltMode.text="actual-alt-mode"
  bottom.ZomWeaponInfo.PrimaryAbility=node();bottom.FateCardWidget=node()
+ local deck=bottom.FateCardWidget
+ deck.Fire=node();deck.upArrow=node();deck.FateCardOnDeck=node();deck.FateCardOnDeck.image="native-selected-card"
+ deck:addElement(deck.Fire);deck:addElement(deck.upArrow);deck:addElement(deck.FateCardOnDeck)
+ deck.nativeReadyCallback=function()
+  local ready=models["inGame.CP.zombies.consumableDeckSelectReady"].value
+  deck.Fire:SetAlpha(ready);deck.upArrow:SetAlpha(ready)
+ end
+ deck:SubscribeToModel(models["inGame.CP.zombies.consumableDeckSelectReady"],deck.nativeReadyCallback)
+ deck.nativeReadyCallback()
+ bottom.WonderCardFillWidget=node();bottom.WonderCardFillWidget.ToggleList0=node()
+ bottom.WonderCardFillWidget.ToggleList0.image="native-active-card";bottom.WonderCardFillWidget:addElement(bottom.WonderCardFillWidget.ToggleList0)
  r.hints=node();r.reviveBarContainer=node();r.cashEarned=node()
  return r
 end
 model("inGame.CP.currentPlayerCash",4270)
+model("inGame.CP.zombies.consumableDeckSelectReady",0)
 existing=stock_hud() -- created BEFORE custom Lua load, bypassing our dispatcher
 ui_root=node();ui_root.hudManager={activeHud=existing}
 ''')
@@ -252,8 +264,15 @@ check('existing.mainPlayerInfo._widget.MainPlayerInfo.PlayerIcon:getParent()==ex
 check('existing.mainPlayerInfo._widget.MainPlayerInfo.PlayerCash:getParent()==existing.mainPlayerInfo._widget.BO3Hero')
 check('existing.mainPlayerInfo._widget.MainPlayerInfo.PlayerIcon.scale==0')
 check('existing.mainPlayerInfo._widget.BO3Hero.bounds[7]==-168 and existing.mainPlayerInfo._widget.BO3Hero.bounds[8]==-56')
-check('existing.wonderCard._widget.FateCardWidget.bounds[7]+588.5<existing.wonderCard._widget.ZomWeaponInfo.bounds[7]')
+lua.execute('deck=existing.wonderCard._widget.FateCardWidget;deckCenter=(deck.bounds[8]-deck.bounds[7])/2')
+check('deck.bounds[7]+deckCenter+(588.5-deckCenter)*(1+deck.scale)<existing.wonderCard._widget.ZomWeaponInfo.bounds[7]')
 check('existing.wonderCard._widget.ZomWeaponInfo.bounds[5]==-560')
+lua.execute('nativeReadyCallback=deck.nativeReadyCallback;nativeChildren=#deck.children;deck:SetAlpha(0.6);models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1);tick()')
+check('deck.Fire.alpha==1 and deck.upArrow.alpha==1 and deck.alpha==0.6')
+check('deck.nativeReadyCallback==nativeReadyCallback and #deck.children==nativeChildren and deck.FateCardOnDeck.image=="native-selected-card"')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(0);tick()')
+check('deck.Fire.alpha==0 and deck.upArrow.alpha==0 and deck.alpha==0.6')
+check('existing.wonderCard._widget.WonderCardFillWidget.ToggleList0.image=="native-active-card" and existing.wonderCard._widget.WonderCardFillWidget.scale==nil')
 check('existing.waveNumber._widget.WaveNumber.bounds[5]>25+existing.mainPlayerInfo._widget.BO3Hero.bounds[6]')
 lua.execute('models["inGame.CP.currentPlayerCash"]:set(37)')
 check('existing.mainPlayerInfo._widget.MainPlayerInfo.PlayerCash.text==37')
