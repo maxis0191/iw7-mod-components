@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.10.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.11.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -308,7 +308,7 @@ local function card_values(self, feeds, index)
     local boss = 0
     if dlc4 then boss = read("boss") end
     if boss ~= 0 and boss ~= 1 then return nil, "boss_value", observed end
-    return {remaining=remaining, ready=ready, boss=boss == 1, dlc4=dlc4}, nil, observed
+    return {remaining=remaining, fill=fill, ready=ready, boss=boss == 1, dlc4=dlc4}, nil, observed
 end
 local function card_trace(self, index, stage, reason, observed)
     if not self then return end
@@ -336,8 +336,88 @@ local function card_trace(self, index, stage, reason, observed)
     -- This optional trace is ignored by the existing essential-bind parser.
     print("[BO3 HUD] " .. message .. " pixels=unverified instance=" .. state.instance)
 end
+local function card_canvas(id)
+    local result = panel(id, 168, 173)
+    result:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0)
+    return result
+end
+local card_native_order = {"Circle", "blueGlow", "radialAlphaLarge", "innerRing", "outerRing", "glowRing", "devilJaw", "devilHead", "sadDevil"}
+local function card_gauge_shape(self)
+    if not self.getFirstChild then return false end
+    -- One fixed canvas schema, not a descendant search. Unknown/additional or
+    -- reordered children keep their original gauge and sibling relationships.
+    local child = self:getFirstChild()
+    for _, key in ipairs(card_native_order) do
+        if not child or child ~= self[key] or not child.getParent or not child.getNextSibling
+            or child:getParent() ~= self then return false end
+        child = child:getNextSibling()
+    end
+    return child == nil
+end
+local function build_card_layers(self, faces, view)
+    local mask = card_canvas("BO3NativeCardFaces")
+    local face_parent, gauge = self, nil
+    if card_gauge_shape(self) then
+        local canvas = card_canvas("BO3NativeCardCanvas")
+        local backing = card_canvas("BO3NativeCardBacking")
+        local meter = card_canvas("BO3NativeCardMeter")
+        local presentation = card_canvas("BO3CardGauge")
+        view:addElement(presentation)
+        -- Original angular frame/rail, made from the existing white material.
+        -- Native ready/refill glows remain visible; no opaque cover is added.
+        bar(presentation, "BO3GaugeTopLeft", -19.5, 20.5, 14, 18, 0xA49E8B)
+        bar(presentation, "BO3GaugeTopRight", 148.5, 188.5, 14, 18, 0xA49E8B)
+        bar(presentation, "BO3GaugeLeft", -19.5, -15.5, 18, 162, 0xA49E8B)
+        bar(presentation, "BO3GaugeRight", 184.5, 188.5, 18, 162, 0xA49E8B)
+        bar(presentation, "BO3GaugeBottom", -19.5, 188.5, 162, 166, 0xA49E8B)
+        bar(presentation, "BO3ChargeTrack", 2.5, 166.5, 124, 136, 0x35352F)
+        local fill = bar(presentation, "BO3ChargeFill", 2.5, 2.5, 124, 136, 0xA49E8B)
+        presentation:SetAlpha(0, 0)
+        gauge = {canvas=canvas, backing=backing, meter=meter, view=presentation, fill=fill, leaves={}}
+        for _, key in ipairs(card_native_order) do gauge.leaves[key] = self[key] end
+        -- Keep the exact native painter order and original field/animation
+        -- references, including both unmasked native feedback objects.
+        self:addElement(canvas)
+        canvas:addElement(backing);reparent(self.Circle, backing)
+        reparent(self.blueGlow, canvas)
+        canvas:addElement(meter)
+        for _, key in ipairs({"radialAlphaLarge", "innerRing", "outerRing"}) do reparent(self[key], meter) end
+        reparent(self.glowRing, canvas)
+        face_parent = canvas
+    end
+    face_parent:addElement(mask)
+    for _, leaf in ipairs(faces) do reparent(leaf, mask) end
+    return mask, gauge
+end
+local function native_card_gauge(owner)
+    local gauge = owner.gauge
+    if not gauge then return end
+    gauge.backing:SetAlpha(1, 0);gauge.meter:SetAlpha(1, 0);gauge.view:SetAlpha(0, 0)
+end
+local function update_card_gauge(self, owner, value)
+    local gauge = owner.gauge
+    if not gauge then return end
+    local same = gauge.canvas:getParent() == self and gauge.backing:getParent() == gauge.canvas
+        and gauge.meter:getParent() == gauge.canvas and owner.mask:getParent() == gauge.canvas
+        and gauge.view:getParent() == owner.view
+    for _, key in ipairs(card_native_order) do
+        local parent = key == "Circle" and gauge.backing
+            or (key == "radialAlphaLarge" or key == "innerRing" or key == "outerRing") and gauge.meter
+            or (key == "devilJaw" or key == "devilHead" or key == "sadDevil") and owner.mask or gauge.canvas
+        same = same and self[key] == gauge.leaves[key] and gauge.leaves[key]:getParent() == parent
+    end
+    if not same then gauge.disabled = true end
+    if gauge.disabled then native_card_gauge(owner);return end
+    -- Read the same validated fill/controller as the native radial callback.
+    -- Never SetProgress on the native object, write a model or infer readiness.
+    rect(gauge.fill, 2.5, 2.5 + 164 * value.fill, 124, 136)
+    gauge.fill:SetAlpha(value.remaining > 0 and value.fill > 0 and 1 or 0, 0)
+    gauge.fill:SetRGBFromInt(value.ready == 1 and 0xF5F1E7 or 0xA49E8B, 0)
+    gauge.backing:SetAlpha(0, 0);gauge.meter:SetAlpha(0, 0);gauge.view:SetAlpha(1, 0)
+end
 local function native_card_core(owner)
     owner.mask:SetAlpha(1, 0);owner.view:SetAlpha(0, 0);owner.mode = "native_unknown"
+    native_card_gauge(owner)
 end
 local function style_card_core(self, index)
     if not (self and self.devilHead and self.devilJaw and self.sadDevil
@@ -385,18 +465,16 @@ local function style_card_core(self, index)
         observed.parents = observed.parents .. (leaf:getParent() == self and "1" or "0")
     end
     if observed.parents ~= "111" then card_trace(self, index, "parents", "native_parent", observed);return self end
-    local mask = panel("BO3NativeCardFaces", 168, 173)
-    mask:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0);self:addElement(mask)
-    for _, leaf in ipairs(faces) do reparent(leaf, mask) end
-    local view = panel("BO3CardCore", 168, 173)
-    view:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0);self:addElement(view)
+    local view = card_canvas("BO3CardCore")
     local title = text(view, "BO3CardTitle", 28, 2.5, 166.5, -28, 2)
     local count = text(view, "BO3CardCount", 40, 34.5, 134.5, 58, 102)
     -- Own status gets a separate lane below the observed native card cluster.
     -- Keep the native card name/art and this view's original visibility owner.
     local status = text(view, "BO3CardStatus", 32, -27.5, 196.5, 274, 312)
     title:SetAlignment(LUI.Alignment.Center);count:SetAlignment(LUI.Alignment.Center);status:SetAlignment(LUI.Alignment.Center)
-    owner = {mask=mask, view=view, index=index, feeds=feeds, required=required, dlc4=value.dlc4, title=title, count=count, status=status}
+    local mask, gauge = build_card_layers(self, faces, view)
+    self:addElement(view)
+    owner = {mask=mask, view=view, gauge=gauge, index=index, feeds=feeds, required=required, dlc4=value.dlc4, title=title, count=count, status=status}
     owner.update = function()
         if state.closed or owner.disabled then
             card_trace(self, index, "owner", state.closed and "closed" or owner.disabledReason or "disabled", {mode="native"})
@@ -417,6 +495,7 @@ local function style_card_core(self, index)
         count:setText(tostring(value.remaining))
         status:setText(value.remaining == 0 and "EMPTY" or value.ready == 1 and "READY"
             or value.ready == 0 and "CHARGING" or "UNKNOWN")
+        update_card_gauge(self, owner, value)
         owner.mode = value.boss and "boss" or "cards"
         current.mode = owner.mode
         card_trace(self, index, "custom", value.boss and "boss" or value.remaining == 0 and "empty"

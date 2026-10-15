@@ -41,7 +41,7 @@ function node()
  function n:setText(value) self.text=value end
  function n:setImage(value) self.image=value end
  function n:setEndTime(value) self.endTime=value end
- function n:SetProgress(value) self.progress=value end
+ function n:SetProgress(value) self.progress=value;self.progressWrites=(self.progressWrites or 0)+1 end
  function n:addElement(child) self.children[#self.children+1]=child;child.parent=self end
  function n:removeElement(child)
   child.detached=true;child.parent=nil
@@ -99,9 +99,11 @@ function original(key,args)
  end
  if key=="FateCardDevilWidget" then
   n.nativeDlc4=args and args.nativeDlc4 or false
-  n.devilHead=node();n.devilJaw=node();n.sadDevil=node();n.Circle=node();n.glowRing=node()
+  n.devilHead=node();n.devilJaw=node();n.sadDevil=node();n.Circle=node();n.blueGlow=node();n.innerRing=node();n.outerRing=node();n.glowRing=node()
+  n.Circle.image="zm_wc_circle_bg";n.innerRing.image="zm_wc_red_hoop";n.outerRing.image="zm_wc_red_hoop"
+  n.blueGlow.image="zm_powerup_glow_element";n.blueGlow.alpha=0;n.glowRing.image="zm_wc_card_glow_ring"
   n.radialAlphaLarge=node();n.radialAlphaLarge.circleFill=node();n.radialAlphaLarge:addElement(n.radialAlphaLarge.circleFill)
-  for _,leaf in ipairs({n.Circle,n.glowRing,n.radialAlphaLarge,n.devilJaw,n.devilHead,n.sadDevil}) do n:addElement(leaf) end
+  for _,leaf in ipairs({n.Circle,n.blueGlow,n.radialAlphaLarge,n.innerRing,n.outerRing,n.glowRing,n.devilJaw,n.devilHead,n.sadDevil}) do n:addElement(leaf) end
   n.nativeUpdate=function()
    local count=models["inGame.CP.zombies.consumablesRemaining"]:GetValue(args.controllerIndex)
    local fill=models["inGame.CP.zombies.dpadUpFillPercent"]:GetValue(args.controllerIndex)
@@ -109,12 +111,15 @@ function original(key,args)
    local boss=models["inGame.CP.zombies.dlc4.mephBattle"]:GetValue(args.controllerIndex)
    n.devilHead.image=n.nativeDlc4 and boss==1 and "cp_final_meph_head_full" or "zm_wc_devil_head_top"
    n.devilHead.alpha=count and count>0 and 1 or 0;n.devilJaw.alpha=n.devilHead.alpha;n.sadDevil.alpha=count==0 and 1 or 0
+   n.Circle.alpha=n.devilHead.alpha;n.innerRing.alpha=n.devilHead.alpha;n.outerRing.alpha=n.devilHead.alpha;n.radialAlphaLarge.alpha=n.devilHead.alpha
    n.radialAlphaLarge.circleFill:SetProgress(fill);n.glowRing.alpha=ready==1 and 1 or 0
   end
   for _,path in ipairs({"consumablesRemaining","dpadUpFillPercent","consumableDeckSelectReady","dlc4.mephBattle"}) do
    n:SubscribeToModel(models["inGame.CP.zombies."..path],n.nativeUpdate)
   end
   n.nativeUpdate()
+  n.nativeRefill=function(value) n.blueGlow:SetAlpha(value) end
+  if nextCardShape then local mutate=nextCardShape;nextCardShape=nil;mutate(n) end
  end
  return n
 end
@@ -130,7 +135,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.10.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.10.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.11.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.11.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -402,14 +407,50 @@ check('deck.FateCardOnDeck.image=="native-selected-card" and deck.Fire.alpha==1 
 lua.execute('core=deck.FateCardDevilWidget;coreOwner=core.__bo3CardCore;nativeCoreUpdate=core.nativeUpdate;meter=core.radialAlphaLarge.circleFill;nativeMeterParent=meter:getParent()')
 check('coreOwner.count.text=="5" and coreOwner.status.text=="READY" and coreOwner.title.text=="CARDS" and coreOwner.mask.alpha==0')
 check('coreOwner.mask.children[1]==core.devilJaw and coreOwner.mask.children[2]==core.devilHead and coreOwner.mask.children[3]==core.sadDevil and meter:getParent()==nativeMeterParent')
+lua.execute(r'''
+gauge=coreOwner.gauge;nativeRefill=core.nativeRefill
+function chargeFraction(g)
+ local track=child(g.view,"BO3ChargeTrack")
+ return (g.fill.bounds[6]-g.fill.bounds[5])/(track.bounds[6]-track.bounds[5])
+end
+function nativePainterOrder(widget,owner)
+ local expected={widget.Circle,widget.blueGlow,widget.radialAlphaLarge,widget.innerRing,widget.outerRing,widget.glowRing,widget.devilJaw,widget.devilHead,widget.sadDevil}
+ local found={}
+ local function visit(parent)
+  for _,leaf in ipairs(parent.children) do
+   if leaf~=owner.view then
+    local native=false
+    for _,value in ipairs(expected) do if value==leaf then native=true;break end end
+    if native then found[#found+1]=leaf else visit(leaf) end
+   end
+  end
+ end
+ visit(widget)
+ if #found~=#expected then return false end
+ for i,leaf in ipairs(expected) do if found[i]~=leaf then return false end end
+ return true
+end
+''')
+check('gauge and gauge.backing.alpha==0 and gauge.meter.alpha==0 and gauge.view.alpha==1 and nativePainterOrder(core,coreOwner)')
+check('core.Circle.image=="zm_wc_circle_bg" and core.innerRing.image=="zm_wc_red_hoop" and core.outerRing.image=="zm_wc_red_hoop" and core.blueGlow.image=="zm_powerup_glow_element" and core.glowRing.image=="zm_wc_card_glow_ring"')
+lua.execute('writesBefore=meter.progressWrites;models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.5)')
+check('math.abs(chargeFraction(gauge)-0.5)<0.000001 and gauge.fill.alpha==1 and meter.progress==0.5 and meter.progressWrites==writesBefore+1')
+lua.execute('models["inGame.CP.zombies.dpadUpFillPercent"]:set(0);fractionAtZero=chargeFraction(gauge);alphaAtZero=gauge.fill.alpha;models["inGame.CP.zombies.dpadUpFillPercent"]:set(1)')
+check('fractionAtZero==0 and alphaAtZero==0 and chargeFraction(gauge)==1 and gauge.fill.alpha==1')
+lua.execute('core.nativeRefill(0.8);tick()')
+check('core.nativeRefill==nativeRefill and core.blueGlow.alpha==0.8 and core.blueGlow:getParent()==gauge.canvas and gauge.canvas.alpha==1 and core.glowRing.alpha==1 and core.glowRing:getParent()==gauge.canvas')
 lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(0);models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.75);models["inGame.CP.zombies.consumablesRemaining"]:set(3);tick()')
 check('coreOwner.count.text=="3" and coreOwner.status.text=="CHARGING" and meter.progress==0.75 and core.nativeUpdate==nativeCoreUpdate')
+check('math.abs(chargeFraction(gauge)-0.75)<0.000001 and gauge.fill.color~=0xF5F1E7 and core.glowRing.alpha==0 and core.blueGlow.alpha==0.8')
 lua.execute('models["inGame.CP.zombies.consumablesRemaining"]:set(0);tick()')
 check('coreOwner.count.text=="0" and coreOwner.status.text=="EMPTY" and core.sadDevil.alpha==1 and coreOwner.mask.alpha==0')
+check('gauge.fill.alpha==0 and gauge.view.alpha==1 and meter.progress==0.75 and math.abs(chargeFraction(gauge)-0.75)<0.000001')
 lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(nil);tick()')
 check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0 and core.sadDevil.alpha==1')
+check('gauge.backing.alpha==1 and gauge.meter.alpha==1 and gauge.view.alpha==0 and nativePainterOrder(core,coreOwner)')
 lua.execute('models["inGame.CP.zombies.consumablesRemaining"]:set(5);models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1);tick();oldCoreChildren=#core.children;tick()')
 check('coreOwner.count.text=="5" and coreOwner.status.text=="READY" and core.glowRing.alpha==1 and #core.children==oldCoreChildren')
+check('gauge.backing.alpha==0 and gauge.meter.alpha==0 and gauge.view.alpha==1 and gauge.fill.color==0xF5F1E7 and nativePainterOrder(core,coreOwner)')
 lua.execute('bossCore=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=2,nativeDlc4=true});models["inGame.CP.zombies.dlc4.mephBattle"]:set(1)')
 check('bossCore.__bo3CardCore.title.text=="BOSS" and bossCore.__bo3CardCore.mode=="boss" and bossCore.devilHead.image=="cp_final_meph_head_full" and bossCore.__bo3CardCore.mask.alpha==0')
 lua.execute('models["inGame.CP.zombies.dlc4.mephBattle"]:set(nil)')
@@ -418,6 +459,28 @@ lua.execute('models["inGame.CP.zombies.dlc4.mephBattle"]:set(0);savedDLC=CONDITI
 check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
 lua.execute('CONDITIONS.IsDLC4=savedDLC;models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.25);core:SetAlpha(0.3);tick()')
 check('coreOwner.mask.alpha==0 and coreOwner.view.alpha==1 and core.alpha==0.3')
+check('gauge.view:getParent()==coreOwner.view and gauge.canvas:getParent()==core and gauge.canvas.alpha==1 and gauge.backing.alpha==0 and gauge.meter.alpha==0')
+lua.execute(r'''
+function gaugeFixture(mutate)
+ nextCardShape=mutate
+ local widget=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=1})
+ return widget,widget.__bo3CardCore
+end
+extraCore,extraOwner=gaugeFixture(function(widget) widget.foreignBadge=node();widget:addElement(widget.foreignBadge) end)
+reorderedCore,reorderedOwner=gaugeFixture(function(widget) widget:removeElement(widget.innerRing);widget:addElement(widget.innerRing) end)
+foreignParent=node()
+foreignCore,foreignOwner=gaugeFixture(function(widget) widget:removeElement(widget.innerRing);foreignParent:addElement(widget.innerRing) end)
+''')
+check('extraOwner and not extraOwner.gauge and extraCore.Circle:getParent()==extraCore and extraCore.radialAlphaLarge:getParent()==extraCore and extraCore.foreignBadge:getParent()==extraCore')
+check('reorderedOwner and not reorderedOwner.gauge and reorderedCore.Circle:getParent()==reorderedCore and reorderedCore.innerRing:getParent()==reorderedCore')
+check('foreignOwner and not foreignOwner.gauge and foreignCore.innerRing:getParent()==foreignParent and foreignCore.radialAlphaLarge:getParent()==foreignCore')
+lua.execute(r'''
+displacedCore,displacedOwner=gaugeFixture(function() end)
+displacedGauge=displacedOwner.gauge;replacementParent=node()
+displacedGauge.backing:removeElement(displacedCore.Circle);replacementParent:addElement(displacedCore.Circle)
+models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.6)
+''')
+check('displacedGauge.disabled and displacedGauge.view.alpha==0 and displacedGauge.backing.alpha==1 and displacedGauge.meter.alpha==1 and displacedCore.Circle:getParent()==replacementParent and displacedOwner.view.alpha==1')
 lua.execute(r'''
 models["inGame.CP.zombies.consumablesRemaining"]:set(0)
 models["inGame.CP.zombies.dpadUpFillPercent"]:set(0)
@@ -429,6 +492,7 @@ for i=#printed,1,-1 do if string.find(printed[i],"[BO3 HUD] core ",1,true) then 
 check('defaultOwner and defaultOwner.count.text=="0" and defaultOwner.status.text=="EMPTY" and defaultOwner.mask.alpha==0 and defaultOwner.view.alpha==1 and models["inGame.CP.zombies.consumableDeckSelectReady"].value==-1 and string.find(defaultTrace,"ready_type=number ready_value=-1",1,true)')
 lua.execute('models["inGame.CP.zombies.consumablesRemaining"]:set(3);models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.25)')
 check('defaultOwner.count.text=="3" and defaultOwner.status.text=="UNKNOWN" and defaultReady.radialAlphaLarge.circleFill.progress==0.25 and defaultReady.nativeUpdate==defaultNativeCallback')
+check('defaultOwner.gauge and defaultOwner.gauge.view.alpha==1 and math.abs(chargeFraction(defaultOwner.gauge)-0.25)<0.000001 and models["inGame.CP.zombies.consumableDeckSelectReady"].value==-1')
 lua.execute(r'''
 models["inGame.CP.zombies.consumableDeckSelectReady"]:set(20)
 refreshReady=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIndex=0})
@@ -677,6 +741,7 @@ lua.execute('models["inGame.CP.zombies.quests.questFuseAlphaFilter"]:set(0);mode
 check('mapFixtures[1].root.nativeFuse.alpha==0 and mapFixtures[5].info.InventorySlot1.alpha==0')
 lua.execute('changedController=mapFixtures[2].root;changedController.controllerIndex=3;LUI.HudManager.CreateHud({nextHud=changedController});changedCore=changedController.wonderCard._widget.FateCardWidget.FateCardDevilWidget.__bo3CardCore')
 check('changedCore.mask.alpha==1 and changedCore.view.alpha==0 and changedCore.disabled')
+check('changedCore.gauge.backing.alpha==1 and changedCore.gauge.meter.alpha==1 and changedCore.gauge.view.alpha==0')
 lua.execute('unrelated=stock_hud();unrelated.id="MPHUD";manager.nextHud=unrelated;LUI.HudManager.CreateHud(manager)')
 check('not unrelated.__bo3HudLayout')
 lua.execute('retired=MenuBuilder.BuildRegisteredType;MenuBuilder.BuildRegisteredType=original;tick()')
@@ -696,6 +761,7 @@ check('MenuBuilder.BuildRegisteredType==original')
 check('existing.mainPlayerInfo._widget.PlayerCash.RefreshRows==existing.retainedTeamRefresh')
 check('manager.activeHud.mainPlayerInfo._widget.PlayerCash.RefreshRows==otherRefresh')
 check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
+check('gauge.backing.alpha==1 and gauge.meter.alpha==1 and gauge.view.alpha==0 and nativePainterOrder(core,coreOwner) and core.nativeUpdate==nativeCoreUpdate and core.nativeRefill==nativeRefill')
 lua.execute('roster[1].name="After shutdown";retiredTeam(existing.mainPlayerInfo._widget.PlayerCash)')
 check('hero.BO3Name.text=="Live beyond startup"')
 print(f"PASS {checks} authored Lua5.1 source controls; mocked UI/models only, no HKS/game/pixels")

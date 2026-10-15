@@ -3,8 +3,8 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.10.0 moves the owned status line away from
-the overlap observed in0.9, retaining its legal local readiness presentation;
+weapons, quests and states. Content0.11.0 adds an original angular charge panel
+for the exact known native canvas, preserving its live IW7 fill and feedback;
 the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
@@ -264,7 +264,7 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 ## Bounded binding diagnostics
 
 Since content0.8.0, `VERSION` is separate from `DIAGNOSTIC_VERSION=0.7.0`. Every
-current initialization emits `module version=0.7.0 content_version=0.10.0 instance=... initialized=1`.
+current initialization emits `module version=0.7.0 content_version=0.11.0 instance=... initialized=1`.
 Every versioned marker uses the diagnostic contract version. The content version
 is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
 the authorized content. A compatible authored skin needs no new Ops enum entry.
@@ -301,7 +301,7 @@ factory_applied/bind does not prove this new presentation or known core feeds.
 [Ops264](https://github.com/maxis0191/iw7-paris-server/pull/264) is that reviewed
 extension: it accepts exact diagnostic contracts0.6.0/0.7.0 in addition to the
 older cases, with the same default0.2.0 and cross-version refusal. Its parser
-already accepts bounded extra module fields such as content_version. Content0.10
+already accepts bounded extra module fields such as content_version. Content0.11
 uses the existing explicit BO3HUDDiagnosticVersion0.7.0 setting. V3/V4,
 Source0.4, V5, Source0.6 and Source0.7 stay frozen, including all inputs/frames.
 
@@ -437,6 +437,60 @@ reviewed/authorized capture must verify the new status is visible, unclipped and
 clear of native card text/art plus equipment/ammo at the actual resolution and
 pose. Other card poses, maps, controllers and safe-area variants remain open.
 No0.10 Game/HKS/raster, new asset/FF/native build or Ops contract is acquired.
+
+## Source0.11 original charge panel with native feedback
+
+The next Source lot replaces the static circle backing, radial charge picture
+and two hoop pictures as a complete bounded charge presentation. The existing
+CARDS/BOSS title, actual count and EMPTY/CHARGING/READY/UNKNOWN text keep their
+0.10 bounds. An authored angular open frame surrounds the count; a continuous
+linear rail shows the validated `dpadUpFillPercent` from0 to1. Zero fill has no
+visible filled quad. Empty inventory suppresses that quad without resetting or
+writing the real fill. READY also has a pale fill cue; other legal ready integers
+retain actual progress and UNKNOWN text without an invented ready meaning.
+This is original LUI/white-material art, not an authentic BO3 texture or bitmap.
+
+The extra replacement is conditional on the pinned native widget's exact nine
+direct children, identities, parents and painter order: Circle, blueGlow,
+radialAlphaLarge, innerRing, outerRing, glowRing, devilJaw, devilHead, sadDevil.
+One fixed sibling check proves this canvas; there is no descendant lookup,
+whole-HUD crawler, name heuristic or new native API. An extra, reordered or
+foreign-parented child leaves the original gauge untouched and uses the existing
+0.10 count/face presentation. It is not an essentials binding failure.
+
+| Native role | Source0.11 treatment |
+| --- | --- |
+| Circle backing | Same image/reference under an owned same-canvas backing ancestor; masked only while the new frame/rail is valid |
+| Radial charge plus inner/outer hoops | Same original objects, circleFill child, materials and native progress/alpha callbacks under a separate same-canvas ancestor; equivalent linear fill replaces their rendering |
+| blueGlow refill / glowRing readiness | Original objects, materials, animation sequences, alpha/scale/position writes remain visible and in their original painter order; the new frame adds no opaque cover |
+| Three faces | Existing owned face mask and actual count/state/BOSS equivalent remain; no further face meaning is guessed |
+| Selected/active cards and controls | OnDeck identity/name/icon/backing, fan pose, Fire/arrows, active effects and all input remain outside this change |
+
+The native ordered groups are backing, blueGlow, meter/hoops, glowRing, faces.
+They share the original widget canvas; native field references and callbacks
+stay alive. The new rail reuses the core's existing validated read/subscriptions
+and exact controller. It never calls SetProgress on circleFill or writes a model.
+Critical unknown values/predicate, disabled owner/controller/feed or shutdown
+reveal the original backing/meter/face ancestors and hide the custom view.
+Changing a captured gauge field or its parent retires only the extra gauge,
+reveals its native groups and leaves the foreign parent alone until HUD recreation.
+Repeated refresh creates no further gauge or subscription.
+
+The175 Lua5.1 Source/mock controls cover real fraction endpoints/updates, zero
+inventory, known/unknown readiness, preserved native progress callback writes,
+refill/ready feedback and painter order, malformed-value fallback/recovery,
+shape rejection, external reparenting, parent visibility, controller retirement
+and shutdown alongside the existing equipment/map/team cases. These are mocked
+contracts, not HKS/pixels or native alpha readback. Exact diagnostic0.7 remains
+unchanged; content0.11 is informational and is identified by its Source/Lua hash.
+
+Source0.10 stays frozen and was not played by this lot. New original pixels must
+verify that the extra shape is accepted, native charge circles actually give way
+to the frame/linear rail, fill and native glows remain readable, selected card
+identity stays readable, and status/equipment/ammo have no clipping or overlap.
+No new Game/native/FF/asset/build/lease operation follows from this Source work.
+Authentic textures, perk identity adaptation, all other full-HUD states and owner
+acceptance remain separate open work; BO3 is inspiration, not a completion ceiling.
 
 ## Source references and implemented essentials
 
