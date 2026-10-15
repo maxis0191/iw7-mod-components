@@ -195,6 +195,61 @@ evidence and the official Microsoft authorities, with failed current-time
 validation kept explicit. Any new real qualification needs a new exact
 capsule review and distinct Analysis GO; installation has a separate gate.
 
+### Q1B: Windows publisher metadata verified, SDK readiness unqualified
+
+The one separately reviewed and authorized Q1B invocation on 2026-10-15 UTC
+returned `WindowsAuthenticodePublisherVerified_MetadataOnly`.
+Windows returned `Valid` for the embedded signature; the signer had explicit
+code-signing EKU and an unambiguous Microsoft Corporation organization. The
+same Windows-returned timestamp certificate had explicit timestamp EKU.
+The actual signature certificates and independent chain were disposed before
+the positive publisher decision, with no observation or cleanup failure.
+
+This uses the newly reviewed Windows Authenticode timestamp-aware publisher
+policy. The independent current-time chain remains `Built=false` with
+`NotTimeValid`, and `CurrentTimeChainPassed=false`; its path ends in the
+officially published Microsoft RCA 2010. No ignore flag or guessed historical
+VerificationTime was used. `RootPathAuthenticatedAtSigningTime=false`,
+`ExactSigningTimeUtc=null` and `ExactWindowsBackend=Unobserved` remain explicit.
+The failed current-time chain was not relabelled successful. The preceding Q0B
+result stays Refused under its different frozen policy and remains immutable.
+
+The positive status covers publisher metadata only. Version-resource strings
+remain claims. SDK bundle contents, installed SDK versions, installation
+prerequisites, debugger ABI, game crash cause and owner gameplay are not
+qualified. No setup/help/modify/MSI execution, SDK/tool/symbol acquisition,
+debugger DLL load, game or EXE/PDB/dump analysis occurred. Normal Windows trust
+may use its OS resolver/cache; no application trust policy/store or ACL was
+modified. This result does not authorize an installation automatically.
+
+The same original context/state/capsule, factory witness, clock and NativeJob
+owner reached known closure: all 20 original SafeFileHandles closed, original
+inputs reverified before release, owner exit 0, original lease/token absent,
+clock stopped at 2434 ms and `CanExit=true`. Both AppDomain keys matched the
+same original context/witness/clock before cleanup and both were NULL after,
+with the original aliases retained until direct interactive exit. The original
+terminal actually exited 0 and was never polled again. Independent metadata
+at 22:29:50.4453925 UTC found all three original process generations/PIDs
+absent, with games/compiler/debuggers and leases empty. Root independently verified the original receipts, terminal completion and
+fresh absence before releasing its coordination slot. No cached input was
+accessed after release, no context reconstructed and no analysis replayed.
+
+| Q1B receipt | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `qualification-result.json` | 6291 | `809D145A1805112F15246F9AD99DAD8ADA463E60D40D6058B28E63B422A8397F` |
+| `actual-original-postflight.local.json` | 2037 | `118BF1CA2B36C72DFA300BD75CFA4837EC7FE17979C161D59717F33F0E09602B` |
+| `actual-independent-closure.local.json` | 4906 | `1E2ADE7F83F2AD63B11A0DDCAD2AB1C009FDAB7C8C74916556F6F916477E0180` |
+| `actual-closed-review.local.json` | 9836 | `A342463D5259B86E2A87B7BB229E22964F973D748409EF270CAFE87C070E4550` |
+
+Q1B capsule: 10283 bytes, SHA-256
+`248ED6C6C6DFBD5438B7311D9D0706DC880128E3045E87D16EB9CA6119E2B69D`.
+Its 99 new Source checks cover the actual collector/model with authored
+objects; unchanged Q0B phase/lifecycle code retains its earlier test evidence.
+All predecessor sources/results and the closed Q1B result remain frozen.
+Next is a separately reviewed SDK Debugging Tools installation/elevation and
+shared-MSI-service lifecycle proposal preserving installed CPP/features;
+actual installation and later opaque DLL qualification each need their own gate.
+
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
 Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
