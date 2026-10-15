@@ -128,3 +128,9 @@ The later explicit neutral IW7 clone profile is documented in
 base1/PAP0 trees for a separate clone/roundtrip path; this PROJECTILE3/3 author
 remains unchanged. Neither Source implementation qualifies a playable Ray Gun,
 name-specific Shredder callbacks, a native roundtrip or retail PAP purchase.
+
+The subsequent U1d invocation consumed the exact captured triplet under its own
+Analysis lease and independently verified the complete private clone Source
+pair/CSV/report, with ordinary original-context closure. Its observed PAP slot
+is attachments6 and types remain1/0. This separate Source-cloning result changes
+none of the native/gameplay limits above; see the actual checkpoint in that doc.
