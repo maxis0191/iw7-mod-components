@@ -34,6 +34,7 @@ function node()
  function n:SetRGBFromTable(value) self.color=value end
  function n:SetYRotation(value) end
  function n:SetZRotation(value) end
+ function n:SetScale(value) self.scale=value end
  function n:SetAlpha(value) self.alpha=value end
  function n:setText(value) self.text=value end
  function n:setImage(value) self.image=value end
@@ -43,6 +44,7 @@ function node()
   for i,v in ipairs(self.children) do if v==child then table.remove(self.children,i);break end end
  end
  function n:getFirstChild() return self.children[1] end
+ function n:getParent() return self.parent end
  function n:getNextSibling()
   if not self.parent then return nil end
   for i,v in ipairs(self.parent.children) do if v==self then return self.parent.children[i+1] end end
@@ -77,6 +79,9 @@ function original(key,args)
  local n=node(); n.id="stock:"..key
  if string.find(key,"MainPlayerInfo") then
   n.PlayerIcon=node(); n.PlayerIcon.image="actual-iw7-character"; n.PlayerCash=node(); n.PlayerCash.text="4270"
+  if models["inGame.CP.currentPlayerCash"] then
+   n.PlayerCash:SubscribeToModel(models["inGame.CP.currentPlayerCash"],function() n.PlayerCash:setText(models["inGame.CP.currentPlayerCash"].value) end)
+  end
   n.box=node(); n.dollarSign=node(); n.questFuse=node(); n:addElement(n.questFuse)
  end
  return n
@@ -201,7 +206,18 @@ function stock_hud()
  wave.clapboard=node();wave:addElement(wave.clapboard);wave.Scene=node();wave:addElement(wave.Scene)
  r.activePerks=node();r.activePerks._widget={PerkList=node()}
  for i=1,2 do local icon=node();icon.PerkIcon=node();icon.PerkIcon.image="actual-perk-"..i;icon:addElement(icon.PerkIcon);r.activePerks._widget.PerkList:addElement(icon) end
- r.mainPlayerInfo=node();r.mainPlayerInfo._widget={MainPlayerInfo=original("MainPlayerInfo",{})}
+ r.mainPlayerInfo=node();local player=node();r.mainPlayerInfo._widget=player
+ player.MainPlayerInfo=original("MainPlayerInfo",{});player:addElement(player.MainPlayerInfo)
+ player.MainPlayerInfo:addElement(player.MainPlayerInfo.PlayerIcon);player.MainPlayerInfo:addElement(player.MainPlayerInfo.PlayerCash)
+ player.PlayerCash=node();player.PlayerCash.Players=node();player.PlayerCash:addElement(player.PlayerCash.Players);player:addElement(player.PlayerCash)
+ function player.PlayerCash:RefreshRows()
+  for _,shell in ipairs(self.Players.children) do
+   local row=shell.children[1] or shell
+   if row.RefreshRowContent then row:RefreshRowContent() end
+  end
+  return "rows",nil,9
+ end
+ r.retainedTeamRefresh=player.PlayerCash.RefreshRows
  r.wonderCard=node();local bottom=node();r.wonderCard._widget=bottom
  bottom.ZomWeaponInfo=node();local ammo=node();bottom.ZomWeaponInfo.weaponinfoZM=ammo
  ammo.TextRightClipAmmo=stock_text(ammo,"right","inGame.player.currentWeapon.clipAmmoRightDisplay")
@@ -214,9 +230,10 @@ function stock_hud()
  ammo.weaponDescriptionZM=node();ammo.weaponDescriptionZM.TextWeaponName=node();ammo.weaponDescriptionZM.TextAltMode=node()
  ammo.weaponDescriptionZM.TextAltMode.text="actual-alt-mode"
  bottom.ZomWeaponInfo.PrimaryAbility=node();bottom.FateCardWidget=node()
- r.hints=node();r.reviveBarContainer=node()
+ r.hints=node();r.reviveBarContainer=node();r.cashEarned=node()
  return r
 end
+model("inGame.CP.currentPlayerCash",4270)
 existing=stock_hud() -- created BEFORE custom Lua load, bypassing our dispatcher
 ui_root=node();ui_root.hudManager={activeHud=existing}
 ''')
@@ -231,6 +248,80 @@ check('not existing.mainPlayerInfo._widget.MainPlayerInfo.questFuse.detached')
 check('existing.hints and existing.reviveBarContainer and existing.wonderCard._widget.FateCardWidget')
 check('existing.activePerks._widget.PerkList.children[2].PerkIcon.image=="actual-perk-2"')
 check('existing.wonderCard._widget.ZomWeaponInfo.weaponinfoZM.weaponDescriptionZM.TextAltMode.text=="actual-alt-mode"')
+check('existing.mainPlayerInfo._widget.MainPlayerInfo.PlayerIcon:getParent()==existing.mainPlayerInfo._widget.BO3Hero')
+check('existing.mainPlayerInfo._widget.MainPlayerInfo.PlayerCash:getParent()==existing.mainPlayerInfo._widget.BO3Hero')
+check('existing.mainPlayerInfo._widget.MainPlayerInfo.PlayerIcon.scale==0')
+check('existing.mainPlayerInfo._widget.BO3Hero.bounds[7]==-168 and existing.mainPlayerInfo._widget.BO3Hero.bounds[8]==-56')
+check('existing.wonderCard._widget.FateCardWidget.bounds[7]+588.5<existing.wonderCard._widget.ZomWeaponInfo.bounds[7]')
+check('existing.wonderCard._widget.ZomWeaponInfo.bounds[5]==-560')
+check('existing.waveNumber._widget.WaveNumber.bounds[5]>25+existing.mainPlayerInfo._widget.BO3Hero.bounds[6]')
+lua.execute('models["inGame.CP.currentPlayerCash"]:set(37)')
+check('existing.mainPlayerInfo._widget.MainPlayerInfo.PlayerCash.text==37')
+lua.execute(r'''
+roster={
+ {clientNum=0,name="Actual local",currency=25000,isMicOn=false,isMuted=false},
+ {clientNum=2,name="Actual teammate",currency=875,isMicOn=true,isMuted=false}
+}
+Game={GetCPNumScoreboardPlayers=function() return #roster end,
+ GetPlayerClientnum=function() return 0 end,IsSpectating=function() return false end,
+ GetPlayerstateClientnum=function() return 0 end,
+ GetCPScoreboardRowData=function(row,target,exclude)
+  if exclude then local out={};for _,data in ipairs(roster) do if data.clientNum~=target then out[#out+1]=data end end;return out[row+1] end
+  return roster[row+1]
+ end}
+teamRow=node();teamRow._row=0;teamRow._controllerIndex=1
+teamRow.PlayerImage=node();teamRow.PlayerImage.image="actual-status-photo"
+teamRow.PlayerName=node();teamRow.PlayerCash=node()
+function teamRow:RefreshRowContent()
+ local data=Game.GetCPScoreboardRowData(self._row,0,true)
+ self._clientNum=data.clientNum;self.PlayerName:setText(data.name);self.PlayerCash:setText(data.currency)
+end
+teamRow:RefreshRowContent()
+local grid=existing.mainPlayerInfo._widget.PlayerCash.Players
+local shell=node();shell:addElement(teamRow);grid:addElement(shell) -- retail grids wrap rows
+local list=existing.activePerks._widget.PerkList
+local icon=list.children[1];list:removeElement(icon);local a=node();local b=node();b:addElement(icon);a:addElement(b);list:addElement(a)
+tick()
+''')
+check('existing.mainPlayerInfo._widget.BO3Hero.BO3Name.text=="Actual local"')
+check('teamRow.PlayerName.text=="Actual teammate" and teamRow.PlayerCash.text==875')
+check('teamRow.PlayerImage.image=="actual-status-photo" and teamRow.BO3Speaker.alpha==1')
+check('string.find(BO3ZombiesHUD.messages["bind:ZMHUD:1"],"perks=2",1,true)~=nil')
+lua.execute('roster[2].name="Same client updated";roster[2].currency=90;roster[2].isMuted=true;existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
+check('teamRow.PlayerName.text=="Same client updated" and teamRow.PlayerCash.text==90')
+check('teamRow.BO3Speaker.image=="scoreboard_mic_mute"')
+lua.execute('hero=existing.mainPlayerInfo._widget.BO3Hero;oldChildren=#hero.children;tick();tick()')
+check('#hero.children==oldChildren')
+lua.execute(r'''
+-- Three actual teammates are stock rows, never fabricated by the adapter.
+roster[3]={clientNum=1,name="Joined third",currency=23,isMicOn=false,isMuted=false}
+roster[4]={clientNum=3,name="Joined fourth",currency=44,isMicOn=false,isMuted=false}
+function extra_row(index)
+ local row=node();row._row=index;row.PlayerImage=node();row.PlayerImage.image="retail-status-"..index
+ row.PlayerName=node();row.PlayerCash=node()
+ function row:RefreshRowContent()
+  local target=Game.IsSpectating() and Game.GetPlayerstateClientnum() or Game.GetPlayerClientnum()
+  local data=Game.GetCPScoreboardRowData(self._row,target,true)
+  self._clientNum=data.clientNum;self.PlayerName:setText(data.name);self.PlayerCash:setText(data.currency)
+ end
+ return row
+end
+grid=existing.mainPlayerInfo._widget.PlayerCash.Players
+thirdRow=extra_row(1);fourthRow=extra_row(2);grid:addElement(thirdRow);grid:addElement(fourthRow)
+originalRowRefresh=thirdRow.RefreshRowContent
+firstReturn,secondReturn,thirdReturn=existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()
+''')
+check('firstReturn=="rows" and secondReturn==nil and thirdReturn==9')
+check('#grid.children==3 and thirdRow.PlayerName.text=="Joined third" and fourthRow.PlayerCash.text==44')
+check('thirdRow.RefreshRowContent==originalRowRefresh and thirdRow.PlayerImage.image=="retail-status-1"')
+check('grid.bounds[6]==165 and thirdRow.BO3Speaker.alpha==0')
+lua.execute('grid:removeElement(fourthRow);table.remove(roster,4);existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
+check('#grid.children==2 and #roster==3')
+lua.execute('roster[2].isMicOn=nil;existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
+check('teamRow.BO3Speaker.alpha==0')
+lua.execute('Game.IsSpectating=function() return true end;Game.GetPlayerstateClientnum=function() return 1 end;tick()')
+check('hero.BO3Name.text=="Joined third"')
+lua.execute('Game.IsSpectating=function() return false end')
 lua.execute('models["inGame.CP.zombies.waveNumber"]:set(22);models["inGame.player.currentWeapon.clipAmmoRightDisplay"]:set("11")')
 check('existing.waveNumber._widget.WaveNumber.waveNum.text=="22"')
 check('existing.wonderCard._widget.ZomWeaponInfo.weaponinfoZM.TextRightClipAmmo.text=="11"')
@@ -264,6 +355,18 @@ lua.execute('retired=MenuBuilder.BuildRegisteredType;MenuBuilder.BuildRegistered
 check('MenuBuilder.BuildRegisteredType~=original and MenuBuilder.BuildRegisteredType~=retired')
 lua.execute('w=retired("WaveNumber",{controllerIndex=1})')
 check('w.id=="stock:WaveNumber"')
+lua.execute('for i=1,500 do tick() end;roster[1].name="Live beyond startup";roster[1].isMicOn=true;existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
+check('#pending==0 and hero.BO3Name.text=="Live beyond startup" and hero.BO3Speaker.alpha==1')
+lua.execute('grid:removeElement(thirdRow);grid:removeElement(grid.children[1]);roster={roster[1]};existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
+check('#grid.children==0 and hero.BO3Name.text=="Live beyond startup"')
+lua.execute('originalCount=Game.GetCPNumScoreboardPlayers;Game.GetCPNumScoreboardPlayers=function() return 1.5 end;existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
+check('hero.BO3Name.text=="" and hero.BO3Speaker.alpha==0')
+lua.execute('Game.GetCPNumScoreboardPlayers=originalCount;existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
+lua.execute('otherRefresh=function() return "external" end;manager.activeHud.mainPlayerInfo._widget.PlayerCash.RefreshRows=otherRefresh;retiredTeam=existing.mainPlayerInfo._widget.PlayerCash.RefreshRows')
 lua.execute('BO3ZombiesHUD.shutdown()')
 check('MenuBuilder.BuildRegisteredType==original')
+check('existing.mainPlayerInfo._widget.PlayerCash.RefreshRows==existing.retainedTeamRefresh')
+check('manager.activeHud.mainPlayerInfo._widget.PlayerCash.RefreshRows==otherRefresh')
+lua.execute('roster[1].name="After shutdown";retiredTeam(existing.mainPlayerInfo._widget.PlayerCash)')
+check('hero.BO3Name.text=="Live beyond startup"')
 print(f"PASS {checks} authored Lua5.1 source controls; mocked UI/models only, no HKS/game/pixels")

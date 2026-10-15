@@ -1,9 +1,12 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local state = { version = "0.2.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
+local state = { version = "0.3.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
+-- Values are weak too: each live owner's installed wrapper retains its hook.
+-- In Lua5.1 a weak key alone would retain old roots through the hook closure.
+state.refreshHooks = setmetatable({}, {__mode = "kv"})
 state.nextRoot = 0
 BO3ZombiesHUD = state
 local pending_nodes
@@ -185,16 +188,17 @@ local function style_player(self)
     if not self.__bo3PortraitStyled then
         if self.box then self:removeElement(self.box) end
         if self.dollarSign then self:removeElement(self.dollarSign) end
-        bar(self, "BO3PortraitTop", 0, 72, 100, 103, 0xA49E8B)
-        bar(self, "BO3PortraitBottom", 0, 72, 177, 180, 0xA49E8B)
         self.__bo3PortraitStyled = true
     end
     self.PlayerIcon:SetYRotation(0, 0)
     self.PlayerIcon:SetZRotation(0, 0)
-    rect(self.PlayerIcon, 0, 72, 104, 176)
-    self.PlayerCash:SetFontSize(scale(34))
+    self.PlayerIcon:SetScale(0, 0)
+    rect(self.PlayerIcon, 0, 72, 0, 110)
+    self.PlayerCash:SetScale(0, 0)
+    self.PlayerCash:SetYRotation(0, 0); self.PlayerCash:SetZRotation(0, 0)
+    self.PlayerCash:SetFontSize(scale(38))
     self.PlayerCash:SetRGBFromInt(0xF5F1E7, 0)
-    rect(self.PlayerCash, 86, 275, 127, 166)
+    rect(self.PlayerCash, 92, 340, 40, 82)
     return self
 end
 local function adapt_player(original, menu, args)
@@ -205,7 +209,14 @@ local function adapt_bottom(original, menu, args)
     assert(self and self.ZomWeaponInfo, "Actual IW7 ammo container required")
     self.ZomWeaponInfo:SetYRotation(0, 0)
     self.ZomWeaponInfo:SetZRotation(0, 0)
-    self.ZomWeaponInfo:SetAnchorsAndPosition(1, 0, 1, 0, scale(-454), scale(-76), scale(-210), scale(-48))
+    self.ZomWeaponInfo:SetAnchorsAndPosition(1, 0, 1, 0, scale(-560), scale(-182), scale(-210), scale(-48))
+    -- Retain card/charge/selection callbacks; give the entire deck a separate
+    -- upper-right zone instead of letting its demon/fan cover ammo below.
+    if self.FateCardWidget then
+        self.FateCardWidget:SetYRotation(0, 0); self.FateCardWidget:SetZRotation(0, 0)
+        -- The retail fan extends to 588.5, beyond its declared 389 height.
+        self.FateCardWidget:SetAnchorsAndPosition(1, 0, 1, 0, scale(-530), scale(-277), scale(-860), scale(-471))
+    end
     return self
 end
 local function unwrap(node) return node and (node._widget or node) end
@@ -258,22 +269,131 @@ local function style_wave(self)
         rect(self.waveNum, 22, 144, 20, 84)
     end
     self:SetYRotation(0, 0); self:SetZRotation(0, 0)
-    self:SetAnchorsAndPosition(0, 1, 1, 0, scale(50), scale(205), scale(-328), scale(-216))
+    self:SetAnchorsAndPosition(0, 1, 1, 0, scale(420), scale(575), scale(-168), scale(-56))
+end
+local function walk_leaves(parent, apply)
+    local visited = 0
+    local function visit(node, depth)
+        assert(depth <= 5 and visited < 128, "HUD leaf traversal exceeds its source bound")
+        visited = visited + 1
+        apply(node)
+        if not node.getFirstChild then return end
+        local child = node:getFirstChild()
+        while child do
+            local next_child = child:getNextSibling()
+            visit(child, depth + 1); child = next_child
+        end
+    end
+    visit(parent, 0)
 end
 local function style_perks(list)
     assert(list and list.getFirstChild, "Actual perk list required")
-    local child, count, icons = list:getFirstChild(), 0, 0
-    while child and count < 16 do
-        local next_child = child:getNextSibling()
+    local icons = 0
+    walk_leaves(list, function(child)
         if child.PerkIcon then
-            rect(child, 0, 46, 0, 46)
-            rect(child.PerkIcon, 3, 43, 3, 43)
+            assert(icons < 16, "Perk icon count exceeds the stock player bound")
+            rect(child, 0, 46, 0, 46); rect(child.PerkIcon, 3, 43, 3, 43)
             icons = icons + 1
         end
-        count = count + 1; child = next_child
-    end
-    assert(not child, "Perk traversal exceeds the stock player bound")
+    end)
     return icons
+end
+local function reparent(leaf, parent)
+    local previous = leaf:getParent()
+    if previous == parent then return end
+    if previous then previous:removeElement(leaf) end
+    parent:addElement(leaf)
+end
+local function speaker(parent, id)
+    local icon = LUI.UIImage.new(); icon.id = id; icon:SetAlpha(0, 0)
+    parent:addElement(icon); return icon
+end
+local function mic(icon, data)
+    if not data or type(data.isMicOn) ~= "boolean" or type(data.isMuted) ~= "boolean" then icon:SetAlpha(0, 0);return end
+    icon:setImage(RegisterMaterial(data.isMuted and "scoreboard_mic_mute" or "scoreboard_mic_talk"), 0)
+    icon:SetAlpha((data.isMicOn or data.isMuted) and 1 or 0, 0)
+end
+local function current_client()
+    if not Game or type(Game.IsSpectating) ~= "function" then return nil end
+    local ok, target = pcall(function()
+        return Game.IsSpectating() and Game.GetPlayerstateClientnum() or Game.GetPlayerClientnum()
+    end)
+    return ok and target or nil
+end
+local function client_data(client)
+    if client == nil or not Game or type(Game.GetCPNumScoreboardPlayers) ~= "function"
+        or type(Game.GetCPScoreboardRowData) ~= "function" then return nil end
+    local ok, count = pcall(Game.GetCPNumScoreboardPlayers)
+    if not ok or type(count) ~= "number" or count < 0 or count > 4 or count ~= math.floor(count) then return nil end
+    -- The complete scoreboard row owns mic flags; the filtered CP cash row
+    -- remains untouched and owns its currency, portrait/status and identity.
+    for i = 0, count - 1 do
+        local got, data = pcall(Game.GetCPScoreboardRowData, i)
+        if got and type(data) == "table" and data.clientNum == client then return data end
+    end
+end
+local function style_teamrow(row)
+    if not (row.PlayerImage and row.PlayerName and row.PlayerCash) then return end
+    row:SetYRotation(0, 0); row:SetZRotation(0, 0)
+    row.PlayerImage:SetScale(0, 0); rect(row.PlayerImage, 0, 40, 3, 47)
+    row.PlayerName:SetScale(0, 0); row.PlayerName:SetFontSize(scale(18));row.PlayerName:SetAlpha(1, 0)
+    row.PlayerName:SetRGBFromInt(0xF5F1E7, 0)
+    rect(row.PlayerName, 52, 242, 0, 22)
+    row.PlayerCash:SetScale(0, 0);row.PlayerCash:SetFontSize(scale(22));rect(row.PlayerCash, 52, 220, 24, 48)
+    row.PlayerCash:SetRGBFromInt(0xF5F1E7, 0)
+    if not row.__bo3TeamStyled then
+        if row.BackingBox then row:removeElement(row.BackingBox) end
+        if row.dollarSign then row:removeElement(row.dollarSign) end
+        row.BO3Speaker = speaker(row, "BO3TeamSpeaker")
+        row.__bo3TeamStyled = true
+    end
+    rect(row.BO3Speaker, 258, 280, 12, 34)
+    mic(row.BO3Speaker, client_data(row._clientNum))
+end
+local try_root
+local function hook_team_refresh(teammates, root)
+    assert(type(teammates.RefreshRows) == "function", "Actual team refresh required")
+    local prior = state.refreshHooks[teammates]
+    if prior and teammates.RefreshRows == prior.wrapper then return end
+    if prior then prior.retired = true end
+    local hook = {original = teammates.RefreshRows}
+    local function pack(...) return {n = select("#", ...), ...} end
+    hook.wrapper = function(self, ...)
+        local result = pack(hook.original(self, ...))
+        if not hook.retired and not state.closed then try_root(root) end
+        return unpack(result, 1, result.n)
+    end
+    state.refreshHooks[teammates] = hook
+    teammates.RefreshRows = hook.wrapper
+end
+local function style_team(root, container, info)
+    local hero = container.BO3Hero
+    if not hero then
+        hero = panel("BO3Hero", 344, 112);container:addElement(hero);container.BO3Hero = hero
+        bar(hero, "BO3HeroRule", 82, 85, 4, 104, 0xA49E8B)
+        hero.BO3Name = text(hero, "BO3HeroName", 19, 92, 304, 9, 33)
+        hero.BO3Speaker = speaker(hero, "BO3HeroSpeaker")
+    end
+    hero:SetAnchorsAndPosition(0, 1, 1, 0, scale(24), scale(368), scale(-168), scale(-56))
+    reparent(info.PlayerIcon, hero); reparent(info.PlayerCash, hero);style_player(info)
+    rect(hero.BO3Speaker, 314, 336, 12, 34)
+    local current = client_data(current_client())
+    hero.BO3Name:setText(current and type(current.name) == "string" and current.name or "");mic(hero.BO3Speaker, current)
+    local teammates = assert(container.PlayerCash, "Actual teammate container required")
+    assert(teammates.Players, "Actual teammate grid required")
+    teammates:SetYRotation(0, 0);teammates:SetZRotation(0, 0)
+    teammates:SetAnchorsAndPosition(0, 1, 1, 0, scale(24), scale(344), scale(-336), scale(-180))
+    -- Keep the native 165-column cell aligned at x0. Stencil is stock-disabled;
+    -- its restyled children extend to x280 inside the wider 320 parent.
+    rect(teammates.Players, 0, 165, 0, 156)
+    walk_leaves(teammates.Players, style_teamrow)
+    hook_team_refresh(teammates, root)
+    -- Retail's existing one-second refresh also updates our hero after the
+    -- bounded startup poll ends. No extra timer or synthetic roster is added.
+    -- Earned/spent deltas keep their flight/fade, in a separate x lane.
+    if root.cashEarned then
+        root.cashEarned:SetAnchorsAndPosition(0, 1, 1, 0, scale(560), scale(560), scale(-370), scale(-370))
+    end
 end
 local function adapt_root(root)
     assert(type(root.controllerIndex) == "number" and root.controllerIndex >= 0 and root.controllerIndex <= 3,
@@ -283,11 +403,12 @@ local function adapt_root(root)
     -- a full-screen canvas: move its leaf, never shrink that canvas.
     local round = unwrap(root.waveNumber)
     style_wave(assert(round.WaveNumber, "Round container leaf required"))
-    root.activePerks:SetAnchorsAndPosition(0, 1, 1, 0, scale(50), scale(690), scale(-246), scale(-182))
+    root.activePerks:SetAnchorsAndPosition(0, 1, 1, 0, scale(50), scale(690), scale(-416), scale(-352))
     local icons = style_perks(unwrap(root.activePerks).PerkList)
     local player = unwrap(root.mainPlayerInfo)
-    style_player(assert(player.MainPlayerInfo or player.MainPlayerInfoDLC1 or player.MainPlayerInfoDLC2
-        or player.MainPlayerInfoDLC3 or player.MainPlayerInfoDLC4, "Player container leaf required"))
+    local info = assert(player.MainPlayerInfo or player.MainPlayerInfoDLC1 or player.MainPlayerInfoDLC2
+        or player.MainPlayerInfoDLC3 or player.MainPlayerInfoDLC4, "Player container leaf required")
+    style_team(root, player, info)
     root.mainPlayerInfo:SetYRotation(0, 0)
     root.mainPlayerInfo:SetZRotation(0, 0)
     local bottom = unwrap(root.wonderCard)
@@ -300,7 +421,7 @@ local function adapt_root(root)
         .. " root=" .. token(root.id) .. " controller=" .. token(root.controllerIndex)
         .. " root_seq=" .. state.roots[root] .. " round=1 ammo=1 portrait=1 perks=" .. icons .. " pixels=unverified")
 end
-local function try_root(root)
+try_root = function(root)
     local ids = {ZMHUD=true, ZMHUDDLC1=true, ZMHUDDLC2=true, ZMHUDDLC3=true, ZMHUDDLC4=true}
     if not root or not ids[root.id] then return end
     gate_trace()
@@ -399,6 +520,10 @@ local function visit_root()
 end
 function state.shutdown()
     state.closed = true
+    for owner, hook in pairs(state.refreshHooks) do
+        hook.retired = true
+        if owner.RefreshRows == hook.wrapper then owner.RefreshRows = hook.original end
+    end
     for key, hook in pairs(state.hooks) do
         hook.retired = true
         local field = hook.key or key
