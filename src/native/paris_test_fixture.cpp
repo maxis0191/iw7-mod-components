@@ -1161,6 +1161,30 @@ namespace paris_test_fixture
             {
                 return protect_player(ent);
             });
+            // Engine bots have no loopback connection identity. This private
+            // gameplay witness protects/removes bots only; it exposes no player
+            // command, identity override, authentication or persistent state.
+            gsc::method::add("paris_test_bot", [](game::scr_entref_t ent, const gsc::function_args& args) -> scripting::script_value
+            {
+                if (!private_fixture() || !utils::flags::has_flag("paris-isolated-lab") ||
+                    ent.classnum || ent.entnum >= 4 || !is_protected_player(0)) return false;
+                auto* clients = *game::svs_clients;
+                if (!clients) return false;
+                const int operation = args[0].as<int>();
+                if (operation == 1 && ent.entnum == 0)
+                {
+                    for (unsigned slot = 1; slot < 4 && slot < *game::svs_numclients; ++slot)
+                        if (clients[slot].header.state >= game::CS_CONNECTED && game::SV_BotIsBot(static_cast<int>(slot)))
+                            game::SV_DropClient(&clients[slot], "Isolated gameplay cleanup", true);
+                    return true;
+                }
+                const auto slot = ent.entnum;
+                if (operation != 0 || slot == 0 || slot >= *game::svs_numclients ||
+                    clients[slot].header.state < game::CS_CONNECTED || !game::SV_BotIsBot(slot) ||
+                    !game::g_entities[slot].client) return false;
+                game::g_entities[slot].flags |= 1;
+                return (game::g_entities[slot].flags & 1) != 0;
+            });
             gsc::method::add("paris_rhino_test_protect", [](game::scr_entref_t ent, const gsc::function_args&) -> scripting::script_value
             {
                 if (!utils::flags::has_flag("paris-rhino-probe") && !utils::flags::has_flag("paris-isolated-lab")) return false;
