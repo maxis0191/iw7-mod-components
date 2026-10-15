@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.13.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.14.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -14,6 +14,8 @@ state.cardIdentities = setmetatable({}, {__mode = "kv"})
 -- view retains its own record; the weak registry cannot retain dead HUD trees.
 local action_views = setmetatable({}, {__mode = "kv"})
 local retired_actions = setmetatable({}, {__mode = "k"})
+local fan_views = setmetatable({}, {__mode = "kv"})
+local retired_fans = setmetatable({}, {__mode = "k"})
 state.identityDiagnostics = setmetatable({}, {__mode = "k"})
 state.nextIdentityDiagnostic = 0
 state.cardDiagnostics = setmetatable({}, {__mode = "k"})
@@ -252,24 +254,84 @@ local function reparent(leaf, parent)
     if previous then previous:removeElement(leaf) end
     parent:addElement(leaf)
 end
-local function style_fan(self)
-    assert(self and self.fanCard and self.fanOverlay, "Actual native fan surfaces required")
-    if not self.__bo3FanBack then
-        -- Authored dark card/rim, not BO3 retail art. Keep the original two
-        -- image objects and native overlay depth tint/alpha. This inset stays
-        -- inside their old quad; parent pose/count/selection remains native.
-        self.fanCard:setImage(RegisterMaterial("white"), 0)
-        self.fanCard:SetRGBFromInt(0x171713, 0)
-        self.fanOverlay:setImage(RegisterMaterial("white"), 0)
-        rect(self.fanCard, 20.5, 212.5, 80, 432)
-        rect(self.fanOverlay, 20.5, 212.5, 80, 432)
-        bar(self, "BO3FanTop", 20.5, 212.5, 80, 84, 0xA49E8B)
-        bar(self, "BO3FanBottom", 20.5, 212.5, 428, 432, 0xA49E8B)
-        bar(self, "BO3FanLeft", 20.5, 24.5, 84, 428, 0xA49E8B)
-        bar(self, "BO3FanRight", 208.5, 212.5, 84, 428, 0xA49E8B)
-        bar(self, "BO3FanRule", 76.5, 156.5, 254, 258, 0xA49E8B)
-        self.__bo3FanBack = true
+local function fan_shape(self, owner)
+    local back, overlay = self.fanCard, self.fanOverlay
+    if not back or not overlay or back == overlay or back.id ~= "fanCard" or overlay.id ~= "fanOverlay"
+        or not self.getFirstChild or not back.getParent or not overlay.getParent
+        or not back.getNextSibling or not overlay.getNextSibling
+        or back:getParent() ~= self or overlay:getParent() ~= self
+        or self:getFirstChild() ~= back or back:getNextSibling() ~= overlay
+        or back:getFirstChild() or overlay:getFirstChild() then return false end
+    if not owner then return overlay:getNextSibling() == nil end
+    if back ~= owner.back or overlay ~= owner.overlay or overlay:getNextSibling() ~= owner.view
+        or owner.view:getParent() ~= self or owner.view:getNextSibling() then return false end
+    local child = owner.view:getFirstChild()
+    for _, leaf in ipairs(owner.rims) do
+        if child ~= leaf or leaf:getParent() ~= owner.view or leaf:getFirstChild() then return false end
+        child = child:getNextSibling()
     end
+    return child == nil
+end
+local function retire_fan(self, owner)
+    if fan_views[self] ~= owner or owner.retired then return end
+    owner.retired = true;retired_fans[self] = true
+    -- Restore only captured native leaves still held by this exact widget.
+    -- Never alter a replacement field or a leaf adopted by another parent.
+    if self.fanCard == owner.back and owner.back:getParent() == self then
+        owner.back:setImage(RegisterMaterial("zm_wc_card_fan"), 0)
+        owner.back:SetRGBFromInt(0xFFFFFF, 0)
+        rect(owner.back, -11.5, 244.5, 0, 512)
+    end
+    if self.fanOverlay == owner.overlay and owner.overlay:getParent() == self then
+        owner.overlay:setImage(RegisterMaterial("zm_wc_card_fan_overlay"), 0)
+        rect(owner.overlay, -11.5, 244.5, 0, 512)
+    end
+    if owner.view:getParent() == self then
+        -- A foreign child inserted into our view is retained with its parent.
+        -- Dispose only our captured empty rectangles and an empty view.
+        for _, leaf in ipairs(owner.rims) do
+            if leaf:getParent() == owner.view and not leaf:getFirstChild() then
+                owner.view:removeElement(leaf);leaf:close()
+            end
+        end
+        if not owner.view:getFirstChild() then self:removeElement(owner.view);owner.view:close() end
+    end
+    owner.view.__bo3FanLifetime = nil
+end
+local function style_fan(self, index)
+    if not self then return self end
+    local owner = fan_views[self]
+    if owner then
+        if owner.retired then return self end
+        local ok, intact = pcall(fan_shape, self, owner)
+        if state.closed or self.__bo3FanBack ~= owner or owner.index ~= index or not ok or not intact then
+            retire_fan(self, owner)
+        end
+        return self
+    end
+    local ok, intact = pcall(fan_shape, self)
+    if state.closed or retired_fans[self] or self.__bo3FanBack ~= nil
+        or type(index) ~= "number" or index < 0 or index > 3 or index ~= math.floor(index)
+        or not ok or not intact then return self end
+    local view = panel("BO3FanRim", 237, 332)
+    local rims = {
+        bar(view, "BO3FanTop", 20.5, 212.5, 80, 84, 0xA49E8B),
+        bar(view, "BO3FanBottom", 20.5, 212.5, 428, 432, 0xA49E8B),
+        bar(view, "BO3FanLeft", 20.5, 24.5, 84, 428, 0xA49E8B),
+        bar(view, "BO3FanRight", 208.5, 212.5, 84, 428, 0xA49E8B),
+        bar(view, "BO3FanRule", 76.5, 156.5, 254, 258, 0xA49E8B)
+    }
+    self.fanCard:setImage(RegisterMaterial("white"), 0)
+    self.fanCard:SetRGBFromInt(0x171713, 0)
+    self.fanOverlay:setImage(RegisterMaterial("white"), 0)
+    rect(self.fanCard, 20.5, 212.5, 80, 432)
+    -- Keep native depth tint/alpha on a narrow inset, rather than washing the
+    -- entire dark back gray. All count/selection/empty poses stay on the parent.
+    rect(self.fanOverlay, 24.5, 32.5, 84, 428)
+    self:addElement(view)
+    owner = {view=view, rims=rims, back=self.fanCard, overlay=self.fanOverlay, index=index}
+    view.__bo3FanLifetime = owner
+    self.__bo3FanBack = owner;fan_views[self] = owner
     return self
 end
 local identity_keys = {"name", "icon", "backing", "rarity"}
@@ -646,7 +708,7 @@ local function adapt_bottom(original, menu, args)
         self.FateCardWidget:SetAnchorsAndPosition(1, 0, 1, 0, scale(-420), scale(-167), scale(-695), scale(-306))
         for i = 1, 4 do
             local fan = self.FateCardWidget["fanCard" .. i]
-            if fan then style_fan(fan) end
+            if fan then style_fan(fan, controller_index(self, args)) end
         end
         if self.FateCardWidget.FateCardOnDeck then
             style_card_identity(self.FateCardWidget.FateCardOnDeck, controller_index(self, args))
@@ -1036,7 +1098,9 @@ local replacements = {
     WaveNumber = function(_, menu, args) return build_wave(menu, args) end,
     weaponinfoZM = function(_, menu, args) return build_ammo(menu, args) end,
     CPPerkIcon = function(_, menu, args) return build_perk(menu, args) end,
-    FateFanCard = function(original, menu, args) return style_fan(remember(original(menu, args))) end,
+    FateFanCard = function(original, menu, args)
+        return style_fan(remember(original(menu, args)), controller_index(menu, args))
+    end,
     FateCardOnDeck = function(original, menu, args)
         local self = remember(original(menu, args))
         return style_card_identity(self, controller_index(self, args))
@@ -1121,6 +1185,7 @@ local function visit_root()
 end
 function state.shutdown()
     state.closed = true
+    for self, owner in pairs(fan_views) do retire_fan(self, owner) end
     for self, owner in pairs(action_views) do retire_action(self, owner) end
     for _, owner in pairs(state.cardCores) do native_card_core(owner) end
     for _, owner in pairs(state.cardIdentities) do native_card_identity(owner) end

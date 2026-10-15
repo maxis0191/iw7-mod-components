@@ -95,8 +95,9 @@ function original(key,args)
   n.NativeFlash=function() n.PowerupIcon:SetAlpha(0) end
  end
  if key=="FateFanCard" then
-  n.fanCard=node();n.fanCard.image="zm_wc_card_fan";n:addElement(n.fanCard)
-  n.fanOverlay=node();n.fanOverlay.image="zm_wc_card_fan_overlay";n.fanOverlay.color=0x263626;n.fanOverlay.alpha=0.6;n:addElement(n.fanOverlay)
+  n.fanCard=node();n.fanCard.id="fanCard";n.fanCard.image="zm_wc_card_fan";n:addElement(n.fanCard)
+  n.fanOverlay=node();n.fanOverlay.id="fanOverlay";n.fanOverlay.image="zm_wc_card_fan_overlay";n.fanOverlay.color=0x263626;n.fanOverlay.alpha=0.6;n:addElement(n.fanOverlay)
+  if nextFanShape then local mutate=nextFanShape;nextFanShape=nil;mutate(n) end
  end
  if key=="FateCardOnDeck" then
   n.cardBack=node();n.name=node();n.icon=node()
@@ -161,7 +162,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.13.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.13.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.14.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.14.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -463,6 +464,73 @@ check('fan.fanCard==nativeFanImage and fan.fanOverlay==nativeFanOverlay and fan.
 check('fan.alpha==0.4 and fan.zrotation==-30 and fan.fanOverlay.color==0x445566 and fan.fanOverlay.alpha==0.6 and #fan.children==fanChildren')
 lua.execute('freshFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=2});freshFan:SetAlpha(0);tick()')
 check('freshFan.__bo3FanBack and freshFan.alpha==0 and freshFan.fanOverlay.alpha==0.6')
+check('fan.fanOverlay.bounds[6]-fan.fanOverlay.bounds[5]==8 and fan.fanCard.bounds[6]-fan.fanCard.bounds[5]==192 and fan.children[1]==nativeFanImage and fan.children[2]==nativeFanOverlay and fan.children[3]==fan.__bo3FanBack.view')
+lua.execute(r'''
+fanOwner=fan.__bo3FanBack;nativeFanBounds=fan.bounds;fan:SetScale(-0.5)
+-- Native count/selection poses retain authority, including empty/depth changes.
+fan:SetAlpha(0);fan:SetZRotation(-25);fan.fanOverlay:SetAlpha(0.3)
+existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()
+''')
+check('fan.alpha==0 and fan.zrotation==-25 and fan.scale==-0.5 and fan.bounds==nativeFanBounds and fan.fanOverlay.alpha==0.3 and fan.fanOverlay.color==0x445566 and fan.__bo3FanBack==fanOwner')
+lua.execute('fan:SetAlpha(1);fan.fanOverlay:SetRGBFromInt(0x263626);existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
+check('fan.alpha==1 and fan.fanOverlay.color==0x263626 and #fan.children==3 and #fanOwner.view.children==5')
+lua.execute(r'''
+foreignFanRoots={}
+function fanRoot(mutate)
+ local r=stock_hud();if mutate then mutate(r.wonderCard._widget.FateCardWidget.fanCard1) end
+ LUI.HudManager.CreateHud({nextHud=r});foreignFanRoots[#foreignFanRoots+1]=r
+ return r,r.wonderCard._widget.FateCardWidget.fanCard1
+end
+function refreshFan(r) r.mainPlayerInfo._widget.PlayerCash:RefreshRows() end
+-- Added native/foreign children and field aliases are not an eligible schema.
+unknownFanRoot,unknownFan=fanRoot(function(f) f.extra=node();f:addElement(f.extra) end)
+badFanRoot,badFan=fanRoot(function(f) f.fanOverlay=f.fanCard end)
+''')
+check('not unknownFan.__bo3FanBack and unknownFan.fanCard.image=="zm_wc_card_fan" and not unknownFan.extra.closed and unknownFanRoot.__bo3HudLayout and not badFan.__bo3FanBack and badFanRoot.__bo3HudLayout')
+lua.execute('unknownFan:removeElement(unknownFan.extra);refreshFan(unknownFanRoot)')
+check('unknownFan.__bo3FanBack and unknownFan.fanCard.image=="white"')
+lua.execute(r'''
+-- A forged public marker is never cleanup authority, even after forced GC.
+tagFanRoot,tagFan=fanRoot();tagFanView=tagFan.__bo3FanBack.view
+fanForeignParent=node();fanForeignView=node();fanForeignView.alpha=0.47;fanForeignParent:addElement(fanForeignView)
+fanForgedTag={view=fanForeignView,back=fanForeignView,overlay=fanForeignView,rims={fanForeignView}}
+tagFan.__bo3FanBack=fanForgedTag;collectgarbage("collect");refreshFan(tagFanRoot)
+''')
+check('tagFan.fanCard.image=="zm_wc_card_fan" and tagFan.fanCard.color==0xFFFFFF and tagFan.fanOverlay.image=="zm_wc_card_fan_overlay" and tagFan.fanCard.bounds[5]==-11.5 and tagFan.fanCard.bounds[8]==512 and tagFan.fanOverlay.color==0x263626 and tagFan.fanOverlay.alpha==0.6')
+check('tagFanView.closed and tagFanView:getParent()==nil and tagFanView.__bo3FanLifetime==nil and tagFan.__bo3FanBack==fanForgedTag and not fanForeignView.closed and fanForeignView.alpha==0.47 and fanForeignView:getParent()==fanForeignParent')
+lua.execute('tagFan.__bo3FanBack=nil;collectgarbage("collect");refreshFan(tagFanRoot)')
+check('tagFan.__bo3FanBack==nil and #tagFan.children==2 and tagFan.fanCard.image=="zm_wc_card_fan"')
+lua.execute(r'''
+preTagRoot,preTagFan=fanRoot(function(f) f.__bo3FanBack=fanForgedTag end)
+nilFanRoot,nilFan=fanRoot();nilFanView=nilFan.__bo3FanBack.view;nilFan.__bo3FanBack=nil;collectgarbage("collect");refreshFan(nilFanRoot)
+typeFanRoot,typeFan=fanRoot();typeFanView=typeFan.__bo3FanBack.view;typeFan.__bo3FanBack=true;refreshFan(typeFanRoot)
+''')
+check('preTagFan.__bo3FanBack==fanForgedTag and preTagFan.fanCard.image=="zm_wc_card_fan" and not fanForeignView.closed and nilFanView.closed and nilFan.__bo3FanBack==nil and typeFanView.closed and typeFan.__bo3FanBack==true')
+lua.execute(r'''
+changedFanRoot,changedFan=fanRoot();changedFanBack=changedFan.fanCard;changedFanView=changedFan.__bo3FanBack.view
+replacementFanBack=node();replacementFanBack.image="foreign-back";replacementFanBack.alpha=0.42
+changedFan.fanCard=replacementFanBack;refreshFan(changedFanRoot)
+''')
+check('changedFanView.closed and changedFan.fanCard==replacementFanBack and replacementFanBack.image=="foreign-back" and replacementFanBack.alpha==0.42 and not replacementFanBack.closed and changedFanBack.image=="white" and changedFan.fanOverlay.image=="zm_wc_card_fan_overlay"')
+lua.execute(r'''
+adoptedFanRoot,adoptedFan=fanRoot();adoptedOverlay=adoptedFan.fanOverlay;adoptedView=adoptedFan.__bo3FanBack.view
+adoptedFan:removeElement(adoptedOverlay);fanForeignParent:addElement(adoptedOverlay);refreshFan(adoptedFanRoot)
+extraFanRoot,extraFan=fanRoot();extraFanView=extraFan.__bo3FanBack.view
+extraFanChild=node();extraFanChild.alpha=0.39;extraFanView:addElement(extraFanChild);refreshFan(extraFanRoot)
+nestedFanRoot,nestedFan=fanRoot();nestedFanView=nestedFan.__bo3FanBack.view;nestedFanRim=nestedFanView.children[1]
+nestedFanChild=node();nestedFanRim:addElement(nestedFanChild);refreshFan(nestedFanRoot)
+''')
+check('adoptedView.closed and adoptedOverlay:getParent()==fanForeignParent and adoptedOverlay.image=="white" and not adoptedOverlay.closed and adoptedFan.fanCard.image=="zm_wc_card_fan"')
+check('not extraFanView.closed and extraFanView:getParent()==extraFan and extraFanChild:getParent()==extraFanView and not extraFanChild.closed and extraFanChild.alpha==0.39 and #extraFanView.children==1 and extraFan.fanCard.image=="zm_wc_card_fan"')
+check('not nestedFanView.closed and nestedFanRim:getParent()==nestedFanView and not nestedFanRim.closed and nestedFanChild:getParent()==nestedFanRim and not nestedFanChild.closed and #nestedFanView.children==1')
+lua.execute('movedFanRoot,movedFan=fanRoot();movedFanView=movedFan.__bo3FanBack.view;movedFan:removeElement(movedFanView);fanForeignParent:addElement(movedFanView);refreshFan(movedFanRoot)')
+check('movedFanView:getParent()==fanForeignParent and not movedFanView.closed and #movedFanView.children==5 and movedFanView.__bo3FanLifetime==nil and movedFan.fanCard.image=="zm_wc_card_fan"')
+lua.execute('indexFanRoot,indexFan=fanRoot();indexFanView=indexFan.__bo3FanBack.view;indexFanRoot.controllerIndex=2;refreshFan(indexFanRoot)')
+check('indexFanView.closed and indexFan.fanCard.image=="zm_wc_card_fan" and indexFan.fanOverlay.image=="zm_wc_card_fan_overlay"')
+lua.execute('nextFanShape=function(f) f.extra=node();f:addElement(f.extra) end;unknownFactoryFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=2})')
+check('not unknownFactoryFan.__bo3FanBack and unknownFactoryFan.fanCard.image=="zm_wc_card_fan" and not unknownFactoryFan.extra.closed')
+lua.execute('fractionalFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=1.5})')
+check('not fractionalFan.__bo3FanBack and fractionalFan.fanCard.image=="zm_wc_card_fan" and freshFan.__bo3FanBack.index==2 and deck.fanCard2.__bo3FanBack.index==1 and deck.fanCard2.__bo3FanBack~=freshFan.__bo3FanBack')
 check('deck.FateCardOnDeck.image=="native-selected-card" and deck.Fire.alpha==1 and deck.upArrow.alpha==1')
 lua.execute('core=deck.FateCardDevilWidget;coreOwner=core.__bo3CardCore;nativeCoreUpdate=core.nativeUpdate;meter=core.radialAlphaLarge.circleFill;nativeMeterParent=meter:getParent()')
 check('coreOwner.count.text=="5" and coreOwner.status.text=="READY" and coreOwner.title.text=="CARDS" and coreOwner.mask.alpha==0')
@@ -775,6 +843,7 @@ lua.execute('manager={nextHud=stock_hud()};first,second,third=LUI.HudManager.Cre
 check('first=="retained" and second==nil and third==7 and manager.activeHud.__bo3HudLayout==true')
 check('BO3ZombiesHUD.roots[manager.activeHud]~=BO3ZombiesHUD.roots[existing]')
 lua.execute('savedWave=manager.nextHud.waveNumber._widget.WaveNumber')
+lua.execute('failureRootSequence=BO3ZombiesHUD.roots[manager.activeHud]')
 lua.execute('manager.nextHud.waveNumber._widget.WaveNumber=nil;LUI.HudManager.CreateHud(manager)')
 check('string.find(BO3ZombiesHUD.messages["failure:ZMHUD"],"retry=1",1,true)~=nil')
 check('BO3ZombiesHUD.messages["bind:ZMHUD:1"]==nil')
@@ -782,7 +851,7 @@ lua.execute('manager.nextHud.waveNumber._widget.WaveNumber=savedWave;LUI.HudMana
 check('BO3ZombiesHUD.messages["bind:ZMHUD:1"]~=nil')
 lua.execute('manager.nextHud.waveNumber._widget.WaveNumber=nil;LUI.HudManager.CreateHud(manager)')
 check('BO3ZombiesHUD.messages["bind:ZMHUD:1"]==nil')
-lua.execute('failureCount=0;for _,message in ipairs(printed) do if string.find(message,"binding_failure",1,true) and string.find(message,"root_seq=2",1,true) then failureCount=failureCount+1 end end')
+lua.execute('failureCount=0;for _,message in ipairs(printed) do if string.find(message,"binding_failure",1,true) and string.find(message,"root_seq="..failureRootSequence.." ",1,true) then failureCount=failureCount+1 end end')
 check('failureCount==2')
 lua.execute(r'''
 model("inGame.CP.zombies.consumableDeckSelectName","LOCALIZED IDENTITY NAME")
@@ -1088,6 +1157,8 @@ shutdownTagAction=shutdownTagRoot.reviveBarContainer._widget;shutdownOwnedView=s
 shutdownForeignParent=node();shutdownForeignView=node();shutdownForeignView.alpha=0.49;shutdownForeignParent:addElement(shutdownForeignView)
 shutdownForeignTag={view=shutdownForeignView,accent=shutdownForeignParent,index=shutdownTagRoot.controllerIndex}
 shutdownTagAction.__bo3ActionView=shutdownForeignTag;collectgarbage("collect")
+shutdownFan=shutdownTagRoot.wonderCard._widget.FateCardWidget.fanCard1;shutdownFanView=shutdownFan.__bo3FanBack.view
+shutdownFan.__bo3FanBack=fanForgedTag;collectgarbage("collect")
 ''')
 lua.execute('BO3ZombiesHUD.shutdown()')
 check('MenuBuilder.BuildRegisteredType==original')
@@ -1098,6 +1169,8 @@ check('gauge.backing.alpha==1 and gauge.meter.alpha==1 and gauge.view.alpha==0 a
 check('selectedOwner.mask.alpha==1 and selectedOwner.view.alpha==0 and boundedSelectedOwner.mask.alpha==1 and boundedSelectedOwner.view.alpha==0 and selected.nativeIdentityCallbacks==selectedCallbacks and selected.name==selectedNativeName and selected.icon==selectedNativeIcon')
 check('actionOwner.retired and actionOwner.view.closed and actionOwner.view:getParent()==nil and nativeActionIntact(mapFixtures[4].root) and foreignActionChild:getParent()==foreignHookAction.Accent and foreignHookAction.SetHeader==foreignHeader')
 check('shutdownOwnedView.closed and shutdownOwnedView:getParent()==nil and shutdownOwnedView.__bo3ActionLifetime==nil and shutdownTagAction.__bo3ActionView==shutdownForeignTag and not shutdownForeignView.closed and shutdownForeignView.alpha==0.49 and shutdownForeignView:getParent()==shutdownForeignParent and nativeActionIntact(shutdownTagRoot)')
+check('shutdownFanView.closed and shutdownFanView:getParent()==nil and shutdownFanView.__bo3FanLifetime==nil and shutdownFan.fanCard.image=="zm_wc_card_fan" and shutdownFan.fanOverlay.image=="zm_wc_card_fan_overlay" and shutdownFan.__bo3FanBack==fanForgedTag and not fanForeignView.closed and fanForeignView.alpha==0.47')
+check('fanOwner.retired and fanOwner.view.closed and fan.fanCard==nativeFanImage and fan.fanOverlay==nativeFanOverlay and fan.alpha==1 and fan.zrotation==-25 and fan.scale==-0.5 and fan.fanOverlay.alpha==0.3 and fan.fanOverlay.color==0x263626 and #fan.children==2 and freshFan.alpha==0')
 lua.execute('roster[1].name="After shutdown";retiredTeam(existing.mainPlayerInfo._widget.PlayerCash)')
 check('hero.BO3Name.text=="Live beyond startup"')
 print(f"PASS {checks} authored Lua5.1 source controls; mocked UI/models only, no HKS/game/pixels")
