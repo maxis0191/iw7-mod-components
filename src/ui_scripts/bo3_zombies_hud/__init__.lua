@@ -1,13 +1,16 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local state = { version = "0.7.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
+local VERSION, DIAGNOSTIC_VERSION = "0.8.0", "0.7.0"
+local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
 -- Values are weak too: each live owner's installed wrapper retains its hook.
 -- In Lua5.1 a weak key alone would retain old roots through the hook closure.
 state.refreshHooks = setmetatable({}, {__mode = "kv"})
 state.cardCores = setmetatable({}, {__mode = "kv"})
+state.cardDiagnostics = setmetatable({}, {__mode = "k"})
+state.nextCardDiagnostic = 0
 state.nextRoot = 0
 BO3ZombiesHUD = state
 local pending_nodes
@@ -46,7 +49,7 @@ local function gate_trace()
     end
     local enable, et = raw("bo3_zombies_hud_enable")
     local private, pt = raw("bo3_zombies_hud_private")
-    emit("gate", "gate version=" .. state.version .. " profile=" .. (configured() and "1" or "0")
+    emit("gate", "gate version=" .. DIAGNOSTIC_VERSION .. " profile=" .. (configured() and "1" or "0")
         .. " frontend=" .. (Engine.InFrontend() and "1" or "0")
         .. " cp=" .. (Engine.IsAliensMode and Engine.IsAliensMode() and "1" or "0")
         .. " enable=" .. enable .. " enable_type=" .. et .. " private=" .. private .. " private_type=" .. pt)
@@ -268,33 +271,85 @@ local function card_feeds()
     return {remaining=z.consumablesRemaining, fill=z.dpadUpFillPercent,
         ready=z.consumableDeckSelectReady, boss=z.dlc4 and z.dlc4.mephBattle}
 end
+local function diagnostic_value(value)
+    local kind = type(value)
+    if kind == "nil" or kind == "boolean" or kind == "number" or kind == "string" then return token(value) end
+    return "unsupported"
+end
 local function card_values(self, feeds, index)
-    if not feeds or not CONDITIONS or not CONDITIONS.IsDLC4 then return nil end
+    local observed = {}
+    if not feeds then return nil, "feeds_missing", observed end
+    if not CONDITIONS or not CONDITIONS.IsDLC4 then return nil, "predicate_missing", observed end
     local ok, dlc4 = pcall(CONDITIONS.IsDLC4, self)
-    if not ok or type(dlc4) ~= "boolean" then return nil end
-    local function read(model)
-        if not model or not model.GetValue then return nil end
+    observed.predicate = {kind=ok and type(dlc4) or "error", value=ok and diagnostic_value(dlc4) or "unavailable"}
+    if not ok then return nil, "predicate_error", observed end
+    if type(dlc4) ~= "boolean" then return nil, "predicate_type", observed end
+    local function read(key)
+        local model = feeds[key]
+        if not model or not model.GetValue then
+            observed[key] = {kind="missing_reader", value="unavailable"};return nil
+        end
         local got, value = pcall(function() return model:GetValue(index) end)
-        return got and value or nil
+        observed[key] = {kind=got and type(value) or "error", value=got and diagnostic_value(value) or "unavailable"}
+        if got then return value end
     end
-    local remaining, fill, ready = read(feeds.remaining), read(feeds.fill), read(feeds.ready)
-    if type(remaining) ~= "number" or remaining < 0 or remaining > 5 or remaining ~= math.floor(remaining)
-        or type(fill) ~= "number" or fill ~= fill or fill < 0 or fill > 1 or (ready ~= 0 and ready ~= 1) then return nil end
+    local remaining, fill, ready = read("remaining"), read("fill"), read("ready")
+    observed.boss = {kind=dlc4 and "not_read" or "not_required", value=dlc4 and "not_read" or "not_required"}
+    if type(remaining) ~= "number" or remaining < 0 or remaining > 5 or remaining ~= math.floor(remaining) then
+        return nil, "remaining_value", observed
+    end
+    if type(fill) ~= "number" or fill ~= fill or fill < 0 or fill > 1 then return nil, "fill_value", observed end
+    if ready ~= 0 and ready ~= 1 then return nil, "ready_value", observed end
     local boss = 0
-    if dlc4 then boss = read(feeds.boss) end
-    if boss ~= 0 and boss ~= 1 then return nil end
-    return {remaining=remaining, ready=ready, boss=boss == 1}
+    if dlc4 then boss = read("boss") end
+    if boss ~= 0 and boss ~= 1 then return nil, "boss_value", observed end
+    return {remaining=remaining, ready=ready, boss=boss == 1, dlc4=dlc4}, nil, observed
+end
+local function card_trace(self, index, stage, reason, observed)
+    if not self then return end
+    local record = state.cardDiagnostics[self]
+    if not record then
+        state.nextCardDiagnostic = state.nextCardDiagnostic + 1
+        record = {count=0, sequence=state.nextCardDiagnostic};state.cardDiagnostics[self] = record
+    end
+    local signature = stage .. ":" .. reason
+    if record.signature == signature or record.count > 32 then return end
+    record.signature = signature;record.count = record.count + 1
+    -- At most32 branch transitions plus one suppression notice per widget.
+    -- Values are snapshots on a reason change, never a per-frame feed stream.
+    if record.count == 33 then stage, reason, observed = "suppressed", "transition_limit", nil end
+    observed = observed or {}
+    local message = "core version=" .. DIAGNOSTIC_VERSION .. " widget_seq=" .. token(record.sequence) .. " controller=" .. token(index)
+        .. " stage=" .. token(stage) .. " reason=" .. token(reason)
+    for _, key in ipairs({"predicate", "remaining", "fill", "ready", "boss"}) do
+        local value = observed[key] or {kind="not_read", value="not_read"}
+        message = message .. " " .. key .. "_type=" .. token(value.kind) .. " " .. key .. "_value=" .. token(value.value)
+    end
+    for _, key in ipairs({"shape", "parents", "pointer_key", "pointer_status", "mode"}) do
+        message = message .. " " .. key .. "=" .. token(observed[key] or "not_checked")
+    end
+    -- This optional trace is ignored by the existing essential-bind parser.
+    print("[BO3 HUD] " .. message .. " pixels=unverified instance=" .. state.instance)
 end
 local function native_card_core(owner)
     owner.mask:SetAlpha(1, 0);owner.view:SetAlpha(0, 0);owner.mode = "native_unknown"
 end
 local function style_card_core(self, index)
     if not (self and self.devilHead and self.devilJaw and self.sadDevil
-        and self.radialAlphaLarge and self.radialAlphaLarge.circleFill) then return self end
+        and self.radialAlphaLarge and self.radialAlphaLarge.circleFill) then
+        local shape = ""
+        for _, leaf in ipairs({"devilHead", "devilJaw", "sadDevil", "radialAlphaLarge"}) do
+            shape = shape .. (self and self[leaf] and "1" or "0")
+        end
+        shape = shape .. (self and self.radialAlphaLarge and self.radialAlphaLarge.circleFill and "1" or "0")
+        card_trace(self, index, "shape", "native_shape", {shape=shape});return self
+    end
     local feeds, owner = card_feeds(), self.__bo3CardCore
     if owner then
         local same = feeds and owner.index == index
-        for _, key in ipairs({"remaining", "fill", "ready", "boss"}) do
+        if not same then owner.disabledReason = owner.index ~= index and "controller_changed" or "feeds_missing" end
+        for _, key in ipairs(owner.required) do
+            if same and owner.feeds[key] ~= feeds[key] then owner.disabledReason = "feed_changed_" .. key end
             same = same and owner.feeds[key] == feeds[key]
         end
         if not same then owner.disabled = true end
@@ -302,35 +357,61 @@ local function style_card_core(self, index)
     end
     -- Unknown feeds/predicate stay wholly native. Existing roots retry through
     -- their owned refresh; no model value is fabricated to force a new skin.
-    if not card_values(self, feeds, index) then return self end
+    local value, reason, observed = card_values(self, feeds, index)
+    observed.shape = "11111"
+    if not value then card_trace(self, index, "values", reason, observed);return self end
+    local required = {"remaining", "fill", "ready"}
+    if value.dlc4 then required[#required + 1] = "boss" end
     local pointers = {}
-    for key, model in pairs(feeds) do
-        if not model.GetModel then return self end
+    for _, key in ipairs(required) do
+        local model = feeds[key]
+        observed.pointer_key = key
+        if not model.GetModel then
+            observed.pointer_status = "missing_reader";card_trace(self, index, "pointer", key, observed);return self
+        end
         local ok, pointer = pcall(function() return model:GetModel(index) end)
-        if not ok or not pointer then return self end
+        observed.pointer_status = ok and type(pointer) or "error"
+        if not ok or not pointer then card_trace(self, index, "pointer", key, observed);return self end
         pointers[key] = pointer
     end
-    for _, leaf in ipairs({self.devilJaw, self.devilHead, self.sadDevil}) do
-        if leaf:getParent() ~= self then return self end
+    local faces = {self.devilJaw, self.devilHead, self.sadDevil}
+    observed.parents = ""
+    for _, leaf in ipairs(faces) do
+        observed.parents = observed.parents .. (leaf:getParent() == self and "1" or "0")
     end
+    if observed.parents ~= "111" then card_trace(self, index, "parents", "native_parent", observed);return self end
     local mask = panel("BO3NativeCardFaces", 168, 173)
     mask:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0);self:addElement(mask)
-    for _, leaf in ipairs({self.devilJaw, self.devilHead, self.sadDevil}) do reparent(leaf, mask) end
+    for _, leaf in ipairs(faces) do reparent(leaf, mask) end
     local view = panel("BO3CardCore", 168, 173)
     view:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0);self:addElement(view)
     local title = text(view, "BO3CardTitle", 28, 2.5, 166.5, -28, 2)
     local count = text(view, "BO3CardCount", 40, 34.5, 134.5, 58, 102)
     local status = text(view, "BO3CardStatus", 26, 2.5, 166.5, 174, 202)
     title:SetAlignment(LUI.Alignment.Center);count:SetAlignment(LUI.Alignment.Center);status:SetAlignment(LUI.Alignment.Center)
-    owner = {mask=mask, view=view, index=index, feeds=feeds, title=title, count=count, status=status}
+    owner = {mask=mask, view=view, index=index, feeds=feeds, required=required, dlc4=value.dlc4, title=title, count=count, status=status}
     owner.update = function()
-        local value = not state.closed and not owner.disabled and card_values(self, feeds, index)
-        if not value then native_card_core(owner);return end
+        if state.closed or owner.disabled then
+            card_trace(self, index, "owner", state.closed and "closed" or owner.disabledReason or "disabled", {mode="native"})
+            native_card_core(owner);return
+        end
+        local value, reason, current = card_values(self, feeds, index)
+        current.shape, current.parents = "11111", ""
+        for _, leaf in ipairs(faces) do
+            current.parents = current.parents .. (leaf:getParent() == mask and "1" or "0")
+        end
+        current.pointer_key, current.pointer_status = value and (value.dlc4 and "all4" or "all3") or "not_checked", "preflight_ok"
+        if not value or value.dlc4 ~= owner.dlc4 then
+            card_trace(self, index, "values", reason or "predicate_changed", current)
+            native_card_core(owner);return
+        end
         mask:SetAlpha(0, 0);view:SetAlpha(1, 0)
         title:setText(value.boss and "BOSS" or "CARDS")
         count:setText(tostring(value.remaining))
         status:setText(value.remaining == 0 and "EMPTY" or value.ready == 1 and "READY" or "CHARGING")
         owner.mode = value.boss and "boss" or "cards"
+        current.mode = owner.mode
+        card_trace(self, index, "custom", value.boss and "boss" or value.remaining == 0 and "empty" or value.ready == 1 and "ready" or "charging", current)
     end
     self.__bo3CardCore = owner;state.cardCores[self] = owner
     -- Native image references and animations remain alive under a same-canvas
@@ -619,7 +700,7 @@ local function adapt_root(root)
     style_status(root)
     -- Root's stock per-map visibility lists still own all these original fields.
     root.__bo3HudLayout = true
-    emit("bind:" .. token(root.id) .. ":" .. token(root.controllerIndex), "bind version=" .. state.version
+    emit("bind:" .. token(root.id) .. ":" .. token(root.controllerIndex), "bind version=" .. DIAGNOSTIC_VERSION
         .. " root=" .. token(root.id) .. " controller=" .. token(root.controllerIndex)
         .. " root_seq=" .. state.roots[root] .. " round=1 ammo=1 portrait=1 perks=" .. icons .. " pixels=unverified")
 end
@@ -629,7 +710,7 @@ try_root = function(root)
     gate_trace()
     if not opted_in() then return end
     if not state.roots[root] then state.nextRoot = state.nextRoot + 1; state.roots[root] = state.nextRoot end
-    emit("root:" .. token(root.id) .. ":" .. token(root.controllerIndex), "root version=" .. state.version
+    emit("root:" .. token(root.id) .. ":" .. token(root.controllerIndex), "root version=" .. DIAGNOSTIC_VERSION
         .. " id=" .. token(root.id) .. " controller=" .. token(root.controllerIndex) .. " root_seq=" .. state.roots[root])
     local ok, error = pcall(adapt_root, root)
     if ok then
@@ -638,7 +719,7 @@ try_root = function(root)
         state.messages["failure:" .. token(root.id)] = nil
     else
         state.messages["bind:" .. token(root.id) .. ":" .. token(root.controllerIndex)] = nil
-        emit("failure:" .. token(root.id), "binding_failure version=" .. state.version
+        emit("failure:" .. token(root.id), "binding_failure version=" .. DIAGNOSTIC_VERSION
             .. " root=" .. token(root.id) .. " root_seq=" .. state.roots[root]
             .. " reason=" .. token(error) .. " retry=1 pixels=unverified")
     end
@@ -681,21 +762,21 @@ local function install_dispatch()
         pending_nodes = previous_nodes
         if ok and result then
             state.factoryApplied = state.factoryApplied + 1
-            emit("factory:" .. key, "factory_applied version=" .. state.version .. " key=" .. token(key) .. " pixels=unverified")
+            emit("factory:" .. key, "factory_applied version=" .. DIAGNOSTIC_VERSION .. " key=" .. token(key) .. " pixels=unverified")
             return result
         end
         for i = #created, 1, -1 do
             if created[i].close then pcall(function() created[i]:close() end) end
         end
         state.failures = state.failures + 1
-        emit("factory_failure:" .. key, "factory_fallback version=" .. state.version .. " key=" .. token(key)
+        emit("factory_failure:" .. key, "factory_fallback version=" .. DIAGNOSTIC_VERSION .. " key=" .. token(key)
             .. " reason=" .. token(result) .. " retry=1 pixels=unverified")
         return original(key, args, ...)
     end
     hook.wrapper = wrapper
     state.hooks.dispatch = hook
     MenuBuilder.BuildRegisteredType = wrapper
-    emit("hook:dispatch", "hook version=" .. state.version .. " kind=dispatch installed=1")
+    emit("hook:dispatch", "hook version=" .. DIAGNOSTIC_VERSION .. " kind=dispatch installed=1")
 end
 local function install_hud_hook()
     local manager = LUI and LUI.HudManager
@@ -713,7 +794,7 @@ local function install_hud_hook()
     end
     state.hooks.hud = hook
     manager.CreateHud = hook.wrapper
-    emit("hook:hud", "hook version=" .. state.version .. " kind=create_hud installed=1")
+    emit("hook:hud", "hook version=" .. DIAGNOSTIC_VERSION .. " kind=create_hud installed=1")
 end
 local function visit_root()
     if not opted_in() or not Engine.GetLuiRoot then return end
@@ -749,7 +830,7 @@ local function poll()
     -- Bounded startup polling. Generation cancellation is provided by native77e.
     if attempts < 480 then scheduler.once(poll, 500) end
 end
-print("[BO3 HUD] module version=" .. state.version .. " instance=" .. state.instance .. " initialized=1 pixels=unverified")
+print("[BO3 HUD] module version=" .. DIAGNOSTIC_VERSION .. " content_version=" .. VERSION .. " instance=" .. state.instance .. " initialized=1 pixels=unverified")
 print("[BO3 HUD] source prototype loaded; opt-in/actual runtime and pixels pending")
 -- Native loads our module after the retail VM. Install before another deferred
 -- frame, and also visit existing HUD leaves after its normal construction.
