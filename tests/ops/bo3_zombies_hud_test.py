@@ -167,7 +167,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.16.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.16.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.17.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.17.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -536,7 +536,7 @@ existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()
 ''')
 check('fan.alpha==0 and fan.zrotation==-25 and fan.scale==-0.5 and fan.bounds==nativeFanBounds and fan.fanOverlay.alpha==0.3 and fan.fanOverlay.color==0x445566 and fan.__bo3FanBack==fanOwner')
 lua.execute('fan:SetAlpha(1);fan.fanOverlay:SetRGBFromInt(0x263626);existing.mainPlayerInfo._widget.PlayerCash:RefreshRows()')
-check('fan.alpha==1 and fan.fanOverlay.color==0x263626 and #fan.children==3 and #fanOwner.view.children==5')
+check('fan.alpha==1 and fan.fanOverlay.color==0x263626 and #fan.children==3 and #fanOwner.view.children==0 and #fanOwner.rims==0')
 lua.execute(r'''
 foreignFanRoots={}
 function fanRoot(mutate)
@@ -582,14 +582,14 @@ adoptedFanRoot,adoptedFan=fanRoot();adoptedOverlay=adoptedFan.fanOverlay;adopted
 adoptedFan:removeElement(adoptedOverlay);fanForeignParent:addElement(adoptedOverlay);refreshFan(adoptedFanRoot)
 extraFanRoot,extraFan=fanRoot();extraFanView=extraFan.__bo3FanBack.view
 extraFanChild=node();extraFanChild.alpha=0.39;extraFanView:addElement(extraFanChild);refreshFan(extraFanRoot)
-nestedFanRoot,nestedFan=fanRoot();nestedFanView=nestedFan.__bo3FanBack.view;nestedFanRim=nestedFanView.children[1]
+nestedFanRoot,nestedFan=fanRoot();nestedFanView=nestedFan.__bo3FanBack.view;nestedFanRim=node();nestedFanRim.alpha=0.43;nestedFanView:addElement(nestedFanRim)
 nestedFanChild=node();nestedFanRim:addElement(nestedFanChild);refreshFan(nestedFanRoot)
 ''')
 check('adoptedView.closed and adoptedOverlay:getParent()==fanForeignParent and adoptedOverlay.image=="white" and not adoptedOverlay.closed and adoptedFan.fanCard.image=="zm_wc_card_fan"')
 check('not extraFanView.closed and extraFanView:getParent()==extraFan and extraFanChild:getParent()==extraFanView and not extraFanChild.closed and extraFanChild.alpha==0.39 and #extraFanView.children==1 and extraFan.fanCard.image=="zm_wc_card_fan"')
-check('not nestedFanView.closed and nestedFanRim:getParent()==nestedFanView and not nestedFanRim.closed and nestedFanChild:getParent()==nestedFanRim and not nestedFanChild.closed and #nestedFanView.children==1')
+check('not nestedFanView.closed and nestedFanRim:getParent()==nestedFanView and not nestedFanRim.closed and nestedFanRim.alpha==0.43 and nestedFanChild:getParent()==nestedFanRim and not nestedFanChild.closed and #nestedFanView.children==1')
 lua.execute('movedFanRoot,movedFan=fanRoot();movedFanView=movedFan.__bo3FanBack.view;movedFan:removeElement(movedFanView);fanForeignParent:addElement(movedFanView);refreshFan(movedFanRoot)')
-check('movedFanView:getParent()==fanForeignParent and not movedFanView.closed and #movedFanView.children==5 and movedFanView.__bo3FanLifetime==nil and movedFan.fanCard.image=="zm_wc_card_fan"')
+check('movedFanView:getParent()==fanForeignParent and not movedFanView.closed and #movedFanView.children==0 and movedFanView.__bo3FanLifetime==nil and movedFan.fanCard.image=="zm_wc_card_fan"')
 lua.execute('indexFanRoot,indexFan=fanRoot();indexFanView=indexFan.__bo3FanBack.view;indexFanRoot.controllerIndex=2;refreshFan(indexFanRoot)')
 check('indexFanView.closed and indexFan.fanCard.image=="zm_wc_card_fan" and indexFan.fanOverlay.image=="zm_wc_card_fan_overlay"')
 lua.execute('nextFanShape=function(f) f.extra=node();f:addElement(f.extra) end;unknownFactoryFan=MenuBuilder.BuildRegisteredType("FateFanCard",{controllerIndex=2})')

@@ -3,9 +3,10 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.16.0 fixes the fan probe's publication
-contract after actual0.15 emitted common fields without its detailed sample.
-The visual cause remains unknown. The0.14 art, dimensions,
+weapons, quests and states. Content0.17.0 removes only the five authored contour
+rectangles on each fan back after actual0.16 reported the intended narrow-overlay
+geometry while the pale strip remained visible. Pixel attribution and the
+candidate's visual effect remain unqualified. Native leaves, dimensions,
 ownership and restoration remain unchanged. The0.13 native-action underlay retains the actual localized title,
 progress, stencil and native visibility.
 The0.12 selected-card identity surface, native name/icon presentation and0.11
@@ -268,7 +269,7 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 ## Bounded binding diagnostics
 
 Since content0.8.0, `VERSION` is separate from `DIAGNOSTIC_VERSION=0.7.0`. Every
-current initialization emits `module version=0.7.0 content_version=0.16.0 instance=... initialized=1`.
+current initialization emits `module version=0.7.0 content_version=0.17.0 instance=... initialized=1`.
 Every versioned marker uses the diagnostic contract version. The content version
 is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
 the authorized content. A compatible authored skin needs no new Ops enum entry.
@@ -901,6 +902,74 @@ consumer and distinct Root runtime GO. Future raw fan rows must contain the
 matrix before any getter, geometry, association, overwrite or visual cause can
 be qualified. Preserve all0.15 and earlier artifacts. No new capsule or Game
 follows from this publication correction.
+
+## Actual0.16 and Source0.17 plain fan-back candidate
+
+The closed actual0.16 stdout from case20261015-165253-714-0abc2b45 is56432B,
+SHA256 9BDBBFDD8804364A3B1E966D489D45CCF16ECE5EE5AD2F984C10D006F1DEF217.
+All52 fan rows now publish50 keys/field_count42 and sample_status complete:
+four applied, four overlay_rgb, four overlay_alpha,24 parent_alpha and16 deck.
+All three getLocalRect status fields report known and the hook state remains
+active/none. The last deck checkpoint maps module-local sequences4/3/2/1 to
+slots1/2/3/4, with slot_match1, root_seq_seen1 and native_phaseinitial5Cards.
+The final parent-alpha call intent is1 for all four fans; it is not measured
+render alpha. Module tags and those relationships do not prove native VM identity.
+
+Backing rect reports remain13.667/53.333/141.667/288; overlay reports remain
+16.333/56/21.667/285.333 throughout the52 observations. The reported overlay
+width5.334 is distinct from the backing width128. These are local API reports,
+not screen pixels or material readback. No later leaf-image/bounds setter call
+was observed by the installed Lua wrappers. Image/alpha/readback remain unknown.
+The original3686454B BMP SHA256 is
+A986B0264A6DD6DF871423028E63776B2BD5F155465AD99B861343B75EB0B4B4.
+Root, Ops and UI viewed the original: the Triangle/pale strip and CARDS5/UNKNOWN
+remain hybrid. Source0.16's publication works in this bounded real observation;
+no full HUD or owner acceptance follows from it.
+
+The previous overlay-width change did not change our separate contour layer.
+Each captured fan still constructed five pale white-material rectangles after
+both native image leaves. The pinned initial5Cards sequence rotates/repositions
+the four fan parents and eventually requests their alpha1. The unchanged clear
+contours on those exposed backs are a supported contributor hypothesis for the
+strip, not a complete pixel identification. Further overlay-coordinate guessing
+would leave that independent contour layer untouched.
+
+Source0.17 therefore stops constructing those five decorative rectangles per
+fan,20 across the four-card stack. It preserves both native images, their dark
+back/narrow depth stripe, all existing bounds, native depth values and every
+count/selection/empty callback and pose. No native element is removed or hidden,
+and no model value, identity, selected name/icon, effect, Triangle, Fire, arrow,
+charge/core or input path is replaced. No new dimension or material is guessed.
+This deterministically removes our contour contribution; removal of all pale
+pixels still needs a future original frame.
+
+The existing empty owner container remains attached as the lifetime anchor;
+it receives no new alpha/visibility mask. Captured local authority and retirement
+remain intact. A foreign child/container inserted under that anchor is retained
+with its descendants and original alpha; an adopted anchor is left alone.
+The foreign-tree tests now insert their own nested container because an owned
+decorative rim no longer exists. The native fields remain direct children in
+their original order and their restoration still occurs only under captured
+field/parent ownership. The Source0.16 publication matrix and all seven probe
+setters are unchanged.
+
+Source validation passes341 existing assertions with the new empty-anchor
+expectations, including forged-marker/GC/controller/foreign/teardown controls.
+The two pinned retail bodies pass362 endpoint assertions, including the absence
+of decorative children on all four fans while every native sequence remains.
+A separate actual-constructor comparison of immutable0.16 and candidate0.17
+observes five owned contour IDs versus none; native field/material arguments,
+geometry/depth/alpha controls and emitted fan rows remain equal apart from the
+opaque module tag. Its13036B receipt SHA256 is
+7BA6C6D0D0F37BD06FFDD1A8E7A0710F008B8086DFA3650E97C1F7C302FAFC80.
+Nodes/timing are mocked in these Source controls; no0.17 HKS or pixel result is
+claimed. The current essential parser still accepts16 actual emitted mock rows
+at diagnostic0.7 and refuses0.6. Lua/config file bounds remain128KiB/64KiB.
+
+Next: private exact-head review/checks/merge and a fresh candidate export, then
+a distinct Ops Source adoption and Root runtime decision. Preserve all original
+0.13-0.16 evidence. No replay, staging, Native build, FF, lease or Game follows
+from this Source candidate; the native Triangle and full HUD remain open work.
 
 ## Source references and implemented essentials
 

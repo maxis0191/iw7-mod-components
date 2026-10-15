@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.16.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.17.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -481,13 +481,11 @@ local function style_fan(self, index, context)
         fan_sample(self, index, nil, context, "skipped", reason);return self
     end
     local view = panel("BO3FanRim", 237, 332)
-    local rims = {
-        bar(view, "BO3FanTop", 20.5, 212.5, 80, 84, 0xA49E8B),
-        bar(view, "BO3FanBottom", 20.5, 212.5, 428, 432, 0xA49E8B),
-        bar(view, "BO3FanLeft", 20.5, 24.5, 84, 428, 0xA49E8B),
-        bar(view, "BO3FanRight", 208.5, 212.5, 84, 428, 0xA49E8B),
-        bar(view, "BO3FanRule", 76.5, 156.5, 254, 258, 0xA49E8B)
-    }
+    -- Keep the lifetime/ownership anchor, but create no decorative contour.
+    -- Five pale bars per fan used to sit above both original images, so an
+    -- overlay-width change could never alter those contours. Native backs,
+    -- depth tint and every parent pose/count/selection sequence remain live.
+    local rims = {}
     local back_material, overlay_material = RegisterMaterial("white"), RegisterMaterial("white")
     self.fanCard:setImage(back_material, 0)
     self.fanCard:SetRGBFromInt(0x171713, 0)
