@@ -130,7 +130,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.9.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.9.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.10.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.10.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
