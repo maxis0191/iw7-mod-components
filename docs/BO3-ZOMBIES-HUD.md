@@ -259,7 +259,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-128 source controls cover default-off/private opt-in/frontend/MP, controller1,
+130 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -282,7 +282,8 @@ child count. The separate active-card list keeps its native image and scale.
 The overflow geometry control includes the deck transform around its center.
 Source0.5 controls update independent offhand charge/image/color/visibility,
 crafted glyph text, Mule/infinite alpha, late/fresh/expired/removed power-ups and
-native activation messages. Revive3/Skeeball21/off0 transitions retain native
+native activation messages. An incomplete power-up constructor is closed before
+the native fallback is called; a subsequent healthy factory can recover. Revive3/Skeeball21/off0 transitions retain native
 SetHeader/SetProgress identity and the progress mask through each poll. A positive
 downed end time and later cancellation retain the native countdown/parent state.
 Self-revive token messages and full-width progress remain native. Five mocked

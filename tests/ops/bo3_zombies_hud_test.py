@@ -86,6 +86,7 @@ function original(key,args)
   n.box=node(); n.dollarSign=node(); n.questFuse=node(); n:addElement(n.questFuse)
  end
  if key=="ZomPowerupIcon" then
+  if badPowerupOnce then badPowerupOnce=false;partialPowerup=n;return n end
   n.PowerupIcon=node();n:addElement(n.PowerupIcon);n.PowerupIcon.image="retail-powerup";n.PowerupIcon.alpha=0
   n.NativeFlash=function() n.PowerupIcon:SetAlpha(0) end
  end
@@ -401,6 +402,10 @@ lua.execute('powerList:removeElement(powerList.children[1]);tick()')
 check('#powerList.children==0')
 lua.execute('freshPower=MenuBuilder.BuildRegisteredType("ZomPowerupIcon",{controllerIndex=2})')
 check('freshPower.PowerupIcon.image=="retail-powerup" and freshPower.PowerupIcon.alpha==0 and freshPower.bounds[6]==52 and freshPower.NativeFlash')
+lua.execute('badPowerupOnce=true;fallbackPower=MenuBuilder.BuildRegisteredType("ZomPowerupIcon",{controllerIndex=2})')
+check('partialPowerup.closed and fallbackPower.PowerupIcon and fallbackPower.bounds==nil')
+lua.execute('recoveredPower=MenuBuilder.BuildRegisteredType("ZomPowerupIcon",{controllerIndex=2})')
+check('recoveredPower.bounds[6]==52 and not recoveredPower.closed')
 lua.execute('models["inGame.CP.zombies.secureState"]:set(3);models["inGame.CP.zombies.secureProgress"]:set(0.4);tick();revive=existing.reviveBarContainer._widget')
 check('revive.visible and revive.alpha==1 and revive.Header.MessageText.text=="REVIVING"')
 check('math.abs(revive.ProgressBar.Mask.bounds[2]-0.6)<0.0001 and revive.SetHeader==existing.retainedSetHeader and revive.ProgressBar.SetProgress==existing.retainedSetProgress')
