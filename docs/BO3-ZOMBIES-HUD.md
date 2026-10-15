@@ -54,7 +54,17 @@ retained. Only an empty, still-owned mask is closed. A retired deck is not adopt
 again after marker removal. Core model identity is checked on each owned update.
 No extra subscription, timer or native setter hook is introduced for decoration.
 
-Validation: 357 authored Lua5.1 controls pass, including foreign marker/leaf/mask
+The first reviewed0.18 head b4eb758 failed a post-installation mutation case:
+removing devilHead or circleFill made root refresh refuse shape before reaching
+the private core owner, leaving its previous decorative mask active. The additive
+correction resolves the captured owner before shape validation, disables it and
+restores native presentation on that branch. A disabled core retires its captured
+decoration immediately; later shape repair cannot reactivate the retired deck.
+Tests mutate both fields after successful installation and execute two actual
+HudManager/root refreshes before any model update. Native fields remain as
+mutated by the foreign party; the adapter does not repair or replace them.
+
+Validation: 359 authored Lua5.1 controls pass, including foreign marker/leaf/mask
 adoption, nested foreign descendants, missing API/unknown order, native fallback,
 zero count, readiness sentinel, name/icon refill/meter phases and shutdown. An
 external pinned-retail interop run executes the actual fan, OnDeck, Devil and

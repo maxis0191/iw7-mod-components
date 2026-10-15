@@ -1093,6 +1093,26 @@ coreForeignTag={mask=forgedView,view=forgedView};coreTagDeck.FateCardDevilWidget
 coreTagCore.update();LUI.HudManager.CreateHud({nextHud=coreTagRoot})
 ''')
 check('coreTagCore.disabled and coreTagCore.view.alpha==0 and coreTagOwner.retired and coreTagDeck.Triangle:getParent()==coreTagDeck and coreTagDeck.FateCardDevilWidget.__bo3CardCore==coreForeignTag and forgedView.alpha==0.47')
+lua.execute(r'''
+shapeRoot,shapeDeck,shapeDecor,shapeCore=decorFixture()
+shapeNative=shapeDeck.FateCardDevilWidget;capturedHead=shapeNative.devilHead;shapeNativeCallback=shapeNative.nativeUpdate
+shapeNative.devilHead=nil
+LUI.HudManager.CreateHud({nextHud=shapeRoot})
+LUI.HudManager.CreateHud({nextHud=shapeRoot})
+''')
+check('shapeCore.disabled and shapeCore.disabledReason=="native_shape" and shapeCore.view.alpha==0 and shapeCore.mask.alpha==1 and shapeDecor.retired and shapeDecor.mask.closed and shapeDeck.Triangle:getParent()==shapeDeck and shapeNative.devilHead==nil and capturedHead:getParent()==shapeCore.mask and shapeNative.nativeUpdate==shapeNativeCallback and decorPainterOrder(shapeDeck)')
+lua.execute(r'''
+fillRoot,fillDeck,fillDecor,fillCore=decorFixture()
+fillNative=fillDeck.FateCardDevilWidget;capturedFill=fillNative.radialAlphaLarge.circleFill;fillNativeCallback=fillNative.nativeUpdate
+fillNative.radialAlphaLarge.circleFill=nil
+LUI.HudManager.CreateHud({nextHud=fillRoot})
+LUI.HudManager.CreateHud({nextHud=fillRoot})
+-- Restore only test inputs before other tests publish a model change. The
+-- retired adapter must remain native even when a foreign party repairs shape.
+shapeNative.devilHead=capturedHead;fillNative.radialAlphaLarge.circleFill=capturedFill
+LUI.HudManager.CreateHud({nextHud=shapeRoot});LUI.HudManager.CreateHud({nextHud=fillRoot})
+''')
+check('fillCore.disabled and fillCore.disabledReason=="native_shape" and fillCore.view.alpha==0 and fillCore.mask.alpha==1 and fillDecor.retired and fillDecor.mask.closed and fillDeck.Triangle:getParent()==fillDeck and capturedFill:getParent()==fillNative.radialAlphaLarge and fillNative.nativeUpdate==fillNativeCallback and decorPainterOrder(fillDeck) and shapeCore.view.alpha==0 and shapeDecor.mask.closed')
 lua.execute('shutdownDecorRoot,shutdownDecorDeck,shutdownDecorOwner,shutdownDecorCore=decorFixture();shutdownDecorDeck.__bo3CardDecor=nil;collectgarbage("collect")')
 check('shutdownDecorOwner.mask.__bo3DecorLifetime==shutdownDecorOwner and shutdownDecorCore.view.__bo3CoreLifetime==shutdownDecorCore')
 lua.execute(r'''

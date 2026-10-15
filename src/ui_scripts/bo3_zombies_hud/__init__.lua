@@ -775,6 +775,7 @@ local function native_card_core(owner)
     if update_card_decor then update_card_decor(owner, false) end
 end
 local function style_card_core(self, index)
+    local owner = self and card_cores[self]
     if not (self and self.devilHead and self.devilJaw and self.sadDevil
         and self.radialAlphaLarge and self.radialAlphaLarge.circleFill) then
         local shape = ""
@@ -782,9 +783,13 @@ local function style_card_core(self, index)
             shape = shape .. (self and self[leaf] and "1" or "0")
         end
         shape = shape .. (self and self.radialAlphaLarge and self.radialAlphaLarge.circleFill and "1" or "0")
-        card_trace(self, index, "shape", "native_shape", {shape=shape});return self
+        card_trace(self, index, "shape", "native_shape", {shape=shape})
+        if owner then
+            owner.disabled = true;owner.disabledReason = "native_shape";native_card_core(owner)
+        end
+        return self
     end
-    local feeds, owner = card_feeds(), card_cores[self]
+    local feeds = card_feeds()
     if owner then
         local same = feeds and owner.index == index
         if not same then owner.disabledReason = owner.index ~= index and "controller_changed" or "feeds_missing" end
@@ -909,7 +914,7 @@ end
 update_card_decor = function(core, custom)
     local owner = card_decor[core]
     if not owner or owner.retired then return end
-    if state.closed or owner.widget.__bo3CardDecor ~= owner or not decor_shape(owner.widget, owner)
+    if state.closed or core.disabled or owner.widget.__bo3CardDecor ~= owner or not decor_shape(owner.widget, owner)
         or card_cores[core.widget] ~= core or core.widget.__bo3CardCore ~= core
         or core.view:getParent() ~= core.widget then
         retire_card_decor(owner);return
