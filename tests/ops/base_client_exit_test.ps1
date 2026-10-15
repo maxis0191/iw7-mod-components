@@ -5,7 +5,8 @@ if (!('IW7LabProcess' -as [type])) { Add-Type -Path "$repo/ops/native/LabProcess
 $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('iw7-base-exit-'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($testRoot) | Out-Null
 $owned=$null
-function Assert-Test($Value,$Message) { if (!$Value) { throw $Message } }
+$script:ExitChecks=0
+function Assert-Test($Value,$Message) { if (!$Value) { throw $Message };$script:ExitChecks++ }
 function Assert-IW7BaseVacant([string]$GameRoot,[int]$OwnedPid=0) {
     if ($script:Occupied) { throw 'Unowned occupant retained.' }
     if ($OwnedPid -ne 0) { throw 'Exit restoration must require completely vacant installation.' }
@@ -65,7 +66,97 @@ try {
     Assert-Test ($refused -and $owned.HasExited) 'Observed reused-PID identity mismatch was swallowed after original exit.'
     Remove-Item Function:Get-Process
     $owned.Dispose();$owned=$null
-    'PASS base-client exit: real original-handle exit race, exact vacant restore, live identity-conflict refusal, occupied refusal; no PID termination.'
+    # Small observations test refusal paths without opening/replacing a process.
+    # They are not engine/process-owner implementations or runtime evidence.
+    function New-TestOwnedObservation([bool]$Signaled,[bool]$WaitConfirms=$false,[bool]$WaitThrows=$false) {
+        $observation=[pscustomobject]@{Id=$identity.PID;Signaled=$Signaled;WaitConfirms=$WaitConfirms;WaitThrows=$WaitThrows;WaitCalls=0;WaitMilliseconds=0}
+        $observation|Add-Member ScriptProperty HasExited { $this.Signaled }
+        $observation|Add-Member ScriptMethod WaitForExit { param([int]$Milliseconds)
+            $this.WaitCalls++;$this.WaitMilliseconds=$Milliseconds
+            if($this.WaitThrows){throw 'Original handle observation unavailable.'}
+            if($this.WaitConfirms){$this.Signaled=$true;return $true}
+            $false
+        }
+        $observation
+    }
+    $script:LookupMode='missing';$script:LookupCalls=0;$script:Observation=$null
+    function Get-Process([int]$Id) {
+        $script:LookupCalls++
+        if($script:LookupMode -ceq 'denied'){
+            $script:Observation.Signaled=$true
+            Write-Error -Message 'Synthetic access denied.' -ErrorId AccessDenied -Category PermissionDenied -ErrorAction Stop
+        }
+        if($script:LookupMode -ceq 'mismatch'){
+            $script:Observation.Signaled=$true
+            return Microsoft.PowerShell.Management\Get-Process -Id $PID
+        }
+        Write-Error -Message 'Synthetic missing PID without an exit proof.' -ErrorId NoProcessFoundForGivenId -Category ObjectNotFound -TargetObject $Id -ErrorAction Stop
+    }
+    $observation=New-TestOwnedObservation $true
+    Assert-IW7BaseIdentity $identity $observation
+    Assert-Test ($script:LookupCalls -eq 0 -and $observation.WaitCalls -eq 0) 'Already signaled original handle should not reopen its PID.'
+    $observation.Id++
+    $refused=$false;try{Assert-IW7BaseIdentity $identity $observation}catch{$refused=$_.Exception.Message -match 'Retained handle and process identity differ'}
+    Assert-Test ($refused -and $script:LookupCalls -eq 0) 'Mismatched retained-handle ID accepted because it was signaled.'
+    $observation=New-TestOwnedObservation $false
+    $refused=$false;try{Assert-IW7BaseIdentity $identity $observation}catch{$refused=$_.FullyQualifiedErrorId -like 'NoProcessFoundForGivenId*'}
+    Assert-Test ($refused -and $observation.WaitCalls -eq 1 -and $observation.WaitMilliseconds -eq 1000 -and !$observation.HasExited) 'Unsignaled original handle/missing PID was accepted or not bounded.'
+    $observation=New-TestOwnedObservation $false $false $true
+    $refused=$false;try{Assert-IW7BaseIdentity $identity $observation}catch{$refused=$_.Exception.Message -match 'Original handle observation unavailable'}
+    Assert-Test ($refused -and $observation.WaitCalls -eq 1) 'Unknown original-handle observation was accepted.'
+    $refused=$false;try{Assert-IW7BaseIdentity $identity}catch{$refused=$_.FullyQualifiedErrorId -like 'NoProcessFoundForGivenId*'}
+    Assert-Test $refused 'Missing PID without a retained original handle was treated as exit.'
+    $observation=New-TestOwnedObservation $false $true;$script:Observation=$observation;$script:LookupMode='denied'
+    $refused=$false;try{Assert-IW7BaseIdentity $identity $observation}catch{$refused=$_.Exception.Message -match 'Synthetic access denied'}
+    Assert-Test ($refused -and $observation.WaitCalls -eq 0) 'Access error was hidden by a later original exit or a wait.'
+    $observation=New-TestOwnedObservation $false $true;$script:Observation=$observation;$script:LookupMode='mismatch'
+    $wrongImage=$identity.PSObject.Copy();$wrongImage.Image=Join-Path $testRoot 'different-image.exe'
+    $refused=$false;try{Assert-IW7BaseIdentity $wrongImage $observation}catch{$refused=$_.Exception.Message -match 'Process identity changed'}
+    Assert-Test ($refused -and $observation.WaitCalls -eq 0) 'Observed live image mismatch was hidden after original exit.'
+    Remove-Item Function:Get-Process
+    # Inject lookup absence while the exact retained kernel handle is still
+    # unsignaled. The real child exits shortly afterwards; PID absence alone
+    # must never authorize restoration. This models a missing timing boundary,
+    # not a measured explanation for any particular game crash.
+    $lateReady=Join-Path $testRoot 'late-ready';$script:LateRelease=Join-Path $testRoot 'late-release'
+    $lateScript=Join-Path $testRoot 'late-child.ps1'
+    [IO.File]::WriteAllText($lateScript,@'
+param([string]$Ready,[string]$Release)
+[IO.File]::WriteAllText($Ready,'ready')
+$deadline=[datetime]::UtcNow.AddSeconds(10)
+while(!(Test-Path -LiteralPath $Release)) {
+    if([datetime]::UtcNow -gt $deadline){exit 2}
+    Start-Sleep -Milliseconds 10
+}
+Start-Sleep -Milliseconds 250
+exit 0
+'@)
+    $lateArgs='-NoLogo -NoProfile -NonInteractive -File "'+$lateScript+'" -Ready "'+$lateReady+'" -Release "'+$script:LateRelease+'"'
+    $script:Owned=[IW7LabProcess]::StartOwned($exe,$lateArgs,$testRoot,(Join-Path $testRoot 'stdout4'),(Join-Path $testRoot 'stderr4'),('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false)
+    $owned=$script:Owned
+    $readyDeadline=[datetime]::UtcNow.AddSeconds(5)
+    while(!(Test-Path -LiteralPath $lateReady)){if([datetime]::UtcNow -gt $readyDeadline){throw 'Late-signal test child not ready.'};Start-Sleep -Milliseconds 10}
+    $p=Microsoft.PowerShell.Management\Get-Process -Id $owned.Id
+    $identity=[pscustomobject]@{PID=$owned.Id;Image=$exe;CreatedUtc=$p.StartTime.ToUniversalTime().ToString('o');SHA256=(Get-FileHash -LiteralPath $exe).Hash};$p.Dispose()
+    $transaction=Save-IW7BaseTransaction $plan (Join-Path $testRoot 'late-backup')
+    [IO.File]::WriteAllText("$game/iw7-mod/players2/config.cfg",'late-signal temporary profile')
+    $context=[pscustomobject]@{Handle=$owned;Client=$owned;Identity=$identity;Plan=$plan;Transaction=$transaction;Lock=$null}
+    $script:LateLookupBeforeExit=$false;$script:LateLookupCount=0
+    function Get-Process([int]$Id) {
+        if($Id -eq $script:Owned.Id){
+            $script:LateLookupBeforeExit=!$script:Owned.HasExited;$script:LateLookupCount++
+            [IO.File]::WriteAllText($script:LateRelease,'exit')
+            Write-Error -Message 'Synthetic PID lookup unavailable before original exit signal.' -ErrorId NoProcessFoundForGivenId -Category ObjectNotFound -TargetObject $Id -ErrorAction Stop
+        }
+        Microsoft.PowerShell.Management\Get-Process -Id $Id -ErrorAction Stop
+    }
+    $script:VacancyChecked=$false
+    Stop-IW7BaseClient $context
+    Assert-Test ($script:LateLookupBeforeExit -and $script:LateLookupCount -eq 1 -and $transaction.Restored -and $script:VacancyChecked -and !$context.Handle) 'Late original signal did not permit verified vacant restoration.'
+    Assert-Test ([IO.File]::ReadAllText("$game/iw7-mod/players2/config.cfg") -ceq 'original profile') 'Late-signal cleanup lost the original profile.'
+    Remove-Item Function:Get-Process
+    $owned=$null
+    "PASS base-client exit: $script:ExitChecks checks; real original-handle exit, injected missing lookup before late original signal, exact vacant restore, live/reused identity, unknown/unsignaled/access and occupied refusals; no PID termination."
 } finally {
     if ($owned) { if (!$owned.HasExited) { $owned.Terminate(0);$null=$owned.WaitForExit(5000) };$owned.Dispose() }
     $absolute=[IO.Path]::GetFullPath($testRoot)
