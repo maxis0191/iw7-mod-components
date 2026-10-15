@@ -24,6 +24,15 @@ files. Paths with spaces are supported. Missing, different, dirty, redirected,
 oversized, binary and overlapping sources are refused before output creation.
 Then run `checks.ps1 -Workspace <output>` from this canonical checkout.
 
+Source export requires Git supporting `--attr-source=<tree-ish>`. Both filtered
+export and checkout-byte validation read versioned attributes from each owner's
+exact pinned commit, including sparse checkouts without a physical
+`.gitattributes`. Declared LF/CRLF/filter semantics remain in force; this does not
+export raw blobs or force all files to one line ending. Git blob identity and
+the exported-byte SHA remain separate receipt fields. Existing Source packages,
+dependency archives and native writer receipts are immutable; corrections use
+fresh packages and reviewed dependency pins, never retroactive normalization.
+
 The command does not install a game, copy retail assets, build native code,
 launch a process fixture, deploy, publish, or change Main. Build/run entrypoints
 inside the package retain their own input, identity, resource and authorization

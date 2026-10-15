@@ -41,6 +41,53 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual((output / 'hello.py').read_bytes(), (self.repo / 'hello.py').read_bytes())
         self.assertEqual(w.verify(output)['revisions'], {'fixture': sha})
 
+    def test_pinned_attributes_survive_sparse_checkout_and_local_autocrlf(self):
+        self.run_git('config', 'core.autocrlf', 'true')  # Fixture-local only.
+        (self.repo / '.gitattributes').write_bytes(b'*.cpp text eol=lf\n*.ps1 text eol=crlf\n')
+        source = b'// SYNTHETIC SOURCE ONLY\nint fixture = 1;\n'
+        script = b'# SYNTHETIC SOURCE ONLY\nWrite-Output fixture\n'
+        (self.repo / 'writer.cpp').write_bytes(source)
+        (self.repo / 'runner.ps1').write_bytes(script)
+        self.contract['exports'] += ['writer.cpp', 'runner.ps1']
+        sha = self.commit()
+        self.run_git('sparse-checkout', 'set', '--no-cone', '/product.json', '/hello.py', '/writer.cpp', '/runner.ps1')
+        self.assertFalse((self.repo / '.gitattributes').exists())
+        self.assertEqual(self.run_git('status', '--porcelain'), '')
+        output = self.root / 'pinned attribute export'
+        result = w.prepare(self.repo, sha, {}, output)
+        self.assertEqual((output / 'writer.cpp').read_bytes(), source)
+        self.assertEqual((output / 'runner.ps1').read_bytes(), script.replace(b'\n', b'\r\n'))
+        row = next(item for item in result['files'] if item['path'] == 'writer.cpp')
+        self.assertEqual(row['blob'], self.run_git('rev-parse', sha + ':writer.cpp'))
+        self.assertEqual(row['sha256'], hashlib.sha256(source).hexdigest())
+        w.verify(output)
+
+    def test_external_owner_uses_its_own_pinned_attribute_tree(self):
+        dep = self.root / 'sparse external owner'
+        dep.mkdir()
+        def dep_git(*args):
+            return subprocess.check_output(['git', '-C', str(dep), *args], text=True).strip()
+        dep_git('init', '-q')
+        dep_git('config', 'core.autocrlf', 'true')  # Fixture-local only.
+        (dep / '.gitattributes').write_bytes(b'*.cpp text eol=lf\n')
+        source = b'// EXTERNAL SYNTHETIC SOURCE\nint external_fixture = 2;\n'
+        (dep / 'writer.cpp').write_bytes(source)
+        dep_git('add', '.')
+        dep_git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                '-c', 'commit.gpgsign=false', 'commit', '-qm', 'External source attributes')
+        revision = dep_git('rev-parse', 'HEAD')
+        dep_git('sparse-checkout', 'set', '--no-cone', '/writer.cpp')
+        self.assertFalse((dep / '.gitattributes').exists())
+        self.contract['dependencies'] = [dict(id='external', revision=revision, files=['writer.cpp'])]
+        project_revision = self.commit()
+        self.assertNotEqual(project_revision, revision)
+        output = self.root / 'external filtered source'
+        result = w.prepare(self.repo, project_revision, {'external': dep}, output)
+        self.assertEqual((output / 'writer.cpp').read_bytes(), source)
+        row = next(item for item in result['files'] if item['path'] == 'writer.cpp')
+        self.assertEqual((row['owner'], row['commit']), ('external', revision))
+        self.assertEqual(row['sha256'], hashlib.sha256(source).hexdigest())
+
     def test_identity_refuses_parent_git_revision(self):
         self.commit()
         child = self.repo / 'nested'
