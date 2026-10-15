@@ -40,6 +40,7 @@ function node()
  function n:SetAlpha(value) self.alpha=value end
  function n:setText(value) self.text=value end
  function n:setImage(value) self.image=value end
+ function n:SetMask(value) self.mask=value end
  function n:setEndTime(value) self.endTime=value end
  function n:SetProgress(value) self.progress=value;self.progressWrites=(self.progressWrites or 0)+1 end
  function n:addElement(child) self.children[#self.children+1]=child;child.parent=self end
@@ -160,7 +161,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.12.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.12.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.13.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.13.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -285,21 +286,55 @@ function stock_status(r,index)
  r.powerupActivated._widget.NativeMessage=function(name,image)
   r.powerupActivated._widget.PowerUpName.text=name;r.powerupActivated._widget.PowerUpIcon.image=image
  end
- r.reviveBarContainer=node();local revive=node();r.reviveBarContainer._widget=revive
- revive.Header=node();revive.Header.MessageText=node();revive.ProgressBar=node()
+ r.reviveBarContainer=node();local revive=node();r.reviveBarContainer._widget=revive;r.reviveBarContainer:addElement(revive)
+ -- Five source-derived schemas, not five names over the old two-field stub.
+ local variant=tonumber(string.match(r.id,"DLC(%d)$")) or 0
+ revive.id="ReviveBarContainer"..(variant==0 and "" or "DLC"..variant)
+ local fills={"zm_revive_bar_fill","zm_revive_bar_fill_dlc1","zm_revive_bar_fill_dlc2","cp_town_revive_bar_fill","cp_final_revive_bar_fill"}
+ revive.Accent=node();revive.Accent.image="authored-accent-token-"..variant;revive:addElement(revive.Accent)
+ revive.Header=node();revive.Header.MessageText=node();revive:addElement(revive.Header)
+ if variant==0 then
+  revive.Header.Background=node();revive.Header:addElement(revive.Header.Background)
+  revive.Background=node();revive:addElement(revive.Background)
+ end
+ revive.Header:addElement(revive.Header.MessageText)
+ revive.Header.MessageText.font=variant==0 and "native-condensed" or "native-medium"
+ revive.Header.MessageText.size=16
+ revive.ProgressBar=node();revive:addElement(revive.ProgressBar)
  revive.ProgressBar.Fill=node();revive.ProgressBar.Mask=node()
- revive.SetHeader=function(self,value) self.Header.MessageText:setText(value) end
- revive.ProgressBar.SetProgress=function(self,value) self.Mask:SetAnchorsAndPosition(0,1-value,0,0,0,0,0,0) end
+ revive.ProgressBar:addElement(revive.ProgressBar.Fill);revive.ProgressBar:addElement(revive.ProgressBar.Mask)
+ revive.ProgressBar.Fill:setImage(fills[variant+1]);revive.ProgressBar.Mask:setImage("devil_stencil_mask")
+ revive.ProgressBar.Fill:SetMask(revive.ProgressBar.Mask)
+ revive.ProgressBar.Fill:SetAnchorsAndPosition(0.5,0.5,0.5,0.5,variant==3 and -124 or -127,variant==3 and 126 or 129,-16,16)
+ revive.SetHeader=function(self,value)
+  -- Authored measuring stand-in; the unchanged native callback owns sizing.
+  local upper=string.upper(value);self.Header:SetAnchorsAndPosition(0.5,0.5,0,1,-118,-118+#upper*8+26,-2,30,100)
+  self.Header.MessageText:setText(upper)
+ end
+ revive.ProgressBar.SetProgress=function(self,value,duration)
+  assert(type(value)=="number" and type(duration)=="number")
+  self.Mask:SetAnchorsAndPosition(0,1-math.max(0,math.min(1,value)),0,0,0,0,0,0,duration)
+ end
  local function state()
   local value=models["inGame.CP.zombies.secureState"]:GetValue(index)
-  revive.visible=value~=0;revive.alpha=revive.visible and 1 or 0
+  revive.visible=value~=0
+  -- Endpoints of native Show/Hide. Container stays alpha1; each original
+  -- leaf's animation controls visibility, including the accent underlay.
+  revive.Accent.alpha=revive.visible and (variant==0 and 0.5 or 1) or 0
+  revive.Header.alpha=revive.visible and 1 or 0;revive.ProgressBar.alpha=revive.Header.alpha
+  if revive.Background then revive.Background.alpha=revive.Header.alpha end
   revive:SetHeader(value==3 and "REVIVING" or value==21 and "SKEEBALL" or "")
  end
  revive:SubscribeToModel(models["inGame.CP.zombies.secureState"],state);state()
  revive.ProgressBar:SubscribeToModel(models["inGame.CP.zombies.secureProgress"],function()
-  revive.ProgressBar:SetProgress(models["inGame.CP.zombies.secureProgress"]:GetValue(index))
+  revive.ProgressBar:SetProgress(models["inGame.CP.zombies.secureProgress"]:GetValue(index),0)
  end)
  r.retainedSetHeader=revive.SetHeader;r.retainedSetProgress=revive.ProgressBar.SetProgress
+ r.retainedAction={accent=revive.Accent,header=revive.Header,label=revive.Header.MessageText,
+  progress=revive.ProgressBar,fill=revive.ProgressBar.Fill,mask=revive.ProgressBar.Mask,
+  fillImage=revive.ProgressBar.Fill.image,fillBounds=revive.ProgressBar.Fill.bounds,
+  maskImage=revive.ProgressBar.Mask.image,state=state,stateListeners=#models["inGame.CP.zombies.secureState"].listeners,
+  progressListeners=#models["inGame.CP.zombies.secureProgress"].listeners}
  r.lastStand=node();r.lastStand._widget=node();local timerParent=node();timerParent.alpha=0
  r.lastStand._widget:addElement(timerParent)
  local countdown=node();countdown.id="laststand_countdown";timerParent:addElement(countdown)
@@ -647,7 +682,7 @@ check('math.abs(revive.ProgressBar.Mask.bounds[2]-0.6)<0.0001 and revive.SetHead
 lua.execute('models["inGame.CP.zombies.secureState"]:set(21);tick()')
 check('revive.visible and revive.Header.MessageText.text=="SKEEBALL"')
 lua.execute('models["inGame.CP.zombies.secureState"]:set(0);models["inGame.CP.zombies.secureProgress"]:set(0);tick()')
-check('not revive.visible and revive.alpha==0 and revive.ProgressBar.Mask.bounds[2]==1')
+check('not revive.visible and revive.Accent.alpha==0 and revive.Header.alpha==0 and revive.ProgressBar.Mask.bounds[2]==1')
 lua.execute('existing.omnvarHandlers["zm_ui_laststand_end_milliseconds"](12345);tick()')
 check('existing.nativeCountdown.endTime==12345 and existing.nativeDownParent.alpha==1 and existing.nativeCountdown.size==36')
 lua.execute('existing.omnvarHandlers["zm_ui_laststand_end_milliseconds"](0);tick()')
@@ -861,8 +896,12 @@ lua.execute(r'''
 mapFixtures={}
 for i,key in ipairs({"MainPlayerInfo","MainPlayerInfoDLC1","MainPlayerInfoDLC2","MainPlayerInfoDLC3","MainPlayerInfoDLC4"}) do
  local id=i==1 and "ZMHUD" or "ZMHUDDLC"..(i-1)
- local hud=stock_hud(id,key,(i-1)%4);local instance={nextHud=hud};LUI.HudManager.CreateHud(instance)
- mapFixtures[#mapFixtures+1]={root=hud,info=hud.mainPlayerInfo._widget[key],key=key}
+ local hud=stock_hud(id,key,(i-1)%4);local instance={nextHud=hud}
+ local beforeState=#models["inGame.CP.zombies.secureState"].listeners
+ local beforeProgress=#models["inGame.CP.zombies.secureProgress"].listeners
+ LUI.HudManager.CreateHud(instance)
+ mapFixtures[#mapFixtures+1]={root=hud,info=hud.mainPlayerInfo._widget[key],key=key,
+  noActionSubscriptions=beforeState==#models["inGame.CP.zombies.secureState"].listeners and beforeProgress==#models["inGame.CP.zombies.secureProgress"].listeners}
 end
 models["inGame.CP.zombies.quests.questFuseAlphaFilter"]:set(1)
 models["inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Icon"]:set("native-recycled-inventory")
@@ -878,9 +917,103 @@ check('mapFixtures[3].info.chiStyle.image=="native-chi-style" and mapFixtures[4]
 check('mapFixtures[5].info.InventorySlot1.image=="native-recycled-inventory" and mapFixtures[5].info.InventorySlot1.alpha==1')
 lua.execute('models["inGame.CP.zombies.quests.questFuseAlphaFilter"]:set(0);models["inGame.CP.zombies.HUDInventoryDLC1.hudInventory1Alpha"]:set(0)')
 check('mapFixtures[1].root.nativeFuse.alpha==0 and mapFixtures[5].info.InventorySlot1.alpha==0')
+lua.execute(r'''
+function effectiveAlpha(leaf)
+ local alpha=1
+ while leaf do alpha=alpha*leaf.alpha;leaf=leaf:getParent() end
+ return alpha
+end
+function nativeActionIntact(root)
+ local a=root.reviveBarContainer._widget;local saved=root.retainedAction
+ return a.Accent==saved.accent and a.Header==saved.header and a.Header.MessageText==saved.label
+  and a.ProgressBar==saved.progress and a.ProgressBar.Fill==saved.fill and a.ProgressBar.Mask==saved.mask
+  and a.SetHeader==root.retainedSetHeader and a.ProgressBar.SetProgress==root.retainedSetProgress
+  and a.Accent:getParent()==a and a.Header:getParent()==a and a.ProgressBar:getParent()==a
+  and a.Header.MessageText:getParent()==a.Header and a.ProgressBar.Fill:getParent()==a.ProgressBar
+  and a.ProgressBar.Mask:getParent()==a.ProgressBar and a.ProgressBar.Fill.mask==saved.mask
+  and a.ProgressBar.Fill.image==saved.fillImage and a.ProgressBar.Fill.bounds==saved.fillBounds
+  and a.ProgressBar.Mask.image==saved.maskImage
+end
+''')
+for i in range(1,6):
+    check(f'nativeActionIntact(mapFixtures[{i}].root) and mapFixtures[{i}].noActionSubscriptions and mapFixtures[{i}].root.reviveBarContainer._widget.__bo3ActionView.view:getParent()==mapFixtures[{i}].root.retainedAction.accent')
+lua.execute(r'''
+action=mapFixtures[4].root.reviveBarContainer._widget;actionOwner=action.__bo3ActionView
+actionChildren=#action.children;accentImage=action.Accent.image;nativeFont=action.Header.MessageText.font
+models["inGame.CP.zombies.secureState"]:set(3);models["inGame.CP.zombies.secureProgress"]:set(0.4)
+''')
+check('action.visible and action.Header.MessageText.text=="REVIVING" and action.ProgressBar.Mask.bounds[2]==0.6 and effectiveAlpha(actionOwner.view)>0 and actionOwner.view.alpha==1')
+lua.execute('action:SetHeader("A LONG ACTUAL LOCALIZED ACTION");measuredActionBounds=action.Header.bounds;LUI.HudManager.CreateHud({nextHud=mapFixtures[4].root})')
+check('action.Header.MessageText.text=="A LONG ACTUAL LOCALIZED ACTION" and action.Header.bounds==measuredActionBounds and action.Header.MessageText.font==nativeFont and action.Header.MessageText.size==16 and action.Accent.image==accentImage and #action.children==actionChildren and #action.Accent.children==1')
+lua.execute('action.ProgressBar:SetProgress(1.5,125)')
+check('action.ProgressBar.Mask.bounds[2]==0 and action.ProgressBar.Mask.bounds[9]==125 and actionOwner.mask==action.ProgressBar.Mask')
+lua.execute('models["inGame.CP.zombies.secureState"]:set(0);models["inGame.CP.zombies.secureProgress"]:set(0)')
+check('not action.visible and action.alpha==1 and action.Accent.alpha==0 and effectiveAlpha(actionOwner.view)==0 and actionOwner.view.alpha==1 and not actionOwner.view.closed')
+lua.execute('models["inGame.CP.zombies.secureState"]:set(21);models["inGame.CP.zombies.secureProgress"]:set(0.75)')
+check('action.Header.MessageText.text=="SKEEBALL" and action.ProgressBar.Mask.bounds[2]==0.25 and effectiveAlpha(actionOwner.view)>0')
+lua.execute('models["inGame.CP.zombies.secureState"]:set(22)')
+check('action.visible and action.Header.MessageText.text=="" and actionOwner.view.alpha==1 and nativeActionIntact(mapFixtures[4].root)')
+lua.execute(r'''
+stateSource=models["inGame.CP.zombies.secureState"];progressSource=models["inGame.CP.zombies.secureProgress"]
+nativeStateGetter=stateSource.GetValue;nativeProgressGetter=progressSource.GetValue
+stateSource.GetValue=function(self,index) return index==2 and 3 or 0 end
+progressSource.GetValue=function(self,index) return index==2 and 0.6 or 0 end
+stateSource:set(0);progressSource:set(0)
+''')
+check('mapFixtures[3].root.retainedAction.label.text=="REVIVING" and mapFixtures[3].root.retainedAction.mask.bounds[2]==0.4 and not mapFixtures[1].root.reviveBarContainer._widget.visible and not mapFixtures[2].root.reviveBarContainer._widget.visible and not mapFixtures[4].root.reviveBarContainer._widget.visible and not mapFixtures[5].root.reviveBarContainer._widget.visible')
+lua.execute('stateSource.GetValue=nativeStateGetter;progressSource.GetValue=nativeProgressGetter;stateSource:set(0);progressSource:set(0)')
+lua.execute(r'''
+malformedActionRoots={}
+for _,fault in ipairs({"unknown","missing","primitive","order","foreign"}) do
+ local r=stock_hud();local a=r.reviveBarContainer._widget
+ if fault=="unknown" then a.id="ReviveBarContainerUnknown"
+ elseif fault=="missing" then a.ProgressBar.Fill=nil
+ elseif fault=="primitive" then a.Header=9
+ elseif fault=="order" then local first=a.children[1];a.children[1]=a.children[2];a.children[2]=first
+ else a.Accent:addElement(node()) end
+ LUI.HudManager.CreateHud({nextHud=r});malformedActionRoots[#malformedActionRoots+1]=r
+end
+malformedActionsNative=true
+for _,r in ipairs(malformedActionRoots) do
+ malformedActionsNative=malformedActionsNative and r.__bo3HudLayout and r.reviveBarContainer._widget.__bo3ActionView==nil
+end
+''')
+check('malformedActionsNative')
+lua.execute(r'''
+lateActionRoot=stock_hud();lateAction=lateActionRoot.reviveBarContainer._widget
+savedLateMask=lateAction.ProgressBar.Mask;lateAction.ProgressBar.Mask=nil
+LUI.HudManager.CreateHud({nextHud=lateActionRoot});lateHadNoView=lateAction.__bo3ActionView==nil
+lateAction.ProgressBar.Mask=savedLateMask;LUI.HudManager.CreateHud({nextHud=lateActionRoot})
+''')
+check('lateHadNoView and lateAction.__bo3ActionView and nativeActionIntact(lateActionRoot)')
+lua.execute(r'''
+foreignActionRoot=stock_hud();LUI.HudManager.CreateHud({nextHud=foreignActionRoot})
+foreignAction=foreignActionRoot.reviveBarContainer._widget;foreignActionOwner=foreignAction.__bo3ActionView
+foreignActionParent=node();foreignAction.Accent:removeElement(foreignActionOwner.view);foreignActionParent:addElement(foreignActionOwner.view)
+LUI.HudManager.CreateHud({nextHud=foreignActionRoot})
+''')
+check('foreignActionOwner.retired and foreignActionOwner.view.alpha==0 and foreignActionOwner.view:getParent()==foreignActionParent and not foreignActionOwner.view.closed and nativeActionIntact(foreignActionRoot)')
+lua.execute(r'''
+changedActionRoot=stock_hud();LUI.HudManager.CreateHud({nextHud=changedActionRoot})
+changedAction=changedActionRoot.reviveBarContainer._widget;changedActionOwner=changedAction.__bo3ActionView
+changedActionNativeHeader=changedAction.Header;changedAction.Header=7
+LUI.HudManager.CreateHud({nextHud=changedActionRoot})
+changedAction.Header=changedActionNativeHeader;LUI.HudManager.CreateHud({nextHud=changedActionRoot})
+''')
+check('changedActionOwner.retired and changedActionOwner.view.closed and changedActionOwner.view:getParent()==nil and #changedAction.Accent.children==0 and nativeActionIntact(changedActionRoot)')
+lua.execute(r'''
+foreignHookRoot=stock_hud();LUI.HudManager.CreateHud({nextHud=foreignHookRoot})
+foreignHookAction=foreignHookRoot.reviveBarContainer._widget;foreignHookOwner=foreignHookAction.__bo3ActionView
+foreignHeader=function(self,value) self.Header.MessageText:setText("FOREIGN "..value) end
+foreignHookAction.SetHeader=foreignHeader;foreignActionChild=node();foreignHookAction.Accent:addElement(foreignActionChild)
+LUI.HudManager.CreateHud({nextHud=foreignHookRoot})
+''')
+check('foreignHookOwner.retired and foreignHookOwner.view.closed and foreignHookAction.SetHeader==foreignHeader and foreignActionChild:getParent()==foreignHookAction.Accent and #foreignHookAction.Accent.children==1')
+lua.execute('actionBeforeController=mapFixtures[2].root.reviveBarContainer._widget.__bo3ActionView')
 lua.execute('changedController=mapFixtures[2].root;changedController.controllerIndex=3;LUI.HudManager.CreateHud({nextHud=changedController});changedCore=changedController.wonderCard._widget.FateCardWidget.FateCardDevilWidget.__bo3CardCore')
 check('changedCore.mask.alpha==1 and changedCore.view.alpha==0 and changedCore.disabled')
 check('changedCore.gauge.backing.alpha==1 and changedCore.gauge.meter.alpha==1 and changedCore.gauge.view.alpha==0')
+check('actionBeforeController.retired and actionBeforeController.view.closed and nativeActionIntact(changedController)')
 lua.execute('unrelated=stock_hud();unrelated.id="MPHUD";manager.nextHud=unrelated;LUI.HudManager.CreateHud(manager)')
 check('not unrelated.__bo3HudLayout')
 lua.execute('retired=MenuBuilder.BuildRegisteredType;MenuBuilder.BuildRegisteredType=original;tick()')
@@ -902,6 +1035,7 @@ check('manager.activeHud.mainPlayerInfo._widget.PlayerCash.RefreshRows==otherRef
 check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
 check('gauge.backing.alpha==1 and gauge.meter.alpha==1 and gauge.view.alpha==0 and nativePainterOrder(core,coreOwner) and core.nativeUpdate==nativeCoreUpdate and core.nativeRefill==nativeRefill')
 check('selectedOwner.mask.alpha==1 and selectedOwner.view.alpha==0 and boundedSelectedOwner.mask.alpha==1 and boundedSelectedOwner.view.alpha==0 and selected.nativeIdentityCallbacks==selectedCallbacks and selected.name==selectedNativeName and selected.icon==selectedNativeIcon')
+check('actionOwner.retired and actionOwner.view.closed and actionOwner.view:getParent()==nil and nativeActionIntact(mapFixtures[4].root) and foreignActionChild:getParent()==foreignHookAction.Accent and foreignHookAction.SetHeader==foreignHeader')
 lua.execute('roster[1].name="After shutdown";retiredTeam(existing.mainPlayerInfo._widget.PlayerCash)')
 check('hero.BO3Name.text=="Live beyond startup"')
 print(f"PASS {checks} authored Lua5.1 source controls; mocked UI/models only, no HKS/game/pixels")

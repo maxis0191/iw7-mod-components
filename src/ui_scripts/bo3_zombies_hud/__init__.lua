@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local VERSION, DIAGNOSTIC_VERSION = "0.12.0", "0.7.0"
+local VERSION, DIAGNOSTIC_VERSION = "0.13.0", "0.7.0"
 local state = { version = VERSION, diagnosticVersion = DIAGNOSTIC_VERSION, hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
@@ -10,6 +10,7 @@ state.roots = setmetatable({}, {__mode = "k"})
 state.refreshHooks = setmetatable({}, {__mode = "kv"})
 state.cardCores = setmetatable({}, {__mode = "kv"})
 state.cardIdentities = setmetatable({}, {__mode = "kv"})
+state.actionViews = setmetatable({}, {__mode = "kv"})
 state.identityDiagnostics = setmetatable({}, {__mode = "k"})
 state.nextIdentityDiagnostic = 0
 state.cardDiagnostics = setmetatable({}, {__mode = "k"})
@@ -739,6 +740,97 @@ local function style_powerup(self)
     rect(self.PowerupIcon, 4, 48, 4, 48)
     return self
 end
+local action_shapes = {
+    ReviveBarContainer = true,
+    ReviveBarContainerDLC1 = false,
+    ReviveBarContainerDLC2 = false,
+    ReviveBarContainerDLC3 = false,
+    ReviveBarContainerDLC4 = false
+}
+local function action_shape(self, owner)
+    local background = self and action_shapes[self.id]
+    if background == nil or not (self.Accent and self.Header and self.Header.MessageText
+        and self.ProgressBar and self.ProgressBar.Fill and self.ProgressBar.Mask)
+        or type(self.SetHeader) ~= "function" or type(self.ProgressBar.SetProgress) ~= "function" then return false end
+    -- Pinned outer order differs on the base map. The original accent is
+    -- already behind the native label/bar: an owned child needs no native
+    -- reparenting, unproven insert/depth API or replacement progress feed.
+    local expected = {self.Accent, self.Header}
+    if background then
+        if not self.Background or not self.Header.Background then return false end
+        expected[#expected + 1] = self.Background
+    end
+    expected[#expected + 1] = self.ProgressBar
+    local child = self:getFirstChild()
+    for _, leaf in ipairs(expected) do
+        if child ~= leaf or leaf:getParent() ~= self then return false end
+        child = child:getNextSibling()
+    end
+    if child then return false end
+    local header_children = background and {self.Header.Background, self.Header.MessageText} or {self.Header.MessageText}
+    child = self.Header:getFirstChild()
+    for _, leaf in ipairs(header_children) do
+        if child ~= leaf or leaf:getParent() ~= self.Header then return false end
+        child = child:getNextSibling()
+    end
+    if child or self.ProgressBar:getFirstChild() ~= self.ProgressBar.Fill
+        or self.ProgressBar.Fill:getParent() ~= self.ProgressBar
+        or self.ProgressBar.Fill:getNextSibling() ~= self.ProgressBar.Mask
+        or self.ProgressBar.Mask:getParent() ~= self.ProgressBar
+        or self.ProgressBar.Mask:getNextSibling() then return false end
+    child = self.Accent:getFirstChild()
+    return owner and child == owner.view and child:getNextSibling() == nil or not owner and child == nil
+end
+local function retire_action(owner)
+    owner.retired = true
+    owner.view:SetAlpha(0, 0)
+    -- A foreign parent/child is never moved back or removed. Only our view
+    -- under the captured accent is disposed; all native fields stay intact.
+    if owner.view:getParent() == owner.accent then
+        owner.accent:removeElement(owner.view)
+        owner.view:close()
+    end
+end
+local function style_action(self, index)
+    if not self then return end
+    local owner = self.__bo3ActionView
+    if owner then
+        if owner.retired then return end
+        local ok, intact = pcall(function()
+            return self.id == owner.id and self.Accent == owner.accent
+                and self.Header == owner.header and self.Header.MessageText == owner.label
+                and self.ProgressBar == owner.progress and self.ProgressBar.Fill == owner.fill
+                and self.ProgressBar.Mask == owner.mask and self.SetHeader == owner.setHeader
+                and self.ProgressBar.SetProgress == owner.setProgress and action_shape(self, owner)
+        end)
+        if state.closed or owner.index ~= index or not ok or not intact then
+            retire_action(owner)
+        end
+        return not owner.retired
+    end
+    local ok, shape = pcall(action_shape, self)
+    if state.closed or type(index) ~= "number" or index < 0 or index > 3 or index ~= math.floor(index)
+        or not ok or not shape then return end
+    local view = panel("BO3ActionView", 256, 64)
+    view:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0)
+    local surface = bar(view, "BO3ActionSurface", 0, 0, 0, 0, 0x171713)
+    surface:SetAnchorsAndPosition(0, 0, 0, 0, 0, 0, 0, 0)
+    local top = bar(view, "BO3ActionTop", 0, 0, 0, 2, 0xA49E8B)
+    top:SetAnchorsAndPosition(0, 0, 0, 1, 0, 0, 0, scale(2))
+    local bottom = bar(view, "BO3ActionBottom", 0, 0, -2, 0, 0xA49E8B)
+    bottom:SetAnchorsAndPosition(0, 0, 1, 0, 0, 0, scale(-2), 0)
+    local left = bar(view, "BO3ActionLeft", 0, 3, 0, 0, 0xA49E8B)
+    left:SetAnchorsAndPosition(0, 1, 0, 0, 0, scale(3), 0, 0)
+    self.Accent:addElement(view)
+    owner = {id=self.id, view=view, accent=self.Accent, header=self.Header, label=self.Header.MessageText,
+        progress=self.ProgressBar, fill=self.ProgressBar.Fill, mask=self.ProgressBar.Mask,
+        setHeader=self.SetHeader, setProgress=self.ProgressBar.SetProgress, index=index}
+    self.__bo3ActionView = owner;state.actionViews[self] = owner
+    -- Native Accent alpha/Show/Hide owns the entire underlay. Keep the actual
+    -- label, measured header, fill material/geometry/stencil, state/progress
+    -- callbacks and original child order. No copied title, %, target or clock.
+    return true
+end
 local function style_status(root)
     if root.activePowerups then
         root.activePowerups:SetAnchorsAndPosition(1, 0, 0, 1, scale(-920), scale(-280), scale(48), scale(112))
@@ -755,10 +847,11 @@ local function style_status(root)
     end
     if root.reviveBarContainer then
         local revive = unwrap(root.reviveBarContainer)
-        assert(revive.Header and revive.Header.MessageText and revive.ProgressBar, "Actual revive elements required")
-        root.reviveBarContainer:SetAnchorsAndPosition(0.5, 0.5, 0.5, 0.5, scale(-128), scale(128), scale(60), scale(124))
-        revive.Header.MessageText:SetRGBFromInt(0xF5F1E7, 0)
-        if revive.ProgressBar.Fill then revive.ProgressBar.Fill:SetRGBFromInt(0xA49E8B, 0) end
+        if style_action(revive, root.controllerIndex) then
+            root.reviveBarContainer:SetAnchorsAndPosition(0.5, 0.5, 0.5, 0.5, scale(-128), scale(128), scale(60), scale(124))
+            revive.Header.MessageText:SetRGBFromInt(0xF5F1E7, 0)
+            revive.ProgressBar.Fill:SetRGBFromInt(0xA49E8B, 0)
+        end
         -- Never resize the progress mask or override SetProgress/SetHeader,
         -- secureState/secureProgress or the native Show/Hide/Skeeball paths.
     end
@@ -1020,6 +1113,7 @@ local function visit_root()
 end
 function state.shutdown()
     state.closed = true
+    for _, owner in pairs(state.actionViews) do retire_action(owner) end
     for _, owner in pairs(state.cardCores) do native_card_core(owner) end
     for _, owner in pairs(state.cardIdentities) do native_card_identity(owner) end
     for owner, hook in pairs(state.refreshHooks) do
