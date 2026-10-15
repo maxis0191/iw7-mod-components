@@ -3,7 +3,8 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Version0.2.0 implements the first essential slice;
+weapons, quests and states. Version0.3.0 corrects the first bound slice and adds
+an actual-player team layout;
 the coverage matrix below remains the completion contract.
 
 ## Ownership and loading
@@ -57,12 +58,49 @@ round wrapper incorrectly resizes its full-screen canvas. Version0.2.0 adds
 immediate/post-construction/live-root paths and changes the round leaf only.
 The raw engine opt-in values in that failed run were not measured; their absence
 is not asserted as an observed runtime fact. The native registrar gap is source
-evidence. Version0.2.0 still needs a new reviewed capsule and real pixel evidence;
-native903 and its failed frames remain unchanged.
+evidence. Native903 and its failed frames remain unchanged.
+
+The subsequent frozen native0bb/caller257 V3 run measured actual engine string
+values1/1, profile1/frontend0/cp1, owned hooks and a concordant ZMHUD bind. Its
+authentic spawn/spent/reloaded frames show partial custom round/ammo styling,
+but a clipped portrait, overlapping cash and a Fate-card demon/fan covering the
+reserve area. Ten perks were visible while bind reported perks0. This qualifies
+partial custom effects, not a clean layout or a complete replacement. The V3
+tuple, frames and restoration evidence remain frozen; the exact identity of the
+second visible cash glyph group was not measured and is not asserted.
+
+Version0.3.0 responds to those observed failures with Source changes:
+
+- Reparent the one original local PlayerIcon/PlayerCash pair into an owned hero
+  inside the same MainPlayerInfoContainer. Reset their inherited scale/rotation;
+  retain the actual image/status/cash subscriptions. Quest children keep their
+  original parent, references, positions and models. No second total is created.
+- Reuse PlayerCash's original three-row CPPlayerInfo grid, native row assignment,
+  refresh timer and portrait/status callbacks. Expose actual names and currency;
+  never substitute scoreboard score for currency or fabricate teammate rows.
+  Complete scoreboard rows provide mic flags by matching their real clientNum.
+  Unknown flags hide only the added mic glyph. Spectator identity uses the same
+  native target selection as CPPlayerInfo.
+- An owned post-RefreshRows hook applies layout/hero identity after the original
+  returns, including newly created rows and after the bounded startup poll ends.
+  It preserves every return value, retires superseded wrappers and restores only
+  its own assignment at shutdown. No extra recurring timer is installed.
+- Give the full FateCardWidget a separate region above ammo and left of the
+  active-card column. The retail fan reaches y588.5 beyond the declared389 height;
+  sizing from the demon alone still overlaps ammo. Deck/charge/arrows/selection
+  and visibility callbacks remain native. Cash deltas keep their flight/fade in
+  a separate horizontal lane; they are not hidden or replaced by the total.
+- Traverse wrapped perk leaves with explicit depth5/node128/icon16 bounds, while
+  retaining the original toggle-list ordering, images and lifetime.
+
+These are source geometry and callback guarantees. New HKS captures must verify
+safe-area placement, long names, all card states, remaining quest overlap and
+actual one/four-player behavior. Full HUD coverage remains open in
+[server issue247](https://github.com/maxis0191/iw7-paris-server/issues/247).
 
 ## Bounded binding diagnostics
 
-Every module initialization emits `module version=0.2.0 instance=... initialized=1`.
+Every module initialization emits `module version=0.3.0 instance=... initialized=1`.
 The alphanumeric instance tag is local to the module object; it is not a globally
 unique native VM identifier. Reset the parser epoch at every module delimiter,
 even if an address/tag is reused. All later markers carry the same instance.
@@ -82,6 +120,8 @@ even if an address/tag is reused. All later markers carry the same instance.
 
 Markers emit only on state changes; startup polling remains bounded. No player
 names, balances, GUIDs or credentials are emitted by these diagnostics.
+The grammar is unchanged from0.2.0. The server-owned caller must explicitly select
+diagnostic version0.3.0 for a new tuple; its default0.2.0 keeps V3 frozen.
 
 ## Source references and implemented essentials
 
@@ -99,7 +139,8 @@ current VM/runtime ABI. No decompiled body is copied into tracked implementation
 | Round | inGame.CP.zombies.waveNumber | New WaveNumber widget and red count; original round leaf replaced, parent boss/escape visibility retained |
 | Ammo/reserve | currentWeapon.clipAmmoRightDisplay, clipAmmoLeftDisplay, stockAmmoDisplay; ammoInfoAlpha/ammoReserveAlpha | New weaponinfoZM, dual/melee display and authoritative alpha; original ammo leaf replaced |
 | Weapon/PAP name | currentWeapon.displayNameMultiline | Actual localized name; no inferred PAP tier or RayGun name |
-| Portrait/score | Existing MainPlayerInfo PlayerIcon/PlayerCash subscriptions, CP.players.image/bigImage/currentPlayerCash | Original character/status callbacks retained, portrait/cash restyled; cosmetic box/dollar sign detached; quest children retained |
+| Portrait/currency | Existing MainPlayerInfo PlayerIcon/PlayerCash subscriptions, CP.players.image/bigImage/currentPlayerCash | Original pair moved once to the hero; character/status/cash callbacks retained; cosmetic box/dollar sign detached; quest children retained |
+| Team identity/currency/status/mic | PlayerCash CPPlayerInfo grid, filtered GetCPScoreboardRowData(row, target, true), complete scoreboard mic flags | Original three teammate rows refreshed by retail, actual name/currency/status; hero identity/mic refreshed after native RefreshRows |
 | Perks | CP.zombies.perks.activePerks/activePerkBits; element data.icon | New CPPerkIcon, dynamic runtime image; original toggle-list/order/lifetime retained |
 | Offhands | primaryPower/secondaryPower charge, icon, color and alpha models | Original ZomWeaponInfo children retained, not hidden by replacing the ammo leaf |
 
@@ -122,14 +163,14 @@ tagged created adaptations, saved in the owning project and never called retail.
 
 | State/information | Current preservation | Required future replacement/verification |
 | --- | --- | --- |
-| Four players, join/leave, score sort, mic/status | Original PlayerCash/scoreboard/nameplates/talkers | BO3 team stack with actual row identity/status; no player count fabricated |
+| Four players, join/leave, score sort, mic/status | Source0.3 reuses the native three-row PlayerCash grid and refresh; original scoreboard/nameplates/talkers remain | Real cooperative/spectator/row-recycle and long-name verification; no player count fabricated |
 | Downed/last stand/self revive | LastStandTimer, afterlifeSelfReviveProgress | Styled timer and current buttons; distinguish normal damage from script-entered test |
 | Revive progress/cancel/return | ReviveBarContainer/DLC1..4 and real retail models | Keep actual target/use/cancel flow; P2 test under scoped protection |
 | Perk grant/loss/order/DC | Original activePerks/activePerkBits and image source | Grant/loss/respawn/DC and all image readiness; no color-only state |
 | Reload, alt mode, akimbo, melee, zero/infinite ammo | Live ammo display/alpha; original AmmoWarning/UnlimitedAmmoIcon | Reload/alt/name/zero/infinite transitions and controller glyphs |
 | Equipment/charges/crafted/Mule | Original quantity/icon/alpha/CraftedWeapon/Mule widgets | BO3 arrangement without dropping offhand or third-weapon state |
 | Power-ups and activation/timer expiry | ZomPowerupWidget/ZomPowerupActive/message queue | Actual duration/icon/stack/cancel transitions, not static icon rows |
-| Fate/Fortune cards | HudBottomRight children/cards/selection remain | BO3-style layout retaining deck, charge, selection/input and activation feedback |
+| Fate/Fortune cards | Original children/cards/selection remain; Source0.3 moves the full deck away from ammo | Real card/fan/charge/active-list overlap, selection/input and activation feedback |
 | Interaction prompts/prices | Hints/InteractiveObjectPopup/interactionNotification | Keep actual key/glyph, text/price/focus and priorities; never blank through a HUD parent |
 | Hit markers/damage indicators | PlayerDamaged/HitMarker/HitMarkerIcon/CPDamageIndicator | Preserve aim, contrast and damage meaning |
 | Quest/map-specific inventory | MainPlayerInfo inventory/quest children, challenge/sticker/ghost/escape/boss/PAP timers | Map-specific adaptive layouts across all five maps with no missing item |
@@ -150,7 +191,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-65 source controls cover default-off/private opt-in/frontend/MP, controller1,
+93 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -159,6 +200,14 @@ state. Additional controls construct the retail wrapper/leaf hierarchy before
 module load, retain live round/ammo subscriptions and critical children, verify
 post-CreateHud return values, root identity, transient failure/recovery, hook
 replacement, exact profile refusal and absence of duplicate cosmetic nodes.
+Version0.3 controls add one-parent portrait/cash ownership and retained currency
+subscription, authored card-fan/ammo separation, nested perks, actual teammate
+currency updates for unchanged identity, one/four/leave/spectator mock states,
+unknown mic flags, unchanged row callbacks and native refresh return values.
+After draining all480 startup callbacks, a stock team refresh still updates the
+hero name/mic with no queued work. Shutdown restores owned refreshes, preserves
+an external replacement and makes a captured retired wrapper inert. These are
+mock source causals, not real cooperative or visual acceptance.
 Root review of candidate3706 found that the failure cache survived a successful
 recovery, suppressing a recurrence of the same fault and leaving stale external
 bind evidence. Success now resets that failure key. The same-root/sequence
