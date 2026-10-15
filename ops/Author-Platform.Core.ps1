@@ -50,6 +50,11 @@ function Read-IW7AuthorPlatformResult {
     $physics=Read-IW7CollisionPlayerResult @PSBoundParameters
     if(!$physics.Complete){return [pscustomobject]@{Complete=$false}}
     $last=$Text.LastIndexOf("`n");$tail=$Text.Substring($last+1);$token=$Plan.Token
+    # SDK's ownership-loss row intentionally has no token. Never reuse a prior
+    # completion while that latest restoration status is still being written.
+    if($tail.StartsWith('[SDK author platform] RESTORE_PENDING;',[StringComparison]::Ordinal)){
+        return [pscustomobject]@{Complete=$false;Pending='Unterminated SDK restoration status.'}
+    }
     foreach($prefix in @('[Author contact] ','[SDK author platform] ','[Collision player] ')){
         if($tail.StartsWith($prefix,[StringComparison]::Ordinal) -and $tail.Contains('token='+$token)){
             return [pscustomobject]@{Complete=$false;Pending='Unterminated latest owned row.'}

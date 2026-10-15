@@ -24,7 +24,8 @@ if(!$r.Complete -or !$r.RetailTriggerObservedVerified -or !$r.VisualEntityStable
     !$r.Physics.ServerPlayerContactVerified -or $r.RendererVerified -or $r.RenderBoundsQualified -or $r.ClientPredictionVerified -or $r.OwnerAccepted -or $r.LifecycleClosed){throw 'Author positive or qualification boundary failed.'}
 # SDK trigger may run immediately before the fixture observes the same edge.
 if(!(Read-Author ($author.Replace("$edge`n$sdkUse", "$sdkUse`n$edge"))).Complete){throw 'Same-frame actual retail trigger order was overconstrained.'}
-$pendingCases=@($author.TrimEnd("`n"),($author+"[Author contact] USE_EDGE token=$token"),($author+"[Collision player] FAIL token=$token reason=late"))
+$pendingCases=@($author.TrimEnd("`n"),($author+"[Author contact] USE_EDGE token=$token"),($author+"[Collision player] FAIL token=$token reason=late"),
+    ($author+'[SDK author platform] RESTORE_PENDING; reason=ownership_changed'))
 foreach($partial in $pendingCases){
     if((Read-Author $partial).Complete){throw 'Partial latest owned publication accepted.'}
 }
@@ -59,4 +60,4 @@ foreach($field in @('VisualOrigin','VisualAngles','ModelLocalMaximum','FsGame','
     $plan.$field=switch($field){'VisualOrigin'{@(0,0,95)} 'VisualAngles'{@(0,90,0)} 'ModelLocalMaximum'{@(128,128,17)} 'FsGame'{'mods/other'} default{2}}
     try{$null=Read-Author $author}catch{$reject++;$plan.$field=$old;continue};throw 'Changed canonical Author plan accepted.'
 }
-Write-Output "PASS Author pure transcript: two causal positives, $reject refusals, three pending tails; no engine/render/Game qualification."
+Write-Output "PASS Author pure transcript: two causal positives, $reject refusals, four pending tails; no engine/render/Game qualification."
