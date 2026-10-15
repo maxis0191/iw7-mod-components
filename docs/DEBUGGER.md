@@ -141,6 +141,60 @@ E and all predecessors/results remain frozen. Any official tool/configuration
 choice is a source proposal first, with new exact review and authorization
 before installation, acquisition, native loading or EXE/PDB/dump analysis.
 
+### Q0B: SDK publisher metadata refused by the frozen chain policy
+
+The one separately authorized Q0B metadata qualification on 2026-10-15 UTC
+remains `Refused`. Windows returned `Valid` for the embedded Authenticode
+signature, with a Microsoft Corporation code-signing signer. The independent
+current-time .NET chain returned `Built=false`, `NotTimeValid`; the signing
+certificate expired on 2026-05-06. That path ended in Microsoft RCA 2010,
+whereas frozen Q0B required RCA 2011 and a successful current-time chain.
+`MicrosoftPublisherQualified=false` and
+`AssessmentReason=StrictOfflineIdentityChainUnqualified` remain unchanged.
+This is not evidence of a forged file or an invalid Windows signature.
+The exact authenticated signing timestamp was not exposed and remains unknown.
+
+Microsoft documents [timestamped Authenticode verification after certificate
+expiry](https://learn.microsoft.com/en-us/windows/win32/seccrypto/time-stamping-authenticode-signatures),
+and publishes both [RCA 2010 and RCA 2011](https://www.microsoft.com/pkiops/docs/repository.htm).
+Those facts do not retroactively change Q0B's policy or result. Its version
+resource strings are claims, not SDK bundle-content/version qualification.
+No setup/help/modify/MSI, SDK/tool/symbol acquisition, debugger DLL load, game,
+EXE/PDB/dump analysis or installation occurred. No trust store, policy or ACL
+was modified. The earlier game crash cause remains unproven.
+
+The same original context/state/capsule, factory witness, clock and NativeJob
+owner reached known closure. All 19 original SafeFileHandles closed; original
+inputs were reverified before release; the original lease/token was absent,
+the clock stopped at 2342 ms and `CanExit=true`. Before cleanup, both AppDomain
+keys matched the same original context/factory witness/clock. After cleanup,
+both keys were NULL, with the original aliases retained through actual exit.
+The timestamp/signer certificates and independent chain were disposed.
+
+A dot-sourced exit helper returned to the original prompt and was not counted
+as exit. After rechecking the full original gate, direct interactive exit
+actually completed with code 0. That terminal was never polled again.
+Independent metadata at 21:58:30.4786619 UTC found all three original process
+generations/PIDs absent, with games/compiler/debuggers and leases empty. Root
+verified the original receipts, terminal completion and fresh absence before
+releasing its coordination slot. Closure success remains separate from refusal.
+There was no qualification replay or cached input access after release.
+
+| Q0B receipt | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `qualification-result.json` | 5399 | `B44925757381973BE367FB5DDE0AADF899A6EA5EC5AD0A672388F14990D94103` |
+| `actual-original-postflight.local.json` | 1996 | `4187194DC9A68D70050B7311555BCFD30C17EBC2715CD087B3A52CC03FA805AE` |
+| `actual-independent-closure.local.json` | 4326 | `EDADB1BACED71C637BA64872B6A875850B8FCCE441789D0C2CEB79718C7E9DE5` |
+| `actual-closed-review.local.json` | 9468 | `75B9A7DC654FDB8FF33206515D549CEA9B28D2363793C113B9AB91896E91ACCC` |
+
+Q0B capsule: 11114 bytes, SHA-256
+`C886AE5EC8D4D14285F5E28CD0BF360E7BF25738C7E793C7E43928F52E3415BA`.
+Q0 was never executed; Q0/Q0B and all earlier results remain frozen. The next
+action is independent Source review of timestamp-aware Windows publisher
+evidence and the official Microsoft authorities, with failed current-time
+validation kept explicit. Any new real qualification needs a new exact
+capsule review and distinct Analysis GO; installation has a separate gate.
+
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
 Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
