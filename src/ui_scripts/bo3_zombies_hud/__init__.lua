@@ -1,7 +1,7 @@
 -- Original IW7 adapter, not retail BO3 source/art. Private opt-in prototype.
 -- Actual IW7 data models stay authoritative; no gameplay/model writes.
 if rawget(_G, "BO3ZombiesHUD") then return end
-local state = { version = "0.3.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
+local state = { version = "0.4.0", hooks = {}, failures = 0, closed = false, factoryApplied = 0 }
 state.instance = (string.gsub(tostring(state), "[^%w]", "")):sub(1, 40)
 state.roots = setmetatable({}, {__mode = "k"})
 -- Values are weak too: each live owner's installed wrapper retains its hook.
@@ -210,12 +210,15 @@ local function adapt_bottom(original, menu, args)
     self.ZomWeaponInfo:SetYRotation(0, 0)
     self.ZomWeaponInfo:SetZRotation(0, 0)
     self.ZomWeaponInfo:SetAnchorsAndPosition(1, 0, 1, 0, scale(-560), scale(-182), scale(-210), scale(-48))
-    -- Retain card/charge/selection callbacks; give the entire deck a separate
-    -- upper-right zone instead of letting its demon/fan cover ammo below.
+    -- Compact the complete native deck, including charge, fan and selection
+    -- feedback. Do not hide individual parts or shrink the active-card list.
     if self.FateCardWidget then
         self.FateCardWidget:SetYRotation(0, 0); self.FateCardWidget:SetZRotation(0, 0)
-        -- The retail fan extends to 588.5, beyond its declared 389 height.
-        self.FateCardWidget:SetAnchorsAndPosition(1, 0, 1, 0, scale(-530), scale(-277), scale(-860), scale(-471))
+        -- SetScale is a delta from 1: retain 65% of the authored deck. Its fan
+        -- extends to y588.5 beyond the declared 389 height; allow that overflow
+        -- after the center-based scale, above ammo and left of active effects.
+        self.FateCardWidget:SetScale(-0.35, 0)
+        self.FateCardWidget:SetAnchorsAndPosition(1, 0, 1, 0, scale(-420), scale(-167), scale(-695), scale(-306))
     end
     return self
 end

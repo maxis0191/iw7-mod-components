@@ -3,8 +3,8 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Version0.3.0 corrects the first bound slice and adds
-an actual-player team layout;
+weapons, quests and states. Version0.4.0 follows the confirmed solo0.3 layout
+with a smaller native card deck; the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
 
 ## Ownership and loading
@@ -98,9 +98,41 @@ safe-area placement, long names, all card states, remaining quest overlap and
 actual one/four-player behavior. Full HUD coverage remains open in
 [server issue247](https://github.com/maxis0191/iw7-paris-server/issues/247).
 
+## V4 real solo result and compact-deck Source follow-up
+
+The frozen UI0.3/native0578 + Ops259/6ba06e V4 case
+`20261015-003031-413-babf121e` produced three authentic1280x720 native BMP frames.
+Root, Ops55 and the UI owner independently viewed them. The portrait is whole,
+the actual name and one25000 total are visible, and clip/reserve changes are
+12/48 to11/48 to12/47 with the Kendall name readable. The deck no longer covers
+ammo. Crosshair and actual interaction text/key/price remain visible. Initial
+perk count0 is transient: Ops55 reports count10 after input. Perk images remain
+retail artwork; style-call counts do not prove new artwork.
+
+The large demon/fan still floats at mid-right. The native ticket/souvenir+0 is
+close under the total. Real solo improvement is confirmed; cooperative, other
+maps, revive, owner acceptance and complete BO3 composition are unqualified.
+The Ops owner retains the original logs, closure/restoration and PTY evidence;
+the UI review is pixel evidence for these three frames only.
+
+Version0.4.0 leaves the frozen0.3 package/case intact and changes only the deck's
+whole-group transform. Native fan, on-deck card, charge/readiness, arrows, fire
+feedback, selection animations and every model callback remain in their original
+hierarchy. No child is hidden, detached, replaced or given a new alpha. Native
+active-card effects/timers remain at their existing size in WonderCardFillWidget.
+
+The deck retains its declared253x389 size and receives a scale delta-0.35
+(65% size), at right offsets-420/-167 and bottom offsets-695/-306. In the candidate
+center-origin geometry the maximum native fan y588.5 becomes bottom-244.4,
+above ammo's top-210 by34.4 source units. This is a Source layout calculation,
+not measurement of a new HKS frame or proof that small card glyphs are readable.
+The next separately authorized capture must check every card-count/readiness/
+selection animation, active-effect coexistence, arrow/charge readability and
+screen margins. Equipment/power-up/down/revive/quest composition remains open.
+
 ## Bounded binding diagnostics
 
-Every module initialization emits `module version=0.3.0 instance=... initialized=1`.
+Every module initialization emits `module version=0.4.0 instance=... initialized=1`.
 The alphanumeric instance tag is local to the module object; it is not a globally
 unique native VM identifier. Reset the parser epoch at every module delimiter,
 even if an address/tag is reused. All later markers carry the same instance.
@@ -120,8 +152,10 @@ even if an address/tag is reused. All later markers carry the same instance.
 
 Markers emit only on state changes; startup polling remains bounded. No player
 names, balances, GUIDs or credentials are emitted by these diagnostics.
-The grammar is unchanged from0.2.0. The server-owned caller must explicitly select
-diagnostic version0.3.0 for a new tuple; its default0.2.0 keeps V3 frozen.
+The grammar is unchanged from0.2.0. The current server-owned caller allowlist
+supports0.2.0/0.3.0, with default0.2.0. It must reject this new0.4.0 tuple until a
+separate reviewed Ops extension explicitly permits it. V3 and V4 remain frozen;
+this Source follow-up authorizes no immediate capsule or Game replay.
 
 ## Source references and implemented essentials
 
@@ -170,7 +204,7 @@ tagged created adaptations, saved in the owning project and never called retail.
 | Reload, alt mode, akimbo, melee, zero/infinite ammo | Live ammo display/alpha; original AmmoWarning/UnlimitedAmmoIcon | Reload/alt/name/zero/infinite transitions and controller glyphs |
 | Equipment/charges/crafted/Mule | Original quantity/icon/alpha/CraftedWeapon/Mule widgets | BO3 arrangement without dropping offhand or third-weapon state |
 | Power-ups and activation/timer expiry | ZomPowerupWidget/ZomPowerupActive/message queue | Actual duration/icon/stack/cancel transitions, not static icon rows |
-| Fate/Fortune cards | Original children/cards/selection remain; Source0.3 moves the full deck away from ammo | Real card/fan/charge/active-list overlap, selection/input and activation feedback |
+| Fate/Fortune cards | Source0.3 separation confirmed solo; Source0.4 compacts the whole native deck with every child/state intact | New scaled card/fan/charge/active-list overlap, glyph readability, selection/input and activation feedback |
 | Interaction prompts/prices | Hints/InteractiveObjectPopup/interactionNotification | Keep actual key/glyph, text/price/focus and priorities; never blank through a HUD parent |
 | Hit markers/damage indicators | PlayerDamaged/HitMarker/HitMarkerIcon/CPDamageIndicator | Preserve aim, contrast and damage meaning |
 | Quest/map-specific inventory | MainPlayerInfo inventory/quest children, challenge/sticker/ghost/escape/boss/PAP timers | Map-specific adaptive layouts across all five maps with no missing item |
@@ -191,7 +225,7 @@ and redundant state cues; no web ARIA/screen-reader/WCAG compliance is claimed.
 SHA256 c735a1ce8ee60edb0fe71d665f1e6b7c55c6021f1d340eb8c865952c602cd36f,
 1688529 bytes, from PyPI. It installs only a binary wheel under ignored runtime;
 no compiler/build. The authored Lua runs in Lua5.1 with explicit mock UI/models.
-93 source controls cover default-off/private opt-in/frontend/MP, controller1,
+97 source controls cover default-off/private opt-in/frontend/MP, controller1,
 dynamic round/clip/name, dual/melee/alpha/perk transitions, missing model fallback,
 quest preservation, duplicate-load, owned-hook restoration and a captured retired
 dispatcher remaining inert after shutdown. Added readiness controls exercise
@@ -208,6 +242,10 @@ After draining all480 startup callbacks, a stock team refresh still updates the
 hero name/mic with no queued work. Shutdown restores owned refreshes, preserves
 an external replacement and makes a captured retired wrapper inert. These are
 mock source causals, not real cooperative or visual acceptance.
+Version0.4 adds native readiness/fire/arrow updates through successive layout
+polls with unchanged parent alpha, callback identity, selected-card image and
+child count. The separate active-card list keeps its native image and scale.
+The overflow geometry control includes the deck transform around its center.
 Root review of candidate3706 found that the failure cache survived a successful
 recovery, suppressing a recurrence of the same fault and leaving stale external
 bind evidence. Success now resets that failure key. The same-root/sequence
