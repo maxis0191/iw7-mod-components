@@ -250,6 +250,73 @@ Next is a separately reviewed SDK Debugging Tools installation/elevation and
 shared-MSI-service lifecycle proposal preserving installed CPP/features;
 actual installation and later opaque DLL qualification each need their own gate.
 
+### G2: System32 metadata and seven direct export names qualified, no load
+
+The one separately reviewed and authorized G2 invocation on 2026-10-15 UTC
+returned `System32MetadataAndSevenDirectNamesQualified_NoLoad` for the exact
+`C:\Windows\System32\dbghelp.dll`: 2317640 bytes, SHA-256
+`2D2EC94891162A61D86789133623B47D64D74C15D6BE99473B25AD7A6468CF39`.
+Its version-resource claims were file version `10.0.26100.9549
+(WinBuild.160101.0800)` and product version `10.0.26100.9549`.
+The bounded managed PE reader observed an AMD64 PE32+ DLL, nine sections and
+252 export names. All seven required names were present and non-forwarded:
+`SymInitializeW`, `SymLoadModuleExW`, `SymSetOptions`, `SymGetModuleInfo64`,
+`SymFromAddr`, `SymGetLineFromAddr64` and `SymCleanup`. Their addresses were
+not executed. Name presence and version strings do not qualify an ABI.
+
+Under the separately reviewed OS-signature policy, Windows returned `Valid`,
+`SignatureType=Catalog` and `IsOSBinary=true`. The signer had exactly one
+unambiguous Microsoft Corporation organization and explicit code-signing EKU;
+the returned timestamp certificate had explicit timestamp EKU. The actual
+returned certificates were disposed before the positive decision.
+`RootAtSigningTimeQualified=false`, `ExactSigningTimeUtc=null` and
+`ExactWindowsBackend=Unobserved` remain explicit. Normal Windows verification
+may use its OS resolver/cache; this was not a globally offline trust test.
+No manual X509 chain/time override, trust-store/policy or ACL change occurred.
+The SDK setup's earlier Q0B/Q1B results were not adopted as DLL evidence.
+
+No target DLL load, dynamic export lookup or DbgHelp native call occurred.
+Interface/module identity, ABI, symbol/function/line mapping, actual client
+runtime layout, game crash cause and reconstructed game stack remain
+unqualified. No other PE/PDB/dump, game, installer, MSI, SDK/tool/symbol
+acquisition or System32 replacement was involved.
+
+The same original context/state/capsule, factory witness, clock and NativeJob
+owner reached known closure: all 19 original SafeFileHandles closed, original
+inputs reverified before release, owner exit 0, original lease/token absent,
+clock stopped at 2903 ms and `CanExit=true`. Both AppDomain keys matched the
+same original context/witness/clock before cleanup and both were NULL after,
+with the original aliases retained through direct interactive exit. The
+original terminal actually exited 0 and was never polled again. Independent
+metadata at 23:24:21.5610446 UTC found all three original process generations
+and PIDs absent, with games/compiler/debuggers and Version 1 leases empty.
+Root independently verified the receipts and original terminal completion,
+then fresh absence at 23:27:22.756 UTC before releasing its coordination slot.
+No DLL input was accessed after release and no qualification was replayed.
+
+| G2 receipt | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `qualification-result.json` | 5079 | `AB49D0BAF47344B132FEF16D1FFBE9FCABC221E0DC56F315C96B9AE104242A34` |
+| `actual-original-postflight.local.json` | 2048 | `6C59697ABE62DCCB28E19A52C1BDDCCA32905016393241A76936A0D3E4FD2D1C` |
+| `actual-independent-closure.local.json` | 4372 | `250136BF8599F92613DCFA781130098549DB8B705EC9201E04465890C1B8C201` |
+| `actual-closed-review.local.json` | 12555 | `8A806107B3F275C692C572EF5B1A950BC754BC619FE94AB48A01C29C001A6011` |
+
+G2 capsule: 9947 bytes, SHA-256
+`FAD838F995F359DAF04279616B50F2B3AE1B22CE735FCAD092FAF5D63A3EE728`.
+The 99 new Source checks comprise 29 authored PE regressions, 52 OS-collector
+checks with authored certificates and 18 mixed delta causals. They cover the
+two reviewed G1 corrections: exactly one organization RDN and globally disjoint
+readable RVA intervals including headers. The unchanged phase/lifecycle code
+retains its prior evidence; it was not rerun as a new Source suite. G1 was never
+executed. All predecessor sources/results and the closed G2 result remain frozen.
+
+Next is a small Source proposal for a local-RVA native Gate2 with the same seven
+bindings and full declared structures, plus immediate native-failure/error and
+declared-size diagnostics. Native ABI/module identity and each mapping outcome
+need actual separate qualification. A new exact capsule review and distinct GO
+are required before any target DLL load or further image/PDB analysis. SDK
+installation remains a reserved option without a demonstrated necessity.
+
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
 Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
