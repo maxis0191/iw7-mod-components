@@ -49,6 +49,14 @@ function node()
  function n:setEndTime(value) self.endTime=value end
  function n:SetProgress(value) self.progress=value;self.progressWrites=(self.progressWrites or 0)+1 end
  function n:addElement(child) self.children[#self.children+1]=child;child.parent=self end
+ function n:addElementBefore(other)
+  local parent=assert(other:getParent())
+  assert(not self:getParent())
+  for i,v in ipairs(parent.children) do
+   if v==other then table.insert(parent.children,i,self);self.parent=parent;return end
+  end
+  error("Missing insertion sibling")
+ end
  function n:removeElement(child)
   child.detached=true;child.parent=nil
   for i,v in ipairs(self.children) do if v==child then table.remove(self.children,i);break end end
@@ -167,7 +175,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.17.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.17.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.18.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.18.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -410,10 +418,11 @@ function stock_hud(root_id,player_key,index)
  bottom.ZomWeaponInfo.UnlimitedAmmoIcon=node();bottom.ZomWeaponInfo.UnlimitedAmmoIcon:BindAlphaToModel(models["inGame.CP.ammo.unlimitedAlpha"])
  bottom.FateCardWidget=node()
  local deck=bottom.FateCardWidget
- deck.FateCardDevilWidget=original("FateCardDevilWidget",{controllerIndex=r.controllerIndex,nativeDlc4=r.id=="ZMHUDDLC4"});deck:addElement(deck.FateCardDevilWidget)
- for i=1,4 do deck["fanCard"..i]=original("FateFanCard",{controllerIndex=r.controllerIndex});deck:addElement(deck["fanCard"..i]) end
- deck.Fire=node();deck.upArrow=node();deck.FateCardOnDeck=node();deck.FateCardOnDeck.image="native-selected-card"
- deck:addElement(deck.Fire);deck:addElement(deck.upArrow);deck:addElement(deck.FateCardOnDeck)
+ deck.FateCardDevilWidget=original("FateCardDevilWidget",{controllerIndex=r.controllerIndex,nativeDlc4=r.id=="ZMHUDDLC4"})
+ for i=1,4 do deck["fanCard"..i]=original("FateFanCard",{controllerIndex=r.controllerIndex}) end
+ deck.Fire=node();deck.upArrow=node();deck.downArrow=node();deck.FateCardOnDeck=node();deck.FateCardOnDeck.image="native-selected-card"
+ deck.Triangle=node();deck.Triangle.id="Triangle";deck.Triangle.image="zm_wc_triangle"
+ for _,key in ipairs({"Fire","fanCard4","fanCard3","fanCard2","fanCard1","FateCardOnDeck","Triangle","FateCardDevilWidget","upArrow","downArrow"}) do deck:addElement(deck[key]) end
  deck.nativeReadyCallback=function()
   local ready=models["inGame.CP.zombies.consumableDeckSelectReady"].value
   deck.Fire:SetAlpha(ready);deck.upArrow:SetAlpha(ready)
@@ -686,11 +695,11 @@ check('defaultOwner and defaultOwner.count.text=="0" and defaultOwner.status.tex
 lua.execute(r'''
 observedEmpty=defaultOwner.gauge and defaultOwner.gauge.view.alpha==1 and defaultOwner.gauge.backing.alpha==0 and defaultOwner.gauge.meter.alpha==0 and defaultOwner.gauge.fill.alpha==0 and chargeFraction(defaultOwner.gauge)==0
 models["inGame.CP.zombies.consumablesRemaining"]:set(5)
-observedUnknown=defaultOwner.count.text=="5" and defaultOwner.status.text=="UNKNOWN" and defaultOwner.gauge.view.alpha==1 and defaultOwner.gauge.backing.alpha==0 and defaultOwner.gauge.meter.alpha==0 and defaultOwner.gauge.fill.alpha==0 and chargeFraction(defaultOwner.gauge)==0
+observedUnknown=defaultOwner.count.text=="5" and defaultOwner.status.text=="STATUS UNAVAILABLE" and defaultOwner.gauge.view.alpha==1 and defaultOwner.gauge.backing.alpha==0 and defaultOwner.gauge.meter.alpha==0 and defaultOwner.gauge.fill.alpha==0 and chargeFraction(defaultOwner.gauge)==0
 ''')
 check('observedEmpty and observedUnknown and models["inGame.CP.zombies.dpadUpFillPercent"].value==0 and models["inGame.CP.zombies.consumableDeckSelectReady"].value==-1 and defaultReady.nativeUpdate==defaultNativeCallback')
 lua.execute('models["inGame.CP.zombies.consumablesRemaining"]:set(3);models["inGame.CP.zombies.dpadUpFillPercent"]:set(0.25)')
-check('defaultOwner.count.text=="3" and defaultOwner.status.text=="UNKNOWN" and defaultReady.radialAlphaLarge.circleFill.progress==0.25 and defaultReady.nativeUpdate==defaultNativeCallback')
+check('defaultOwner.count.text=="3" and defaultOwner.status.text=="STATUS UNAVAILABLE" and defaultReady.radialAlphaLarge.circleFill.progress==0.25 and defaultReady.nativeUpdate==defaultNativeCallback')
 check('defaultOwner.gauge and defaultOwner.gauge.view.alpha==1 and math.abs(chargeFraction(defaultOwner.gauge)-0.25)<0.000001 and models["inGame.CP.zombies.consumableDeckSelectReady"].value==-1')
 lua.execute(r'''
 models["inGame.CP.zombies.consumableDeckSelectReady"]:set(20)
@@ -698,7 +707,7 @@ refreshReady=MenuBuilder.BuildRegisteredType("FateCardDevilWidget",{controllerIn
 for i=#printed,1,-1 do if string.find(printed[i],"[BO3 HUD] core ",1,true) then refreshTrace=printed[i];break end end
 models["inGame.CP.zombies.consumableDeckSelectReady"]:set(30)
 ''')
-check('refreshReady.__bo3CardCore.status.text=="UNKNOWN" and defaultOwner.status.text=="UNKNOWN" and models["inGame.CP.zombies.consumableDeckSelectReady"].value==30 and string.find(refreshTrace,"ready_type=number ready_value=20",1,true) and string.find(refreshTrace,"reason=unknown",1,true)')
+check('refreshReady.__bo3CardCore.status.text=="STATUS UNAVAILABLE" and defaultOwner.status.text=="STATUS UNAVAILABLE" and models["inGame.CP.zombies.consumableDeckSelectReady"].value==30 and string.find(refreshTrace,"ready_type=number ready_value=20",1,true) and string.find(refreshTrace,"reason=unknown",1,true)')
 lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(0);notReadyText=defaultOwner.status.text;models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1)')
 check('notReadyText=="CHARGING" and defaultOwner.status.text=="READY" and defaultReady.nativeUpdate==defaultNativeCallback and defaultReady.glowRing.alpha==1')
 lua.execute(r'''
@@ -1005,6 +1014,108 @@ check('rootSelectedOwner and #rawSelected.children==selectedChildren and #models
 lua.execute('selectedRoot.controllerIndex=3;LUI.HudManager.CreateHud({nextHud=selectedRoot})')
 check('rootSelectedOwner.disabled and rootSelectedOwner.mask.alpha==1 and rootSelectedOwner.view.alpha==0 and rawSelected.name==rootSelectedOwner.leaves[2]')
 lua.execute(r'''
+models["inGame.CP.zombies.consumableDeckSelectName"]:set("ACTUAL CARD NAME")
+models["inGame.CP.zombies.consumableDeckSelectIcon"]:set("actual-card-art")
+models["inGame.CP.zombies.consumableDeckSelectBacking"]:set("zm_wc_fortune_card_base")
+models["inGame.CP.zombies.consumableDeckSelectRarity"]:set("epic")
+models["inGame.CP.zombies.consumablesRemaining"]:set(5)
+models["inGame.CP.zombies.consumableDeckSelectReady"]:set(-1)
+function decorFixture(mutate)
+ local root=stock_hud();local d=root.wonderCard._widget.FateCardWidget
+ d:removeElement(d.FateCardOnDeck);d.FateCardOnDeck=original("FateCardOnDeck",{controllerIndex=root.controllerIndex})
+ d.FateCardOnDeck:addElementBefore(d.Triangle)
+ if mutate then mutate(d) end
+ LUI.HudManager.CreateHud({nextHud=root})
+ return root,d,d.__bo3CardDecor,d.FateCardDevilWidget.__bo3CardCore
+end
+compactRoot,compactDeck,decorOwner,compactCore=decorFixture()
+compactIdentity=compactDeck.FateCardOnDeck.__bo3CardIdentity
+originalTriangle=compactDeck.Triangle;triangleBounds={0,1,0,1,-5,251,195.5,451.5}
+originalTriangle:SetAnchorsAndPosition(unpack(triangleBounds));originalTriangle:SetAlpha(0.6)
+function decorPainterOrder(d)
+ local order={d.Fire,d.fanCard4,d.fanCard3,d.fanCard2,d.fanCard1,d.FateCardOnDeck,d.Triangle,d.FateCardDevilWidget,d.upArrow,d.downArrow}
+ local found={}
+ for _,leaf in ipairs(d.children) do
+  if leaf.id=="BO3NativeCardDecor" then for _,v in ipairs(leaf.children) do found[#found+1]=v end else found[#found+1]=leaf end
+ end
+ if #found~=#order then return false end
+ for i,value in ipairs(order) do if found[i]~=value then return false end end
+ return true
+end
+''')
+check('decorOwner and decorOwner.mask.alpha==0 and decorOwner.mask.__bo3DecorLifetime==decorOwner and decorPainterOrder(compactDeck)')
+check('compactCore.count.text=="5" and compactCore.status.text=="STATUS UNAVAILABLE" and compactCore.status.size==14 and compactCore.status.bounds[7]>compactCore.count.bounds[8] and compactCore.status.bounds[8]<child(compactCore.gauge.view,"BO3ChargeTrack").bounds[7]')
+check('child(compactIdentity.view,"BO3SelectedSurface").bounds[8]-child(compactIdentity.view,"BO3SelectedSurface").bounds[7]==38 and not child(compactIdentity.view,"BO3SelectedLeft") and compactIdentity.family.text=="FORTUNE" and compactIdentity.rarity.text=="EPIC"')
+lua.execute('compactDeck.FateCardOnDeck.nativePhase("refill");compactDeck.FateCardOnDeck.nativePhase("refillDone");compactCore.update()')
+check('compactDeck.FateCardOnDeck.alpha==1 and compactDeck.FateCardOnDeck.name.alpha==0 and compactDeck.FateCardOnDeck.icon.alpha==0 and compactDeck.Triangle==originalTriangle and originalTriangle.alpha==0.6 and originalTriangle.bounds[8]==451.5')
+lua.execute('compactDeck.FateCardOnDeck.nativePhase("meterFull");compactDeck.FateCardOnDeck.nativeChildMeterFull();models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1)')
+check('compactDeck.FateCardOnDeck.name.alpha==1 and compactDeck.FateCardOnDeck.icon.alpha==1 and compactDeck.FateCardOnDeck.name.text=="ACTUAL CARD NAME" and compactDeck.FateCardOnDeck.icon.image=="actual-card-art" and decorOwner.mask.alpha==0 and decorPainterOrder(compactDeck)')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(nil)')
+check('decorOwner.mask.alpha==1 and compactCore.view.alpha==0 and originalTriangle.alpha==0.6 and originalTriangle:getParent()==decorOwner.mask')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectReady"]:set(0);models["inGame.CP.zombies.consumablesRemaining"]:set(0)')
+check('decorOwner.mask.alpha==0 and compactCore.count.text=="0" and compactCore.status.text=="EMPTY" and compactCore.gauge.fill.alpha==0')
+lua.execute('models["inGame.CP.zombies.consumablesRemaining"]:set(5);models["inGame.CP.zombies.consumableDeckSelectReady"]:set(1);compactDeck.FateCardOnDeck.nativePhase("noMoreCards");compactDeck.FateCardDevilWidget:SetAlpha(0);compactCore.update()')
+check('compactDeck.FateCardOnDeck.alpha==0 and compactDeck.FateCardDevilWidget.alpha==0 and compactCore.view.alpha==1 and decorOwner.mask.alpha==0')
+lua.execute(r'''
+extraDecorRoot,extraDecorDeck,extraDecor=decorFixture(function(d) d:addElement(node()) end)
+reorderDecorRoot,reorderDecorDeck,reorderDecor=decorFixture(function(d) d:removeElement(d.Fire);d:addElement(d.Fire) end)
+idDecorRoot,idDecorDeck,idDecor=decorFixture(function(d) d.Triangle.id="Unrecognized" end)
+apiDecorRoot,apiDecorDeck,apiDecor=decorFixture(function(d) d.Triangle.addElementBefore=false end)
+foreignPreTag={};tagDecorRoot,tagDecorDeck,tagDecor=decorFixture(function(d) d.__bo3CardDecor=foreignPreTag end)
+''')
+check('not extraDecor and extraDecorDeck.Triangle:getParent()==extraDecorDeck and not reorderDecor and not idDecor and not apiDecor and tagDecor==foreignPreTag')
+lua.execute(r'''
+forgedRoot,forgedDeck,forgedOwner,forgedCore=decorFixture()
+forgedParent=node();forgedView=node();forgedView:SetAlpha(0.47);forgedParent:addElement(forgedView)
+forgedTag={mask=forgedView};forgedDeck.__bo3CardDecor=forgedTag;forgedCore.update()
+LUI.HudManager.CreateHud({nextHud=forgedRoot})
+''')
+check('forgedOwner.retired and forgedOwner.mask.closed and forgedDeck.Triangle:getParent()==forgedDeck and forgedDeck.__bo3CardDecor==forgedTag and forgedView.alpha==0.47 and not forgedView.closed and forgedView:getParent()==forgedParent and decorPainterOrder(forgedDeck)')
+lua.execute(r'''
+nestedRoot,nestedDeck,nestedOwner,nestedCore=decorFixture()
+foreignDecoration=node();foreignDescendant=node();foreignDecoration:SetAlpha(0.43);foreignDecoration:addElement(foreignDescendant)
+nestedOwner.mask:addElement(foreignDecoration);nestedCore.update()
+''')
+check('nestedOwner.retired and not nestedOwner.mask.closed and nestedOwner.mask.alpha==1 and nestedDeck.Triangle:getParent()==nestedDeck and foreignDecoration:getParent()==nestedOwner.mask and foreignDescendant:getParent()==foreignDecoration and foreignDecoration.alpha==0.43')
+lua.execute(r'''
+adoptedRoot,adoptedDeck,adoptedOwner,adoptedCore=decorFixture()
+adoptedParent=node();adoptedDeck:removeElement(adoptedOwner.mask);adoptedParent:addElement(adoptedOwner.mask);adoptedOwner.mask:SetAlpha(0.37);adoptedCore.update()
+''')
+check('adoptedOwner.retired and adoptedOwner.mask.alpha==0.37 and not adoptedOwner.mask.closed and adoptedOwner.mask:getParent()==adoptedParent and adoptedDeck.Triangle:getParent()==adoptedOwner.mask')
+lua.execute(r'''
+leafRoot,leafDeck,leafOwner,leafCore=decorFixture()
+leafForeign=node();leafOwner.mask:removeElement(leafDeck.Triangle);leafForeign:addElement(leafDeck.Triangle);leafDeck.Triangle:SetAlpha(0.29);leafCore.update()
+''')
+check('leafOwner.retired and leafOwner.mask.closed and leafDeck.Triangle:getParent()==leafForeign and leafDeck.Triangle.alpha==0.29')
+lua.execute(r'''
+coreTagRoot,coreTagDeck,coreTagOwner,coreTagCore=decorFixture()
+coreForeignTag={mask=forgedView,view=forgedView};coreTagDeck.FateCardDevilWidget.__bo3CardCore=coreForeignTag
+coreTagCore.update();LUI.HudManager.CreateHud({nextHud=coreTagRoot})
+''')
+check('coreTagCore.disabled and coreTagCore.view.alpha==0 and coreTagOwner.retired and coreTagDeck.Triangle:getParent()==coreTagDeck and coreTagDeck.FateCardDevilWidget.__bo3CardCore==coreForeignTag and forgedView.alpha==0.47')
+lua.execute(r'''
+shapeRoot,shapeDeck,shapeDecor,shapeCore=decorFixture()
+shapeNative=shapeDeck.FateCardDevilWidget;capturedHead=shapeNative.devilHead;shapeNativeCallback=shapeNative.nativeUpdate
+shapeNative.devilHead=nil
+LUI.HudManager.CreateHud({nextHud=shapeRoot})
+LUI.HudManager.CreateHud({nextHud=shapeRoot})
+''')
+check('shapeCore.disabled and shapeCore.disabledReason=="native_shape" and shapeCore.view.alpha==0 and shapeCore.mask.alpha==1 and shapeDecor.retired and shapeDecor.mask.closed and shapeDeck.Triangle:getParent()==shapeDeck and shapeNative.devilHead==nil and capturedHead:getParent()==shapeCore.mask and shapeNative.nativeUpdate==shapeNativeCallback and decorPainterOrder(shapeDeck)')
+lua.execute(r'''
+fillRoot,fillDeck,fillDecor,fillCore=decorFixture()
+fillNative=fillDeck.FateCardDevilWidget;capturedFill=fillNative.radialAlphaLarge.circleFill;fillNativeCallback=fillNative.nativeUpdate
+fillNative.radialAlphaLarge.circleFill=nil
+LUI.HudManager.CreateHud({nextHud=fillRoot})
+LUI.HudManager.CreateHud({nextHud=fillRoot})
+-- Restore only test inputs before other tests publish a model change. The
+-- retired adapter must remain native even when a foreign party repairs shape.
+shapeNative.devilHead=capturedHead;fillNative.radialAlphaLarge.circleFill=capturedFill
+LUI.HudManager.CreateHud({nextHud=shapeRoot});LUI.HudManager.CreateHud({nextHud=fillRoot})
+''')
+check('fillCore.disabled and fillCore.disabledReason=="native_shape" and fillCore.view.alpha==0 and fillCore.mask.alpha==1 and fillDecor.retired and fillDecor.mask.closed and fillDeck.Triangle:getParent()==fillDeck and capturedFill:getParent()==fillNative.radialAlphaLarge and fillNative.nativeUpdate==fillNativeCallback and decorPainterOrder(fillDeck) and shapeCore.view.alpha==0 and shapeDecor.mask.closed')
+lua.execute('shutdownDecorRoot,shutdownDecorDeck,shutdownDecorOwner,shutdownDecorCore=decorFixture();shutdownDecorDeck.__bo3CardDecor=nil;collectgarbage("collect")')
+check('shutdownDecorOwner.mask.__bo3DecorLifetime==shutdownDecorOwner and shutdownDecorCore.view.__bo3CoreLifetime==shutdownDecorCore')
+lua.execute(r'''
 sameModelSelected,sameModelOwner=selectedFixture(function() end,0)
 model("inGame.CP.zombies.consumableDeckSelectRarity","rare")
 models["inGame.CP.zombies.consumableDeckSelectName"]:set("MODEL IDENTITY CHANGE")
@@ -1227,6 +1338,7 @@ shutdownFan.__bo3FanBack=fanForgedTag;collectgarbage("collect")
 ''')
 lua.execute('BO3ZombiesHUD.shutdown()')
 check('MenuBuilder.BuildRegisteredType==original')
+check('decorOwner.retired and decorOwner.mask.closed and originalTriangle:getParent()==compactDeck and originalTriangle.alpha==0.6 and decorPainterOrder(compactDeck) and shutdownDecorOwner.retired and shutdownDecorOwner.mask.closed and shutdownDecorDeck.Triangle:getParent()==shutdownDecorDeck and shutdownDecorOwner.mask.__bo3DecorLifetime==nil')
 check('existing.mainPlayerInfo._widget.PlayerCash.RefreshRows==existing.retainedTeamRefresh')
 check('manager.activeHud.mainPlayerInfo._widget.PlayerCash.RefreshRows==otherRefresh')
 check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
