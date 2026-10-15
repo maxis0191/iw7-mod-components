@@ -9,6 +9,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -51,6 +52,21 @@ def require(condition, message):
 
 
 def encode_json(data, cap):
+    queue = [(data, 0)]
+    nodes = 0
+    while queue:
+        value, depth = queue.pop()
+        nodes += 1
+        require(nodes <= 32768 and depth <= 64, "Neutral JSON tree node/depth bound exceeded")
+        if isinstance(value, dict):
+            require(all(type(key) is str for key in value), "JSON object keys must be strings")
+            queue.extend((child, depth + 1) for child in value.values())
+        elif isinstance(value, list):
+            require(len(value) <= 8192, "Neutral JSON array bound exceeded")
+            queue.extend((child, depth + 1) for child in value)
+        else:
+            require(value is None or type(value) in (str, bool, int, float), "Native JSON value required")
+            require(type(value) is not float or math.isfinite(value), "Finite bounded JSON tree required")
     try:
         raw = (json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
     except (TypeError, ValueError, RecursionError) as error:
@@ -123,6 +139,8 @@ def validate_manifest(manifest, weapon_raw=None, pap_raw=None):
             "Closed bounded readset required")
     require(all(type(readset[key]) is int and 0 <= readset[key] <= cap
                 for key, cap in READSET_CAPS.items()), "Readset counter outside Source policy")
+    require(all(readset[key] > 0 for key in ("bytes", "elements", "json_estimate", "allocation_estimate")) and
+            readset["copied_text_bytes"] <= readset["bytes"], "Readset counters contradict the capture")
     require(type(readset["flat_empty_string_arrays"]) is int and
             readset["flat_empty_string_arrays"] == 2 and readset["native_string_matrices"] == [],
             "This clone profile requires the captured flat turret-array shape")

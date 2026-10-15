@@ -176,6 +176,26 @@ class NeutralCloneTests(unittest.TestCase):
             with self.subTest(action=action), self.assertRaises(ValueError):
                 clone.validate_manifest(changed, wr, pr)
 
+    def test_manifest_counter_minima_and_copied_text_consistency(self):
+        weapon, pap = pair()
+        wr, pr = raw_json(weapon), raw_json(pap)
+        manifest = manifest_for(wr, pr)
+        for field in ("bytes", "elements", "json_estimate", "allocation_estimate"):
+            changed = copy.deepcopy(manifest)
+            changed["readset"][field] = 0
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                clone.validate_manifest(changed, wr, pr)
+        changed = copy.deepcopy(manifest)
+        changed["readset"]["copied_text_bytes"] = changed["readset"]["bytes"] + 1
+        with self.assertRaises(ValueError): clone.validate_manifest(changed, wr, pr)
+
+    def test_unknown_tree_node_array_depth_and_key_bounds(self):
+        deep = 0
+        for _ in range(65): deep = {"nested": deep}
+        for value in (deep, {"array": [0] * 8193}, {"many": {str(i): i for i in range(32768)}}, {3: "key"}):
+            with self.subTest(kind=type(value)), self.assertRaises(ValueError):
+                clone.encode_json(value, clone.MAX_JSON_BYTES)
+
     def test_bounded_input_hash_precedes_decode_and_growth_is_capped(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "owned.json"

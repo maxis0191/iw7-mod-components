@@ -36,7 +36,9 @@ before opening either definition. It checks exact donor/native-source/names,
 observed integers, bounded readset, unique paths and honest qualification flags.
 Each body is read with a2MiB+1 bound and must match its exact manifest size/hash.
 Duplicate keys, invalid UTF-8, nonfinite/overflow numbers and redirected ancestry
-refuse; integer tokens stay exact. The external manifest/hash is a local binding,
+refuse. Trees retain the neutral reader's 32,768-node/8,192-element/64-depth
+bounds and consistent positive readset counters; integer tokens stay exact.
+The external manifest/hash is a local binding,
 not tamper-proof provenance or BO3 authentication. Diagnostics are not templates.
 
 Before creating a fresh absolute output directory, all four files are encoded
@@ -104,7 +106,7 @@ runtime capsule is authored here.
 
 ## Validation and next gate
 
-Twelve owned synthetic tests cover narrow rewrites/full-tree preservation, all
+Fourteen owned synthetic tests cover narrow rewrites/full-tree preservation, all
 six PAP slots, old-author refusal, strict integers/names, ambiguous/malformed
 references, inheritance/diagnostic/nonfinite/matrix refusals, manifest policy
 before body opens, exact bindings, growth/hash-before-decode, actual four-file
