@@ -97,6 +97,31 @@ function original(key,args)
   n.fanCard=node();n.fanCard.image="zm_wc_card_fan";n:addElement(n.fanCard)
   n.fanOverlay=node();n.fanOverlay.image="zm_wc_card_fan_overlay";n.fanOverlay.color=0x263626;n.fanOverlay.alpha=0.6;n:addElement(n.fanOverlay)
  end
+ if key=="FateCardOnDeck" then
+  n.cardBack=node();n.name=node();n.icon=node()
+  n.name:SetFont("native-name-font");n.name:SetFontSize(20)
+  n.name:SetAnchorsAndPosition(0,1,0,1,15.5,146.5,10.79,30.79)
+  n.icon:SetAnchorsAndPosition(0,1,0,1,13.5,141.5,32.5,160.5)
+  for _,leaf in ipairs({n.cardBack,n.name,n.icon}) do n:addElement(leaf) end
+  n.nativeIdentityCallbacks={}
+  for _,item in ipairs({{"consumableDeckSelectBacking",n.cardBack,"image"},{"consumableDeckSelectName",n.name,"text"},{"consumableDeckSelectIcon",n.icon,"image"}}) do
+   local m=models["inGame.CP.zombies."..item[1]];local leaf=item[2];local property=item[3]
+   local update=function() local value=m:GetValue(args.controllerIndex);if value~=nil then leaf[property]=value end end
+   leaf:SubscribeToModel(m,update);update();n.nativeIdentityCallbacks[item[1]]=update
+  end
+  -- Finite native-like phases: the adapter must not override these writes.
+  n.nativePhase=function(phase)
+   if phase=="refill" then n:SetAlpha(0);n.name:SetAlpha(0);n.icon:SetAlpha(0);n.name:SetRGBFromInt(0)
+   elseif phase=="refillDone" then n:SetAlpha(1)
+   elseif phase=="cycle" or phase=="meterFull" then n:SetAlpha(1);n.name:SetAlpha(1);n.icon:SetAlpha(1);n.name:SetRGBFromInt(0xFFFFFF);n:SetAnchorsAndPosition(0,1,0,1,45.5,200.5,76.82,247.82)
+   elseif phase=="noMoreCards" then n:SetAlpha(0) end
+  end
+  n.nativeChildMeterFull=function()
+   n.name:SetAnchorsAndPosition(0,1,0,1,39.7,170.7,-35.45,-15.45)
+   n.icon:SetAnchorsAndPosition(0,1,0,1,37.7,165.7,-22.45,105.55)
+  end
+  if nextSelectedShape then local mutate=nextSelectedShape;nextSelectedShape=nil;mutate(n) end
+ end
  if key=="FateCardDevilWidget" then
   n.nativeDlc4=args and args.nativeDlc4 or false
   n.devilHead=node();n.devilJaw=node();n.sadDevil=node();n.Circle=node();n.blueGlow=node();n.innerRing=node();n.outerRing=node();n.glowRing=node()
@@ -135,7 +160,7 @@ def check(code):
     lua.execute("assert(" + code + ")")
     checks += 1
 
-check('BO3ZombiesHUD.version=="0.11.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.11.0",1,true)~=nil')
+check('BO3ZombiesHUD.version=="0.12.0" and BO3ZombiesHUD.diagnosticVersion=="0.7.0" and string.find(printed[1],"module version=0.7.0 content_version=0.12.0",1,true)~=nil')
 lua.execute("tick()")
 check("MenuBuilder.BuildRegisteredType==original")
 lua.execute('config.bo3_zombies_hud_enable="1";config.bo3_zombies_hud_private="1";config.ui_gametype="zombie";tick()')
@@ -725,6 +750,114 @@ check('BO3ZombiesHUD.messages["bind:ZMHUD:1"]==nil')
 lua.execute('failureCount=0;for _,message in ipairs(printed) do if string.find(message,"binding_failure",1,true) and string.find(message,"root_seq=2",1,true) then failureCount=failureCount+1 end end')
 check('failureCount==2')
 lua.execute(r'''
+model("inGame.CP.zombies.consumableDeckSelectName","LOCALIZED IDENTITY NAME")
+model("inGame.CP.zombies.consumableDeckSelectIcon","actual-selected-card-icon")
+model("inGame.CP.zombies.consumableDeckSelectBacking","zm_wc_fate_card_base")
+model("inGame.CP.zombies.consumableDeckSelectRarity","")
+selected=MenuBuilder.BuildRegisteredType("FateCardOnDeck",{controllerIndex=2})
+selectedOwner=selected.__bo3CardIdentity;selectedNativeName=selected.name;selectedNativeIcon=selected.icon;selectedNativeBacking=selected.cardBack
+selectedCallbacks=selected.nativeIdentityCallbacks;selectedPhase=selected.nativePhase;selectedMeterFull=selected.nativeChildMeterFull
+selectedInitialNameBounds=selected.name.bounds;selectedInitialIconBounds=selected.icon.bounds
+''')
+check('selectedOwner and selectedOwner.mode=="FATE" and selectedOwner.family.text=="FATE" and selectedOwner.rarity.text=="" and selectedOwner.rarity.alpha==0 and selectedOwner.mask.alpha==0 and selectedOwner.view.alpha==1')
+check('selected.children[1]==selectedOwner.mask and selected.children[2]==selectedOwner.view and selected.children[3]==selectedNativeName and selected.children[4]==selectedNativeIcon and selectedNativeBacking:getParent()==selectedOwner.mask')
+check('selected.name==selectedNativeName and selected.icon==selectedNativeIcon and selected.cardBack==selectedNativeBacking and selected.name.text=="LOCALIZED IDENTITY NAME" and selected.icon.image=="actual-selected-card-icon" and selected.cardBack.image=="zm_wc_fate_card_base" and selected.name.font=="native-name-font" and selected.name.size==20')
+lua.execute('selected.nativePhase("refill");models["inGame.CP.zombies.consumableDeckSelectName"]:set("REFILL NAME");models["inGame.CP.zombies.consumableDeckSelectIcon"]:set("refill-native-icon");selected.nativePhase("refillDone")')
+check('selected.alpha==1 and selected.name.alpha==0 and selected.icon.alpha==0 and selected.name.color==0 and selected.name.text=="REFILL NAME" and selected.icon.image=="refill-native-icon" and selectedOwner.view.alpha==1')
+lua.execute('selected.nativePhase("cycle");selected.nativeChildMeterFull();models["inGame.CP.zombies.consumableDeckSelectName"]:set("NEW ACTUAL CARD");selectedParentBounds=selected.bounds;selectedChildNameBounds=selected.name.bounds;selectedChildIconBounds=selected.icon.bounds')
+check('selected.name.alpha==1 and selected.icon.alpha==1 and selected.name.color==0xFFFFFF and selected.name.text=="NEW ACTUAL CARD" and selected.nativePhase==selectedPhase and selected.nativeChildMeterFull==selectedMeterFull and selected.nativeIdentityCallbacks==selectedCallbacks')
+lua.execute(r'''
+knownFortunes=true
+models["inGame.CP.zombies.consumableDeckSelectBacking"]:set("zm_wc_fortune_card_base")
+for _,rarity in ipairs({"common","rare","legendary","epic"}) do
+ models["inGame.CP.zombies.consumableDeckSelectRarity"]:set(rarity)
+ knownFortunes=knownFortunes and selectedOwner.mode=="FORTUNE" and selectedOwner.family.text=="FORTUNE" and selectedOwner.rarity.text==string.upper(rarity) and selectedOwner.rarity.alpha==1 and selectedOwner.mask.alpha==0 and selected.cardBack.image=="zm_wc_fortune_card_base"
+end
+''')
+check('knownFortunes and selected.bounds==selectedParentBounds and selected.name.bounds==selectedChildNameBounds and selected.icon.bounds==selectedChildIconBounds')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectRarity"]:set("unknown-future-rarity")')
+check('selectedOwner.mode=="native" and selectedOwner.mask.alpha==1 and selectedOwner.view.alpha==0 and selected.name.alpha==1 and selected.icon.alpha==1')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectBacking"]:set("future-card-backing");models["inGame.CP.zombies.consumableDeckSelectRarity"]:set("common")')
+check('selectedOwner.mask.alpha==1 and selected.cardBack.image=="future-card-backing" and selected.name.text=="NEW ACTUAL CARD"')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectBacking"]:set("zm_wc_fortune_card_base");models["inGame.CP.zombies.consumableDeckSelectName"]:set("")')
+check('selectedOwner.mask.alpha==1 and selectedOwner.view.alpha==0 and selected.name.text=="" and selected.name.alpha==1')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectName"]:set("RECOVERED ACTUAL NAME");models["inGame.CP.zombies.consumableDeckSelectIcon"]:set(nil)')
+check('selectedOwner.mask.alpha==1 and selected.icon.image=="refill-native-icon"')
+lua.execute('models["inGame.CP.zombies.consumableDeckSelectIcon"]:set("recovered-native-icon");selected.nativePhase("noMoreCards")')
+check('selectedOwner.mask.alpha==0 and selectedOwner.view.alpha==1 and selected.alpha==0 and selected.name.text=="RECOVERED ACTUAL NAME" and selected.icon.image=="recovered-native-icon"')
+lua.execute(r'''
+function selectedFixture(mutate,index)
+ nextSelectedShape=mutate
+ local widget=MenuBuilder.BuildRegisteredType("FateCardOnDeck",{controllerIndex=index or 1})
+ return widget,widget.__bo3CardIdentity
+end
+extraSelected,extraSelectedOwner=selectedFixture(function(widget) widget.foreign=node();widget:addElement(widget.foreign) end)
+reorderedSelected,reorderedSelectedOwner=selectedFixture(function(widget) widget:removeElement(widget.name);widget:addElement(widget.name) end)
+''')
+check('not extraSelectedOwner and extraSelected.cardBack:getParent()==extraSelected and extraSelected.foreign:getParent()==extraSelected')
+check('not reorderedSelectedOwner and reorderedSelected.name:getParent()==reorderedSelected and reorderedSelected.cardBack:getParent()==reorderedSelected')
+lua.execute(r'''
+savedSelectedRarity=DataSources.inGame.CP.zombies.consumableDeckSelectRarity
+DataSources.inGame.CP.zombies.consumableDeckSelectRarity=nil
+missingSelected,missingSelectedOwner=selectedFixture(function() end)
+DataSources.inGame.CP.zombies.consumableDeckSelectRarity=savedSelectedRarity
+savedSelectedPointer=savedSelectedRarity.GetModel;savedSelectedRarity.GetModel=function() return nil end
+badPointerSelected,badPointerSelectedOwner=selectedFixture(function() end)
+savedSelectedRarity.GetModel=savedSelectedPointer
+''')
+check('not missingSelectedOwner and missingSelected.cardBack:getParent()==missingSelected and not badPointerSelectedOwner and badPointerSelected.cardBack:getParent()==badPointerSelected')
+lua.execute(r'''
+selectedFailuresBefore=BO3ZombiesHUD.failures;malformedSelectedSafe=true
+for _,value in ipairs({true,7}) do
+ DataSources.inGame.CP.zombies.consumableDeckSelectRarity=value
+ local widget,owner=selectedFixture(function() end)
+ malformedSelectedSafe=malformedSelectedSafe and not owner and widget.cardBack:getParent()==widget
+end
+DataSources.inGame.CP.zombies.consumableDeckSelectRarity=savedSelectedRarity
+savedSelectedReader=savedSelectedRarity.GetValue;savedSelectedRarity.GetValue=function() error("unavailable selected reader") end
+throwReadSelected,throwReadOwner=selectedFixture(function() end)
+savedSelectedRarity.GetValue=savedSelectedReader
+savedSelectedRarity.GetModel=function() error("unavailable selected pointer") end
+throwPointerSelected,throwPointerOwner=selectedFixture(function() end)
+savedSelectedRarity.GetModel=savedSelectedPointer
+''')
+check('malformedSelectedSafe and not throwReadOwner and not throwPointerOwner and throwReadSelected.cardBack:getParent()==throwReadSelected and throwPointerSelected.cardBack:getParent()==throwPointerSelected and BO3ZombiesHUD.failures==selectedFailuresBefore')
+lua.execute('foreignSelected,foreignSelectedOwner=selectedFixture(function() end);selectedForeignParent=node();foreignSelectedOwner.mask:removeElement(foreignSelected.cardBack);selectedForeignParent:addElement(foreignSelected.cardBack);models["inGame.CP.zombies.consumableDeckSelectRarity"]:set("rare")')
+check('foreignSelectedOwner.disabled and foreignSelectedOwner.mask.alpha==1 and foreignSelectedOwner.view.alpha==0 and foreignSelected.cardBack:getParent()==selectedForeignParent and foreignSelected.name:getParent()==foreignSelected')
+lua.execute(r'''
+selectedRoot=stock_hud();rawSelected=original("FateCardOnDeck",{controllerIndex=1})
+selectedRoot.wonderCard._widget.FateCardWidget.FateCardOnDeck=rawSelected
+local fixtureManager={nextHud=selectedRoot};LUI.HudManager.CreateHud(fixtureManager)
+rootSelectedOwner=rawSelected.__bo3CardIdentity;selectedChildren=#rawSelected.children
+nameListeners=#models["inGame.CP.zombies.consumableDeckSelectName"].listeners
+LUI.HudManager.CreateHud(fixtureManager);LUI.HudManager.CreateHud(fixtureManager)
+''')
+check('rootSelectedOwner and #rawSelected.children==selectedChildren and #models["inGame.CP.zombies.consumableDeckSelectName"].listeners==nameListeners')
+lua.execute('selectedRoot.controllerIndex=3;LUI.HudManager.CreateHud({nextHud=selectedRoot})')
+check('rootSelectedOwner.disabled and rootSelectedOwner.mask.alpha==1 and rootSelectedOwner.view.alpha==0 and rawSelected.name==rootSelectedOwner.leaves[2]')
+lua.execute(r'''
+sameModelSelected,sameModelOwner=selectedFixture(function() end,0)
+model("inGame.CP.zombies.consumableDeckSelectRarity","rare")
+models["inGame.CP.zombies.consumableDeckSelectName"]:set("MODEL IDENTITY CHANGE")
+''')
+check('sameModelOwner.disabled and sameModelOwner.mask.alpha==1 and sameModelOwner.view.alpha==0')
+lua.execute(r'''
+boundedSelected,boundedSelectedOwner=selectedFixture(function() end,0)
+identityRecord=BO3ZombiesHUD.identityDiagnostics[boundedSelected]
+for i=1,40 do models["inGame.CP.zombies.consumableDeckSelectRarity"]:set("epic");models["inGame.CP.zombies.consumableDeckSelectRarity"]:set("rare") end
+identityLines=0;identitySuppression=0;identityNamesNotPrinted=true
+for _,line in ipairs(printed) do
+ if string.find(line,"[BO3 HUD] identity ",1,true) then
+  identityNamesNotPrinted=identityNamesNotPrinted and not string.find(line,"LOCALIZED IDENTITY NAME",1,true) and not string.find(line,"MODEL IDENTITY CHANGE",1,true)
+  if string.find(line,"widget_seq="..identityRecord.sequence.." ",1,true) then
+   identityLines=identityLines+1
+   if string.find(line,"stage=suppressed reason=transition_limit",1,true) then identitySuppression=identitySuppression+1 end
+  end
+ end
+end
+''')
+check('identityRecord.count==33 and identityLines==33 and identitySuppression==1 and identityNamesNotPrinted and boundedSelectedOwner.view.alpha==1')
+lua.execute(r'''
 mapFixtures={}
 for i,key in ipairs({"MainPlayerInfo","MainPlayerInfoDLC1","MainPlayerInfoDLC2","MainPlayerInfoDLC3","MainPlayerInfoDLC4"}) do
  local id=i==1 and "ZMHUD" or "ZMHUDDLC"..(i-1)
@@ -768,6 +901,7 @@ check('existing.mainPlayerInfo._widget.PlayerCash.RefreshRows==existing.retained
 check('manager.activeHud.mainPlayerInfo._widget.PlayerCash.RefreshRows==otherRefresh')
 check('coreOwner.mask.alpha==1 and coreOwner.view.alpha==0')
 check('gauge.backing.alpha==1 and gauge.meter.alpha==1 and gauge.view.alpha==0 and nativePainterOrder(core,coreOwner) and core.nativeUpdate==nativeCoreUpdate and core.nativeRefill==nativeRefill')
+check('selectedOwner.mask.alpha==1 and selectedOwner.view.alpha==0 and boundedSelectedOwner.mask.alpha==1 and boundedSelectedOwner.view.alpha==0 and selected.nativeIdentityCallbacks==selectedCallbacks and selected.name==selectedNativeName and selected.icon==selectedNativeIcon')
 lua.execute('roster[1].name="After shutdown";retiredTeam(existing.mainPlayerInfo._widget.PlayerCash)')
 check('hero.BO3Name.text=="Live beyond startup"')
 print(f"PASS {checks} authored Lua5.1 source controls; mocked UI/models only, no HKS/game/pixels")
