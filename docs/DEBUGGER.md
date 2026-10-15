@@ -1,5 +1,65 @@
 # Agent debugger and supervised IW7 sessions
 
+## Client018: refused analysis, confirmed closure (2026-10-15)
+
+The one authorized finite Analysis invocation of frozen source capsule C ended
+as `ActualAnalysisRefusedKnownClosed`. It did not qualify a symbol or explain
+the earlier client crash. The tool result is exactly:
+
+```text
+Status=Refused
+Error=Value cannot be null. (Parameter 'path1')
+IdentityMatched=false; SymbolFound=false; LineFound=false
+CleanupConfirmed=true
+DumpStatus=ExactWERPathMissingOrUnavailable; DumpQualified=false
+RuntimeAddressLayoutVerified=false; RuntimeFaultSourceAttributionProven=false
+CauseProven=false; CallstackReconstructed=false
+```
+
+The admitted contract contained a nonempty absolute PDB path. Its presence does
+not establish that DbgHelp loaded that PDB. The error report retained only the
+message, without an exception type, stage or managed stack. Do not attribute
+the failure to a particular Path call, ABI, missing dependency or game function
+from that message alone. The nominal requested RVA was `0x5C4AC`, against
+compiled source `785ddd43d18c4eebd599bab10880e83d73a950e9` and upstream
+`77e6d4d24e918ee363b3feee3735c3b889dff7d7`. Static image identity and a nominal
+RVA would still not prove the effective client018 runtime address layout.
+
+The original retained context, state, capsule and NativeJob owner were used
+through finalization. Original pre-exit evidence recorded the owner/context
+closed, all 25 original SafeFileHandles closed, the original lease null and its
+registry token absent, input reverification complete, the clock stopped and
+`CanExit=true`. The original terminal then actually completed with exit code 0;
+it was never polled again. Independent process and scheduler observations found
+the three original process generations absent and no game/compiler/VCTIP or
+lease holder. Root independently checked the receipts, terminal completion and
+fresh absence at 20:03:01.6118642 UTC before releasing its coordination slot.
+Process/cleanup success is separate from the refused analytical result.
+
+These bounded local text receipts remain ignored; their SHA-256 pins identify
+the evidence without committing raw logs, tools, images, PDBs or dumps:
+
+| Receipt | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `tool-result.json` | 1340 | `6123AD0F9C95DF94D7DFCFE651D816460D4F837EE7770B9241A6C7B0A1B6FFB2` |
+| `admitted-contract.json` | 1208 | `AB41B3E33990D1DCDA5A68931349797C8F4BE641EB9DCE10C25F1B805F5CE314` |
+| `actual-original-preexit-b.local.json` | 1860 | `FD9802191B39379A8160A24A573E31B7C6D825AFD7EDBF6B0EA3B3A7A3359B2D` |
+| `actual-independent-closure.local.json` | 1929 | `3D30D8E164A39FC9C4477B8D2A45C6BA77CCAFBCDB5AF082812D82A69747AD30` |
+| `actual-closed-review.local.json` | 4450 | `CDE9BA1C67B9D32EEFCE8B7BA41B9DEE62627CA00C18323DD694D6262E62DE6F` |
+
+Capsule C is 11135 bytes, SHA-256
+`26CFD497B2A5915A2F0FB6838C295A3F1350D1B84913E2B9AD71E7A6D94BD8B9`.
+A/B were not executed; A/B/C and their analytical outputs remain frozen. The
+first metadata proof helper failed on an unsupported PowerShell ReadOnlySpan
+cast and closed its writer in `finally`; additive helper B used a byte loop.
+That correction neither reconstructed the original context nor replayed analysis.
+
+The next step is source-only investigation and a separately reviewed sibling
+with bounded stage/exception diagnostics before Path and P/Invoke calls. No
+additional image/PDB/DLL/dump access, analysis replay, attach, game launch,
+capture, stack reconstruction or game fix is authorized by this checkpoint.
+A new exact capsule review and distinct Analysis GO are required for execution.
+
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
 Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
