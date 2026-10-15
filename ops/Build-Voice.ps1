@@ -1,4 +1,4 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger, [switch]$CollisionProvider,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
@@ -28,6 +28,7 @@ function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
 if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requires ServerModules and IsolatedLab.' }
 if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
 if ($CollisionProvider -and (!$ServerModules -or !$IsolatedLab)) { throw 'CollisionProvider requires ServerModules and IsolatedLab.' }
+if ($WordProvenance -and (!$ServerModules -or !$IsolatedLab -or !$Debugger)) { throw 'WordProvenance requires ServerModules, IsolatedLab and Debugger.' }
 if ($ServerModules -and ($RhinoExperiment -or $EnemyExperiment)) {
     throw 'ServerModules is incompatible with enemy/Rhino overlays.'
 }
@@ -62,6 +63,10 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\afk_inactivity_test.cpp" /Fe:"$runtime\afk-inactivity-test.exe" /Fo:"$runtime\afk-inactivity-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\afk-inactivity-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\word_provenance_test.cpp" /Fe:"$runtime\word-provenance-test.exe" /Fo:"$runtime\word-provenance-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\word-provenance-test.exe"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$testSource" /Fe:"$testExe" /Fo:"$runtime\voice-protocol-test.obj"
 if errorlevel 1 exit /b 1
@@ -323,6 +328,13 @@ $null = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -Nativ
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
 $capacityCheckpointBuild = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -NativeRoot $root -Commit $commit -Phase AfterDebugger -Enabled:$capacityCheckpointEnabled
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
+. "$PSScriptRoot/agent-capacity/Provenance-BuildCopy.Core.ps1"
+$wordProvenanceBuild=Set-IW7WordProvenanceBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]$WordProvenance) -IsolatedLab:([bool]$IsolatedLab) -ServerModules:([bool]$ServerModules) -Debugger:([bool]$Debugger) -Mode STARTUP -Apply
+if($wordProvenanceBuild.Compiled){$nativeSources+=$wordProvenanceBuild.Files}
+$wordProvenanceLifecycle=$null
+if($commit -ceq '77e6d4d24e918ee363b3feee3735c3b889dff7d7'){
+    $wordProvenanceLifecycle=& "$PSScriptRoot/agent-capacity/Apply-ProvenanceLifecycleOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:([bool]$WordProvenance) -IsolatedLab:([bool]$IsolatedLab) -ServerModules:([bool]$ServerModules) -Debugger:([bool]$Debugger) -Mode STARTUP -Apply
+}
 # Preserve the engine's metadata API while serializing its cache and keeping it
 # alive during CRT shutdown. Accept only the pinned file or this exact overlay.
 $dvarsPath = Join-Path $root 'src/client/game/dvars.cpp'
@@ -530,6 +542,11 @@ $manifest.CapacityCheckpointBuild = $capacityCheckpointBuild
 $manifest.CapacityCheckpointOverlayHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1").Hash
 $manifest.CapacityCheckpointOverlayCoreSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Checkpoint-Overlay.Core.ps1").Hash
 $manifest.CapacityWatchBuildHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1").Hash
+$manifest.WordProvenanceBuild=$wordProvenanceBuild
+$manifest.WordProvenanceLifecycle=$wordProvenanceLifecycle
+$manifest.WordProvenanceBuildHelperSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Provenance-BuildCopy.Core.ps1").Hash
+$manifest.WordProvenanceLifecycleHelperSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Apply-ProvenanceLifecycleOverlay.ps1").Hash
+$manifest.WordProvenanceLifecycleCoreSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Provenance-LifecycleOverlay.Core.ps1").Hash
 if ((Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')).Hash -ne $manifest.SHA256) { throw 'Archived diagnostic executable mismatch.' }
 $manifest.ServerModules = [bool]$ServerModules
 $manifest.RigAssetsProbeCapability = [bool]($ServerModules -and $IsolatedLab)

@@ -78,3 +78,24 @@ Run an authorized operation from the generated package, or use
 are editing locations; operations requiring another product must use prepared
 inputs. Older commands in dated documents refer to their original frozen layout.
 Do not reuse an old runtime receipt for a newly composed input.
+
+## Owner policy and gameplay fixture update - 2026-10-13
+
+The initial removal of artificial commit headroom and the 85% stop rule is
+superseded by the merged telemetry-only policy in PR3. Estimates and fresh
+RAM/commit observations remain visible; they do not refuse admission or stop
+work based on capacity or percentages. Exclusive leases, live process identity,
+invalid-telemetry checks and occupied owner-client protections remain. See
+docs/RESOURCE-WORKFLOW.md. The cross-API regression matrix also covers zero
+available capacity and estimates larger than the machine without allocating them.
+
+The private gameplay fixture can protect and clean up engine test bots only
+while a protected local player is present on an explicitly isolated, private,
+LAN-only CP dedicated with cheats disabled. It exposes no admin chat commands,
+owner authentication, identity overrides or ban storage. The owner cancelled
+all admin commands; do not reintroduce them. The helper enabled a protected
+Spaceland shared-weapon witness, independently of owner gameplay acceptance.
+
+The canonical implementations are these exports. Consumers must advance their
+explicit dependency pin and regenerate source inputs to adopt this revision;
+retained pre-migration copies do not automatically inherit the current policy.

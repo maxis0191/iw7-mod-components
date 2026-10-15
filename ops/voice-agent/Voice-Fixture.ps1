@@ -8,6 +8,7 @@ if (![Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([Runtime.Interop
 if ($Action -eq 'Generate' -and !$OutputRoot) { throw 'Generate requires a fresh local output directory.' }
 if (!('IW7.VoiceAgent.CoreAudioInventory' -as [type])) { Add-Type -Path "$PSScriptRoot/CoreAudioInventory.cs" }
 function Release-VoiceCom($Object) { if ($null -ne $Object -and [Runtime.InteropServices.Marshal]::IsComObject($Object)) { $null=[Runtime.InteropServices.Marshal]::FinalReleaseComObject($Object) } }
+. "$PSScriptRoot/Speech-Cache.Core.ps1"
 $voice=$null;$tokens=$null;$stream=$null;$selected=$null
 try {
     $before=@([IW7.VoiceAgent.CoreAudioInventory]::Read())
@@ -43,23 +44,33 @@ try {
             'ptt'='Alpha seven. The blue lantern is beside the quiet river. Four nine two. Release the talk key after this sentence.'
             'reconnect'='Bravo three. The green bicycle waits near the wooden bridge. Six one eight. This is a new message after reconnect.'
         }
-        $files=@(foreach ($entry in $phrases.GetEnumerator()) {
-            $path=Join-Path $root ($entry.Key+'.wav')
+        $descriptor=[ordered]@{Voice=$candidate[0];Format='PCM mono 16000 Hz 16-bit';Rate=0;Volume=100;Phrases=$phrases;
+            GeneratorSHA256=(Get-FileHash -LiteralPath $PSCommandPath).Hash;
+            CacheSourceSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/Speech-Cache.Core.ps1").Hash;
+            OSVersion=[Environment]::OSVersion.VersionString}
+        $key=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($descriptor|ConvertTo-Json -Depth 6 -Compress))))
+        $frozen=Get-IW7FrozenSpeechFixture -CacheParent (Join-Path $runtime 'voice-fixture-cache') -DescriptorHash $key -VoiceTokenId $candidate[0].Id -Phrases $phrases -Synthesize {
+            param($path,$text)
             $stream=New-Object -ComObject SAPI.SpFileStream
             try {
                 $format=$stream.Format
                 try { $format.Type=18 } finally { Release-VoiceCom $format } # SAFT16kHz16BitMono
                 $stream.Open($path,3,$false) # SSFMCreateForWrite, local file only
                 $voice.AudioOutputStream=$stream
-                $null=$voice.Speak($entry.Value,0) # synchronous original text; no XML
+                $null=$voice.Speak($text,0) # synchronous original text; no XML
                 $stream.Close()
             } finally { Release-VoiceCom $stream;$stream=$null }
-            [pscustomobject]@{Name=$entry.Key;File=[IO.Path]::GetFileName($path);Text=$entry.Value;SHA256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash;Bytes=(Get-Item -LiteralPath $path).Length}
-        })
+        }
+        foreach($file in $frozen.Files){
+            $output=[IO.FileStream]::new((Join-Path $root $file.File),'CreateNew','Write','None')
+            try{$output.Write($frozen.Payloads[$file.Name])}finally{$output.Dispose()}
+        }
+        $files=$frozen.Files
         $result.Kind='synthetic_speech_fixture';$result.SyntheticSpeech=$true
         $result.EvidenceBoundary='Generated source WAV only; has not traversed OS microphone capture, IW7 codec, transport, decoder or rendering.'
         $result.Voice=$candidate[0];$result.Format='PCM mono 16000 Hz 16-bit';$result.Rate=0;$result.Volume=100
-        $result.Reproducibility='Fixed original text/token/rate/format; byte identity is checked by hashes. Different installed speech-engine versions may produce different bytes.'
+        $result.Reproducibility='First original synthesis frozen by descriptor and verified SHA256; subsequent calls reuse those exact source bytes rather than claim bit-exact independent SAPI synthesis.'
+        $result.SynthesisPerformed=$frozen.Created;$result.OriginalSynthesisUtc=$frozen.SynthesizedUtc;$result.FrozenDescriptorSHA256=$key
         $result.Files=$files
         $result.GeneratorSHA256=(Get-FileHash -LiteralPath $PSCommandPath).Hash
         $result.OSVersion=[Environment]::OSVersion.VersionString

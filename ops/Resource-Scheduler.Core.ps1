@@ -1,6 +1,7 @@
 # Shared by every worktree on this Windows account. No process is stopped here.
 # Keep admission + reservation atomic; a snapshot alone is not a reservation.
 . "$PSScriptRoot/Resource-Memory.ps1"
+. "$PSScriptRoot/Resource-OwnedProcess.Core.ps1"
 . "$PSScriptRoot/Resource-RecorderOwnedProcess.Core.ps1"
 function Get-IW7ResourceRoot {
     Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'IW7Paris/ResourceScheduler'

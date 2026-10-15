@@ -301,4 +301,209 @@ public static class IW7LabProcess
             }
         } finally { CloseDesktop(desktop); }
     }
+    // Separate opt-in STARTUP owner. Legacy factories/owners above are unchanged.
+    // The parent MUST store this object before Launch: Launch never returns/adopts another owner.
+    public static StrictStartupOwner CreateStrictStartupOwner() { return new StrictStartupOwner(new StrictStartupNative(), true); }
+    public static StrictStartupOwner CreateStrictStartupOwnerForPureTests(IStrictStartupBackend backend) {
+        if (backend==null) throw new ArgumentNullException("backend");
+        return new StrictStartupOwner(backend, false);
+    }
+    public enum StrictDisposition { NotAcquired, Open, Closed, Refused, Unknown }
+    public struct StrictIdentity { public int PID; public uint ThreadID; public long CreatedFileTime; public string Image; }
+    public interface IStrictStartupBackend {
+        IntPtr Desktop(string name, out int error);
+        IntPtr File(string path, uint access, uint sharing, uint creation, out int error);
+        bool Inherit(IntPtr value, out int error);
+        bool HashGuard(IntPtr value, out string hash, out long bytes, out int error);
+        bool Launch(string image, string arguments, string cwd, string desktop, IntPtr input, IntPtr output, IntPtr errorOutput,
+            out IntPtr process, out IntPtr thread, out int pid, out uint tid, out int error);
+        bool Identity(IntPtr process, IntPtr thread, out StrictIdentity identity, out int error);
+        uint Wait(IntPtr process, uint milliseconds, out int error);
+        bool ExitCode(IntPtr process, out uint code, out int error);
+        bool Terminate(IntPtr process, uint code, out int error);
+        bool Close(IntPtr value, bool desktop, out int error);
+    }
+    public sealed class StrictStartupOwner : IDisposable {
+        sealed class Retained {
+            internal IntPtr Value; internal bool Acquired; internal StrictDisposition State=StrictDisposition.NotAcquired;
+            internal void Capture(IntPtr value) { Value=value; Acquired=true; State=StrictDisposition.Open; }
+            internal bool Closed { get { return Acquired ? State==StrictDisposition.Closed && Value==IntPtr.Zero : State==StrictDisposition.NotAcquired; } }
+        }
+        readonly IStrictStartupBackend backend;
+        // Every slot exists before the first acquisition; no acquired object depends on a subsequent allocation.
+        readonly Retained imageGuard=new Retained(), input=new Retained(), output=new Retained(), errorOutput=new Retained();
+        readonly Retained desktop=new Retained(), process=new Retained(), thread=new Retained();
+        bool launchAttempted, identityVerified, identityRecorded, originalExited;
+        string expectedImage, expectedHash;
+        StrictIdentity identity;
+        public bool UsesNativeBackend { get; private set; }
+        public int Id { get; private set; }
+        public uint InitialThreadId { get; private set; }
+        public long CreationFileTime { get { return identityVerified ? identity.CreatedFileTime : 0; } }
+        public string OriginalImage { get { return identityVerified ? identity.Image : null; } }
+        public string GuardSHA256 { get; private set; }
+        public long GuardBytes { get; private set; }
+        public bool IdentityVerified { get { return identityVerified; } }
+        public bool OriginalExitObserved { get { return originalExited; } }
+        public int LastWinError { get; private set; }
+        public string LastFailure { get; private set; }
+        public StrictDisposition ProcessDisposition { get { return process.State; } }
+        public StrictDisposition ThreadDisposition { get { return thread.State; } }
+        public StrictDisposition DesktopDisposition { get { return desktop.State; } }
+        public StrictDisposition GuardDisposition { get { return imageGuard.State; } }
+        public StrictDisposition InputDisposition { get { return input.State; } }
+        public StrictDisposition OutputDisposition { get { return output.State; } }
+        public StrictDisposition ErrorDisposition { get { return errorOutput.State; } }
+        public bool Closed { get { return process.Closed && thread.Closed && desktop.Closed && imageGuard.Closed && input.Closed && output.Closed && errorOutput.Closed; } }
+        internal StrictStartupOwner(IStrictStartupBackend value, bool native) { backend=value; UsesNativeBackend=native; }
+        void Fail(string stage, int error) { LastFailure=stage; LastWinError=error; throw new Win32Exception(error,stage); }
+        static bool Valid(IntPtr value) { return value!=IntPtr.Zero && value!=new IntPtr(-1); }
+        void Capture(Retained slot, IntPtr value, string stage, int error) {
+            if (!Valid(value)) Fail(stage,error);
+            slot.Capture(value);
+        }
+        public void Launch(string image, string arguments, string cwd, string stdout, string stderr, string desktopName, string imageSHA256) {
+            if (launchAttempted) throw new InvalidOperationException("Strict owner cannot rearm/relaunch or adopt a different child");
+            launchAttempted=true;
+            if (image==null || image.Contains("\"") || arguments==null || cwd==null || stdout==null || stderr==null ||
+                !System.Text.RegularExpressions.Regex.IsMatch(desktopName ?? "", "^IW7ParisLab_[a-f0-9]{32}$") ||
+                !System.Text.RegularExpressions.Regex.IsMatch(imageSHA256 ?? "", "^[A-F0-9]{64}$"))
+                throw new ArgumentException("Invalid strict launch/guard binding");
+            expectedImage=Path.GetFullPath(image); expectedHash=imageSHA256;
+            int e;
+            Capture(imageGuard,backend.File(expectedImage,0x80000000u,1,3,out e),"image guard acquisition",e);
+            string hash; long bytes;
+            if (!backend.HashGuard(imageGuard.Value,out hash,out bytes,out e)) Fail("original image guard hash",e);
+            GuardSHA256=hash; GuardBytes=bytes;
+            if (bytes<=0 || bytes>64L*1024*1024 || !String.Equals(hash,expectedHash,StringComparison.Ordinal))
+                throw new InvalidOperationException("Strict original image guard bytes differ");
+            Capture(desktop,backend.Desktop(desktopName,out e),"desktop acquisition",e);
+            Capture(output,backend.File(stdout,0x40000000u,1,1,out e),"stdout CreateNew",e);
+            Capture(errorOutput,backend.File(stderr,0x40000000u,1,1,out e),"stderr CreateNew",e);
+            Capture(input,backend.File("NUL",0x80000000u,3,3,out e),"NUL acquisition",e);
+            if (!backend.Inherit(input.Value,out e) || !backend.Inherit(output.Value,out e) || !backend.Inherit(errorOutput.Value,out e)) Fail("stdio inheritance",e);
+            IntPtr p,t; int pid; uint tid;
+            bool started=backend.Launch(expectedImage,arguments,Path.GetFullPath(cwd),desktopName,input.Value,output.Value,errorOutput.Value,out p,out t,out pid,out tid,out e);
+            // Capture partial API outputs even when CreateProcess reports failure. Do not discard either handle.
+            if (Valid(p)) process.Capture(p);
+            if (Valid(t)) thread.Capture(t);
+            Id=pid; InitialThreadId=tid;
+            if (!started || !process.Acquired || !thread.Acquired || pid<=0 || tid==0) Fail("original process launch",e);
+            if (!RefreshOriginalIdentity()) Fail("original process identity",LastWinError);
+            // No GUI-idle check: a fast exit still leaves this original process/thread owner recoverable.
+        }
+        public bool RefreshOriginalIdentity() {
+            if (!process.Acquired || process.Closed || !thread.Acquired || thread.Closed) throw new InvalidOperationException("Original identity handles unavailable");
+            identityVerified=false;
+            StrictIdentity fresh; int e;
+            if (!backend.Identity(process.Value,thread.Value,out fresh,out e)) { LastFailure="original identity read"; LastWinError=e; return false; }
+            if (fresh.PID!=Id || fresh.ThreadID!=InitialThreadId || fresh.CreatedFileTime<=0 ||
+                !String.Equals(fresh.Image,expectedImage,StringComparison.OrdinalIgnoreCase) ||
+                (identityRecorded && fresh.CreatedFileTime!=identity.CreatedFileTime)) {
+                LastFailure="original identity mismatch"; LastWinError=0; return false;
+            }
+            identity=fresh; identityRecorded=true; identityVerified=true; return true;
+        }
+        public bool WaitForExit(int milliseconds) {
+            if (milliseconds<0) throw new ArgumentOutOfRangeException("milliseconds");
+            if (!process.Acquired || process.Closed) throw new InvalidOperationException("Original process handle unavailable");
+            int e; uint result=backend.Wait(process.Value,(uint)milliseconds,out e);
+            if (result==0) { originalExited=true; return true; }
+            if (result==258) return false;
+            Fail("original process wait",e); return false;
+        }
+        public bool HasExited { get { return WaitForExit(0); } }
+        public uint ExitCode { get {
+            if (!HasExited) throw new InvalidOperationException("Original process is running");
+            uint code; int e; if (!backend.ExitCode(process.Value,out code,out e)) Fail("original exit code",e); return code;
+        } }
+        public void TerminateAfterVerifiedIdentity(uint code) {
+            if (!identityVerified || !RefreshOriginalIdentity()) throw new InvalidOperationException("Original identity unconfirmed; termination refused");
+            int e; if (!HasExited && !backend.Terminate(process.Value,code,out e)) Fail("original process termination",e);
+        }
+        bool CloseOne(Retained slot, bool isDesktop) {
+            if (slot.Closed) return true;
+            int e;
+            try {
+                if (!backend.Close(slot.Value,isDesktop,out e)) { slot.State=StrictDisposition.Refused; LastFailure="original close refused"; LastWinError=e; return false; }
+                slot.Value=IntPtr.Zero; slot.State=StrictDisposition.Closed; return true;
+            } catch { slot.State=StrictDisposition.Unknown; LastFailure="original close unknown"; return false; }
+        }
+        public bool TryClose() {
+            // Never close a running/unknown original process owner; no automatic termination or PID reopen.
+            if (process.Acquired && !process.Closed && !originalExited) {
+                try { if (!WaitForExit(0)) { LastFailure="original process still running"; return false; } }
+                catch { LastFailure="original process exit unknown"; return false; }
+            }
+            bool closed=true;
+            if (!CloseOne(thread,false)) closed=false;
+            if (!CloseOne(input,false)) closed=false;
+            if (!CloseOne(output,false)) closed=false;
+            if (!CloseOne(errorOutput,false)) closed=false;
+            if (!CloseOne(desktop,true)) closed=false;
+            if (!CloseOne(process,false)) closed=false;
+            // Preserve the actual read-only executable guard until every original launch handle closes.
+            if (closed && !CloseOne(imageGuard,false)) closed=false;
+            return closed && Closed;
+        }
+        public void Dispose() { if (!TryClose()) throw new InvalidOperationException("Strict original closure pending; retain this same owner and host"); }
+    }
+    [DllImport("kernel32.dll",EntryPoint="CreateFileW",CharSet=CharSet.Unicode,SetLastError=true)]
+    static extern IntPtr StrictCreateFile(string path,uint access,uint share,IntPtr security,uint creation,uint flags,IntPtr template);
+    [DllImport("kernel32.dll",EntryPoint="CloseHandle",SetLastError=true)] static extern bool StrictCloseHandle(IntPtr value);
+    [DllImport("kernel32.dll",EntryPoint="GetExitCodeProcess",SetLastError=true)] static extern bool StrictExitCode(IntPtr value,out uint code);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern uint GetProcessId(IntPtr value);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern uint GetThreadId(IntPtr value);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern uint GetProcessIdOfThread(IntPtr value);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetFileSizeEx(IntPtr value,out long bytes);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetFilePointerEx(IntPtr value,long distance,out long position,uint method);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool ReadFile(IntPtr value,byte[] bytes,uint count,out uint read,IntPtr overlapped);
+    sealed class StrictStartupNative : IStrictStartupBackend {
+        public IntPtr Desktop(string name,out int e) {
+            var s=new SecurityAttributes {length=Marshal.SizeOf(typeof(SecurityAttributes)),inherit=false};
+            IntPtr value=CreateDesktopW(name,IntPtr.Zero,IntPtr.Zero,0,0x10000000,ref s); e=Marshal.GetLastWin32Error(); return value;
+        }
+        public IntPtr File(string path,uint access,uint share,uint creation,out int e) {
+            IntPtr value=StrictCreateFile(path,access,share,IntPtr.Zero,creation,0,IntPtr.Zero); e=Marshal.GetLastWin32Error(); return value;
+        }
+        public bool Inherit(IntPtr value,out int e) { bool ok=SetHandleInformation(value,1,1);e=Marshal.GetLastWin32Error();return ok; }
+        public bool HashGuard(IntPtr value,out string hash,out long bytes,out int e) {
+            hash=null;bytes=0;e=0;long position;
+            if (!GetFileSizeEx(value,out bytes) || bytes<=0 || bytes>64L*1024*1024 || !SetFilePointerEx(value,0,out position,0)) { e=Marshal.GetLastWin32Error(); return false; }
+            var buffer=new byte[65536];long total=0;
+            using (var sha=System.Security.Cryptography.SHA256.Create()) {
+                while (total<bytes) {
+                    uint count=(uint)Math.Min(buffer.Length,bytes-total),read;
+                    if (!ReadFile(value,buffer,count,out read,IntPtr.Zero) || read==0 || read>count) { e=Marshal.GetLastWin32Error();return false; }
+                    sha.TransformBlock(buffer,0,(int)read,buffer,0);total+=read;
+                }
+                sha.TransformFinalBlock(new byte[0],0,0);hash=BitConverter.ToString(sha.Hash).Replace("-","");
+            }
+            long after;
+            if (!GetFileSizeEx(value,out after) || after!=bytes || !SetFilePointerEx(value,0,out position,0)) { e=Marshal.GetLastWin32Error(); return false; }
+            return true;
+        }
+        public bool Launch(string image,string args,string cwd,string desk,IntPtr input,IntPtr output,IntPtr error,
+            out IntPtr p,out IntPtr t,out int pid,out uint tid,out int e) {
+            var s=new StartupInfo {cb=Marshal.SizeOf(typeof(StartupInfo)),desktop="WinSta0\\"+desk,flags=0x101,show=0,input=input,output=output,error=error};
+            ProcessInfo info;
+            bool ok=CreateProcessW(image,new StringBuilder("\""+image+"\" "+args),IntPtr.Zero,IntPtr.Zero,true,0x08004200u,IntPtr.Zero,cwd,ref s,out info);
+            e=Marshal.GetLastWin32Error();p=info.process;t=info.thread;pid=(int)info.pid;tid=info.tid;return ok;
+        }
+        public bool Identity(IntPtr p,IntPtr t,out StrictIdentity identity,out int e) {
+            identity=new StrictIdentity();e=0;uint pid=GetProcessId(p);
+            if (pid==0) { e=Marshal.GetLastWin32Error();return false; }
+            uint tid=GetThreadId(t);
+            if (tid==0 || GetProcessIdOfThread(t)!=pid) { e=Marshal.GetLastWin32Error();return false; }
+            long created,exited,kernel,user;
+            if (!GetProcessTimes(p,out created,out exited,out kernel,out user)) { e=Marshal.GetLastWin32Error();return false; }
+            var image=new StringBuilder(32768);int size=image.Capacity;
+            if (!QueryFullProcessImageNameW(p,0,image,ref size)) { e=Marshal.GetLastWin32Error();return false; }
+            identity=new StrictIdentity {PID=(int)pid,ThreadID=tid,CreatedFileTime=created,Image=image.ToString()};return true;
+        }
+        public uint Wait(IntPtr value,uint ms,out int e) { uint r=WaitForSingleObject(value,ms);e=Marshal.GetLastWin32Error();return r; }
+        public bool ExitCode(IntPtr value,out uint code,out int e) { bool r=StrictExitCode(value,out code);e=Marshal.GetLastWin32Error();return r; }
+        public bool Terminate(IntPtr value,uint code,out int e) { bool r=TerminateProcess(value,code);e=Marshal.GetLastWin32Error();return r; }
+        public bool Close(IntPtr value,bool desktop,out int e) { bool r=desktop ? CloseDesktop(value) : StrictCloseHandle(value);e=Marshal.GetLastWin32Error();return r; }
+    }
 }

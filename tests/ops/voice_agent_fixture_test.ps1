@@ -51,6 +51,9 @@ try {
         Assert-Fixture ((Get-FileHash (Join-Path $first.OutputRoot $file.File)).Hash -eq $file.SHA256) 'Manifest does not describe actual source bytes.'
     }
     $second=& $tool -Action Generate -OutputRoot "$root/second" -VoiceTokenId $manifest.Voice.Id
+    $secondManifest=Get-Content -LiteralPath $second.Manifest -Raw|ConvertFrom-Json
+    Assert-Fixture (!$secondManifest.SynthesisPerformed -and $secondManifest.FrozenDescriptorSHA256 -ceq $manifest.FrozenDescriptorSHA256 -and
+        $secondManifest.OriginalSynthesisUtc -ceq $manifest.OriginalSynthesisUtc) 'Repeated fixture did not reuse its original descriptor-bound synthesis.'
     foreach ($file in $first.Files) {
         $repeat=@($second.Files | Where-Object Name -eq $file.Name)
         Assert-Fixture ($repeat.Count -eq 1 -and $repeat[0].SHA256 -eq $file.SHA256) 'Same installed SAPI voice/settings did not reproduce identical speech bytes.'
