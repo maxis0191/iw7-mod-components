@@ -3,8 +3,10 @@
 This client module is an authored IW7 LUI implementation. It is not a retail BO3
 HUD import, a screenshot overlay or a complete qualified replacement yet.
 The requested destination is a complete HUD adapted to IW7 characters, perks,
-weapons, quests and states. Content0.13.0 adds a framed native-action underlay,
-retaining the actual localized title, progress, stencil and native visibility.
+weapons, quests and states. Content0.14.0 gives the four fan backs a dark surface
+with native depth tint confined to an inset stripe, plus checked ownership and
+restoration. The0.13 native-action underlay retains the actual localized title,
+progress, stencil and native visibility.
 The0.12 selected-card identity surface, native name/icon presentation and0.11
 angular charge panel are retained; the actual-player team layout remains Source-tested;
 the coverage matrix below remains the completion contract.
@@ -265,7 +267,7 @@ goal. Perk identity remapping and remaining selected-card art are still open.
 ## Bounded binding diagnostics
 
 Since content0.8.0, `VERSION` is separate from `DIAGNOSTIC_VERSION=0.7.0`. Every
-current initialization emits `module version=0.7.0 content_version=0.13.0 instance=... initialized=1`.
+current initialization emits `module version=0.7.0 content_version=0.14.0 instance=... initialized=1`.
 Every versioned marker uses the diagnostic contract version. The content version
 is informational; exact Lua bytes/SHA256, Source commit and profile plan identify
 the authorized content. A compatible authored skin needs no new Ops enum entry.
@@ -680,6 +682,66 @@ Root Game decision for natural action progress/cancel/return. Real co-op revive,
 normal-damage/downed acceptance, all five maps, split/safe area/localization,
 full HUD and owner acceptance remain unqualified. No Game/native/FF/stock/lease
 operation follows from this Source change.
+
+## Source0.14 dark fan backs and restoration
+
+The actual0.12 frames show pale lower fan strips alongside the native Triangle.
+Source0.6 used `white` over the full192x352 inset for both fan images: the native
+gray overlay at alpha0.6 consequently washed over the authored dark backing.
+Source0.14 confines that same overlay object to an8x344 inset stripe. Its native
+depth RGB/alpha remain untouched; the underlying dark surface and five thin
+authored rim/rule rectangles stay within the same footprint. This is original
+vector-style decoration using the existing white material, not retail BO3 art.
+No image binding, guessed asset, copied identity or card effect is introduced.
+
+The pinned `FateFanCard` body at2305708 has exactly two direct leaf children,
+`fanCard` followed by `fanOverlay`, with static material names and source bounds
+-11.5/244.5/0/512. Its parent `FateCardWidget` sets the depth tint/alpha and owns
+all four cards' count-dependent alpha, rotation, scale and position sequences.
+The new adapter requires those exact field/object/parent/child relationships
+and leaf IDs. Unknown or additional shapes remain native without failing the
+essential HUD bind; a late eligible shape can be retried before ownership.
+Fresh factories and existing roots use the same checked path and local controller.
+
+Each eligible fan keeps both original image objects directly under the native
+fan parent, followed by one owned rim container. No original animation,
+callback, model subscription, input, timer or parent transform is replaced.
+The four-card stack, selected identity, Triangle, Fire, arrows, native charge
+glows and active effects retain their existing behavior. The demon/core and
+selected-card masking contracts are unchanged. This small lot does not resolve
+the remaining Triangle silhouette or qualify the complete HUD.
+
+A local weak-key/weak-value registry is cleanup authority; the replaceable
+`__bo3FanBack` marker is only an identity check. The live owned rim container
+holds the captured record independently of that marker, including across GC.
+Controller, marker, native field, child order or parent changes retire the fan.
+Shutdown also retires every live captured owner. Captured native leaves are
+restored to the pinned materials/bounds only while still referenced by this
+widget and parented to it; the backing returns to its default white tint, while
+overlay RGB/alpha and parent pose remain native. A leaf adopted by a foreign
+parent or replaced through a field is left alone. Captured empty rim rectangles
+are disposed only under their captured container; foreign children, descendants
+or an adopted container are retained. A retired fan cannot be recreated by
+clearing its marker. Structural checks do not detect arbitrary foreign writes
+to the same leaf's rendering properties. Normal VM teardown remains required
+for the rest of the existing HUD layout; no full hot rollback is claimed.
+
+Source validation passes241 Lua5.1 mock controls, including empty/selection
+poses, depth changes, controller isolation, repeated refresh, late/unknown
+schemas, marker forgery/nil/type replacement plus GC, foreign fields/parents/
+descendants, retirement and shutdown. A separate local cross-check executes
+the pinned fan and full parent sequence bodies:349 assertions compare native
+versus adapted endpoints for counts5..0, initial/cycle/meterFull/noMoreCards,
+Fire/arrows/Triangle, depth values and restoration. Nodes, timing and the other
+nested widgets are mocked; these are not HKS, game, texture or pixel results.
+The actual0.12 captures remain the observation baseline; no0.14 game was run.
+The external953B cross-check receipt SHA256 is
+024F07F53B817EE1CA4A62AC336E09132FAA3958CA436EE18CA1B15960B36084.
+
+Next: exact-head private Source review/checks and merge, then a separate caller
+adoption decision. The frozen0.13 DiscoveryOnly package is unchanged. Any0.14
+HKS/pixel validation, co-op, other maps/resolutions and owner acceptance remain
+unqualified; this change grants no runtime/stock/launch authority.
 
 ## Source references and implemented essentials
 
