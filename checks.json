@@ -2,6 +2,10 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "source_guard_root_candidate_test",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/source_guard_root_candidate_test.ps1"]
+    },
+    {
       "id": "immutable_snapshot_cursor_test",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/immutable_snapshot_cursor_test.ps1"]
     },

@@ -84,6 +84,10 @@ that a DIA provider accepts this method subset.
 
 ## Future provider qualification proposal (no discovery authorized)
 
+The separately authored [Source-guard root candidate](SOURCE-GUARD-ROOT-CANDIDATE.md)
+derives a bounded candidate from supplied immutable observations only. It has
+no native binding or authority/eligibility effect; all provider gates below remain.
+
 Each item currently has status **Unknown_Unqualified**. First submit a bounded
 metadata proposal identifying exact intended inputs/actions for review. Do not
 inventory folders/registry, activate anything, install an SDK, or select a
