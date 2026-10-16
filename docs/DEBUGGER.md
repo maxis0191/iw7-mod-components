@@ -472,10 +472,12 @@ The 31 new Source composition checks and 72 previously approved authored
 diagnostic causals remain separate from this real native observation; older
 suites were carried without rerun. All H/H1/H2/H3 sources and results stay frozen.
 
-Next is bounded review of official Microsoft text about the API already used
-and exact PE/PDB association. Any resulting change needs a small Source proposal,
-independent exact review and a distinct fresh GO before further native or opaque
-access. No flag/type/ABI/acceptance relaxation is authorized by this checkpoint.
+The current follow-up is a [pure managed snapshot/cursor model and DIA provider
+qualification plan](DIA-PROVIDER-QUALIFICATION.md). Its Source tests do not
+qualify a provider, real guard, COM lifecycle or native retry. H4 remains stopped
+and H3 remains Refused. Provider metadata, complete ABI/method review and any
+native access each need separate review/GO. No flag/type/ABI/acceptance relaxation
+is authorized by this checkpoint.
 
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
