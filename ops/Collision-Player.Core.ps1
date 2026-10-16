@@ -44,25 +44,29 @@ function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerI
             # Preserve the original -match case-insensitive refusal semantics.
             # Any complete owned FAIL still wins over every ready publication.
             # Parse only a short, allowlisted diagnostic from that first failure.
-            $reason=$null;$group=$null;$stampState=$null
+            $reason=$null;$group=$null;$stampState=$null;$weaponPredicate=$null
             $end=$complete.IndexOf("`n",$failure.Index)
             if($end-$failure.Index -le 384){
                 $line=$complete.Substring($failure.Index,$end-$failure.Index)
-                $detail=[regex]::Match($line,'^\[Collision player\] FAIL token='+$Token+' reason=(anchor_player_changed|anchor_pose_changed_before_arm|frozen_anchor_readiness_lost|frozen_anchor_player_lost|admission_or_clearance)(?: readiness_group=(safe|ground|weapon|velocity|intro_screen|intro_gesture|controls|hostmigration|ready) stamp_state=(undefined|empty|unavailable|available))?[\t ]*\r?$')
-                if($detail.Success -and (!$detail.Groups[2].Success -or $detail.Groups[1].Value -ceq 'frozen_anchor_readiness_lost')){
+                $detail=[regex]::Match($line,'^\[Collision player\] FAIL token='+$Token+' reason=(anchor_player_changed|anchor_pose_changed_before_arm|frozen_anchor_readiness_lost|frozen_anchor_player_lost|admission_or_clearance)(?: readiness_group=(safe|ground|weapon|velocity|intro_screen|intro_gesture|controls|hostmigration|ready) stamp_state=(undefined|empty|unavailable|available)(?: weapon_predicate=(undefined|empty|none|not_owned))?)?[\t ]*\r?$')
+                if($detail.Success -and (!$detail.Groups[2].Success -or $detail.Groups[1].Value -ceq 'frozen_anchor_readiness_lost') -and
+                   (!$detail.Groups[4].Success -or $detail.Groups[2].Value -ceq 'weapon')){
                     $reason=$detail.Groups[1].Value
                     if($detail.Groups[2].Success){$group=$detail.Groups[2].Value;$stampState=$detail.Groups[3].Value}
+                    if($detail.Groups[4].Success){$weaponPredicate=$detail.Groups[4].Value}
                 }
             }
             $message='Fixture refused readiness/anchor; do not arm.'
             if($reason){
                 $diagnostic='reason='+$reason
                 if($group){$diagnostic+='; readiness_group='+$group+'; stamp_state='+$stampState}
+                if($weaponPredicate){$diagnostic+='; weapon_predicate='+$weaponPredicate}
                 $message='Fixture refused readiness/anchor ('+$diagnostic+'); do not arm.'
             }
             $readinessError=[InvalidOperationException]::new($message)
             if($reason){$readinessError.Data['CollisionReason']=$reason}
             if($group){$readinessError.Data['CollisionReadinessGroup']=$group;$readinessError.Data['CollisionStampState']=$stampState}
+            if($weaponPredicate){$readinessError.Data['CollisionWeaponPredicate']=$weaponPredicate}
             throw $readinessError
         }
         $tail=$Text.Substring($last+1)

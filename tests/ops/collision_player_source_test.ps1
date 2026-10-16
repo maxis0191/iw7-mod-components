@@ -90,6 +90,26 @@ $diagnosticCases=@(
     @{Text=$wire+$knownFailure.Replace('frozen_anchor_readiness_lost','admission_or_clearance')+$details+"`n";Reason=$null;Group=$null;Stamp=$null},
     @{Text="[Collision player] FAIL token=$token reason=unknown_private_value`n"+$knownFailure+$details+"`n"+$wire;Reason=$null;Group=$null;Stamp=$null}
 )
+$weaponDetails=' readiness_group=weapon stamp_state=available'
+foreach($label in @('undefined','empty','none','not_owned')){
+    $diagnosticCases+=@{Text=$wire+$knownFailure+$weaponDetails+' weapon_predicate='+$label+"`n"+$wire;Reason='frozen_anchor_readiness_lost';Group='weapon';Stamp='available';WeaponPredicate=$label}
+}
+$diagnosticCases+=@(
+    @{Text=$wire+$knownFailure+$weaponDetails+"`n";Reason='frozen_anchor_readiness_lost';Group='weapon';Stamp='available'},
+    @{Text=$wire+$knownFailure+$weaponDetails+' weapon_predicate=untrusted_private_value'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure+$weaponDetails+' weapon_predicate=not_evaluated'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure+$weaponDetails+' weapon_predicate=passed'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure+$weaponDetails+' weapon_predicate=none weapon_predicate=none'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure+$details+' weapon_predicate=none'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure.Replace('frozen_anchor_readiness_lost','admission_or_clearance')+$weaponDetails+' weapon_predicate=none'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure+' weapon_predicate=none'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure+$weaponDetails+' weapon_predicate=NONE'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure+$weaponDetails+' weapon_predicate=none;'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure+$weaponDetails+' weapon_predicate=none'+(' untrusted_private_value'*40)+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure.Replace('[Collision player] FAIL','[CoLlIsIoN PlAyEr] fAiL')+$weaponDetails+' weapon_predicate=none'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure.Replace($token,$token.ToUpperInvariant())+$weaponDetails+' weapon_predicate=none'+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text="[Collision player] FAIL token=$token malformed_private_value`n"+$knownFailure+$weaponDetails+' weapon_predicate=none'+"`n"+$wire;Reason=$null;Group=$null;Stamp=$null}
+)
 $diagnosticRefusals=0
 foreach($case in $diagnosticCases){
     $caught=$null
@@ -97,24 +117,39 @@ foreach($case in $diagnosticCases){
     if(!$caught -or $caught.Message -notmatch 'Fixture refused readiness/anchor' -or
        $caught.Message.Length -gt 256 -or $caught.Message -match 'private_value' -or
        $caught.Data['CollisionReason'] -cne $case.Reason -or
-       $caught.Data['CollisionReadinessGroup'] -cne $case.Group -or $caught.Data['CollisionStampState'] -cne $case.Stamp){
+       $caught.Data['CollisionReadinessGroup'] -cne $case.Group -or $caught.Data['CollisionStampState'] -cne $case.Stamp -or
+       $caught.Data['CollisionWeaponPredicate'] -cne $case['WeaponPredicate']){
         throw 'Owned FAIL diagnostic leaked, changed refusal, or fell back to Ready/later failure.'
     }
     if($case.Reason -and !$caught.Message.Contains('reason='+$case.Reason)){throw 'Known bounded reason was hidden.'}
+    if($case['WeaponPredicate'] -and !$caught.Message.Contains('weapon_predicate='+$case['WeaponPredicate'])){throw 'Known weapon predicate was hidden.'}
     $diagnosticRefusals++
 }
-foreach($partial in @($knownFailure+$details,$knownFailure+' malformed_private_value')){
+$partialFailures=@(
+    ($knownFailure+$details)
+    ($knownFailure+' malformed_private_value')
+    ($knownFailure+$weaponDetails+' weapon_predicate=none')
+)
+if($partialFailures.Count -ne 3){throw 'Three separate partial failure controls required.'}
+foreach($partial in $partialFailures){
     if((Read-IW7CollisionPlayerReady ($wire+$partial) $token 42 $nonce 1100 1500).Ready){throw 'Partial own FAIL fell back to earlier Ready.'}
 }
 if(!(Read-IW7CollisionPlayerReady ($knownFailure.Replace($token,'cccccccccccccccccccccccccccccccc')+$details+"`n"+$wire) $token 42 $nonce 1100 1500).Ready){throw 'Foreign failure invalidated the owned Ready.'}
+if(!(Read-IW7CollisionPlayerReady ($knownFailure.Replace($token,'cccccccccccccccccccccccccccccccc')+$weaponDetails+' weapon_predicate=none'+"`n"+$wire) $token 42 $nonce 1100 1500).Ready){throw 'Foreign weapon failure invalidated the owned Ready.'}
 # Source ordering checks, not a substitute interpreter or GSC runtime proof.
 $gsc=Get-Content -LiteralPath (Join-Path $root 'tests/fixtures/collision_player_contact.gsc') -Raw
 $playable=[regex]::Match($gsc,'(?s)\nplayable\(state\)\s*\{(.*?)\n\}\s*\nsample\(state, phase\)').Groups[1].Value
 $ordered=@(
+    'state.readiness_weapon_predicate = "not_evaluated";',
     'state.readiness_first_failure = "safe";', 'if (!safe(state)) return false;',
     'state.readiness_first_failure = "ground";', 'if (!state.player isonground()) return false;',
     'player = state.player;', 'weapon = player getcurrentweapon();', 'velocity = player getvelocity();',
-    'state.readiness_first_failure = "weapon";', 'if (!(isdefined(weapon) && weapon != "" && weapon != "none" && player hasweapon(weapon))) return false;',
+    'state.readiness_first_failure = "weapon";',
+    'state.readiness_weapon_predicate = "undefined";', 'if (!isdefined(weapon)) return false;',
+    'state.readiness_weapon_predicate = "empty";', 'if (!(weapon != "")) return false;',
+    'state.readiness_weapon_predicate = "none";', 'if (!(weapon != "none")) return false;',
+    'state.readiness_weapon_predicate = "not_owned";', 'if (!(player hasweapon(weapon))) return false;',
+    'state.readiness_weapon_predicate = "passed";',
     'state.readiness_first_failure = "velocity";', 'if (!(isdefined(velocity) && distance(velocity, (0,0,0)) <= 1)) return false;',
     'state.readiness_first_failure = "intro_screen";', 'if (!(scripts\engine\utility::flag_exist("introscreen_over") && scripts\engine\utility::flag("introscreen_over"))) return false;',
     'state.readiness_first_failure = "intro_gesture";', 'if (!(scripts\engine\utility::flag_exist("intro_gesture_done") && scripts\engine\utility::flag("intro_gesture_done"))) return false;',
@@ -124,7 +159,8 @@ $ordered=@(
 )
 $previous=-1
 foreach($statement in $ordered){$offset=$playable.IndexOf($statement,[StringComparison]::Ordinal);if($offset -le $previous){throw 'GSC readiness getter/guard order or per-evaluation reset changed.'};$previous=$offset}
-foreach($getter in @('safe(state)','state.player isonground()','player getcurrentweapon()','player getvelocity()','player hasweapon(weapon)')){
+foreach($getter in @('safe(state)','state.player isonground()','player getcurrentweapon()','player getvelocity()',
+    'isdefined(weapon)','weapon != ""','weapon != "none"','player hasweapon(weapon)')){
     if([regex]::Matches($playable,[regex]::Escape($getter)).Count -ne 1){throw 'GSC readiness getter was duplicated or removed.'}
 }
 $contact=[regex]::Match($gsc,'(?s)\ncontact\(\)\s*\{(.*?)\n\}\s*\nfail\(state, reason\)').Groups[1].Value
@@ -135,7 +171,12 @@ if([regex]::Matches($contact,'playable\(state\)').Count -ne 1 -or
    $contact -notmatch 'if \(state.anchor_frozen\) \{ fail\(state, "frozen_anchor_readiness_lost"\); return; \}'){
     throw 'GSC diagnostics re-evaluated readiness/stamp or changed frozen failure behavior.'
 }
-Write-Output "PASS $diagnosticRefusals production-reader failure diagnostic refusals, 2 partial/1 foreign controls; GSC getter/guard source ordering only, no GSC runtime claim."
+$failureBody=[regex]::Match($gsc,'(?s)\nfail\(state, reason\)\s*\{(.*?)\n\}').Groups[1].Value
+if($failureBody -notmatch 'if \(state.readiness_first_failure == "weapon"\)\s+line \+= " weapon_predicate=" \+ state.readiness_weapon_predicate;' -or
+   $failureBody -match 'getcurrentweapon|getvelocity|hasweapon'){
+    throw 'Failure diagnostics must use only the current cached weapon predicate, without re-query.'
+}
+Write-Output "PASS $diagnosticRefusals production-reader failure diagnostic refusals, $($partialFailures.Count) partial/2 foreign controls; GSC getter/guard source ordering only, no GSC runtime claim."
 # Only the real GSC fixture reads retail intro/control state. These fixtures
 # verify the publication transport/freshness; they never fabricate that state.
 $created=[datetime]::Parse('2026-10-14T13:00:00Z').ToUniversalTime();$filetime=$created.ToFileTimeUtc()

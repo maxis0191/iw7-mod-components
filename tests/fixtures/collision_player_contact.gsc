@@ -59,6 +59,7 @@ safe(state)
 playable(state)
 {
     // Reset on every evaluation. Diagnostics never re-query a failed predicate.
+    state.readiness_weapon_predicate = "not_evaluated";
     state.readiness_first_failure = "safe";
     if (!safe(state)) return false;
     state.readiness_first_failure = "ground";
@@ -68,7 +69,15 @@ playable(state)
     velocity = player getvelocity();
     // Keep both original eager getters above, including when weapon is invalid.
     state.readiness_first_failure = "weapon";
-    if (!(isdefined(weapon) && weapon != "" && weapon != "none" && player hasweapon(weapon))) return false;
+    state.readiness_weapon_predicate = "undefined";
+    if (!isdefined(weapon)) return false;
+    state.readiness_weapon_predicate = "empty";
+    if (!(weapon != "")) return false;
+    state.readiness_weapon_predicate = "none";
+    if (!(weapon != "none")) return false;
+    state.readiness_weapon_predicate = "not_owned";
+    if (!(player hasweapon(weapon))) return false;
+    state.readiness_weapon_predicate = "passed";
     state.readiness_first_failure = "velocity";
     if (!(isdefined(velocity) && distance(velocity, (0,0,0)) <= 1)) return false;
     state.readiness_first_failure = "intro_screen";
@@ -275,7 +284,11 @@ fail(state, reason)
     state.failed = true;
     line = "[Collision player] FAIL token=" + state.token + " reason=" + reason;
     if (reason == "frozen_anchor_readiness_lost")
+    {
         line += " readiness_group=" + state.readiness_first_failure + " stamp_state=" + state.readiness_stamp_state;
+        if (state.readiness_first_failure == "weapon")
+            line += " weapon_predicate=" + state.readiness_weapon_predicate;
+    }
     print(line);
     if (isdefined(state.owner))
     {

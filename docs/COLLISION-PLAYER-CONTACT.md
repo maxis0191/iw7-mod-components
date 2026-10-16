@@ -194,3 +194,44 @@ change. Current Server callers retain their old hash-sensitive pins; adoption
 needs separate owner review, a new prepared source/capsule and a distinct fresh
 Game authorization. The next runtime must establish its own admission and
 protection rather than inherit this closed episode's metadata.
+
+## First weapon-predicate diagnostic — Source only
+
+The separately authorized E2 episode reached the diagnostic fixture and refused
+before arm with `frozen_anchor_readiness_lost`, group `weapon`, stamp state
+`available`. Its original exception retained these allowlisted values. The
+snapshot contains no cached weapon value, so the rejected sub-predicate remains
+unknown. The three actual transactions reported restoration, Main/bank audits
+reported no static change or bank delta, original owner handle fields were zero
+and the client lock SFH was closed. Root observed the original host's true exit
+and independently confirmed all four identities and leases absent. These are
+failed-episode closure observations, not measured kernel CloseHandle returns,
+direct internal Source-guard closure, fresh GOD/BOUND at arm, or contact evidence.
+E2 and its frozen inputs remain consumed and immutable.
+
+The next Source diagnostic divides only the existing weapon conjunction into
+its four original expressions, unchanged and in order: `isdefined(weapon)`,
+`weapon != ""`, `weapon != "none"`, `player hasweapon(weapon)`. A false result
+still returns false immediately. The local weapon and velocity getters both
+execute once, in that order, before the first expression; hasweapon executes
+only if the preceding three expressions succeeded. No comparison is converted,
+getter is repeated or protection/native API is added. The private diagnostic
+resets on every evaluation and records the first false label from that same
+cached weapon: `undefined`, `empty`, `none` or `not_owned`.
+
+Only a frozen-readiness failure in group `weapon` appends the optional
+`weapon_predicate` enum. No raw weapon name, object, handle or identifier is
+published. The reader accepts the field only with that reason/group and adds
+the bounded enum to its exception message and `CollisionWeaponPredicate` Data.
+Legacy E2 failures remain readable refusals. Unknown, malformed, duplicated,
+incompatible or oversized fields remain generic refusals, with the first complete
+owned FAIL still winning over all Ready/later failures. IgnoreCase detection,
+the 384-character diagnostic bound, partial/foreign handling and all existing
+measurement/admission rules are preserved.
+
+Tests exercise the production reader with text fixtures and existing IO doubles,
+plus GSC Source ordering, short-circuit structure and getter/reset counts. They
+are not a substitute GSC interpreter or engine/Game validation. No GscToolPath,
+native tool, build, runtime log, lease or Game is part of this Source change.
+Further execution requires separate exact consumer pin adoption, reviewed new
+inputs/capsule and a fresh Root Game authorization; no frozen episode is replayed.
