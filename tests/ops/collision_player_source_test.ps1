@@ -11,6 +11,7 @@ function Enter-IW7ResourceLease {$effects.Add('lease');throw 'No reservation in 
 function Start-IW7BaseClient {$effects.Add('client');throw 'No client in this source test.'}
 function Send-IW7CollisionProbeCommand {$effects.Add('engine');throw 'No engine in this source test.'}
 function Get-CimInstance {$effects.Add('process');throw 'No process inspection in default Plan.'}
+function Add-Type {$effects.Add('native-compile');throw 'No Add-Type in these pure Source tests.'}
 $token='1234567890abcdef1234567890abcdef'
 $plan=& (Join-Path $root 'ops/Invoke-CollisionPlayerContact.ps1') -Anchor @(10,20,30) -Token $token|ConvertFrom-Json
 if($plan.PlannedClients -ne 1 -or $plan.ClientCollider -or $plan.ClearanceQualified -or $plan.OwnerAccepted -or
@@ -142,19 +143,23 @@ $playable=[regex]::Match($gsc,'(?s)\nplayable\(state\)\s*\{(.*?)\n\}\s*\nsample\
 $ordered=@(
     'state.readiness_weapon_predicate = "not_evaluated";',
     'state.readiness_first_failure = "safe";', 'if (!safe(state)) return false;',
-    'state.readiness_first_failure = "ground";', 'if (!state.player isonground()) return false;',
+    'state.readiness_first_failure = "ground";', 'grounded = state.player isonground();', 'if (!grounded) return false;',
     'player = state.player;', 'weapon = player getcurrentweapon();', 'velocity = player getvelocity();',
     'state.readiness_first_failure = "weapon";',
     'state.readiness_weapon_predicate = "undefined";', 'if (!isdefined(weapon)) return false;',
     'state.readiness_weapon_predicate = "empty";', 'if (!(weapon != "")) return false;',
     'state.readiness_weapon_predicate = "none";', 'if (!(weapon != "none")) return false;',
-    'state.readiness_weapon_predicate = "not_owned";', 'if (!(player hasweapon(weapon))) return false;',
+    'state.readiness_weapon_predicate = "not_owned";', 'owned = player hasweapon(weapon);', 'if (!owned) return false;',
     'state.readiness_weapon_predicate = "passed";',
     'state.readiness_first_failure = "velocity";', 'if (!(isdefined(velocity) && distance(velocity, (0,0,0)) <= 1)) return false;',
-    'state.readiness_first_failure = "intro_screen";', 'if (!(scripts\engine\utility::flag_exist("introscreen_over") && scripts\engine\utility::flag("introscreen_over"))) return false;',
-    'state.readiness_first_failure = "intro_gesture";', 'if (!(scripts\engine\utility::flag_exist("intro_gesture_done") && scripts\engine\utility::flag("intro_gesture_done"))) return false;',
-    'state.readiness_first_failure = "controls";', 'if (!(isdefined(player.controlsfrozen) && !player.controlsfrozen)) return false;',
-    'state.readiness_first_failure = "hostmigration";', 'if (!(!isdefined(player.hostmigrationcontrolsfrozen) || !player.hostmigrationcontrolsfrozen)) return false;',
+    'state.readiness_first_failure = "intro_screen";', 'intro_exists = scripts\engine\utility::flag_exist("introscreen_over");',
+    'if (!intro_exists) return false;', 'intro_over = scripts\engine\utility::flag("introscreen_over");', 'if (!intro_over) return false;',
+    'state.readiness_first_failure = "intro_gesture";', 'gesture_exists = scripts\engine\utility::flag_exist("intro_gesture_done");',
+    'if (!gesture_exists) return false;', 'gesture_done = scripts\engine\utility::flag("intro_gesture_done");', 'if (!gesture_done) return false;',
+    'state.readiness_first_failure = "controls";', 'controls_defined = isdefined(player.controlsfrozen);',
+    'if (!controls_defined) return false;', 'controls_frozen = player.controlsfrozen;', 'if (controls_frozen) return false;',
+    'state.readiness_first_failure = "hostmigration";', 'migration_defined = isdefined(player.hostmigrationcontrolsfrozen);',
+    'if (migration_defined)', 'migration_frozen = player.hostmigrationcontrolsfrozen;', 'if (migration_frozen) return false;',
     'state.readiness_first_failure = "ready";', 'return true;'
 )
 $previous=-1
@@ -166,9 +171,9 @@ foreach($getter in @('safe(state)','state.player isonground()','player getcurren
 $contact=[regex]::Match($gsc,'(?s)\ncontact\(\)\s*\{(.*?)\n\}\s*\nfail\(state, reason\)').Groups[1].Value
 if([regex]::Matches($contact,'playable\(state\)').Count -ne 1 -or
    [regex]::Matches($contact,'paris_agent_observationstamp\(\)').Count -ne 1 -or
-   $contact -notmatch 'stamp = state.player paris_agent_observationstamp\(\);\s+playable_now = playable\(state\);' -or
+   $contact -notmatch 'stamp = state.player paris_agent_observationstamp\(\);\s+//[^\n]*\n\s+state.diag_stamp = stamp;\s+playable_now = playable\(state\);' -or
    $contact -notmatch 'if \(playable_now && isdefined\(stamp\) && stamp != "" && stamp != "unavailable"\)' -or
-   $contact -notmatch 'if \(state.anchor_frozen\) \{ fail\(state, "frozen_anchor_readiness_lost"\); return; \}'){
+   $contact -notmatch '(?s)if \(state.anchor_frozen\)\s*\{\s*//[^\n]*\n\s*fail\(state, "frozen_anchor_readiness_lost"\);\s*if \(!state.diag_none_attempted.*?readiness_diagnostic\(state, "none"\);\s*\}\s*return;'){
     throw 'GSC diagnostics re-evaluated readiness/stamp or changed frozen failure behavior.'
 }
 $failureBody=[regex]::Match($gsc,'(?s)\nfail\(state, reason\)\s*\{(.*?)\n\}').Groups[1].Value
@@ -177,6 +182,142 @@ if($failureBody -notmatch 'if \(state.readiness_first_failure == "weapon"\)\s+li
     throw 'Failure diagnostics must use only the current cached weapon predicate, without re-query.'
 }
 Write-Output "PASS $diagnosticRefusals production-reader failure diagnostic refusals, $($partialFailures.Count) partial/2 foreign controls; GSC getter/guard source ordering only, no GSC runtime claim."
+# Synthetic text exercises the optional production reader, not engine state.
+$freeze="[Collision readiness] token=$token stage=freeze eval=21; server_pid=42; client_nonce=$nonce; server_generation=$generation; slot=0; native_tick_ms=1400; protected=1; gr=1; w=passed; hw=1; is=1; ig=1; cf=0; hm=U; view=cached`n"
+$none=$freeze.Replace('stage=freeze eval=21','stage=none eval=22').Replace('native_tick_ms=1400','native_tick_ms=1450').
+    Replace('w=passed; hw=1; is=1; ig=1; cf=0; hm=U','w=none; hw=N; is=N; ig=N; cf=N; hm=N')
+$canonical=$knownFailure+$weaponDetails+" weapon_predicate=none`n"
+$pair=$freeze+$canonical+$none
+function Read-TestDiagnostic([string]$Value){Read-IW7CollisionReadinessDiagnostic $Value $token 42 $nonce $generation 1100 1500}
+foreach($goodPair in @($pair,$pair.Replace('hm=U','hm=0'),$pair.Replace("`n","`r`n"),
+    $pair.Replace('eval=21','eval=999998').Replace('eval=22','eval=999999'))){
+    $d=Read-TestDiagnostic $goodPair
+    if(!$d.Correlated -or $d.Status -cne 'CORRELATED' -or !$d.DiagnosticOnly -or $d.CauseVerified -or
+       $d.Events.Count -ne 2 -or $d.PSObject.Properties.Name -ccontains 'Ready'){throw 'Optional diagnostics overclaim or reject a valid cached pair.'}
+}
+$largestProducerRow=$freeze.Replace('server_pid=42','server_pid=4294967295').Replace('eval=21','eval=999999').
+    Replace('native_tick_ms=1400','native_tick_ms=18446744073709551615').TrimEnd("`n")
+if($largestProducerRow.Length -ne 324 -or $largestProducerRow -cmatch '[^\x20-\x7E]'){throw 'Static ASCII character budget differs.'}
+$badPairs=@(
+    '',$freeze,$none,($freeze+$freeze+$canonical+$none),($none+$canonical+$freeze),
+    ($freeze+$none),($freeze+$none+$canonical),($freeze+$canonical.Replace('readiness_group=weapon','readiness_group=controls')+$none),
+    ($freeze+"[Collision player] FAIL token=$token reason=unknown`n"+$canonical+$none),
+    $pair.TrimEnd("`n"),($pair+'[Collision readiness] token='+$token),
+    ($freeze+$canonical+$none.Replace('; view=cached',(' '*384)+'; view=cached')),
+    $pair.Replace('view=cached','view=cach'+[char]0xE9+'d'),$pair.Replace('[Collision readiness]','[Collision Readiness]'),
+    ($freeze+$canonical+$none.Replace('eval=22','eval=21')),($freeze+$canonical+$none.Replace('eval=22','eval=20')),
+    $pair.Replace('eval=22','eval=1000000'),$pair.Replace('eval=22','eval=022'),$pair.Replace('eval=22','eval=0'),
+    ($freeze+$canonical+$none.Replace('native_tick_ms=1450','native_tick_ms=1400')),
+    ($freeze+$canonical+$none.Replace('native_tick_ms=1450','native_tick_ms=1399')),
+    $pair.Replace('native_tick_ms=1400','native_tick_ms=1099'),$pair.Replace('native_tick_ms=1450','native_tick_ms=1501'),
+    $pair.Replace('native_tick_ms=1450','native_tick_ms=18446744073709551615'),
+    $pair.Replace('native_tick_ms=1450','native_tick_ms=01450'),$pair.Replace('server_pid=42','server_pid=43'),
+    $pair.Replace('client_nonce='+$nonce,'client_nonce='+('c'*32)),
+    $pair.Replace('server_generation='+$generation,'server_generation='+('c'*32)),
+    $pair.Replace('slot=0','slot=1'),$pair.Replace('protected=1','protected=0'),
+    $pair.Replace('token='+$token,'token='+('c'*32)),$pair.Replace('; gr=1',''),$pair.Replace('; gr=1','; gr=1; gr=1'),
+    ($freeze+$canonical+$none.Replace('hw=N','hw=U')),($freeze+$canonical+$none.Replace('cf=N','cf=0')),
+    ($freeze.Replace('hw=1','hw=N')+$canonical+$none),($freeze.Replace('cf=0','cf=1')+$canonical+$none),
+    ($freeze.Replace('hm=U','hm=N')+$canonical+$none),($freeze+$canonical+$none.Replace('w=none','w=passed')),
+    $pair.Replace('view=cached','view=post_decision'),$pair.Replace('; view=cached','; weapon_name=private; view=cached'),
+    ($pair+"[Collision readiness malformed`n"),($pair+$canonical)
+)
+if($badPairs.Count -ne 43 -or @($badPairs|Where-Object {$_ -isnot [string]}).Count){throw 'Diagnostic negative controls were grouped or skipped.'}
+$diagnosticPairRefusals=0
+foreach($badPair in $badPairs){
+    $d=Read-TestDiagnostic $badPair
+    if($d.Correlated -or $d.Status -cne 'INCONCLUSIVE' -or $d.CauseVerified){throw 'Malformed/stale/foreign cached pair produced positive diagnostic evidence.'}
+    $diagnosticPairRefusals++
+}
+# A valid diagnostic pair can never override the real readiness refusal.
+try{$null=Read-IW7CollisionPlayerReady ($wire+$pair) $token 42 $nonce 1100 1500;throw 'Diagnostic pair created a readiness fallback.'}
+catch{if($_.Exception.Data['CollisionWeaponPredicate'] -cne 'none'){throw}}
+
+function Assert-CachedDiagnosticSource([string]$Source){
+    $Source=$Source.Replace("`r`n","`n")
+    $functions=@{}
+    foreach($m in [regex]::Matches($Source,'(?ms)^([a-z_]+)\([^\n]*\)\n\{.*?^\}')){$functions[$m.Groups[1].Value]=$m.Value}
+    # All nine unmodified functions include canonical FAIL and the actual controls.
+    $fixed=@{
+        main='927B7FD98B7DD209BB6872571D1CD75A18C2F952272B8F899674DD217E8C8711'
+        quiet_arena='FAD1883E6C85DF3ACE182492E442F5687AA0B984D31E720FF69B971C1B8F97A5'
+        arena_clear='7C624F445F8692A0E5E999A58F28C8A199A877C0897C1DE652BDDD6E008792BF'
+        safe='2588C2B56F1CB47532B676F7C9DCAAE738907A786C23FADD2527C14059C45750'
+        sample='D89D9471C78A2456F76C9D1EF4761137CC9EECCF7206219DF65FEF8661F5CB3B'
+        fall='E2E7326B92AEF2C9ECBA5E9B6024B549BF1DDF932EFB31246CC03E7CE1ECD8FC'
+        place='9B3C0416B61DC4662A1278133E22A9AA38A0BF5D3150E3A8EC36836D7E116559'
+        audit='8DEFCD359773CAC7802FFA2E47D5F528EF7C3A6170323E6D2523C788CF6BCD2E'
+        fail='6CFFE52098EE3239052670A20FC80A5F012DEECD8D05C981FB1609384368BB6D'
+    }
+    foreach($name in $fixed.Keys){
+        if(!$functions.ContainsKey($name) -or [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+            [Text.Encoding]::UTF8.GetBytes($functions[$name]))) -cne $fixed[$name]){throw 'Original controller or canonical failure/cleanup changed.'}
+    }
+    $p=$functions['playable'];$c=$functions['contact'];$emitter=$functions['readiness_diagnostic'];$alphabet=$functions['diagnostic_alphabet']
+    foreach($call in @('safe(state)','state.player isonground()','player getcurrentweapon()','player getvelocity()',
+        'player hasweapon(weapon)','isdefined(weapon)','weapon != ""','weapon != "none"',
+        'flag_exist("introscreen_over")','flag("introscreen_over")','flag_exist("intro_gesture_done")','flag("intro_gesture_done")',
+        'isdefined(player.controlsfrozen)','isdefined(player.hostmigrationcontrolsfrozen)')){
+        if([regex]::Matches($p,[regex]::Escape($call)).Count -ne 1){throw 'Original readiness call count differs.'}
+    }
+    foreach($field in @('gr','hw','is','ig','cf','hm')){
+        $reset=$p.IndexOf('state.diag_'+$field+' = "N";',[StringComparison]::Ordinal)
+        if($reset -lt 0 -or $reset -gt $p.IndexOf('if (!safe(state))')){throw 'Per-evaluation cache reset missing.'}
+    }
+    foreach($field in @('player.controlsfrozen','player.hostmigrationcontrolsfrozen')){
+        if([regex]::Matches($p,[regex]::Escape($field)).Count -ne 2){throw 'Controls-field evaluation was added or removed.'}
+    }
+    if($p -notmatch 'if \(state.diag_eval >= 999999\) state.diag_enabled = false;\s+else state.diag_eval\+\+;' -or
+       [regex]::Matches($p,'state.diag_eval\+\+;').Count -ne 1 -or $p -match 'state.diag_eval = 0;'){
+        throw 'Diagnostic counter can wrap/reuse or exceed its bound.'
+    }
+    if([regex]::Matches($c,'paris_agent_observationstamp\(\)').Count -ne 1 -or
+       $c -notmatch 'stamp = state.player paris_agent_observationstamp\(\);\s+//[^\n]*\n\s+state.diag_stamp = stamp;\s+playable_now = playable\(state\);'){
+        throw 'Original stamp ingress re-observed, moved or reconstructed.'
+    }
+    foreach($stage in @('freeze','none')){
+        if([regex]::Matches($c,[regex]::Escape('readiness_diagnostic(state, "'+$stage+'");')).Count -ne 1 -or
+           $c -notmatch ('state.diag_'+$stage+'_attempted = true;\s+readiness_diagnostic\(state, "'+$stage+'"\);')){throw 'Diagnostic attempt is repeated or unguarded.'}
+    }
+    if($c.IndexOf('readiness_diagnostic(state, "freeze");') -lt $c.IndexOf('print("[Collision player] PLAYER_READY') -or
+       $c.IndexOf('readiness_diagnostic(state, "freeze");') -gt $c.IndexOf('if (getdvarint("paris_collision_probe_arm"))') -or
+       $c.IndexOf('readiness_diagnostic(state, "none");') -lt $c.IndexOf('fail(state, "frozen_anchor_readiness_lost");')){
+        throw 'Diagnostic emission precedes READY or canonical FAIL/cleanup normal return.'
+    }
+    foreach($call in [regex]::Matches(($emitter+$alphabet),'\b([a-z_]+)\s*\(')){
+        if($call.Groups[1].Value -cnotin @('readiness_diagnostic','diagnostic_alphabet','if','for','isdefined','issubstr','getsubstr','print')){
+            throw 'Optional output contains a new unreviewed call.'
+        }
+    }
+    if(($emitter+$alphabet) -match 'getcurrentweapon|getvelocity|isonground|hasweapon|paris_|getdvar|gettime\(|\bwait\b|\bnotify\(|state\.player|level\.' -or
+       $emitter -notmatch 'if \(line.size > 384\) return;\s+print\(line\);' -or
+       [regex]::Matches($emitter,'print\(').Count -ne 1 -or
+       $emitter -notmatch 'diagnostic_alphabet\(state.token, "0123456789abcdef", 32\)' -or
+       $emitter -notmatch 'diagnostic_alphabet\(state.diag_stamp, "0123456789abcdefghijklmnopqrstuvwxyz_ ;=", 178\)' -or
+       $emitter -notmatch 'state.diag_hw != "N" \|\| state.diag_is != "N"' -or
+       $alphabet -notmatch 'i < value.size' -or $alphabet -notmatch 'issubstr\(alphabet, getsubstr\(value, i, i \+ 1\)\)'){
+        throw 'Optional output reads new state, loses ASCII/bounds, or confuses unevaluated fields.'
+    }
+}
+Assert-CachedDiagnosticSource $gsc
+$sourceMutations=@(
+    $gsc.Replace('velocity = player getvelocity();','velocity = player getvelocity(); velocity = player getvelocity();'),
+    $gsc.Replace('state.diag_stamp = stamp;','state.diag_stamp = state.player paris_agent_observationstamp();'),
+    $gsc.Replace('state.diag_hw = "N";','state.diag_hw = "U";'),
+    $gsc.Replace('state.diag_eval >= 999999','state.diag_eval >= 1000000'),
+    $gsc.Replace('if (line.size > 384)','if (line.size > 385)'),
+    $gsc.Replace('state.owner collision_clearboxes();','state.owner delete();'),
+    $gsc.Replace('readiness_diagnostic(state, "none");','').Replace('fail(state, "frozen_anchor_readiness_lost");','readiness_diagnostic(state, "none"); fail(state, "frozen_anchor_readiness_lost");'),
+    $gsc.Replace('readiness_diagnostic(state, "freeze");','').Replace('print("[Collision player] PLAYER_READY','readiness_diagnostic(state, "freeze"); print("[Collision player] PLAYER_READY'),
+    $gsc.Replace('if (line.size > 384) return;','state.player getcurrentweapon(); if (line.size > 384) return;')
+)
+$sourceCausalRefusals=0
+foreach($mutation in $sourceMutations){
+    try{Assert-CachedDiagnosticSource $mutation}catch{$sourceCausalRefusals++;continue}
+    throw 'Source causal control failed to detect changed evaluation or cleanup placement.'
+}
+if($sourceCausalRefusals -ne 9){throw 'Source causal controls were grouped or skipped.'}
+Write-Output "PASS 4 optional cached pairs, $diagnosticPairRefusals INCONCLUSIVE controls, 9 Source causal refusals, 9 original functions exact; no engine execution."
 # Only the real GSC fixture reads retail intro/control state. These fixtures
 # verify the publication transport/freshness; they never fabricate that state.
 $created=[datetime]::Parse('2026-10-14T13:00:00Z').ToUniversalTime();$filetime=$created.ToFileTimeUtc()
@@ -207,4 +348,5 @@ if($GscToolPath){
         @($output|Where-Object{"$_" -match '^parsed iw7/collision_player_contact.gsc$'}).Count -ne 1){throw 'GSC source grammar failed.'}
     Write-Output 'PASS pinned GSC grammar; Aurora/runtime compilation remains untested.'
 }
-Write-Output "PASS collision player source grammar, pending/preview Plan, missing-original, $rejected identity, $readyRefusals readiness and $poseRefusals pose refusals; live effects=0; no fake retail intro/terrain state."
+if($effects.Count){throw 'Pure Source/diagnostic checks performed an external effect.'}
+Write-Output "PASS collision player Source ordering, pending/preview Plan, missing-original, $rejected identity, $readyRefusals readiness and $poseRefusals pose refusals; live effects=0; no fake retail intro/terrain state."

@@ -95,6 +95,55 @@ function Assert-IW7CollisionPlayerFrozenReady($First,$Current) {
         ($Current.Anchor -join ',') -cne ($First.Anchor -join ',')){throw 'Frozen stock-pose readiness changed/expired before arm.'}
 }
 
+function Read-IW7CollisionReadinessDiagnostic([string]$Text,[string]$Token,[int]$ServerId,[string]$ClientNonce,
+    [string]$Generation,[long]$NotBeforeTick,[long]$NowTick) {
+    # Optional pure evidence. Never called by the readiness/arm decision.
+    function Inconclusive([string]$Reason) {
+        [pscustomobject]@{Status='INCONCLUSIVE';Correlated=$false;Reason=$Reason;DiagnosticOnly=$true;CauseVerified=$false}
+    }
+    if($Text.Length -gt 16MB -or $Token -cnotmatch '^[a-f0-9]{32}$' -or $ServerId -le 0 -or
+       $ClientNonce -cnotmatch '^[a-f0-9]{32}$' -or $Generation -cnotmatch '^[a-f0-9]{32}$' -or
+       $NotBeforeTick -lt 0 -or $NowTick -lt $NotBeforeTick){return (Inconclusive 'Invalid bounded owned input.')}
+    if(!$Text.EndsWith("`n",[StringComparison]::Ordinal)){return (Inconclusive 'Unterminated transcript; no predecessor fallback.')}
+    $rows=[regex]::Matches($Text,'(?m)^\[Collision readiness[^\n]*\n',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if($rows.Count -ne 2){return (Inconclusive 'Exactly two complete diagnostic events required.')}
+    $pattern='^\[Collision readiness\] token='+$Token+' stage=(freeze|none) eval=([1-9][0-9]{0,5}); server_pid='+$ServerId+
+        '; client_nonce='+$ClientNonce+'; server_generation='+$Generation+'; slot=0; native_tick_ms=(0|[1-9][0-9]{0,19}); protected=1'+
+        '; gr=([01UN]); w=(passed|none); hw=([01UN]); is=([01UN]); ig=([01UN]); cf=([01UN]); hm=([01UN]); view=cached$'
+    $events=@()
+    foreach($row in $rows){
+        $line=$row.Value.Substring(0,$row.Value.Length-1)
+        if($line.EndsWith("`r",[StringComparison]::Ordinal)){$line=$line.Substring(0,$line.Length-1)}
+        if($line.Length -gt 384 -or $line -cmatch '[^\x20-\x7E]'){return (Inconclusive 'Oversized or non-ASCII diagnostic row.')}
+        $m=[regex]::Match($line,$pattern)
+        if(!$m.Success){return (Inconclusive 'Malformed, duplicate-field or foreign diagnostic row.')}
+        $tick=0L
+        if(![long]::TryParse($m.Groups[3].Value,[Globalization.NumberStyles]::None,[Globalization.CultureInfo]::InvariantCulture,[ref]$tick) -or
+           $tick -lt $NotBeforeTick -or $tick -gt $NowTick){return (Inconclusive 'Stale, future or out-of-domain diagnostic tick.')}
+        $events+=,[pscustomobject]@{Stage=$m.Groups[1].Value;Eval=[int]$m.Groups[2].Value;Tick=$tick;Offset=$row.Index;
+            Ground=$m.Groups[4].Value;Weapon=$m.Groups[5].Value;HasWeapon=$m.Groups[6].Value;Intro=$m.Groups[7].Value;
+            Gesture=$m.Groups[8].Value;Controls=$m.Groups[9].Value;Migration=$m.Groups[10].Value}
+    }
+    $freeze=$events[0];$none=$events[1]
+    if($freeze.Stage -cne 'freeze' -or $none.Stage -cne 'none' -or $none.Eval -le $freeze.Eval -or $none.Tick -le $freeze.Tick -or
+       $freeze.Ground -cne '1' -or $freeze.Weapon -cne 'passed' -or $freeze.HasWeapon -cne '1' -or
+       $freeze.Intro -cne '1' -or $freeze.Gesture -cne '1' -or $freeze.Controls -cne '0' -or $freeze.Migration -cnotin @('0','U') -or
+       $none.Ground -cne '1' -or $none.Weapon -cne 'none' -or $none.HasWeapon -cne 'N' -or $none.Intro -cne 'N' -or
+       $none.Gesture -cne 'N' -or $none.Controls -cne 'N' -or $none.Migration -cne 'N'){
+        return (Inconclusive 'Event order, monotonic correlation or cached predicate semantics differ.')
+    }
+    # The first complete owned failure stays authoritative, even if a later row looks valid.
+    $failures=[regex]::Matches($Text,'(?m)^\[Collision player\] FAIL token='+$Token+' [^\n]*\n',
+        [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if($failures.Count -ne 1 -or $failures[0].Index -le $freeze.Offset -or $failures[0].Index -ge $none.Offset -or
+       $failures[0].Value -cnotmatch ('^\[Collision player\] FAIL token='+$Token+
+        ' reason=frozen_anchor_readiness_lost readiness_group=weapon stamp_state=available weapon_predicate=none\r?\n$')){
+        return (Inconclusive 'Canonical first refusal must precede terminal diagnostics; no readiness fallback.')
+    }
+    [pscustomobject]@{Status='CORRELATED';Correlated=$true;DiagnosticOnly=$true;CauseVerified=$false;Events=$events;
+        Meaning='Cached transition only; no inventory, cleanup, readiness, contact or owner acceptance inferred.'}
+}
+
 function Read-IW7CollisionPlayerNative([string]$Text,[uint32]$Instance,[int]$BeforeCreateOffset,[int]$CreatedOffset,[int]$BeforeRemovalOffset,[int]$RemovedOffset) {
     $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)';$culture=[Globalization.CultureInfo]::InvariantCulture
     $created=Get-IW7CollisionPlayerOne $Text ('(?m)^\[Collision provider\] created world=0 entity=(\d+) instance='+$Instance+' original_vertices=8 contents=1 template=([^\r\n]+)[\t ]*\r?$')
