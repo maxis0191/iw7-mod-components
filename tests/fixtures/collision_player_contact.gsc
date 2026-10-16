@@ -59,11 +59,25 @@ safe(state)
 playable(state)
 {
     // Reset on every evaluation. Diagnostics never re-query a failed predicate.
+    state.diag_gr = "N";
+    state.diag_hw = "N";
+    state.diag_is = "N";
+    state.diag_ig = "N";
+    state.diag_cf = "N";
+    state.diag_hm = "N";
+    if (state.diag_enabled)
+    {
+        if (state.diag_eval >= 999999) state.diag_enabled = false;
+        else state.diag_eval++;
+    }
     state.readiness_weapon_predicate = "not_evaluated";
     state.readiness_first_failure = "safe";
     if (!safe(state)) return false;
     state.readiness_first_failure = "ground";
-    if (!state.player isonground()) return false;
+    grounded = state.player isonground();
+    state.diag_gr = "0";
+    if (grounded) state.diag_gr = "1";
+    if (!grounded) return false;
     player = state.player;
     weapon = player getcurrentweapon();
     velocity = player getvelocity();
@@ -76,18 +90,47 @@ playable(state)
     state.readiness_weapon_predicate = "none";
     if (!(weapon != "none")) return false;
     state.readiness_weapon_predicate = "not_owned";
-    if (!(player hasweapon(weapon))) return false;
+    owned = player hasweapon(weapon);
+    state.diag_hw = "0";
+    if (owned) state.diag_hw = "1";
+    if (!owned) return false;
     state.readiness_weapon_predicate = "passed";
     state.readiness_first_failure = "velocity";
     if (!(isdefined(velocity) && distance(velocity, (0,0,0)) <= 1)) return false;
     state.readiness_first_failure = "intro_screen";
-    if (!(scripts\engine\utility::flag_exist("introscreen_over") && scripts\engine\utility::flag("introscreen_over"))) return false;
+    intro_exists = scripts\engine\utility::flag_exist("introscreen_over");
+    state.diag_is = "U";
+    if (!intro_exists) return false;
+    intro_over = scripts\engine\utility::flag("introscreen_over");
+    state.diag_is = "0";
+    if (intro_over) state.diag_is = "1";
+    if (!intro_over) return false;
     state.readiness_first_failure = "intro_gesture";
-    if (!(scripts\engine\utility::flag_exist("intro_gesture_done") && scripts\engine\utility::flag("intro_gesture_done"))) return false;
+    gesture_exists = scripts\engine\utility::flag_exist("intro_gesture_done");
+    state.diag_ig = "U";
+    if (!gesture_exists) return false;
+    gesture_done = scripts\engine\utility::flag("intro_gesture_done");
+    state.diag_ig = "0";
+    if (gesture_done) state.diag_ig = "1";
+    if (!gesture_done) return false;
     state.readiness_first_failure = "controls";
-    if (!(isdefined(player.controlsfrozen) && !player.controlsfrozen)) return false;
+    controls_defined = isdefined(player.controlsfrozen);
+    state.diag_cf = "U";
+    if (!controls_defined) return false;
+    controls_frozen = player.controlsfrozen;
+    state.diag_cf = "0";
+    if (controls_frozen) state.diag_cf = "1";
+    if (controls_frozen) return false;
     state.readiness_first_failure = "hostmigration";
-    if (!(!isdefined(player.hostmigrationcontrolsfrozen) || !player.hostmigrationcontrolsfrozen)) return false;
+    migration_defined = isdefined(player.hostmigrationcontrolsfrozen);
+    state.diag_hm = "U";
+    if (migration_defined)
+    {
+        migration_frozen = player.hostmigrationcontrolsfrozen;
+        state.diag_hm = "0";
+        if (migration_frozen) state.diag_hm = "1";
+        if (migration_frozen) return false;
+    }
     state.readiness_first_failure = "ready";
     return true;
 }
@@ -173,6 +216,10 @@ contact()
     state.token = getdvar("paris_collision_probe_token");
     state.anchor_frozen = false;
     state.owner = undefined;
+    state.diag_enabled = true;
+    state.diag_eval = 0;
+    state.diag_freeze_attempted = false;
+    state.diag_none_attempted = false;
     deadline = gettime() + 180000;
     stable = -1;
     print("[Collision player] READY token=" + state.token);
@@ -186,6 +233,8 @@ contact()
             state.player paris_test_protect();
             print("[Paris agent heartbeat] map=cp_zmb; " + state.player paris_test_safety_snapshot());
             stamp = state.player paris_agent_observationstamp();
+            // Copy this iteration's original result; never observe again for diagnostics.
+            state.diag_stamp = stamp;
             playable_now = playable(state);
             state.readiness_stamp_state = "undefined";
             if (isdefined(stamp))
@@ -210,12 +259,27 @@ contact()
                     }
                     print("[Collision player] PLAYER_READY token=" + state.token + "; " + stamp +
                         "; anchor_x=" + state.anchor[0] + "; anchor_y=" + state.anchor[1] + "; anchor_z=" + state.anchor[2]);
+                    if (!state.diag_freeze_attempted)
+                    {
+                        state.diag_freeze_attempted = true;
+                        readiness_diagnostic(state, "freeze");
+                    }
                     if (getdvarint("paris_collision_probe_arm")) break;
                 }
             }
             else
             {
-                if (state.anchor_frozen) { fail(state, "frozen_anchor_readiness_lost"); return; }
+                if (state.anchor_frozen)
+                {
+                    // Canonical FAIL and all owner cleanup finish before optional output.
+                    fail(state, "frozen_anchor_readiness_lost");
+                    if (!state.diag_none_attempted && state.readiness_first_failure == "weapon" && state.readiness_weapon_predicate == "none")
+                    {
+                        state.diag_none_attempted = true;
+                        readiness_diagnostic(state, "none");
+                    }
+                    return;
+                }
                 stable = -1;
             }
         }
@@ -296,4 +360,40 @@ fail(state, reason)
         state.owner delete();
         state.owner = undefined;
     }
+}
+
+diagnostic_alphabet(value, alphabet, maximum)
+{
+    // Existing pure string primitives; no world/weapon/control query or yield.
+    if (!isdefined(value) || value.size < 1 || value.size > maximum) return false;
+    for (i = 0; i < value.size; i++)
+        if (!issubstr(alphabet, getsubstr(value, i, i + 1))) return false;
+    return true;
+}
+
+readiness_diagnostic(state, stage)
+{
+    // Optional output is not readiness. Allocation/printing can affect timing.
+    if (!state.diag_enabled || state.diag_eval < 1 || state.diag_eval > 999999) return;
+    if (!diagnostic_alphabet(state.token, "0123456789abcdef", 32) || state.token.size != 32) return;
+    if (!diagnostic_alphabet(state.diag_stamp, "0123456789abcdefghijklmnopqrstuvwxyz_ ;=", 178) ||
+        state.diag_stamp == "unavailable") return;
+    if (stage == "freeze")
+    {
+        if (state.readiness_first_failure != "ready" || state.readiness_weapon_predicate != "passed" ||
+            state.diag_gr != "1" || state.diag_hw != "1" || state.diag_is != "1" || state.diag_ig != "1" ||
+            state.diag_cf != "0" || (state.diag_hm != "0" && state.diag_hm != "U")) return;
+    }
+    else if (stage == "none")
+    {
+        if (state.readiness_first_failure != "weapon" || state.readiness_weapon_predicate != "none" ||
+            state.diag_gr != "1" || state.diag_hw != "N" || state.diag_is != "N" || state.diag_ig != "N" ||
+            state.diag_cf != "N" || state.diag_hm != "N") return;
+    }
+    else return;
+    line = "[Collision readiness] token=" + state.token + " stage=" + stage + " eval=" + state.diag_eval + "; " + state.diag_stamp +
+        "; gr=" + state.diag_gr + "; w=" + state.readiness_weapon_predicate + "; hw=" + state.diag_hw +
+        "; is=" + state.diag_is + "; ig=" + state.diag_ig + "; cf=" + state.diag_cf + "; hm=" + state.diag_hm + "; view=cached";
+    if (line.size > 384) return;
+    print(line);
 }

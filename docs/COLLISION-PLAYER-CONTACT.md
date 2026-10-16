@@ -1,5 +1,58 @@
 # Protected authoritative player contact
 
+## Cached readiness diagnostics candidate - 2026-10-16
+
+E3 refused before arm with `frozen_anchor_readiness_lost`, group `weapon`,
+available stamp and predicate `none`. Its original lifecycle is known closed;
+F0/F1/F2 did not pass. The reason for `none`, inventory contents, prediction,
+world reset and owner acceptance remain unknown. The retail intro flag precedes
+later gesture/control work in the retained reference corpus, but the complete
+gate had already permitted an anchor. This is a timing hypothesis, not a cause.
+
+The cached-only candidate follows the reviewed text contract SHA-256
+`31BAC865D9F862A8E291E4679A08543E813F738725299D339D67B288B65730F6`
+and ingress addendum
+`A629CA7870F360A228699740E59FB737E4FCBE306CD8F8FCF9C719A493C7A87D`.
+It retains each original predicate's evaluated result, preserving order,
+short circuits and calls. Every invocation resets later fields to `N`
+(`not_evaluated`); `U` means absence actually checked by the original predicate.
+The original per-iteration stamp is copied before `playable`, never queried
+again. The bounded index disables diagnostics at exhaustion without changing
+readiness or reusing an index.
+
+At most two supplemental `[Collision readiness]` rows are attempted: first
+anchor freeze after its original `PLAYER_READY`, and a later `none` failure
+only after `fail` returns normally, including canonical `FAIL` and all owner
+cleanup. All nine original functions outside `playable`/`contact`, including
+`fail`, stay byte-identical to e879. If failure/cleanup throws,
+the optional terminal event is not guaranteed. No new exception mechanism,
+wait, input, grant, dvar activation, state getter or clock query is added.
+
+Scalar string provenance comes from the existing native string producer and
+owned token. The existing retail string primitives `getsubstr` and `issubstr`
+validate bounded ASCII alphabets in memory; they do not query world state.
+The fixed row has a 324-character producer bound and a hard 384-character
+ceiling. Unknown/absent values suppress output. These extra memory operations,
+string calls, allocations and two optional prints can affect timing or fail;
+the observation is not claimed to be neutral.
+
+`Read-IW7CollisionReadinessDiagnostic` is a separate pure optional reader. It is
+not called by the operation or readiness/arm reader. It requires exactly two
+complete ASCII events, original token/PID/nonce/generation/slot/protection,
+strictly increasing index and native ticks in the supplied time interval,
+the allowed cached states, and canonical first refusal between the events.
+Missing, partial, duplicate, foreign, stale or malformed data returns
+`INCONCLUSIVE`. A correlated pair proves only its recorded transition; it
+cannot produce `Ready`, arm authority, contact success or a cause. In
+particular, `HasWeapon` remains `N` on `none`; no inventory query is added.
+
+Pure Source checks exercise the real reader with four valid pairs and 43
+negative controls, plus nine Source causal mutations and hashes of all nine
+unchanged original functions. They check ordering/counts and ASCII bounds;
+they do not interpret or compile GSC. This candidate still needs exact-head
+review. No native/GSC engine execution, runtime observation, new Source export
+adoption, merge or Game authorization follows from these checks.
+
 2026-10-14: **source-only, not run**. E already measured server point/actor
 queries and usage restoration; it did not measure a real player's movement.
 This separate fixture/operation prepares that next control without enabling
