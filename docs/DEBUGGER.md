@@ -436,6 +436,8 @@ identity, ABI, symbol/function/line mapping, actual runtime layout, game-cause
 and stack qualification remain false. No game, attach, exception capture, scan,
 disassembly or installer was invoked; no symbol-server path or acquisition was
 requested. Native-library I/O and network behavior were not independently traced.
+The existing `SECURE`/`NO_PROMPTS` options alone do not prove offline execution
+([Microsoft option documentation](https://learn.microsoft.com/en-us/windows/win32/api/dbghelp/nf-dbghelp-symsetoptions)).
 
 Native symbol cleanup and the owned library-reference release were confirmed.
 The worker reverified all three original inputs and closed their handles. The
