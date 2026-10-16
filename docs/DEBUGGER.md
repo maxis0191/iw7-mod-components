@@ -434,7 +434,8 @@ The seven imports, full structures, options, call order and module acceptance
 were unchanged. `SymFromAddr` and line lookup were not reached. Interface/module
 identity, ABI, symbol/function/line mapping, actual runtime layout, game-cause
 and stack qualification remain false. No game, attach, exception capture, scan,
-disassembly, symbol server, installer or acquisition was invoked.
+disassembly or installer was invoked; no symbol-server path or acquisition was
+requested. Native-library I/O and network behavior were not independently traced.
 
 Native symbol cleanup and the owned library-reference release were confirmed.
 The worker reverified all three original inputs and closed their handles. The
