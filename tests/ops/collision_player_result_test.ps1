@@ -51,6 +51,21 @@ function Read-Case([string]$Value){Read-IW7CollisionPlayerResult -Text $Value -P
 $r=Read-Case $text
 if(!$r.Complete -or !$r.ServerPlayerContactVerified -or !$r.PostRemovalPlayerFallVerified -or $r.ClientPredictionVerified -or $r.PhysicsWorldResetVerified -or $r.ActorShapeQualified -or $r.OwnerAccepted){throw 'Narrow valid movement case failed.'}
 if((Read-Case $text.TrimEnd("`n")).Complete -or (Read-Case ($text.Replace("DONE token=$token","DONE token=cccccccccccccccccccccccccccccccc"))).Complete){throw 'Partial/foreign completion accepted.'}
+# Native point/actor controls and a DONE marker cannot replace real player data.
+$nativeOnly=[regex]::Replace($text,'(?m)^\[Collision player\] SAMPLE [^\r\n]*\r?\n','')
+$retained='(?m)^\[(?:Collision provider|Collision player)\] (?!SAMPLE )[^\r\n]*\r?$'
+if($nativeOnly -ceq $text -or $nativeOnly -match '(?m)^\[Collision player\] SAMPLE ' -or
+    [regex]::Matches($nativeOnly,'(?m)^\[Collision provider\] engine_query=').Count -ne 6 -or
+    [regex]::Matches($nativeOnly,'(?m)^\[Collision provider\] template_usage phase=').Count -ne 6 -or
+    ([regex]::Matches($nativeOnly,$retained).Value -join "`n") -cne ([regex]::Matches($text,$retained).Value -join "`n")){
+    throw 'Native-only causal case must remove only SAMPLE rows and preserve all native controls/counts/phase markers.'
+}
+$nativeOnlyRefused=$false
+try{$nativeOnlyResult=Read-Case $nativeOnly}catch{
+    if($_.Exception.Message -cne 'Insufficient real player observations.'){throw}
+    $nativeOnlyRefused=$true
+}
+if(!$nativeOnlyRefused){throw 'Native point/actor success without player SAMPLE rows qualified contact.'}
 $bad=@(
     $text.Replace("AUDIT token=$token x=0","AUDIT token=$token x=1"),
     $text.Replace("client_nonce=$nonce","client_nonce=cccccccccccccccccccccccccccccccc"),
@@ -75,4 +90,4 @@ $bad=@(
 $rejected=0
 foreach($case in $bad){if($case -ceq $text){throw 'Negative fixture did not change its causal input.'};try{$null=Read-Case $case}catch{$rejected++;continue};throw 'Invalid movement transcript accepted.'}
 foreach($anchor in @(@([double]::NaN,0,0),@(0,0,30001),@(0,0))){try{$null=New-IW7CollisionPlayerPlan $anchor $token}catch{$rejected++;continue};throw 'Invalid geometry plan accepted.'}
-Write-Output "PASS collision player pure transcript: valid narrow case and $rejected causal refusals; no engine/gameplay qualification."
+Write-Output "PASS collision player pure transcript: valid narrow case, native-only contact refusal and $rejected other causal refusals; no engine/gameplay qualification."
