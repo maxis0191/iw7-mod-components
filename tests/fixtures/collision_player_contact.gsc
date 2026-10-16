@@ -58,16 +58,29 @@ safe(state)
 
 playable(state)
 {
-    if (!safe(state) || !state.player isonground()) return false;
+    // Reset on every evaluation. Diagnostics never re-query a failed predicate.
+    state.readiness_first_failure = "safe";
+    if (!safe(state)) return false;
+    state.readiness_first_failure = "ground";
+    if (!state.player isonground()) return false;
     player = state.player;
     weapon = player getcurrentweapon();
     velocity = player getvelocity();
-    return isdefined(weapon) && weapon != "" && weapon != "none" && player hasweapon(weapon) &&
-        isdefined(velocity) && distance(velocity, (0,0,0)) <= 1 &&
-        scripts\engine\utility::flag_exist("introscreen_over") && scripts\engine\utility::flag("introscreen_over") &&
-        scripts\engine\utility::flag_exist("intro_gesture_done") && scripts\engine\utility::flag("intro_gesture_done") &&
-        isdefined(player.controlsfrozen) && !player.controlsfrozen &&
-        (!isdefined(player.hostmigrationcontrolsfrozen) || !player.hostmigrationcontrolsfrozen);
+    // Keep both original eager getters above, including when weapon is invalid.
+    state.readiness_first_failure = "weapon";
+    if (!(isdefined(weapon) && weapon != "" && weapon != "none" && player hasweapon(weapon))) return false;
+    state.readiness_first_failure = "velocity";
+    if (!(isdefined(velocity) && distance(velocity, (0,0,0)) <= 1)) return false;
+    state.readiness_first_failure = "intro_screen";
+    if (!(scripts\engine\utility::flag_exist("introscreen_over") && scripts\engine\utility::flag("introscreen_over"))) return false;
+    state.readiness_first_failure = "intro_gesture";
+    if (!(scripts\engine\utility::flag_exist("intro_gesture_done") && scripts\engine\utility::flag("intro_gesture_done"))) return false;
+    state.readiness_first_failure = "controls";
+    if (!(isdefined(player.controlsfrozen) && !player.controlsfrozen)) return false;
+    state.readiness_first_failure = "hostmigration";
+    if (!(!isdefined(player.hostmigrationcontrolsfrozen) || !player.hostmigrationcontrolsfrozen)) return false;
+    state.readiness_first_failure = "ready";
+    return true;
 }
 
 sample(state, phase)
@@ -164,7 +177,15 @@ contact()
             state.player paris_test_protect();
             print("[Paris agent heartbeat] map=cp_zmb; " + state.player paris_test_safety_snapshot());
             stamp = state.player paris_agent_observationstamp();
-            if (playable(state) && isdefined(stamp) && stamp != "" && stamp != "unavailable")
+            playable_now = playable(state);
+            state.readiness_stamp_state = "undefined";
+            if (isdefined(stamp))
+            {
+                state.readiness_stamp_state = "available";
+                if (stamp == "") state.readiness_stamp_state = "empty";
+                else if (stamp == "unavailable") state.readiness_stamp_state = "unavailable";
+            }
+            if (playable_now && isdefined(stamp) && stamp != "" && stamp != "unavailable")
             {
                 if (state.anchor_frozen && distance(state.player.origin, state.anchor) > 1) { fail(state, "anchor_pose_changed_before_arm"); return; }
                 if (stable < 0) stable = gettime();
@@ -252,7 +273,10 @@ contact()
 fail(state, reason)
 {
     state.failed = true;
-    print("[Collision player] FAIL token=" + state.token + " reason=" + reason);
+    line = "[Collision player] FAIL token=" + state.token + " reason=" + reason;
+    if (reason == "frozen_anchor_readiness_lost")
+        line += " readiness_group=" + state.readiness_first_failure + " stamp_state=" + state.readiness_stamp_state;
+    print(line);
     if (isdefined(state.owner))
     {
         state.owner collision_clearboxes();
