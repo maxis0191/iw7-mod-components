@@ -121,7 +121,7 @@ async def query(port):
     from serve_project import READ_TOOLS
     timings, outputs = [], []
     for client in range(2):
-        async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read, write, _):
+        async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 names = {t.name for t in (await session.list_tools()).tools}

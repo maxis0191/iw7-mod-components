@@ -8,7 +8,7 @@ from serve_project import READ_TOOLS
 
 
 async def query(port, name, arguments):
-    async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read, write, _):
+    async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool(name, arguments)
