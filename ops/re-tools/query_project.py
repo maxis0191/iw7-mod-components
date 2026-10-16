@@ -13,7 +13,7 @@ async def query(port, name, arguments):
             await session.initialize()
             result = await session.call_tool(name, arguments)
             print(result.model_dump_json())
-            return 1 if result.isError else 0
+            return 1 if result.is_error else 0
 
 
 def main():

@@ -127,7 +127,7 @@ async def query(port):
                 names = {t.name for t in (await session.list_tools()).tools}
                 assert names == set(READ_TOOLS), names
                 listing = await session.call_tool("list_project_binaries", {})
-                assert not listing.isError
+                assert not listing.is_error
                 for _ in range(2):
                     start = time.perf_counter()
                     answer = await session.call_tool("decompile_function", {
@@ -135,12 +135,12 @@ async def query(port):
                         "timeout_sec": 10,
                     })
                     timings.append(time.perf_counter() - start)
-                    assert not answer.isError, answer
+                    assert not answer.is_error, answer
                     text = json.dumps(answer.model_dump(mode="json"))
                     assert "return" in text and "clamp_sum" in text, text
                     outputs.append(text)
                 forbidden = await session.call_tool("import_binary", {"path": "never-imported.exe"})
-                assert forbidden.isError
+                assert forbidden.is_error
     assert len(set(outputs)) == 1
     return dict(clients=2, queries=4, query_seconds=timings,
                 same_decompilation=True, inspection_tools=len(names), import_refused=True)
