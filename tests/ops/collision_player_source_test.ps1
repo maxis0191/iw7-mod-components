@@ -78,6 +78,8 @@ $diagnosticCases=@(
     @{Text=$wire+$knownFailure+"`n";Reason='frozen_anchor_readiness_lost';Group=$null;Stamp=$null},
     @{Text=$knownFailure+$details+"`n"+$wire;Reason='frozen_anchor_readiness_lost';Group='controls';Stamp='available'},
     @{Text=$wire+$knownFailure+' readiness_group=ready stamp_state=unavailable'+"`n";Reason='frozen_anchor_readiness_lost';Group='ready';Stamp='unavailable'},
+    @{Text=$wire+$knownFailure.Replace('[Collision player] FAIL','[CoLlIsIoN PlAyEr] fAiL')+$details+"`n";Reason=$null;Group=$null;Stamp=$null},
+    @{Text=$wire+$knownFailure.Replace($token,$token.ToUpperInvariant())+$details+"`n";Reason=$null;Group=$null;Stamp=$null},
     @{Text=$wire+"[Collision player] FAIL token=$token reason=anchor_pose_changed_before_arm`n";Reason='anchor_pose_changed_before_arm';Group=$null;Stamp=$null},
     @{Text=$wire+"[Collision player] FAIL token=$token reason=unknown_private_value`n";Reason=$null;Group=$null;Stamp=$null},
     @{Text=$wire+$knownFailure+' readiness_group=untrusted_private_value stamp_state=available'+"`n";Reason=$null;Group=$null;Stamp=$null},

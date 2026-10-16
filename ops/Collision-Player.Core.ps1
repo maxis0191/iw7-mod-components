@@ -39,8 +39,9 @@ function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerI
     $last=$Text.LastIndexOf("`n")
     if($last -ge 0){
         $complete=$Text.Substring(0,$last+1)
-        $failure=[regex]::Match($complete,'(?m)^\[Collision player\] FAIL token='+$Token+' ')
+        $failure=[regex]::Match($complete,'(?m)^\[Collision player\] FAIL token='+$Token+' ',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
         if($failure.Success){
+            # Preserve the original -match case-insensitive refusal semantics.
             # Any complete owned FAIL still wins over every ready publication.
             # Parse only a short, allowlisted diagnostic from that first failure.
             $reason=$null;$group=$null;$stampState=$null

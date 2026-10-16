@@ -178,7 +178,13 @@ any ready publication. It reports only allowlisted, bounded reasons/details in
 the exception message and Data. Unknown, malformed, incompatible or oversized
 diagnostics remain generic refusals; foreign-token and incomplete-line handling
 retain their existing behavior. It never falls back to an earlier Ready or a
-later, more convenient failure. No timeout, freshness limit, frozen pose,
+later, more convenient failure. Detection retains the original PowerShell
+case-insensitive FAIL/prefix/token semantics; diagnostic parsing remains strict.
+Source candidate 381ff93 accidentally changed detection to case-sensitive. Review
+reproduced fallback to a preceding Ready for a mixed-case prefix or uppercase
+token. It was rejected before adoption, and the corrective commit preserves it
+in history with both production-reader causal refusals.
+No timeout, freshness limit, frozen pose,
 protection/privacy condition, controller input or F0/F1/F2 measurement changed.
 
 Validation is limited to PowerShell grammar, production-reader causal tests and
