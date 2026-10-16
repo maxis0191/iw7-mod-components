@@ -2,6 +2,12 @@
   "schema": "iw7.product/1",
   "id": "iw7-mod-components",
   "exports": [
+    "docs/RE-TOOLS.md",
+    "ops/Install-ReTools.ps1",
+    "ops/re-tools/serve_project.py",
+    "ops/re-tools/query_project.py",
+    "ops/re-tools/qualify_tools.py",
+    "ops/re-tools/requirements.lock.txt",
     "docs/SOURCE-GUARD-ROOT-CANDIDATE.md",
     "ops/diagnostics/SourceGuardRootCandidate.cs",
     "tests/managed/source_guard_root_candidate_test.cs",
