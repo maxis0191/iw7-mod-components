@@ -42,8 +42,11 @@ An idle JVM still belongs to that admitted session; do not leave it behind a
 released lease. Persistent means repeated queries within a session and reuse of
 the saved project between sessions, not an unaccounted permanent service.
 
-Set command-local `JAVA_HOME` to the existing JDK, then run the following inside
-`Invoke-IW7ResourceJob -Kind Analysis` (see [resource workflow](RESOURCE-WORKFLOW.md)):
+Set command-local `JAVA_HOME` to the existing JDK. Submit the following executable
+and arguments to the existing reviewed process/job owner under an Analysis lease
+(see [resource workflow](RESOURCE-WORKFLOW.md)). The lease wrapper alone is not a
+process-tree owner: keep its original handles through shutdown and empty-job
+verification. The qualification below reused the existing `NativeJob` provider.
 
 ```powershell
 & '<venv>/Scripts/python.exe' -B ./ops/re-tools/serve_project.py `
@@ -70,8 +73,10 @@ Other chats can query the existing session through
 
 The same endpoint is a standard Streamable HTTP MCP at
 `http://127.0.0.1:8765/mcp`. Do not globally enable a connection that every new
-chat would expect to be permanently running. CLI access is the qualified route
-for existing chats; optional client registration does not start the server.
+chat would expect to be permanently running. The CLI is available for existing
+chats; its model compatibility is tested without HTTP, but its command entry
+point has not been exercised against the real server. The real test below uses
+two inline MCP clients. Optional client registration does not start the server.
 
 ## Qualification and limits
 
@@ -96,6 +101,38 @@ It does not establish an IW7 ABI, cross-game matches, a BSim database search,
 concurrent mutation safety, gameplay, or speedup versus the previous adapter.
 BSim similarity is a lead: even a perfect match cannot validate transferred types.
 Measured engine research remains a separate, narrowly scoped next operation.
+
+## Recorded qualification, 16 October 2026
+
+Source `f721bf95e94a07cf40cc858ff231cc11a0f1951a` passed the authored-fixture test.
+Two successive real MCP clients requested four decompilations from the same
+server/project and received identical output. Project listing and decompilation
+were exercised; nine registered read tools do not mean nine qualified tools.
+The unregistered import tool was refused. No Chroma state was created in the
+test's state directory, and the server exited zero. The original process owner
+observed Python exit zero and zero active job processes before closing handles
+and releasing the lease; the host was retained for final coordinator review.
+
+BSim similarity was 1.0 for the duplicate authored functions and 0.0 for the
+different control. Decompilation calls took 0.463439, 0.015811, 0.027056 and
+0.014341 seconds. These are small-fixture observations, not an IW7 performance
+benchmark or a comparison against the previous adapter. Total child test time
+was 26.141 seconds; the parent lifecycle completed in 27.543 seconds.
+
+Earlier failures remain in Git history and local evidence: A used an incomplete
+Java loader class name; B reached BSim but expected three transport values from
+the pinned SDK that yields two; C connected and listed tools but used `isError`
+instead of the SDK's `is_error`. Each failed attempt exited one and its original
+job closed. The minimal fixes are separate commits. The added three-case
+`tests/ops/re_tools_sdk_test.py` passes using real pinned SDK models/signatures
+with fake sessions and transport (0.028 seconds in the recorded run); it catches
+these client-shape errors without HTTP, Ghidra or a JVM.
+
+Local qualification JSON SHA-256:
+`854CA2D1A349F1C38754CECF7C04D44CDFBD04FD2BC2EC8334D954698F59287D`.
+Original-host postflight SHA-256:
+`DD004A269F411182A3098056973156091906EC7B98411D68FED8499C23C7EEC1`.
+Machine paths, process identities and generated project files remain local.
 
 Primary sources: [PyGhidra](https://github.com/NationalSecurityAgency/ghidra/tree/master/Ghidra/Features/PyGhidra),
 [pinned MCP source](https://github.com/clearbluejar/pyghidra-mcp/tree/42d8f80551a765441b1a723f6f1ff45aa3914d5e),
