@@ -1,5 +1,12 @@
 # Product ownership
 
+Owner correction, 2026-10-16: the primary objective is deep, reusable control of
+IW7's own engine and rules. BO3 is an optional use case, not a prerequisite or
+ceiling. Follow the SDK's ENGINE-MODDING-STRATEGY.md and this product's RE-TOOLS.md.
+The execution orchestrator keeps worker reports and resource sequencing;
+hourly strategic review is not an extra routine approval gate. Preserve specific
+stops, retired Rhino and the cancelled HUD showcase.
+
 Private engine/client components, voice protocol, native diagnostics, scoped test hooks and shared process/resource helpers. Server gameplay rules and asset serializers have other owners.
 
 Before editing, classify the change by product and inspect `product.json`,
