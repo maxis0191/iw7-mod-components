@@ -76,8 +76,8 @@ def fixture(root, ghidra):
     binary.write_bytes(data)
     with pyghidra.open_program(binary, project_location=root, project_name="authored",
             language="x86:LE:64:default", compiler="windows", analyze=False,
-            loader="BinaryLoader", nested_project_location=False) as api:
-        program = api.currentProgram
+            loader="ghidra.app.util.opinion.BinaryLoader", nested_project_location=False) as api:
+        program = api.getCurrentProgram()
         tx = program.startTransaction("Define three authored fixture functions")
         try:
             functions = []
