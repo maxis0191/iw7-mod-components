@@ -406,6 +406,77 @@ before the unchanged predicate. A failed/not-reached call must leave no fabricat
 snapshot. Imports, structs, options, call order and module acceptance stay fixed.
 Any operational sibling then needs exact review and a distinct fresh Analysis GO.
 
+### H3: only PdbUnmatched refuses; its underlying cause remains unknown
+
+The one separately reviewed H3 invocation on 2026-10-16 UTC remains `Refused`
+at `Resolve.ValidateModuleIdentity`, with the legacy message
+`PE/PDB GUID-age mismatch`. Its new owned diagnostic snapshot identifies the
+single failing clause of the unchanged conjunction:
+
+| Returned module field | Observed | Required comparison | Result |
+| --- | --- | --- | --- |
+| Type | 3 | equals 3 | true |
+| Base | 268435456 | equals synthetic base 0x10000000 | true |
+| PdbUnmatched | 1 | equals 0 | **false** |
+| DbgUnmatched | 0 | equals 0 | true |
+| Guid | 914449b2-5161-4fa3-ae71-c2c4d45e2d80 | equals the pinned PE CodeView GUID | true |
+| Age | 8 | equals the pinned PE CodeView age | true |
+
+Thus H3 refused specifically on `m.PdbUnmatched==0`. The GUID and age match
+the expected PE observation. The meaning/cause of the returned flag in this
+load scenario is not established; it is not a native last-error code. No error
+87 was observed. Do not infer a GUID-only mismatch, ABI incompatibility or game
+crash cause, retroactively attribute H2's unpublished values, or weaken the
+predicate to force a positive result.
+
+The explicit DLL load and module-info retrieval reached the diagnostic snapshot.
+The seven imports, full structures, options, call order and module acceptance
+were unchanged. `SymFromAddr` and line lookup were not reached. Interface/module
+identity, ABI, symbol/function/line mapping, actual runtime layout, game-cause
+and stack qualification remain false. No game, attach, exception capture, scan,
+disassembly or installer was invoked; no symbol-server path or acquisition was
+requested. Native-library I/O and network behavior were not independently traced.
+The existing `SECURE`/`NO_PROMPTS` options alone do not prove offline execution
+([Microsoft option documentation](https://learn.microsoft.com/en-us/windows/win32/api/dbghelp/nf-dbghelp-symsetoptions)).
+
+Native symbol cleanup and the owned library-reference release were confirmed.
+The worker reverified all three original inputs and closed their handles. The
+same actual original context/state/capsule/witness/clock/owner retained all
+21 parent guards through input reverification and publication readbacks, then
+closed them. The original lease/token was absent, clock stopped at 3039 ms and
+`CanExit=true`. Both fixed AppDomain keys matched the same originals before
+cleanup and both were NULL after; original aliases survived through direct
+interactive exit. The caller's two actual descriptor guards remained held
+across NoExit, then closed before its own receipt and true outer terminal exit 0.
+No original terminal was repolled and no analysis replayed.
+
+Independent metadata at 00:44:10.5581275 UTC found all three original process
+generations/PIDs absent, with games/compiler/debuggers and Version 1 leases
+empty. Root independently inspected receipts, original terminal completion and
+fresh absence at 00:44:45.6078646 UTC before releasing its slot. The stopped
+3039 ms clock is distinct from the 82555 ms outer terminal duration. No opaque
+input was reread after release. Closure success does not qualify the refused
+analysis.
+
+| H3 receipt | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `qualification-result.json` | 3532 | `82035700B0E9C6057F5D7FBEE74E34FE339F7FC7061C8B9B39C34B9E74C276AB` |
+| `actual-original-postflight.local.json` | 2001 | `06EB1E16EC71FF03632FB6064AD76638FB30BE34C602E285E4353D5AE603B21F` |
+| `actual-caller-descriptors-closed.local.json` | 1221 | `78B7CED98DFB9BAC4CFFDA78BD4454CDB78EB099B9C21B872CC66733C05AB525` |
+| `actual-independent-closure.local.json` | 2494 | `56864ACD877B8DBDD62762A339B9E176A07D7AD3254883E95F7D57BE7775B941` |
+| `actual-closed-review.local.json` | 9209 | `1B39823FB11C21B6DEE5CD33DE8A13FE31854794AF7740443251794F300C46E5` |
+
+H3 capsule: 13256 bytes, SHA-256
+`6764BCC13A200DCD951017FD28F63AB110886F35B9F134EE7EE803F4C95E4286`.
+The 31 new Source composition checks and 72 previously approved authored
+diagnostic causals remain separate from this real native observation; older
+suites were carried without rerun. All H/H1/H2/H3 sources and results stay frozen.
+
+Next is bounded review of official Microsoft text about the API already used
+and exact PE/PDB association. Any resulting change needs a small Source proposal,
+independent exact review and a distinct fresh GO before further native or opaque
+access. No flag/type/ABI/acceptance relaxation is authorized by this checkpoint.
+
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
 Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
