@@ -147,3 +147,50 @@ Three causal cases include a valid predecessor plus partial malformed/foreign
 ready or failure rows, with separate unrelated-prefix/foreign-token noise controls. This is wire
 validation only. The rejected source candidate remains in history and was never
 run in game.
+
+## Readiness-loss diagnostics — 2026-10-16
+
+One separately admitted, subsequently closed episode using operation a572,
+Server helper 3d514559 and compiled candidate 785ddd43 refused before arm with
+`frozen_anchor_readiness_lost`. Its single bounded owned-log extraction contained
+one READY, fifty PLAYER_READY publications spanning 2437 ms with the same frozen
+anchor, then that failure; no AUDIT, PLACED, SAMPLE, CREATED or DONE was present.
+The episode's original owner handle fields were zero, its client lock SFH was
+closed, and its transactions and Main/bank audits reported restoration. Kernel
+CloseHandle returns were not measured. The original host exited and independent
+checks found no episode processes or leases. These qualify that episode's closure,
+not contact, a fresh protection stamp at arm, or a physical-world reset. The
+underlying lost predicate remains unknown. Existing frozen packets and evidence
+are preserved; they are never relabeled or replayed.
+
+The fixture now records the first failed readiness group during its original
+evaluation. The order remains safe, ground, the two eager weapon/velocity
+getters, weapon, velocity, intro screen, intro gesture, controls and hostmigration.
+Both eager getters still execute before the weapon test, including when that
+weapon is invalid. The diagnostic resets on every evaluation, calls no getter
+again, and does not repeat protection or native stamp queries. Stamp state comes
+from the same already captured value. Only the existing frozen-readiness FAIL
+adds the bounded group and stamp-state fields; its reason and fail-closed path
+remain unchanged.
+
+The production reader still rejects every complete owned FAIL before considering
+any ready publication. It reports only allowlisted, bounded reasons/details in
+the exception message and Data. Unknown, malformed, incompatible or oversized
+diagnostics remain generic refusals; foreign-token and incomplete-line handling
+retain their existing behavior. It never falls back to an earlier Ready or a
+later, more convenient failure. Detection retains the original PowerShell
+case-insensitive FAIL/prefix/token semantics; diagnostic parsing remains strict.
+Source candidate 381ff93 accidentally changed detection to case-sensitive. Review
+reproduced fallback to a preceding Ready for a mixed-case prefix or uppercase
+token. It was rejected before adoption, and the corrective commit preserves it
+in history with both production-reader causal refusals.
+No timeout, freshness limit, frozen pose,
+protection/privacy condition, controller input or F0/F1/F2 measurement changed.
+
+Validation is limited to PowerShell grammar, production-reader causal tests and
+GSC source ordering/count comparisons. No substitute GSC interpreter, official
+GSC-tool invocation, engine compilation, native build or game is part of this
+change. Current Server callers retain their old hash-sensitive pins; adoption
+needs separate owner review, a new prepared source/capsule and a distinct fresh
+Game authorization. The next runtime must establish its own admission and
+protection rather than inherit this closed episode's metadata.

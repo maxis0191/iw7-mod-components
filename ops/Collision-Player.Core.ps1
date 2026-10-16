@@ -39,7 +39,32 @@ function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerI
     $last=$Text.LastIndexOf("`n")
     if($last -ge 0){
         $complete=$Text.Substring(0,$last+1)
-        if($complete -match ('(?m)^\[Collision player\] FAIL token='+$Token+' ')){throw 'Fixture refused readiness/anchor; do not arm.'}
+        $failure=[regex]::Match($complete,'(?m)^\[Collision player\] FAIL token='+$Token+' ',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if($failure.Success){
+            # Preserve the original -match case-insensitive refusal semantics.
+            # Any complete owned FAIL still wins over every ready publication.
+            # Parse only a short, allowlisted diagnostic from that first failure.
+            $reason=$null;$group=$null;$stampState=$null
+            $end=$complete.IndexOf("`n",$failure.Index)
+            if($end-$failure.Index -le 384){
+                $line=$complete.Substring($failure.Index,$end-$failure.Index)
+                $detail=[regex]::Match($line,'^\[Collision player\] FAIL token='+$Token+' reason=(anchor_player_changed|anchor_pose_changed_before_arm|frozen_anchor_readiness_lost|frozen_anchor_player_lost|admission_or_clearance)(?: readiness_group=(safe|ground|weapon|velocity|intro_screen|intro_gesture|controls|hostmigration|ready) stamp_state=(undefined|empty|unavailable|available))?[\t ]*\r?$')
+                if($detail.Success -and (!$detail.Groups[2].Success -or $detail.Groups[1].Value -ceq 'frozen_anchor_readiness_lost')){
+                    $reason=$detail.Groups[1].Value
+                    if($detail.Groups[2].Success){$group=$detail.Groups[2].Value;$stampState=$detail.Groups[3].Value}
+                }
+            }
+            $message='Fixture refused readiness/anchor; do not arm.'
+            if($reason){
+                $diagnostic='reason='+$reason
+                if($group){$diagnostic+='; readiness_group='+$group+'; stamp_state='+$stampState}
+                $message='Fixture refused readiness/anchor ('+$diagnostic+'); do not arm.'
+            }
+            $readinessError=[InvalidOperationException]::new($message)
+            if($reason){$readinessError.Data['CollisionReason']=$reason}
+            if($group){$readinessError.Data['CollisionReadinessGroup']=$group;$readinessError.Data['CollisionStampState']=$stampState}
+            throw $readinessError
+        }
         $tail=$Text.Substring($last+1)
         $ownPrefix='[Collision player] PLAYER_READY token='+$Token
         $failurePrefix='[Collision player] FAIL token='+$Token
