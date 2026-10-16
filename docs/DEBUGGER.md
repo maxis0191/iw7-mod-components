@@ -317,6 +317,95 @@ need actual separate qualification. A new exact capsule review and distinct GO
 are required before any target DLL load or further image/PDB analysis. SDK
 installation remains a reserved option without a demonstrated necessity.
 
+### H1/H2: native qualification refused; both original invocations closed
+
+H1's one authorized invocation on 2026-10-16 UTC failed before admission:
+its 111-character `Owner` exceeded the scheduler's unchanged
+`ValidateLength(1,100)`. No lease, factory witness, native child or runtime root
+was created, and no opaque analysis input was accessed. Its original 12 Source SafeFileHandles closed,
+clock stopped at 492 ms and `CanExit=true`. The main key was cleared after
+comparing the same actual context/capsule/clock; the factory key was genuinely
+never populated. No witness was fabricated. `InputReverified=false` remains
+explicit because no admitted input reverification occurred. The original
+NoExit host exited directly, then the caller's two original descriptor handles
+closed and the outer terminal truly exited 0. Root checked those receipts,
+terminal completion and fresh original process/lease absence before releasing
+its slot. Closure does not turn this failed launch into an analytical success.
+
+H2 is a separately reviewed sibling with a 60-character Owner and separate
+capsule/root/keys. Its 35 new Source checks use the actual pinned scheduler's
+Owner parameter declaration in a function whose entire body is authored.
+The real binder rejects the exact old 111-character literal before that body,
+accepts the exact new 60-character literal and boundary 100, and rejects 101
+and empty. The real resource function is never invoked by those tests. A first
+fixture failed to resolve an internal exception type literal; additive fixture B
+checks the actual exception FullName. Both fixture sources remain preserved.
+The scheduler's limit and the failed H1 result were not changed.
+
+The one authorized H2 native invocation returned `Refused` at
+`Resolve.ValidateModuleIdentity`, with `System.IO.InvalidDataException` and
+the message `PE/PDB GUID-age mismatch`. The frozen predicate is a conjunction
+over module Type, Base, PdbUnmatched, DbgUnmatched, Guid and Age. H2 did not
+publish those six returned module values, so the failing member is unknown.
+The message is not proof that a GUID alone differs or that the ABI is incompatible.
+
+The explicit System32 DLL load returned an owned reference. Reaching this stage
+means the frozen control flow passed initialization, a nonzero expected module
+load result and successful module-info retrieval. `SymFromAddr` and line lookup
+were not reached. All six failure-only last-error fields are null; no error 87
+was observed. Declared managed sizes were Module 1680, Symbol 88, name offset 84
+and Line 40; those measurements alone do not qualify the native ABI.
+
+The PE observation was GUID `914449b2-5161-4fa3-ae71-c2c4d45e2d80`, age 8,
+image size 6590464 and timestamp 1791986569. The loaded module's six values
+remain unobserved in the result. Interface/module identity, symbol/function/line
+mapping, actual game runtime layout, crash cause and reconstructed stack remain
+unqualified. No game, attach, exception capture, scan, disassembly, symbol server,
+installation or acquisition occurred. Earlier results remain immutable.
+
+H2 returned `CleanupConfirmed=true` and `LoaderReferenceReleased=true`; the
+worker reverified all three original inputs and closed their handles. The same
+actual parent context/state/capsule/witness/clock/owner reached known closure:
+all 21 original parent SafeFileHandles closed, inputs reverified before release,
+owner exit 0, original lease/token absent, clock stopped at 3048 ms and
+`CanExit=true`. Both AppDomain keys matched the original context/witness/clock
+before cleanup and both were NULL after, with the same aliases retained through
+direct interactive exit. The caller's two original descriptor handles remained
+held across the NoExit call, then closed before its own receipt and actual outer
+exit 0. The original terminal was never polled again.
+
+Independent metadata at 00:17:32.7248982 UTC found all three original process
+generations/PIDs absent, with games/compiler/debuggers and Version 1 leases
+empty. Root independently checked receipts, original terminal completion and
+fresh absence at 00:18:27.8466459 UTC before releasing its slot. The stopped
+3048 ms group clock is distinct from the 86550 ms outer terminal duration.
+No opaque input was accessed after release and no native analysis replayed.
+A read-only inspection first referenced a nonexistent `Owner.Process` property;
+its corrected display used the same original owner. That display error did not
+mutate the context or constitute a native failure.
+
+| H1/H2 receipt | Bytes | SHA-256 |
+| --- | ---: | --- |
+| H1 `actual-closed-review.local.json` | 7418 | `57DF22A052D6692539D4689C5B71DA1678569785ECD45DFA88720734A893EEBE` |
+| H2 `qualification-result.json` | 3152 | `457C30A82C1246AA13C71E562184D70BBC09FD5E0466B847A9A3E82D5911C528` |
+| H2 `actual-original-postflight.local.json` | 2003 | `F22DD856547D20D9B4C14350C956B5AC47E7B106B357C7344CF2459251E3BB30` |
+| H2 `actual-caller-descriptors-closed.local.json` | 1221 | `F4FB170CD38288C12A861BD2D9246DC1A748DB636DD56CFB0336F30A25E5B162` |
+| H2 `actual-independent-closure.local.json` | 2104 | `53A748244DD108FB23BCBA69EF05878C3807D02A95557CADFC877AFAA19F83EE` |
+| H2 `actual-closed-review.local.json` | 9704 | `95D454401D6BFCCDF6FE2EE68BAD321B106D3FC4A69012DC2E71D7D3CD93B22A` |
+
+H1 capsule: 9812 bytes, SHA-256
+`DFAA00161242E23FFED2CDF0DE6DB0A6D2C9D9DB07B01ACBFBE224496217C68B`.
+H2 capsule: 11361 bytes, SHA-256
+`B26CC5D672DD8715524590ACCF1B85790E0572ED1AF9B43B8862CD2F73C59FDF`.
+The earlier 78 composition checks, 31 caller-guard causals, 20 structural checks
+and 42 managed authored causals are carried by their frozen pins and not rerun.
+
+Next is a Source-only diagnostic proposal to copy the six owned module values
+and six comparison booleans immediately after successful module-info retrieval,
+before the unchanged predicate. A failed/not-reached call must leave no fabricated
+snapshot. Imports, structs, options, call order and module acceptance stay fixed.
+Any operational sibling then needs exact review and a distinct fresh Analysis GO.
+
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
 Client clones require a concrete necessity or risk. [Instance workflow](INSTANCE-WORKFLOW.md)
