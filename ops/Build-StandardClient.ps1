@@ -39,14 +39,21 @@ Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native 
     if(!$installation){throw 'VS2022 C++ toolchain required.'}
     $runtime=Join-Path $repo 'runtime'
     [IO.Directory]::CreateDirectory($runtime)|Out-Null
+    $wrapperSource=Join-Path $PSScriptRoot 'standard-client/premake-build-only.lua'
+    $wrapper=Join-Path $root 'paris-build-only.lua'
+    if((Test-Path -LiteralPath $wrapper) -and (Get-FileHash $wrapper).Hash -ne (Get-FileHash $wrapperSource).Hash){throw 'Unowned build-only Premake wrapper; preserve it.'}
+    Copy-Item -LiteralPath $wrapperSource -Destination $wrapper -Force
     Push-Location $root
     try {
-        & ./tools/premake5.exe vs2022
+        & ./tools/premake5.exe --file=paris-build-only.lua vs2022
         if($LASTEXITCODE){throw 'Standard client Premake failed.'}
         $project=Join-Path $root 'build/client.vcxproj'
         $projectText=[IO.File]::ReadAllText($project)
+        [xml]$generatedProject=$projectText
+        $postBuildNodes=@($generatedProject.SelectNodes("//*[local-name()='PostBuildEvent']/*[local-name()='Command']")|Where-Object{![string]::IsNullOrWhiteSpace($_.InnerText)})
+        if($postBuildNodes.Count){throw 'Automatic upstream copy/deployment post-build events refused before MSBuild.'}
         if($projectText -match '(?:paris_voice|voice_relay|paris_test_fixture|player_movement)\.cpp'){throw 'Unexpected private or duplicate translation unit in regenerated client project.'}
-        & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"
+        & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false /p:PostBuildEventUseInBuild=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"
         if($LASTEXITCODE){throw 'Standard client native build failed.'}
     } finally {Pop-Location}
     git -C $root diff --quiet HEAD
@@ -56,7 +63,7 @@ Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native 
     [IO.Directory]::CreateDirectory($output)|Out-Null
     foreach($file in @('iw7-mod.exe','iw7-mod.pdb')){Copy-Item -LiteralPath (Join-Path $root ('build/bin/x64/Release/'+$file)) -Destination (Join-Path $output $file)}
     $identity=& "$PSScriptRoot/Get-SourceIdentity.ps1" -Root $repo
-    $manifest=[ordered]@{Schema='iw7.standard-client-build/1';NativeRevision=$profile.Revision;NativeTree=(& git -C $root rev-parse 'HEAD^{tree}').Trim();OfficialUpstream=$profile.OfficialUpstream;CBBase=$profile.CBBase;ProjectCommit=$identity.Commit;SourceIdentity=$identity;SHA256=(Get-FileHash (Join-Path $output 'iw7-mod.exe')).Hash;SymbolsSHA256=(Get-FileHash (Join-Path $output 'iw7-mod.pdb')).Hash;BuiltUtc=[datetime]::UtcNow.ToString('o');AutoUpdate='Locally merged profile: retain existing CB updater URL, launch using documented -noupdate to prevent an older remote binary/data overwrite';NativeSourceHashes=@(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File|Sort-Object FullName|ForEach-Object{@{File=[IO.Path]::GetRelativePath($root,$_.FullName).Replace('\','/');SHA256=(Get-FileHash $_.FullName).Hash}});GeneratedProjectSHA256=(Get-FileHash $project).Hash;GameplayAcceptance='Pending owner gameplay; no FPS, WAN, NAT or microphone claim'}
+    $manifest=[ordered]@{Schema='iw7.standard-client-build/1';NativeRevision=$profile.Revision;NativeTree=(& git -C $root rev-parse 'HEAD^{tree}').Trim();OfficialUpstream=$profile.OfficialUpstream;CBBase=$profile.CBBase;ProjectCommit=$identity.Commit;SourceIdentity=$identity;SHA256=(Get-FileHash (Join-Path $output 'iw7-mod.exe')).Hash;SymbolsSHA256=(Get-FileHash (Join-Path $output 'iw7-mod.pdb')).Hash;BuiltUtc=[datetime]::UtcNow.ToString('o');AutoUpdate='Locally merged profile: retain existing CB updater URL, launch using documented -noupdate to prevent an older remote binary/data overwrite';NativeSourceHashes=@(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File|Sort-Object FullName|ForEach-Object{@{File=[IO.Path]::GetRelativePath($root,$_.FullName).Replace('\','/');SHA256=(Get-FileHash $_.FullName).Hash}});GeneratedProjectSHA256=(Get-FileHash $project).Hash;BuildOnlyWrapperSHA256=(Get-FileHash $wrapper).Hash;AutoCopySuppressed=$true;GameplayAcceptance='Pending owner gameplay; no FPS, WAN, NAT or microphone claim'}
     $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $output 'build-manifest.json')
     Write-Output "Prepared standard client: $output"
 }
