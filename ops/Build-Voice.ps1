@@ -41,7 +41,7 @@ Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -Physica
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
 if ($RhinoExperiment -or $EnemyExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
-if ($ServerModules) { $commit = '993737428781c4357fe21ecd375300e39a29a654' }
+if ($ServerModules) { $commit = 'cfca45b11ee14641945b9a264a95638387f48a4a' }
 if (!$TestsOnly) {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 if (!(Test-Path -LiteralPath "$root/.git")) {
@@ -328,6 +328,11 @@ $downloadCacheOverlay = $null
 if ($ServerModules -or $commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
     $downloadCacheOverlay = & "$PSScriptRoot/Apply-DownloadCacheOverlay.ps1" -NativeRoot $root -Commit $commit
 }
+$loadingHook = $null
+if ($ServerModules) {
+    . "$PSScriptRoot/standard-client/Loading-NewMap.Core.ps1"
+    $loadingHook = Assert-IW7StandardClientLoadingHook ([IO.File]::ReadAllText((Join-Path $root 'src/client/component/party.cpp')))
+}
 $capacityCheckpointEnabled=[bool]($IsolatedLab -and $Debugger)
 $null = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -NativeRoot $root -Commit $commit -Phase BeforeDebugger -Enabled:$capacityCheckpointEnabled
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
@@ -525,6 +530,7 @@ $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$out
 $sourceIdentity = & (Join-Path $repo 'ops/Get-SourceIdentity.ps1') -Root $repo
 $manifest.OfficialUpstream = if ($ServerModules) { '37abcb260408ce7cdef0dde831bbfcad594510e3' } else { $null }
 $manifest.VoiceRelayProtocol = 2
+if ($ServerModules) { $manifest.LoadingNewMapHook = $loadingHook }
 $manifest.NativeTree = (& git -C $root rev-parse ($commit + '^{tree}')).Trim()
 $manifest.NativeSourceHashes = @(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File | Sort-Object FullName | ForEach-Object {
     @{ File=[IO.Path]::GetRelativePath($root,$_.FullName).Replace('\','/'); SHA256=(Get-FileHash -LiteralPath $_.FullName).Hash }

@@ -2,13 +2,29 @@
 
 ## Source identity and compatibility
 
-The ServerModules profile now builds the owner fork integration commit
+The retained ServerModules base is the owner fork integration commit
 `993737428781c4357fe21ecd375300e39a29a654`. Its parents are the retained
 `77e6d4d24e918ee363b3feee3735c3b889dff7d7` and official Aurora develop
 `37abcb260408ce7cdef0dde831bbfcad594510e3` (official merge on 2026-10-11).
 The generic-only merge is retained on the owner's public fork integration branch;
 private Paris components remain in this private product and its source dependencies.
 No private source or runtime data was published to the Aurora project.
+
+The 18 October official default-branch refresh still resolves to that same
+`37abcb260408ce7cdef0dde831bbfcad594510e3`; there are no newer default-branch
+commits to integrate. Unmerged feature branches are outside this update.
+The profile now pins successor `cfca45b11ee14641945b9a264a95638387f48a4a` of
+the retained integration. It applies the same five-byte loading-new-map jump
+correction as the standard CB client. The Paris executable is also used as the
+VC v2 client, so its client transition path needs this correction even though
+no corresponding dedicated-server crash has been demonstrated.
+
+The build checks the loading hook after its owned client download-cache overlay
+and records the source contract in the receipt. The new native pin has its own
+exact normalized source hash in that overlay's allowlist; old pin/hash pairs and
+frozen experiment/checkpoint pins remain unchanged. Native build, private runtime
+qualification, guarded promotion and owner transition gameplay remain pending
+for this successor. Earlier production evidence below belongs to the old build.
 
 All nineteen official commits after the previous common ancestor were reviewed.
 The sixteen-file integration includes shader preload cache persistence, usermap
