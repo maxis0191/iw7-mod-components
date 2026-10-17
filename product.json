@@ -2,6 +2,7 @@
   "schema": "iw7.product/1",
   "id": "iw7-mod-components",
   "exports": [
+    "docs/AURORA-OCTOBER-UPDATE.md",
     "tests/ops/re_tools_sdk_test.py",
     "docs/RE-TOOLS.md",
     "ops/Install-ReTools.ps1",
@@ -409,7 +410,7 @@
   "resolution": "Non-recursive exact revisions; no dependency may contribute an already owned path.",
   "upstream": {
     "repository": "maxis0191/iw7-mod",
-    "revision": "77e6d4d24e918ee363b3feee3735c3b889dff7d7",
-    "usage": "Owner fork reference. Build-Voice.ps1 retains its reviewed profile-specific upstream pins."
+    "revision": "993737428781c4357fe21ecd375300e39a29a654",
+    "usage": "ServerModules integrates Aurora develop 37abcb260408ce7cdef0dde831bbfcad594510e3 with retained Paris generic fixes; historical experiment and legacy pins remain explicit."
   }
 }

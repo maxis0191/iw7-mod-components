@@ -1,4 +1,4 @@
-param([string]$NativeRoot)
+param([string]$NativeRoot, [string]$NativeCommit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7')
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/../../ops/Download-CacheOverlay.Core.ps1"
 function Assert([bool]$Condition, [string]$Message) { if (!$Condition) { throw $Message } }
@@ -28,13 +28,13 @@ Refuses { Assert-IW7DownloadCacheOwned ($actual + '// foreign edit') $source $ac
 Refuses { Assert-IW7DownloadCachePin $source $IW7DownloadCacheCommit }
 Refuses { Assert-IW7DownloadCachePin $source '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6' }
 if ($NativeRoot) {
-    $lines = @(git -C $NativeRoot show ($IW7DownloadCacheCommit + ':src/client/component/party.cpp'))
+    $lines = @(git -C $NativeRoot show ($NativeCommit + ':src/client/component/party.cpp'))
     if ($LASTEXITCODE) { throw 'Real pinned source unavailable.' }
     $base = ($lines -join "`n") + "`n"
-    Assert-IW7DownloadCachePin $base $IW7DownloadCacheCommit
+    Assert-IW7DownloadCachePin $base $NativeCommit
     $transformed = Convert-IW7DownloadCacheSource $base
     Assert ((Get-IW7DownloadSourceHash $transformed) -ne $IW7DownloadCacheBaseSHA256) 'Real source was unchanged.'
-    Refuses { Assert-IW7DownloadCachePin ($base + '// modified') $IW7DownloadCacheCommit }
+    Refuses { Assert-IW7DownloadCachePin ($base + '// modified') $NativeCommit }
     Assert-IW7DownloadCacheOwned $transformed $base $transformed
     # Execute the actual file writer in a disposable root, supplying immutable git
     # source through a mock. Never edit the retained native build checkout.
@@ -46,14 +46,15 @@ if ($NativeRoot) {
     Set-Item Function:git -Value { $global:LASTEXITCODE = 0; $mockGitLines }.GetNewClosure()
     try {
         [IO.File]::WriteAllText($target, $base.Replace("`n", "`r`n"), [Text.UTF8Encoding]::new($false))
-        $record = & "$PSScriptRoot/../../ops/Apply-DownloadCacheOverlay.ps1" -NativeRoot $testRoot -Commit $IW7DownloadCacheCommit
+        $record = & "$PSScriptRoot/../../ops/Apply-DownloadCacheOverlay.ps1" -NativeRoot $testRoot -Commit $NativeCommit
         Assert ([IO.File]::ReadAllText($target) -ceq $transformed) 'Actual writer failed to apply exact overlay.'
+        Assert ($record.PinnedNormalizedSourceSHA256 -ceq (Get-IW7DownloadSourceHash $base)) 'Receipt source hash does not describe the selected native revision.'
         Assert ($record.AppliedFileSHA256 -eq (Get-FileHash -LiteralPath $target).Hash) 'Manifest differs from actual written bytes.'
-        $second = & "$PSScriptRoot/../../ops/Apply-DownloadCacheOverlay.ps1" -NativeRoot $testRoot -Commit $IW7DownloadCacheCommit
+        $second = & "$PSScriptRoot/../../ops/Apply-DownloadCacheOverlay.ps1" -NativeRoot $testRoot -Commit $NativeCommit
         Assert ($second.AppliedFileSHA256 -eq $record.AppliedFileSHA256) 'Repeat application changed overlay.'
         [IO.File]::AppendAllText($target, '// owned by another task')
         $foreignHash = (Get-FileHash -LiteralPath $target).Hash
-        Refuses { & "$PSScriptRoot/../../ops/Apply-DownloadCacheOverlay.ps1" -NativeRoot $testRoot -Commit $IW7DownloadCacheCommit }
+        Refuses { & "$PSScriptRoot/../../ops/Apply-DownloadCacheOverlay.ps1" -NativeRoot $testRoot -Commit $NativeCommit }
         Assert ((Get-FileHash -LiteralPath $target).Hash -eq $foreignHash) 'Refusal overwrote foreign edits.'
     } finally {
         Remove-Item Function:git

@@ -40,7 +40,22 @@ $root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
 Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
-if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
+if ($RhinoExperiment -or $EnemyExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
+if ($ServerModules) { $commit = '993737428781c4357fe21ecd375300e39a29a654' }
+if (!$TestsOnly) {
+$null = Resolve-IW7VoiceBuildNativeRoot $root
+if (!(Test-Path -LiteralPath "$root/.git")) {
+    if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --no-checkout https://github.com/maxis0191/iw7-mod.git $root }
+    else { git clone --no-checkout https://github.com/auroramod/iw7-mod.git $root }
+    if ($LASTEXITCODE) { throw 'Required IW7-Mod clone failed.' }
+    git -C $root checkout --detach $commit
+    if ($LASTEXITCODE) { throw 'Exact IW7-Mod pin checkout failed.' }
+}
+$null = Resolve-IW7VoiceBuildNativeRoot $root
+if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
+git -C $root submodule update --init --recursive
+if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
+}
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (!(Test-Path -LiteralPath $vswhere)) { throw 'Install Microsoft VS 2022 Build Tools with VCTools and ATL; see docs/TOOLS.md.' }
 $installation = & $vswhere -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
@@ -206,16 +221,6 @@ if ($Sanitizers) {
 }
 & "$repo/tests/ops/download_cache_overlay_test.ps1"
 if ($TestsOnly) { return }
-$null = Resolve-IW7VoiceBuildNativeRoot $root
-if (!(Test-Path -LiteralPath "$root/.git")) {
-    if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }
-    else { git clone --recursive https://github.com/auroramod/iw7-mod.git $root }
-    if ($LASTEXITCODE) { throw 'Required IW7-Mod clone failed.' }
-}
-$null = Resolve-IW7VoiceBuildNativeRoot $root
-if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
-git -C $root submodule update --init --recursive
-if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
 $flagsPath = Join-Path $root 'src/common/utils/flags.cpp'
 $baseFlags = (((git -C $root show ($commit + ':src/common/utils/flags.cpp')) -join "`n").TrimEnd()) + "`n"
 $flagsMarker = "`t`t`tLocalFree(argv);"
@@ -320,7 +325,7 @@ if($pttInputBridgeBuild.Compiled){$nativeSources+=$pttInputBridgeBuild.Files}
 $incidentOverlay = & "$PSScriptRoot/Apply-IncidentOverlay.ps1" -NativeRoot $root -Commit $commit
 $testPrivacyOverlay = & "$PSScriptRoot/Apply-TestPrivacyOverlay.ps1" -NativeRoot $root -Commit $commit
 $downloadCacheOverlay = $null
-if ($commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
+if ($ServerModules -or $commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
     $downloadCacheOverlay = & "$PSScriptRoot/Apply-DownloadCacheOverlay.ps1" -NativeRoot $root -Commit $commit
 }
 $capacityCheckpointEnabled=[bool]($IsolatedLab -and $Debugger)
@@ -518,6 +523,12 @@ $manifestSources = @($nativeSources)
 if ($IsolatedLab) { $manifestSources += 'paris_lab_properties.cpp' }
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
 $sourceIdentity = & (Join-Path $repo 'ops/Get-SourceIdentity.ps1') -Root $repo
+$manifest.OfficialUpstream = if ($ServerModules) { '37abcb260408ce7cdef0dde831bbfcad594510e3' } else { $null }
+$manifest.VoiceRelayProtocol = 2
+$manifest.NativeTree = (& git -C $root rev-parse ($commit + '^{tree}')).Trim()
+$manifest.NativeSourceHashes = @(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File | Sort-Object FullName | ForEach-Object {
+    @{ File=[IO.Path]::GetRelativePath($root,$_.FullName).Replace('\','/'); SHA256=(Get-FileHash -LiteralPath $_.FullName).Hash }
+})
 $manifest.ProjectCommit = $sourceIdentity.Commit
 $manifest.SourceIdentity = $sourceIdentity
 $manifest.DownloadCacheOverlay = $downloadCacheOverlay
