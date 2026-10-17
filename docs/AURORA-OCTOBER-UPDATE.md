@@ -33,9 +33,16 @@ was stale and must not be used to identify the previous running binary.
 
 The standard desktop shortcut targets `iw7-mod.exe`; the VC v2 shortcut and Main
 dedicated both target `iw7-paris-voice.exe` in the existing base game installation.
-No occupied client may be stopped. Official standard-client input comes from
-Aurora's successful Build run 38173874516 at exact official head 37abcb2604,
-Release binaries and Release data artifacts, with matching official symbols.
+No occupied client may be stopped. Aurora's successful Build run 38173874516
+at exact head 37abcb2604 supplies a reference client and data artifact with
+matching symbols, not a replacement for the owner's habitual CB lineage.
+The prior standard binary's size 5402624 and SHA1 A2201FAA028338B99566BE3555767188B2FD25DD
+match CBServers/updater files.json exactly. Its source commit is not established
+by that distribution match. Preserve NAT/friends/Discord/launcher behavior through
+a separate CB-compatible merged source profile, not a plain Aurora replacement.
+The CB updater URL remains intact; the existing -noupdate mechanism must guard
+the locally merged executable against replacement by older remote code/data.
+Manage the reviewed official data delta manually at the same recorded pin.
 
 Local download-cache ownership/writer/receipt regression passes with both exact
 native pins. The scheduler source is identical at both pins and retains the same
@@ -58,3 +65,16 @@ Do not copy the old bank over newer transactions during a later rollback.
 
 Source/build/private-startup evidence does not establish owner gameplay, shader
 cache persistence during normal play, FPS, WAN quality or human bidirectional voice.
+
+## Qualified normal Paris profile
+
+Production package SHA256 is
+`5B83D0A5DBD1D16A9B8E01ABC552EFB7FC3544C17B17358037C7A082AEEA1645`,
+built from engine product 84ee0bd with IsolatedLab=false and Debugger=false.
+The manifest records 366 source hashes and relay protocol 2. Both dedicated
+startup in the private qualification and actual ordinary client frontend startup
+passed; the client log confirms opt-in generic Zombies v2 installed, followed by
+quit of the owned test process. No player, NAT/WAN or microphone acceptance is
+implied. All 66 product source regressions passed with portable, digest-verified
+Temurin 21. The first source check attempt lacked Java and is retained as failed;
+the subsequent complete check passed.
