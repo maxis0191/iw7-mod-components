@@ -45,3 +45,17 @@ The independent Paris dedicated/VC v2 binary is not this standard client profile
 Native build, frontend initialization and exact installed hashes are technical
 validation. Owner gameplay, NAT joins, FPS, WAN and human microphone acceptance
 remain separate; no simulated or menu-only witness proves them.
+
+Installed qualification (18 October 2026): the CB-preserving binary is installed
+as iw7-mod.exe and iw7-cb-aurora.exe in the existing game root. The habitual
+iw7-mod shortcut retains its name, working directory, port and original arguments,
+with -noupdate added, and targets the separate iw7-cb-aurora.exe. The external
+CB Launcher remains unchanged and may replace its own iw7-mod.exe distribution;
+its current manifest does not manage the separate executable. Its updater only
+removes previously cached manifest names inside declared data folders, so unknown
+root executables are preserved. No global updater setting or BO3 setting changed.
+
+Both installed profiles carry receipts; recovery kit aurora-update-20261017 holds
+old executable, shortcut and cdata hash inventory. Existing CB data hashes are
+unchanged; only the two official Usermaps files were added. Frontend startup
+loads both CB menus and Usermaps. Real invitations/NAT joins remain unqualified.
