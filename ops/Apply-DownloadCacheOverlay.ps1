@@ -21,7 +21,7 @@ if ($after -ne (Get-IW7DownloadSourceHash $overlay)) { throw 'Download-cache ove
 [pscustomobject]@{
     Upstream = $Commit
     File = $relative
-    PinnedNormalizedSourceSHA256 = $IW7DownloadCacheBaseSHA256
+    PinnedNormalizedSourceSHA256 = (Get-IW7DownloadSourceHash $base)
     PreviousFileSHA256 = $before
     AppliedFileSHA256 = $after
     Transformation = 'client check_download_mod: bypass path hash cache; server cache unchanged'

@@ -6,8 +6,8 @@ param([Parameter(Mandatory)][string]$NativeRoot,[Parameter(Mandatory)][string]$C
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/Checkpoint-Overlay.Core.ps1"
 if($Commit -cnotmatch '^[0-9a-f]{40}$'){throw 'Exact native commit required.'}
-$pinned='77e6d4d24e918ee363b3feee3735c3b889dff7d7'
-if($Enabled -and $Commit -cne $pinned){throw 'Checkpoint Watch requires the reviewed isolated debugger native pin.'}
+$pinned=@('77e6d4d24e918ee363b3feee3735c3b889dff7d7','993737428781c4357fe21ecd375300e39a29a654')
+if($Enabled -and $Commit -cnotin $pinned){throw 'Checkpoint Watch requires the reviewed isolated debugger native pin.'}
 $root=[IO.Path]::GetFullPath($NativeRoot)
 $path=Join-Path $root 'src/client/component/scheduler.cpp'
 foreach($start in @($root,$path)) {
@@ -23,7 +23,7 @@ $clean=[Text.UTF8Encoding]::new($false,$true).GetBytes($baseText)
 # Normal legacy profiles do not need the debugger/checkpoint anchors. They may
 # only keep their exact clean scheduler; the existing debugger helper still owns
 # removal of a profiler if it is present.
-if($Commit -cne $pinned) {
+if($Commit -cnotin $pinned) {
     $current=[IO.File]::ReadAllBytes($path)
     if((Get-IW7CapacityCheckpointHash $current) -cne (Get-IW7CapacityCheckpointHash $clean)) {
         throw 'Unreviewed native pin has a scheduler overlay; preserve it.'
