@@ -65,6 +65,9 @@ $runtime = Join-Path $repo 'runtime'
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
 $testSource = Join-Path $repo 'tests/native/voice_protocol_test.cpp'
 $testExe = Join-Path $runtime 'voice-protocol-test.exe'
+# Pure TestsOnly CI does not require a native checkout. Full builds initialized
+# the exact SDK above and additionally verify its MinHook source identities.
+$nativeSdkTestArgument = if (Test-Path -LiteralPath (Join-Path $root 'deps/minhook/src/trampoline.c')) { '-NativeSdkRoot "' + $root + '"' } else { '' }
 # Save the compiler invocation to avoid PowerShell 5 native-argument quote rewriting.
 $testCmd = Join-Path $runtime 'compile-voice-tests.cmd'
 @"
@@ -135,7 +138,7 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\
 if errorlevel 1 exit /b 1
 "$runtime\voice-ptt-guard.exe"
 if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_agent_ptt_contract_test.ps1" -NativeSdkRoot "$root"
+pwsh -NoProfile -File "$repo\tests\ops\voice_agent_ptt_contract_test.ps1" $nativeSdkTestArgument
 if errorlevel 1 exit /b 1
 pwsh -NoProfile -File "$repo\ops\voice-agent\test_fake_build_copy.ps1" -RepoRoot "$repo"
 if errorlevel 1 exit /b 1
