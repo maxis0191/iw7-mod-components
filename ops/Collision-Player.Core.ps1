@@ -33,12 +33,65 @@ function Assert-IW7CollisionPlayerOwnership($Session,$Identity,$Kernel,$Lease,$C
         ([datetimeoffset]$Lease.OwnerIdentity.CreatedUtc).UtcTicks -ne ([datetimeoffset]$CurrentHost.CreatedUtc).UtcTicks){throw 'Original protected collision group identity/ownership differs.'}
 }
 
-function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerId,[string]$ClientNonce,[long]$NotBeforeTick,[long]$NowTick) {
+function New-IW7CollisionReadinessBindings($Session,$ServerIdentity,[string]$Token,[string]$ClientNonce) {
+    # Call only after the existing owned-session and wire validation. No IO/clock.
+    if(!$Session -or !$Session.Identity -or !$ServerIdentity -or $Session.Identity.PID -le 0 -or
+       $ServerIdentity.PID -le 0 -or $Session.StartedTick -lt 0 -or $Token -cnotmatch '^[a-f0-9]{32}$' -or
+       $ClientNonce -cnotmatch '^[a-f0-9]{32}$'){throw 'Validated original collision references required.'}
+    if($Session.PSObject.Properties['CollisionReadinessBindings']){throw 'Existing collision bindings must not be replaced or adopted.'}
+    $bindings=@{Schema='iw7.collision-readiness-bindings/1';Session=$Session;ClientIdentity=$Session.Identity;
+        ServerIdentity=$ServerIdentity;Token=$Token;ClientNonce=$ClientNonce;NotBeforeTick=$Session.StartedTick;
+        Generation=$null;CanonicalReady=$null;Status='UNKNOWN';FirstErrorRecord=$null;FirstException=$null;MetadataError=$null}
+    Add-Member -InputObject $Session -MemberType NoteProperty -Name CollisionReadinessBindings -Value $bindings
+    $bindings
+}
+
+function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerId,[string]$ClientNonce,[long]$NotBeforeTick,[long]$NowTick,
+    [Collections.IDictionary]$Bindings=$null) {
+    $ownsBindings={
+            if($Bindings -isnot [hashtable] -or $Bindings['Schema'] -cne 'iw7.collision-readiness-bindings/1'){return $false}
+            $owner=$Bindings['Session'];if(!$owner){return $false}
+            $property=$owner.PSObject.Properties['CollisionReadinessBindings']
+            $property -and [object]::ReferenceEquals($property.Value,$Bindings) -and
+                [object]::ReferenceEquals($Bindings['ClientIdentity'],$owner.Identity) -and
+                $Bindings['ServerIdentity'].PID -eq $ServerId -and $Bindings['Token'] -ceq $Token -and
+                $Bindings['ClientNonce'] -ceq $ClientNonce -and $Bindings['NotBeforeTick'] -eq $NotBeforeTick -and
+                $owner.StartedTick -eq $NotBeforeTick
+    }
+    if($Bindings){
+        try{if(& $ownsBindings){$Bindings['Generation']=$null;$Bindings['CanonicalReady']=$null;$Bindings['Status']='UNKNOWN';$Bindings['MetadataError']=$null}}catch{}
+    }
     if($Text.Length -gt 16MB -or $Token -cnotmatch '^[a-f0-9]{32}$' -or $ServerId -le 0 -or
         $ClientNonce -cnotmatch '^[a-f0-9]{32}$' -or $NowTick -lt $NotBeforeTick){throw 'Bounded launch-owned readiness input required.'}
     $last=$Text.LastIndexOf("`n")
     if($last -ge 0){
         $complete=$Text.Substring(0,$last+1)
+        $tail=$Text.Substring($last+1)
+        $ownPrefix='[Collision player] PLAYER_READY token='+$Token
+        $failurePrefix='[Collision player] FAIL token='+$Token
+        # One canonical validation path. Metadata sees the FULL transcript too.
+        $selectCanonical={param([bool]$MetadataOnly)
+            if($tail.StartsWith($ownPrefix,[StringComparison]::Ordinal) -or $tail.StartsWith($failurePrefix,[StringComparison]::Ordinal) -or
+               ($MetadataOnly -and ($tail.IndexOf($ownPrefix,[StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+                $tail.IndexOf($failurePrefix,[StringComparison]::OrdinalIgnoreCase) -ge 0))){
+                return @{Publication=[pscustomobject]@{Ready=$false;Pending='Latest own pose publication is not terminated; no predecessor fallback.'};Offset=-1}
+            }
+            $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)'
+            $rows=[regex]::Matches($complete,'(?m)^\[Collision player\] PLAYER_READY token='+$Token+'; server_pid='+$ServerId+'; client_nonce='+$ClientNonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1; anchor_x='+$n+'; anchor_y='+$n+'; anchor_z='+$n+'[\t ]*\r?$')
+            $ownRows=[regex]::Matches($complete,'(?m)^\[Collision player\] PLAYER_READY token='+$Token+';[^\r\n]*\r?$')
+            # LF alone delimits physical lines; a bare CR must stay visible to strict validation.
+            if($MetadataOnly -and [regex]::Matches($complete,'(?m)^[^\n]*\[Collision player\] PLAYER_READY token='+$Token+'[^\n]*$',
+                [Text.RegularExpressions.RegexOptions]::IgnoreCase).Count -ne $ownRows.Count){throw 'Noncanonical own readiness metadata.'}
+            if($ownRows.Count -ne $rows.Count){throw 'Malformed/foreign own pose publication; do not fall back to earlier readiness.'}
+            if($rows.Count){$r=$rows[-1];$tick=[long]$r.Groups[2].Value
+                if($tick -ge $NotBeforeTick -and $tick -le $NowTick -and $NowTick-$tick -le 500){
+                    $anchor=@(3..5|ForEach-Object{[double]::Parse($r.Groups[$_].Value,[Globalization.CultureInfo]::InvariantCulture)})
+                    $null=New-IW7CollisionPlayerPlan $anchor $Token
+                    return @{Publication=[pscustomobject]@{Ready=$true;Generation=$r.Groups[1].Value;Tick=$tick;Anchor=$anchor;Meaning='Fresh real-pose publication; source tests do not simulate retail intro/terrain state.'};Offset=$r.Index}
+                }
+            }
+            @{Publication=[pscustomobject]@{Ready=$false};Offset=-1}
+        }
         $failure=[regex]::Match($complete,'(?m)^\[Collision player\] FAIL token='+$Token+' ',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
         if($failure.Success){
             # Preserve the original -match case-insensitive refusal semantics.
@@ -67,26 +120,44 @@ function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerI
             if($reason){$readinessError.Data['CollisionReason']=$reason}
             if($group){$readinessError.Data['CollisionReadinessGroup']=$group;$readinessError.Data['CollisionStampState']=$stampState}
             if($weaponPredicate){$readinessError.Data['CollisionWeaponPredicate']=$weaponPredicate}
-            throw $readinessError
-        }
-        $tail=$Text.Substring($last+1)
-        $ownPrefix='[Collision player] PLAYER_READY token='+$Token
-        $failurePrefix='[Collision player] FAIL token='+$Token
-        if($tail.StartsWith($ownPrefix,[StringComparison]::Ordinal) -or $tail.StartsWith($failurePrefix,[StringComparison]::Ordinal)){
-            return [pscustomobject]@{Ready=$false;Pending='Latest own pose publication is not terminated; no predecessor fallback.'}
-        }
-        $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)'
-        $rows=[regex]::Matches($complete,'(?m)^\[Collision player\] PLAYER_READY token='+$Token+'; server_pid='+$ServerId+'; client_nonce='+$ClientNonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1; anchor_x='+$n+'; anchor_y='+$n+'; anchor_z='+$n+'[\t ]*\r?$')
-        $ownRows=[regex]::Matches($complete,'(?m)^\[Collision player\] PLAYER_READY token='+$Token+';[^\r\n]*\r?$')
-        if($ownRows.Count -ne $rows.Count){throw 'Malformed/foreign own pose publication; do not fall back to earlier readiness.'}
-        if($rows.Count){$r=$rows[-1];$tick=[long]$r.Groups[2].Value
-            if($tick -ge $NotBeforeTick -and $tick -le $NowTick -and $NowTick-$tick -le 500){
-                $anchor=@(3..5|ForEach-Object{[double]::Parse($r.Groups[$_].Value,[Globalization.CultureInfo]::InvariantCulture)})
-                $null=New-IW7CollisionPlayerPlan $anchor $Token
-                return [pscustomobject]@{Ready=$true;Generation=$r.Groups[1].Value;Tick=$tick;Anchor=$anchor;Meaning='Fresh real-pose publication; source tests do not simulate retail intro/terrain state.'}
+            try{throw $readinessError}catch{
+                # Capture the FIRST record/exception before any secondary parsing.
+                $firstRecord=$_;$firstException=$firstRecord.Exception;$owned=$false
+                try{
+                    $owned=& $ownsBindings
+                    if($owned){
+                        if($null -eq $Bindings['FirstErrorRecord']){$Bindings['FirstErrorRecord']=$firstRecord;$Bindings['FirstException']=$firstException}
+                        $firstException.Data['CollisionReadinessBindings']=$Bindings
+                        $Bindings['Generation']=$null;$Bindings['CanonicalReady']=$null;$Bindings['Status']='UNKNOWN';$Bindings['MetadataError']=$null
+                        $selected=& $selectCanonical $true
+                        if($selected.Publication.Ready -and $selected.Offset -lt $failure.Index){
+                            $Bindings['CanonicalReady']=$selected.Publication;$Bindings['Generation']=$selected.Publication.Generation
+                            $Bindings['Status']='VALIDATED_CANONICAL'
+                        }
+                    }
+                }catch{
+                    if($owned){
+                        $Bindings['Generation']=$null;$Bindings['CanonicalReady']=$null;$Bindings['Status']='UNKNOWN'
+                        $Bindings['MetadataError']='Canonical metadata unavailable; original failure retained.'
+                    }
+                }
+                throw
             }
         }
+        $selected=& $selectCanonical $false
+        if($Bindings){
+            try{
+                if(& $ownsBindings){
+                    $Bindings['Generation']=$null;$Bindings['CanonicalReady']=$null;$Bindings['Status']='UNKNOWN'
+                    if($selected.Publication.Ready){$Bindings['CanonicalReady']=$selected.Publication;$Bindings['Generation']=$selected.Publication.Generation;$Bindings['Status']='VALIDATED_CANONICAL'}
+                }
+            }catch{
+                # Optional publication never alters the existing readiness result.
+            }
+        }
+        return $selected.Publication
     }
+    if($Bindings){try{if(& $ownsBindings){$Bindings['Generation']=$null;$Bindings['CanonicalReady']=$null;$Bindings['Status']='UNKNOWN'}}catch{}}
     [pscustomobject]@{Ready=$false}
 }
 
@@ -105,7 +176,7 @@ function Read-IW7CollisionReadinessDiagnostic([string]$Text,[string]$Token,[int]
        $ClientNonce -cnotmatch '^[a-f0-9]{32}$' -or $Generation -cnotmatch '^[a-f0-9]{32}$' -or
        $NotBeforeTick -lt 0 -or $NowTick -lt $NotBeforeTick){return (Inconclusive 'Invalid bounded owned input.')}
     if(!$Text.EndsWith("`n",[StringComparison]::Ordinal)){return (Inconclusive 'Unterminated transcript; no predecessor fallback.')}
-    $rows=[regex]::Matches($Text,'(?m)^\[Collision readiness[^\n]*\n',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $rows=[regex]::Matches($Text,'(?m)^[^\n]*\[Collision readiness[^\n]*\n',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
     if($rows.Count -ne 2){return (Inconclusive 'Exactly two complete diagnostic events required.')}
     $pattern='^\[Collision readiness\] token='+$Token+' stage=(freeze|none) eval=([1-9][0-9]{0,5}); server_pid='+$ServerId+
         '; client_nonce='+$ClientNonce+'; server_generation='+$Generation+'; slot=0; native_tick_ms=(0|[1-9][0-9]{0,19}); protected=1'+
@@ -114,13 +185,16 @@ function Read-IW7CollisionReadinessDiagnostic([string]$Text,[string]$Token,[int]
     foreach($row in $rows){
         $line=$row.Value.Substring(0,$row.Value.Length-1)
         if($line.EndsWith("`r",[StringComparison]::Ordinal)){$line=$line.Substring(0,$line.Length-1)}
-        if($line.Length -gt 384 -or $line -cmatch '[^\x20-\x7E]'){return (Inconclusive 'Oversized or non-ASCII diagnostic row.')}
-        $m=[regex]::Match($line,$pattern)
+        if($line.Length -gt 384 -or !$line.EndsWith("`t",[StringComparison]::Ordinal)){return (Inconclusive 'Exact single terminal TAB envelope within 384 characters required.')}
+        $body=$line.Substring(0,$line.Length-1)
+        if($body -cmatch '[^\x20-\x7E]'){return (Inconclusive 'Non-ASCII body or leading/interior/double TAB.')}
+        $m=[regex]::Match($body,$pattern)
         if(!$m.Success){return (Inconclusive 'Malformed, duplicate-field or foreign diagnostic row.')}
         $tick=0L
         if(![long]::TryParse($m.Groups[3].Value,[Globalization.NumberStyles]::None,[Globalization.CultureInfo]::InvariantCulture,[ref]$tick) -or
            $tick -lt $NotBeforeTick -or $tick -gt $NowTick){return (Inconclusive 'Stale, future or out-of-domain diagnostic tick.')}
         $events+=,[pscustomobject]@{Stage=$m.Groups[1].Value;Eval=[int]$m.Groups[2].Value;Tick=$tick;Offset=$row.Index;
+            RawLine=$row.Value;WireByteCount=$row.Value.Length;BodyByteCount=$body.Length;
             Ground=$m.Groups[4].Value;Weapon=$m.Groups[5].Value;HasWeapon=$m.Groups[6].Value;Intro=$m.Groups[7].Value;
             Gesture=$m.Groups[8].Value;Controls=$m.Groups[9].Value;Migration=$m.Groups[10].Value}
     }
@@ -133,14 +207,19 @@ function Read-IW7CollisionReadinessDiagnostic([string]$Text,[string]$Token,[int]
         return (Inconclusive 'Event order, monotonic correlation or cached predicate semantics differ.')
     }
     # The first complete owned failure stays authoritative, even if a later row looks valid.
-    $failures=[regex]::Matches($Text,'(?m)^\[Collision player\] FAIL token='+$Token+' [^\n]*\n',
+    # Count malformed owned candidates too, even without the required token separator.
+    $failures=[regex]::Matches($Text,'(?m)^[^\n]*\[Collision player\] FAIL token='+$Token+'[^\n]*\n',
         [Text.RegularExpressions.RegexOptions]::IgnoreCase)
     if($failures.Count -ne 1 -or $failures[0].Index -le $freeze.Offset -or $failures[0].Index -ge $none.Offset -or
        $failures[0].Value -cnotmatch ('^\[Collision player\] FAIL token='+$Token+
-        ' reason=frozen_anchor_readiness_lost readiness_group=weapon stamp_state=available weapon_predicate=none\r?\n$')){
+        ' reason=frozen_anchor_readiness_lost readiness_group=weapon stamp_state=available weapon_predicate=none\t\r?\n$') -or
+       $failures[0].Value.Length-1-([int]$failures[0].Value.EndsWith("`r`n",[StringComparison]::Ordinal)) -gt 384){
         return (Inconclusive 'Canonical first refusal must precede terminal diagnostics; no readiness fallback.')
     }
+    $canonical=$failures[0]
     [pscustomobject]@{Status='CORRELATED';Correlated=$true;DiagnosticOnly=$true;CauseVerified=$false;Events=$events;
+        CanonicalFAIL=[pscustomobject]@{RawLine=$canonical.Value;Offset=$canonical.Index;WireByteCount=$canonical.Value.Length;
+            BodyByteCount=$canonical.Value.Length-2-([int]$canonical.Value.EndsWith("`r`n",[StringComparison]::Ordinal))};
         Meaning='Cached transition only; no inventory, cleanup, readiness, contact or owner acceptance inferred.'}
 }
 

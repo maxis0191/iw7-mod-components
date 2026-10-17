@@ -182,27 +182,41 @@ if($failureBody -notmatch 'if \(state.readiness_first_failure == "weapon"\)\s+li
     throw 'Failure diagnostics must use only the current cached weapon predicate, without re-query.'
 }
 Write-Output "PASS $diagnosticRefusals production-reader failure diagnostic refusals, $($partialFailures.Count) partial/2 foreign controls; GSC getter/guard source ordering only, no GSC runtime claim."
-# Synthetic text exercises the optional production reader, not engine state.
-$freeze="[Collision readiness] token=$token stage=freeze eval=21; server_pid=42; client_nonce=$nonce; server_generation=$generation; slot=0; native_tick_ms=1400; protected=1; gr=1; w=passed; hw=1; is=1; ig=1; cf=0; hm=U; view=cached`n"
+# Fresh synthetic console frames only; never E4 evidence.
+$diagToken='00112233445566778899aabbccddeeff';$diagNonce='102132435465768798a9bacbdcedfe0f';$diagGeneration='ffeeddccbbaa99887766554433221100'
+$diagKnownFailure="[Collision player] FAIL token=$diagToken reason=frozen_anchor_readiness_lost"
+$diagWeaponDetails=' readiness_group=weapon stamp_state=available'
+$diagWire="[Collision player] PLAYER_READY token=$diagToken; server_pid=57; client_nonce=$diagNonce; server_generation=$diagGeneration; slot=0; native_tick_ms=1400; protected=1; anchor_x=10; anchor_y=20; anchor_z=30`t`n"
+$freeze="[Collision readiness] token=$diagToken stage=freeze eval=21; server_pid=57; client_nonce=$diagNonce; server_generation=$diagGeneration; slot=0; native_tick_ms=1400; protected=1; gr=1; w=passed; hw=1; is=1; ig=1; cf=0; hm=U; view=cached`t`n"
 $none=$freeze.Replace('stage=freeze eval=21','stage=none eval=22').Replace('native_tick_ms=1400','native_tick_ms=1450').
     Replace('w=passed; hw=1; is=1; ig=1; cf=0; hm=U','w=none; hw=N; is=N; ig=N; cf=N; hm=N')
-$canonical=$knownFailure+$weaponDetails+" weapon_predicate=none`n"
+$canonical=$diagKnownFailure+$diagWeaponDetails+" weapon_predicate=none`t`n"
 $pair=$freeze+$canonical+$none
-function Read-TestDiagnostic([string]$Value){Read-IW7CollisionReadinessDiagnostic $Value $token 42 $nonce $generation 1100 1500}
+function Read-TestDiagnostic([string]$Value){Read-IW7CollisionReadinessDiagnostic $Value $diagToken 57 $diagNonce $diagGeneration 1100 1500}
 foreach($goodPair in @($pair,$pair.Replace('hm=U','hm=0'),$pair.Replace("`n","`r`n"),
-    $pair.Replace('eval=21','eval=999998').Replace('eval=22','eval=999999'))){
+    $pair.Replace('eval=21','eval=999998').Replace('eval=22','eval=999999'),
+    ("[synthetic preamble]`rnoise`n"+$pair),("[synthetic preamble]`rnoise`r`n"+$pair.Replace("`n","`r`n")))){
     $d=Read-TestDiagnostic $goodPair
     if(!$d.Correlated -or $d.Status -cne 'CORRELATED' -or !$d.DiagnosticOnly -or $d.CauseVerified -or
        $d.Events.Count -ne 2 -or $d.PSObject.Properties.Name -ccontains 'Ready'){throw 'Optional diagnostics overclaim or reject a valid cached pair.'}
+    foreach($event in @($d.Events)+@($d.CanonicalFAIL)){
+        if($goodPair.Substring($event.Offset,$event.RawLine.Length) -cne $event.RawLine -or
+           [Text.Encoding]::UTF8.GetByteCount($event.RawLine) -ne $event.WireByteCount -or
+           $event.BodyByteCount -ne $event.RawLine.Length-2-([int]$event.RawLine.EndsWith("`r`n"))){throw 'Raw console bytes/offsets were normalized.'}
+    }
+    if($d.Events[0].Offset -ne $goodPair.IndexOf('[Collision readiness]') -or
+       $d.CanonicalFAIL.Offset -ne $goodPair.IndexOf('[Collision player] FAIL') -or
+       $d.Events[1].Offset -ne $goodPair.LastIndexOf('[Collision readiness]')){throw 'Physical LF/CRLF offsets changed.'}
 }
-$largestProducerRow=$freeze.Replace('server_pid=42','server_pid=4294967295').Replace('eval=21','eval=999999').
+if(!(Read-IW7CollisionReadinessDiagnostic $pair $diagToken 57 $diagNonce $diagGeneration 1100 1000000).Correlated){throw 'Optional diagnostics acquired an unauthorized maximum age.'}
+$largestProducerRow=$freeze.Replace('server_pid=57','server_pid=5794967295').Replace('eval=21','eval=999999').
     Replace('native_tick_ms=1400','native_tick_ms=18446744073709551615').TrimEnd("`n")
-if($largestProducerRow.Length -ne 324 -or $largestProducerRow -cmatch '[^\x20-\x7E]'){throw 'Static ASCII character budget differs.'}
+if($largestProducerRow.Length -ne 325 -or !$largestProducerRow.EndsWith("`t") -or $largestProducerRow.Substring(0,324) -cmatch '[^\x20-\x7E]'){throw 'Static ASCII character budget differs.'}
 $badPairs=@(
     '',$freeze,$none,($freeze+$freeze+$canonical+$none),($none+$canonical+$freeze),
     ($freeze+$none),($freeze+$none+$canonical),($freeze+$canonical.Replace('readiness_group=weapon','readiness_group=controls')+$none),
-    ($freeze+"[Collision player] FAIL token=$token reason=unknown`n"+$canonical+$none),
-    $pair.TrimEnd("`n"),($pair+'[Collision readiness] token='+$token),
+    ($freeze+"[Collision player] FAIL token=$diagToken reason=unknown`n"+$canonical+$none),
+    $pair.TrimEnd("`n"),($pair+'[Collision readiness] token='+$diagToken),
     ($freeze+$canonical+$none.Replace('; view=cached',(' '*384)+'; view=cached')),
     $pair.Replace('view=cached','view=cach'+[char]0xE9+'d'),$pair.Replace('[Collision readiness]','[Collision Readiness]'),
     ($freeze+$canonical+$none.Replace('eval=22','eval=21')),($freeze+$canonical+$none.Replace('eval=22','eval=20')),
@@ -211,18 +225,35 @@ $badPairs=@(
     ($freeze+$canonical+$none.Replace('native_tick_ms=1450','native_tick_ms=1399')),
     $pair.Replace('native_tick_ms=1400','native_tick_ms=1099'),$pair.Replace('native_tick_ms=1450','native_tick_ms=1501'),
     $pair.Replace('native_tick_ms=1450','native_tick_ms=18446744073709551615'),
-    $pair.Replace('native_tick_ms=1450','native_tick_ms=01450'),$pair.Replace('server_pid=42','server_pid=43'),
-    $pair.Replace('client_nonce='+$nonce,'client_nonce='+('c'*32)),
-    $pair.Replace('server_generation='+$generation,'server_generation='+('c'*32)),
+    $pair.Replace('native_tick_ms=1450','native_tick_ms=01450'),$pair.Replace('server_pid=57','server_pid=58'),
+    $pair.Replace('client_nonce='+$diagNonce,'client_nonce='+('c'*32)),
+    $pair.Replace('server_generation='+$diagGeneration,'server_generation='+('c'*32)),
     $pair.Replace('slot=0','slot=1'),$pair.Replace('protected=1','protected=0'),
-    $pair.Replace('token='+$token,'token='+('c'*32)),$pair.Replace('; gr=1',''),$pair.Replace('; gr=1','; gr=1; gr=1'),
+    $pair.Replace('token='+$diagToken,'token='+('c'*32)),$pair.Replace('; gr=1',''),$pair.Replace('; gr=1','; gr=1; gr=1'),
     ($freeze+$canonical+$none.Replace('hw=N','hw=U')),($freeze+$canonical+$none.Replace('cf=N','cf=0')),
     ($freeze.Replace('hw=1','hw=N')+$canonical+$none),($freeze.Replace('cf=0','cf=1')+$canonical+$none),
     ($freeze.Replace('hm=U','hm=N')+$canonical+$none),($freeze+$canonical+$none.Replace('w=none','w=passed')),
     $pair.Replace('view=cached','view=post_decision'),$pair.Replace('; view=cached','; weapon_name=private; view=cached'),
-    ($pair+"[Collision readiness malformed`n"),($pair+$canonical)
+    ($pair+"[Collision readiness malformed`n"),($pair+$canonical),
+    $pair.Replace("`t",''),("`t"+$pair),$pair.Replace(' stage=',"`tstage="),$pair.Replace("`t","`t`t"),
+    $pair.Replace("`t","`t "),($freeze+$canonical.Replace("`t",'')+$none),
+    ($freeze+$canonical.Replace("`t","`t`t")+$none),($freeze+"`t"+$canonical+$none),$pair.Replace("`n",''),
+    ($pair+"`t"+$none),($freeze+$canonical+"`t"+$canonical+$none)
 )
-if($badPairs.Count -ne 43 -or @($badPairs|Where-Object {$_ -isnot [string]}).Count){throw 'Diagnostic negative controls were grouped or skipped.'}
+# New physical-line causals: a malformed first FAIL or CR-prefixed candidate must never be skipped.
+$physicalPairCases=@(
+    ($freeze+"[Collision player] FAIL token=$diagToken`n"+$canonical+$none),
+    ($freeze+"[Collision player] FAIL token=$diagToken`t`n"+$canonical+$none),
+    ($freeze+"[Collision player] FAIL token=$($diagToken)reason=unknown`t`n"+$canonical+$none),
+    ($pair+"noise`r"+$none),
+    ($freeze+"noise`r"+$canonical+$canonical+$none),
+    ($freeze+"noise`r"+$canonical+$none),
+    ($pair+$none.Replace('; view=cached',";`r view=cached")),
+    ($freeze+"[Collision player] FAIL token=$diagToken`r`t`n"+$canonical+$none)
+)
+foreach($physicalCase in $physicalPairCases){$badPairs+=@($physicalCase,$physicalCase.Replace("`n","`r`n"))}
+if($physicalPairCases.Count -ne 8 -or $badPairs.Count -ne 70 -or
+   @($badPairs|Where-Object {$_ -isnot [string]}).Count){throw 'Diagnostic negative controls were grouped or skipped.'}
 $diagnosticPairRefusals=0
 foreach($badPair in $badPairs){
     $d=Read-TestDiagnostic $badPair
@@ -230,8 +261,147 @@ foreach($badPair in $badPairs){
     $diagnosticPairRefusals++
 }
 # A valid diagnostic pair can never override the real readiness refusal.
-try{$null=Read-IW7CollisionPlayerReady ($wire+$pair) $token 42 $nonce 1100 1500;throw 'Diagnostic pair created a readiness fallback.'}
+try{$null=Read-IW7CollisionPlayerReady ($diagWire+$pair) $diagToken 57 $diagNonce 1100 1500;throw 'Diagnostic pair created a readiness fallback.'}
 catch{if($_.Exception.Data['CollisionWeaponPredicate'] -cne 'none'){throw}}
+
+# Fresh managed originals: no process, wire or serialized evidence is adopted.
+function New-TestBinding {
+    $client=[pscustomobject]@{PID=73;Image='C:\synthetic\client.exe'}
+    $owner=[pscustomobject]@{Identity=$client;StartedTick=1100}
+    $identity=[pscustomobject]@{PID=57;Image='C:\synthetic\server.exe'}
+    New-IW7CollisionReadinessBindings $owner $identity $diagToken $diagNonce
+}
+$binding=New-TestBinding
+$publication=Read-IW7CollisionPlayerReady $diagWire $diagToken 57 $diagNonce 1100 1500 -Bindings $binding
+if(![object]::ReferenceEquals($binding,$binding.Session.CollisionReadinessBindings) -or
+   ![object]::ReferenceEquals($binding.ClientIdentity,$binding.Session.Identity) -or
+   ![object]::ReferenceEquals($binding.CanonicalReady,$publication) -or
+   ![object]::ReferenceEquals($binding.Generation,$publication.Generation)){throw 'Validated canonical references were copied or lost.'}
+$caughtRecord=$null
+try{Read-IW7CollisionPlayerReady ($diagWire+$canonical) $diagToken 57 $diagNonce 1100 1500 -Bindings $binding;throw 'Owned FAIL returned readiness.'}catch{$caughtRecord=$_}
+if($caughtRecord.Exception.Data['CollisionWeaponPredicate'] -cne 'none' -or $binding.Status -cne 'VALIDATED_CANONICAL' -or
+   $binding.Generation -cne $diagGeneration -or ![object]::ReferenceEquals($caughtRecord.Exception,$binding.FirstException) -or
+   ![object]::ReferenceEquals($binding.FirstErrorRecord.Exception,$binding.FirstException) -or
+   ![object]::ReferenceEquals($caughtRecord.Exception.Data['CollisionReadinessBindings'],$binding)){
+    throw 'Canonical first failure or SAME binding/exception identity was replaced.'
+}
+$modelContext=@{RuntimeRefs=@{Session=$binding.Session;Temporary='old dictionary'}}
+$modelContext.RuntimeRefs=@{Session=$binding.Session}
+if(![object]::ReferenceEquals($modelContext.RuntimeRefs.Session.CollisionReadinessBindings,
+    $caughtRecord.Exception.Data['CollisionReadinessBindings'])){throw 'Replacing RuntimeRefs lost the Session-owned record.'}
+$duplicateCarrierRefused=$false
+try{New-IW7CollisionReadinessBindings $binding.Session $binding.ServerIdentity $diagToken $diagNonce}catch{$duplicateCarrierRefused=$true}
+if(!$duplicateCarrierRefused -or ![object]::ReferenceEquals($binding.Session.CollisionReadinessBindings,$binding)){throw 'Foreign/existing carrier was overwritten.'}
+
+$metadataUnknownCases=@(
+    $canonical,($canonical+$diagWire),($diagWire+$canonical+$diagWire),
+    ($diagWire+$diagWire.Replace('anchor_x=10','anchor_x=NaN')+$canonical),
+    ($diagWire+$canonical+$diagWire.Replace('client_nonce='+$diagNonce,'client_nonce='+('d'*32))),
+    ($diagWire+$canonical+$diagWire.TrimEnd("`n")),
+    ($diagWire+$canonical+$diagWire.Replace('PLAYER_READY','pLaYeR_rEaDy').TrimEnd("`n")),
+    ($diagWire+$canonical+$diagWire.Replace('native_tick_ms=1400','native_tick_ms=999999999999999999999')),
+    ($diagWire+$canonical+$diagWire.Replace('server_pid=57','server_pid=58')),
+    ($diagWire+$canonical+'[Collision player] FAIL token='+$diagToken+' reason=partial'),
+    ($freeze+$canonical+$none),
+    ($diagWire+$canonical+$diagWire.Replace('anchor_x=10','anchor_x=30001')),
+    ($diagWire+$canonical+$diagWire.Replace('anchor_x=10','anchor_x=1e309')),
+    ($diagWire+$canonical+"`t"+$diagWire),($diagWire+$canonical+"`t"+$diagWire.TrimEnd("`n")),
+    ($diagWire+$canonical+"[Collision player] PLAYER_READY token=$diagToken`n"),
+    ($diagWire+"[Collision player] pLaYeR_rEaDy token=$diagToken`n"+$canonical)
+)
+$physicalMetadataCases=@(
+    ($diagWire+$canonical+"noise`r"+$diagWire),
+    ($diagWire+$canonical+"noise`r[Collision player] PLAYER_READY token=$diagToken`n"),
+    ($diagWire+$canonical+$diagWire.Replace('; server_pid=',";`r server_pid=")),
+    ($diagWire+$canonical+$diagWire.Replace("`t`n","`r`t`n")),
+    ($diagWire+$canonical+"noise`r"+$diagWire.TrimEnd("`n")),
+    ($diagWire+"noise`r"+$diagWire+$canonical)
+)
+foreach($physicalCase in $physicalMetadataCases){$metadataUnknownCases+=@($physicalCase,$physicalCase.Replace("`n","`r`n"))}
+if($physicalMetadataCases.Count -ne 6 -or $metadataUnknownCases.Count -ne 29){throw 'Metadata causal cases grouped or skipped.'}
+$metadataRefusals=0
+foreach($inputText in $metadataUnknownCases){
+    $b=New-TestBinding
+    $null=Read-IW7CollisionPlayerReady $diagWire $diagToken 57 $diagNonce 1100 1500 -Bindings $b
+    try{Read-IW7CollisionPlayerReady $inputText $diagToken 57 $diagNonce 1100 1500 -Bindings $b;throw 'First FAIL returned readiness.'}catch{
+        if($_.Exception.Data['CollisionWeaponPredicate'] -cne 'none' -or
+           ![object]::ReferenceEquals($_.Exception,$b.FirstException) -or
+           ![object]::ReferenceEquals($_.Exception.Data['CollisionReadinessBindings'],$b)){throw}
+    }
+    if($b.Status -cne 'UNKNOWN' -or $null -ne $b.Generation -or $null -ne $b.CanonicalReady){throw 'Older or post-FAIL canonical publication became an expected generation.'}
+    $metadataRefusals++
+}
+$partialOnlyBinding=New-TestBinding
+$null=Read-IW7CollisionPlayerReady $diagWire $diagToken 57 $diagNonce 1100 1500 -Bindings $partialOnlyBinding
+if((Read-IW7CollisionPlayerReady $diagWire.TrimEnd("`n") $diagToken 57 $diagNonce 1100 1500 -Bindings $partialOnlyBinding).Ready -or
+   $partialOnlyBinding.Generation -or $partialOnlyBinding.Status -cne 'UNKNOWN'){throw 'Unterminated input retained an older expected generation.'}
+$malformedOnlyBinding=New-TestBinding
+$null=Read-IW7CollisionPlayerReady $diagWire $diagToken 57 $diagNonce 1100 1500 -Bindings $malformedOnlyBinding
+try{Read-IW7CollisionPlayerReady $diagWire.Replace('anchor_x=10','anchor_x=NaN') $diagToken 57 $diagNonce 1100 1500 -Bindings $malformedOnlyBinding;throw 'Malformed ready accepted.'}catch{
+    if($_.Exception.Message -cne 'Malformed/foreign own pose publication; do not fall back to earlier readiness.'){throw}
+}
+if($malformedOnlyBinding.Generation -or $malformedOnlyBinding.Status -cne 'UNKNOWN'){throw 'Malformed input retained an older generation.'}
+$expiredBinding=New-TestBinding
+try{Read-IW7CollisionPlayerReady ($diagWire+$canonical) $diagToken 57 $diagNonce 1100 1901 -Bindings $expiredBinding}catch{
+    if($_.Exception.Data['CollisionWeaponPredicate'] -cne 'none'){throw}
+}
+if($expiredBinding.Generation -or $expiredBinding.Status -cne 'UNKNOWN'){throw 'Metadata relaxed the canonical 500ms freshness rule.'}
+$independent=New-TestBinding
+try{Read-IW7CollisionPlayerReady ($diagWire+$freeze.Replace($diagGeneration,('d'*32))+$canonical) $diagToken 57 $diagNonce 1100 1500 -Bindings $independent}catch{
+    if($_.Exception.Data['CollisionWeaponPredicate'] -cne 'none'){throw}
+}
+if($independent.Generation -cne $diagGeneration){throw 'B supplied an expected generation.'}
+$foreign=New-TestBinding;$foreign.ClientIdentity=[pscustomobject]@{PID=73}
+try{Read-IW7CollisionPlayerReady ($diagWire+$canonical) $diagToken 57 $diagNonce 1100 1500 -Bindings $foreign}catch{
+    if($_.Exception.Data.Contains('CollisionReadinessBindings') -or $_.Exception.Data['CollisionWeaponPredicate'] -cne 'none'){throw}
+}
+if($foreign.Generation -or $foreign.FirstException){throw 'Foreign carrier acquired validated expectations.'}
+
+# Execute the actual operation catch with synthetic originals, never its Run body.
+$opTokens=$null;$opErrors=$null
+$operationAST=[Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'ops/Invoke-CollisionPlayerContact.ps1'),[ref]$opTokens,[ref]$opErrors)
+$operationTry=@($operationAST.EndBlock.Statements|Where-Object {$_ -is [Management.Automation.Language.TryStatementAst]})
+if($opErrors.Count -or $operationTry.Count -ne 1){throw 'Operation first-error boundary changed.'}
+$actualCatch=$operationTry[0].CatchClauses[0].Extent.Text
+$syntheticOperation=[scriptblock]::Create('try { throw $sourceException } '+$actualCatch)
+$collisionBindings=$binding;$Session=$binding.Session;$sourceException=$binding.FirstException;$savedFirstRecord=$binding.FirstErrorRecord
+try{& $syntheticOperation}catch{
+    if(![object]::ReferenceEquals($_.Exception,$sourceException) -or
+       ![object]::ReferenceEquals($collisionBindings.FirstErrorRecord,$savedFirstRecord)){throw 'Outer unwind replaced the retained FIRST ErrorRecord.'}
+}
+$operationDataControls=0
+foreach($dataCase in @('absent','same','foreign')){
+    $collisionBindings=New-TestBinding;$Session=$collisionBindings.Session
+    $message='fresh synthetic operation refusal '+$dataCase
+    $sourceException=[InvalidOperationException]::new($message)
+    $expectedData=$collisionBindings
+    if($dataCase -ceq 'foreign'){$expectedData=[pscustomobject]@{Meaning='Unrelated pre-existing exception metadata'}}
+    if($dataCase -cne 'absent'){$sourceException.Data.Add('CollisionReadinessBindings',$expectedData)}
+    try{& $syntheticOperation;throw 'Operation catch swallowed the first failure.'}catch{
+        if(![object]::ReferenceEquals($_.Exception,$sourceException) -or $_.Exception.GetType() -ne [InvalidOperationException] -or
+           $_.Exception.Message -cne $message -or ![object]::ReferenceEquals($_.Exception.Data['CollisionReadinessBindings'],$expectedData) -or
+           ![object]::ReferenceEquals($collisionBindings.FirstException,$sourceException) -or
+           ![object]::ReferenceEquals($collisionBindings.FirstErrorRecord.Exception,$sourceException)){throw}
+    }
+    $retainedFirst=$collisionBindings.FirstErrorRecord
+    try{& $syntheticOperation;throw 'Repeated operation catch swallowed the first failure.'}catch{
+        if(![object]::ReferenceEquals($_.Exception,$sourceException) -or $_.Exception.Message -cne $message -or
+           ![object]::ReferenceEquals($_.Exception.Data['CollisionReadinessBindings'],$expectedData) -or
+           ![object]::ReferenceEquals($collisionBindings.FirstErrorRecord,$retainedFirst)){throw}
+    }
+    $operationDataControls++
+}
+if($operationDataControls -ne 3){throw 'Operation exception Data controls were grouped or skipped.'}
+foreach($command in @('Read-IW7AgentWire','Read-IW7BaseLog')){
+    $calls=@($operationAST.FindAll({param($a) $a -is [Management.Automation.Language.CommandAst]},$true)|Where-Object {$_.GetCommandName() -ceq $command})
+    if($calls.Count -ne $(if($command -ceq 'Read-IW7AgentWire'){1}else{3})){throw 'Operation introduced wire/log IO.'}
+}
+if([regex]::Matches($operationAST.Extent.Text,'\[Environment\]::TickCount64').Count -ne 6 -or
+   $operationAST.Extent.Text -match 'Read-IW7CollisionReadinessDiagnostic' -or
+   $operationAST.Extent.Text.IndexOf('Assert-IW7CollisionPlayerFrozenReady') -ge $operationAST.Extent.Text.IndexOf("'set paris_collision_probe_arm 1'")){
+    throw 'Operation added a clock/diagnostic arm hook or changed the frozen-readiness gate.'
+}
+Write-Output "PASS SAME carrier/Session/Exception references, $metadataRefusals missing/latest/post-FAIL metadata controls, freshness/foreign/B isolation and $operationDataControls actual operation catch Data controls; IO/clock counts unchanged."
 
 function Assert-CachedDiagnosticSource([string]$Source){
     $Source=$Source.Replace("`r`n","`n")
@@ -317,7 +487,7 @@ foreach($mutation in $sourceMutations){
     throw 'Source causal control failed to detect changed evaluation or cleanup placement.'
 }
 if($sourceCausalRefusals -ne 9){throw 'Source causal controls were grouped or skipped.'}
-Write-Output "PASS 4 optional cached pairs, $diagnosticPairRefusals INCONCLUSIVE controls, 9 Source causal refusals, 9 original functions exact; no engine execution."
+Write-Output "PASS 7 optional cached pairs, $diagnosticPairRefusals INCONCLUSIVE controls, 9 Source causal refusals, 9 original functions exact; no engine execution."
 # Only the real GSC fixture reads retail intro/control state. These fixtures
 # verify the publication transport/freshness; they never fabricate that state.
 $created=[datetime]::Parse('2026-10-14T13:00:00Z').ToUniversalTime();$filetime=$created.ToFileTimeUtc()

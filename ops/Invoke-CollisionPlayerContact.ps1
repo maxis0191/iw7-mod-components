@@ -61,16 +61,19 @@ function Write-CollisionInputScenario([string]$Name,$Steps) {
     $path
 }
 # Bind the existing native nonce/protection handshake without moving the player.
+$collisionBindings=$null
+try{
 $warmup=Write-CollisionInputScenario 'collision-bind' @(@{id='bind';action='wait';duration_ms=1000})
 $null=Invoke-IW7AgentScenario -Session $Session -ScenarioPath $warmup
 $wire=Read-IW7AgentWire (Resolve-IW7BasePath $Session.Plan.GameRoot 'iw7-mod/paris-agent.session') -RequireTerminator
 if($wire -cnotmatch ('^'+$Session.Identity.PID+' ([a-f0-9]{32})$')){throw 'Actual native client nonce absent.'};$nonce=$Matches[1]
+$collisionBindings=New-IW7CollisionReadinessBindings $Session $ServerIdentity $Token $nonce
 # Retail intro/stock-spawn scripts must finish their own position/control work
 # before any placement. This passive wait is outside the measured/arm budget.
 $readyDeadline=[Environment]::TickCount64+180000;$generation=$null
 do{
     $null=Update-IW7BaseClient $Session
-    $ready=Read-IW7CollisionPlayerReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64)
+    $ready=Read-IW7CollisionPlayerReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64) -Bindings $collisionBindings
     if($ready.Ready){$generation=$ready.Generation;$firstReady=$ready;break}
     if([Environment]::TickCount64 -ge $readyDeadline){throw 'Fresh playable/retail-intro readiness unavailable; no placement or collision arm.'}
     Start-Sleep -Milliseconds 100
@@ -90,7 +93,7 @@ if($Capture){$steps+=@{id='standing-frame';action='capture'}}
 $steps+=@(@{id='request-removal';action='press';button='use'},
     @{id='removed-fall';action='assert_log';scope='server';contains="[Collision player] DONE token=$Token";timeout_ms=5000})
 $scenario=Write-CollisionInputScenario 'collision-contact' $steps
-$currentReady=Read-IW7CollisionPlayerReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64)
+$currentReady=Read-IW7CollisionPlayerReady (Read-IW7BaseLog $ServerIdentity.Stdout) $Token $ServerIdentity.PID $nonce $Session.StartedTick ([Environment]::TickCount64) -Bindings $collisionBindings
 Assert-IW7CollisionPlayerFrozenReady $firstReady $currentReady
 $armTick=[Environment]::TickCount64
 $null=Send-IW7CollisionProbeCommand $ServerHandle $ServerIdentity 'set paris_collision_probe_arm 1'
@@ -106,3 +109,21 @@ $path=Join-Path $Session.OutputRoot ('collision-player-'+$Token+'.local.json')
 $writer=[IO.StreamWriter]::new([IO.File]::Open($path,'CreateNew','Write','Read'),[Text.UTF8Encoding]::new($false))
 try{$writer.Write(($result|ConvertTo-Json -Depth 9))}finally{$writer.Dispose()}
 $result
+}catch{
+    # Capture before optional metadata; never replace the original exception.
+    $operationRecord=$_;$operationException=$operationRecord.Exception
+    try{
+        if($collisionBindings -and [object]::ReferenceEquals($Session.CollisionReadinessBindings,$collisionBindings)){
+            if($null -eq $collisionBindings['FirstErrorRecord']){
+                $collisionBindings['FirstErrorRecord']=$operationRecord;$collisionBindings['FirstException']=$operationException
+            }
+            # The same carrier may already be attached; preserve any foreign value too.
+            if(!$operationException.Data.Contains('CollisionReadinessBindings')){
+                $operationException.Data['CollisionReadinessBindings']=$collisionBindings
+            }
+        }
+    }catch{
+        # No metadata error may mask the operation's first refusal.
+    }
+    throw
+}

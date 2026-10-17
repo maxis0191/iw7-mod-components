@@ -1,5 +1,95 @@
 # Protected authoritative player contact
 
+## Readiness reference retention and console envelope - 2026-10-18
+
+This Source candidate implements the reviewed proposal SHA-256
+`F8C13AEA1F19D61CB5DAD0082DB30AF26481F89758845A524468722CF21ACE76`
+on Native main `bbfed9697924d85b3668600455ccf9dc6ee50248` (including PR 78's
+Aurora updates). It changes only the collision operation, its pure Core,
+existing Source tests and this document. GSC, native providers and Server
+helpers are unchanged. It neither adopts a new compiled consumer nor exports
+a Source package. The compiled `785ddd43d18c4eebd599bab10880e83d73a950e9`
+lineage and the separate Server helper lineage remain distinct.
+
+After the existing original-session/protection and wire checks, the operation
+creates one managed `CollisionReadinessBindings` record on the actual Session.
+It retains the original Session, client/server identity references, validated
+token, actual wire nonce and original start tick. An existing Session property
+is refused rather than replaced or adopted. A readiness refusal attaches the
+same record to its original exception's `Data` before a bare rethrow, so replacing a surrounding
+`RuntimeRefs` dictionary does not discard it. These are live managed references,
+not an ownership receipt: the Session and record reference each other, and the
+record must not be serialized wholesale or reconstructed from JSON.
+
+The first `ErrorRecord` and its exception are retained before secondary
+canonical parsing. The original refusal, type, message and exception object
+remain authoritative. PowerShell can expose a different outer `ErrorRecord`
+wrapper while unwinding scopes; the contract retains the first inner record
+and the same exception, without claiming outer wrapper identity. Metadata
+failure leaves `Generation`/`CanonicalReady` null and status `UNKNOWN`, then
+rethrows the original refusal. An outer operation failure also retains that
+same Session record without replacing an already retained first error. It adds the
+exception Data key only when absent. An already attached same carrier or a
+foreign existing value is preserved by reference, without adopting foreign
+metadata or replacing/masking the original exception.
+
+Expected generation comes only from the current canonical readiness validator:
+literal PID/nonce, slot 0, protected 1, native tick within the original interval
+and at most 500 ms old, plus the existing finite bounded anchor check. Failure
+metadata validates the full supplied transcript and requires its selected
+latest canonical publication to precede the first owned `FAIL`. It never
+slices at `FAIL` or falls back past a later malformed, foreign, partial or
+post-failure publication. Missing input clears a previously retained generation
+to `UNKNOWN`; supplemental cached diagnostics cannot supply expectations.
+Every owned `FAIL` still throws and can never return positive readiness.
+
+The separate optional diagnostic reader accepts exactly `BODY + TAB + LF` or
+`BODY + TAB + CRLF` for each of its two rows and the intervening canonical
+`FAIL`. The ASCII body must satisfy the original ordered field grammar; leading,
+interior, missing or doubled TABs are refused. The 384-byte wire ceiling counts
+the terminal TAB and excludes LF/CRLF. The existing producer bound is 324 ASCII
+body bytes, or 325 bytes including TAB. No trim or whitespace normalization is
+performed. `RawLine`, original character `Offset`, `WireByteCount` (including
+the physical line terminator) and `BodyByteCount` are retained for both events
+and canonical `FAIL`; accepted ASCII makes character and UTF-8 byte lengths
+equal. Candidate discovery uses LF as the physical line boundary and includes
+malformed owned `FAIL` candidates with a missing token separator. A bare CR in
+a candidate prefix or body stays visible to strict validation; it cannot hide
+a duplicate or a later malformed/post-failure readiness publication. Unrelated
+preamble bytes are retained in the original offsets. Diagnostic ticks remain
+strictly increasing inside the supplied
+interval, with no added maximum age. This is distinct from canonical readiness's
+existing 500 ms limit. Correlation remains diagnostic-only and proves no cause.
+
+Pure Source checks cover seven valid diagnostic pairs, 70 `INCONCLUSIVE`
+controls, 29 missing/latest/post-failure metadata controls, same managed
+references across exception unwind and `RuntimeRefs` replacement, foreign
+carrier rejection, freshness and diagnostic isolation. The actual operation's
+catch is exercised with synthetic originals for absent/same/foreign Data and
+repeated unwind, retaining type, message, exception and first record; its Run
+body is not executed. New causal matrices cover LF/CRLF, exact raw offsets and
+byte counts, missing separators, terminal TABs and bare CR prefixes/bodies.
+Legacy controls retain 32 first-failure diagnostic refusals, three partial and
+two foreign failures, seven identity, seven readiness and 13 pose refusals,
+nine Source causal mutations and hashes of all nine original GSC functions.
+The operation still has one wire read, three log reads and six existing clock
+references; its frozen-readiness gate still precedes arm. No new engine getter,
+wire/log/clock query, retry, protection action or diagnostic arm hook is added.
+
+Root requested changes on Source head `d0f9c98e6f3ada0cf55e81e3529055197ae4a080`:
+the optional reader could skip an initial owned `FAIL` without its separator,
+candidate locators could skip CR-prefixed physical lines, and the operation
+catch could overwrite foreign exception Data. That head and the failed review
+remain in history; the correction uses a subsequent ordinary commit. The
+legacy first-refusal/readiness/arm behavior is unchanged.
+
+E4 remains a closed historical refusal before arm, with optional diagnostic
+interpretation `INCONCLUSIVE` and the cause of `none` unknown. Its consumed
+readback is not reopened or reparsed by these tests. Source validation does not
+qualify contact, prediction, world reset, owner gameplay or a new game run.
+Next action is independent exact-head review of the private draft PR; merge,
+Source export, consumer adoption and game arbitration remain separate.
+
 ## Cached readiness diagnostics candidate - 2026-10-16
 
 E3 refused before arm with `frozen_anchor_readiness_lost`, group `weapon`,
