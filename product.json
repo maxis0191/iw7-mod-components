@@ -2,6 +2,10 @@
   "schema": "iw7.product/1",
   "id": "iw7-mod-components",
   "exports": [
+    "docs/STANDARD-CLIENT-UPDATE.md",
+    "ops/standard-client/premake-build-only.lua",
+    "client-profiles.json",
+    "ops/Build-StandardClient.ps1",
     "docs/AURORA-OCTOBER-UPDATE.md",
     "tests/ops/re_tools_sdk_test.py",
     "docs/RE-TOOLS.md",

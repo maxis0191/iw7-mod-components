@@ -1,0 +1,13 @@
+{
+  "Schema": "iw7.client-profiles/1",
+  "Standard": {
+    "Repository": "https://github.com/maxis0191/iw7-mod.git",
+    "Revision": "de58e0a9916bdbe33cc26d508af7c072291e7a74",
+    "CBBase": "d9c5dea1092b5ac493d2346043b26b2e2322d09c",
+    "OfficialUpstream": "37abcb260408ce7cdef0dde831bbfcad594510e3",
+    "LineageRepository": "https://github.com/CBServers/iw7-mod",
+    "NativeAssetsRequired": false,
+    "LauncherFlag": "-noupdate",
+    "ManagedDataPolicy": "Apply reviewed source delta manually with the same pin; do not overwrite retained CB menu scripts."
+  }
+}
