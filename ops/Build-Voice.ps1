@@ -45,9 +45,11 @@ if ($ServerModules) { $commit = '993737428781c4357fe21ecd375300e39a29a654' }
 if (!$TestsOnly) {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 if (!(Test-Path -LiteralPath "$root/.git")) {
-    if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --recursive --branch develop https://github.com/bigmangeekf/iw7-mod.git $root }
-    else { git clone --recursive https://github.com/auroramod/iw7-mod.git $root }
+    if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --no-checkout https://github.com/maxis0191/iw7-mod.git $root }
+    else { git clone --no-checkout https://github.com/auroramod/iw7-mod.git $root }
     if ($LASTEXITCODE) { throw 'Required IW7-Mod clone failed.' }
+    git -C $root checkout --detach $commit
+    if ($LASTEXITCODE) { throw 'Exact IW7-Mod pin checkout failed.' }
 }
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
@@ -523,6 +525,10 @@ $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$out
 $sourceIdentity = & (Join-Path $repo 'ops/Get-SourceIdentity.ps1') -Root $repo
 $manifest.OfficialUpstream = if ($ServerModules) { '37abcb260408ce7cdef0dde831bbfcad594510e3' } else { $null }
 $manifest.VoiceRelayProtocol = 2
+$manifest.NativeTree = (& git -C $root rev-parse ($commit + '^{tree}')).Trim()
+$manifest.NativeSourceHashes = @(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File | Sort-Object FullName | ForEach-Object {
+    @{ File=$_.FullName.Substring($root.Length+1).Replace('\','/'); SHA256=(Get-FileHash -LiteralPath $_.FullName).Hash }
+})
 $manifest.ProjectCommit = $sourceIdentity.Commit
 $manifest.SourceIdentity = $sourceIdentity
 $manifest.DownloadCacheOverlay = $downloadCacheOverlay
