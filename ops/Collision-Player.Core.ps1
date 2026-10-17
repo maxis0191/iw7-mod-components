@@ -79,7 +79,8 @@ function Read-IW7CollisionPlayerReady([string]$Text,[string]$Token,[int]$ServerI
             $n='([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)'
             $rows=[regex]::Matches($complete,'(?m)^\[Collision player\] PLAYER_READY token='+$Token+'; server_pid='+$ServerId+'; client_nonce='+$ClientNonce+'; server_generation=([a-f0-9]{32}); slot=0; native_tick_ms=(\d+); protected=1; anchor_x='+$n+'; anchor_y='+$n+'; anchor_z='+$n+'[\t ]*\r?$')
             $ownRows=[regex]::Matches($complete,'(?m)^\[Collision player\] PLAYER_READY token='+$Token+';[^\r\n]*\r?$')
-            if($MetadataOnly -and [regex]::Matches($complete,'(?m)^[^\r\n]*\[Collision player\] PLAYER_READY token='+$Token+'[^\r\n]*\r?$',
+            # LF alone delimits physical lines; a bare CR must stay visible to strict validation.
+            if($MetadataOnly -and [regex]::Matches($complete,'(?m)^[^\n]*\[Collision player\] PLAYER_READY token='+$Token+'[^\n]*$',
                 [Text.RegularExpressions.RegexOptions]::IgnoreCase).Count -ne $ownRows.Count){throw 'Noncanonical own readiness metadata.'}
             if($ownRows.Count -ne $rows.Count){throw 'Malformed/foreign own pose publication; do not fall back to earlier readiness.'}
             if($rows.Count){$r=$rows[-1];$tick=[long]$r.Groups[2].Value
@@ -175,7 +176,7 @@ function Read-IW7CollisionReadinessDiagnostic([string]$Text,[string]$Token,[int]
        $ClientNonce -cnotmatch '^[a-f0-9]{32}$' -or $Generation -cnotmatch '^[a-f0-9]{32}$' -or
        $NotBeforeTick -lt 0 -or $NowTick -lt $NotBeforeTick){return (Inconclusive 'Invalid bounded owned input.')}
     if(!$Text.EndsWith("`n",[StringComparison]::Ordinal)){return (Inconclusive 'Unterminated transcript; no predecessor fallback.')}
-    $rows=[regex]::Matches($Text,'(?m)^[^\r\n]*\[Collision readiness[^\n]*\n',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $rows=[regex]::Matches($Text,'(?m)^[^\n]*\[Collision readiness[^\n]*\n',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
     if($rows.Count -ne 2){return (Inconclusive 'Exactly two complete diagnostic events required.')}
     $pattern='^\[Collision readiness\] token='+$Token+' stage=(freeze|none) eval=([1-9][0-9]{0,5}); server_pid='+$ServerId+
         '; client_nonce='+$ClientNonce+'; server_generation='+$Generation+'; slot=0; native_tick_ms=(0|[1-9][0-9]{0,19}); protected=1'+
@@ -206,7 +207,8 @@ function Read-IW7CollisionReadinessDiagnostic([string]$Text,[string]$Token,[int]
         return (Inconclusive 'Event order, monotonic correlation or cached predicate semantics differ.')
     }
     # The first complete owned failure stays authoritative, even if a later row looks valid.
-    $failures=[regex]::Matches($Text,'(?m)^[^\r\n]*\[Collision player\] FAIL token='+$Token+' [^\n]*\n',
+    # Count malformed owned candidates too, even without the required token separator.
+    $failures=[regex]::Matches($Text,'(?m)^[^\n]*\[Collision player\] FAIL token='+$Token+'[^\n]*\n',
         [Text.RegularExpressions.RegexOptions]::IgnoreCase)
     if($failures.Count -ne 1 -or $failures[0].Index -le $freeze.Offset -or $failures[0].Index -ge $none.Offset -or
        $failures[0].Value -cnotmatch ('^\[Collision player\] FAIL token='+$Token+

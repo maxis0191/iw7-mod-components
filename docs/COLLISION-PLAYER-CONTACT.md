@@ -15,8 +15,8 @@ After the existing original-session/protection and wire checks, the operation
 creates one managed `CollisionReadinessBindings` record on the actual Session.
 It retains the original Session, client/server identity references, validated
 token, actual wire nonce and original start tick. An existing Session property
-is refused rather than replaced or adopted. The same record is attached to the
-original exception's `Data` before a bare rethrow, so replacing a surrounding
+is refused rather than replaced or adopted. A readiness refusal attaches the
+same record to its original exception's `Data` before a bare rethrow, so replacing a surrounding
 `RuntimeRefs` dictionary does not discard it. These are live managed references,
 not an ownership receipt: the Session and record reference each other, and the
 record must not be serialized wholesale or reconstructed from JSON.
@@ -27,8 +27,11 @@ remain authoritative. PowerShell can expose a different outer `ErrorRecord`
 wrapper while unwinding scopes; the contract retains the first inner record
 and the same exception, without claiming outer wrapper identity. Metadata
 failure leaves `Generation`/`CanonicalReady` null and status `UNKNOWN`, then
-rethrows the original refusal. An outer operation failure also publishes that
-same record without replacing an already retained first error.
+rethrows the original refusal. An outer operation failure also retains that
+same Session record without replacing an already retained first error. It adds the
+exception Data key only when absent. An already attached same carrier or a
+foreign existing value is preserved by reference, without adopting foreign
+metadata or replacing/masking the original exception.
 
 Expected generation comes only from the current canonical readiness validator:
 literal PID/nonce, slot 0, protected 1, native tick within the original interval
@@ -49,21 +52,36 @@ body bytes, or 325 bytes including TAB. No trim or whitespace normalization is
 performed. `RawLine`, original character `Offset`, `WireByteCount` (including
 the physical line terminator) and `BodyByteCount` are retained for both events
 and canonical `FAIL`; accepted ASCII makes character and UTF-8 byte lengths
-equal. Diagnostic ticks remain strictly increasing inside the supplied
+equal. Candidate discovery uses LF as the physical line boundary and includes
+malformed owned `FAIL` candidates with a missing token separator. A bare CR in
+a candidate prefix or body stays visible to strict validation; it cannot hide
+a duplicate or a later malformed/post-failure readiness publication. Unrelated
+preamble bytes are retained in the original offsets. Diagnostic ticks remain
+strictly increasing inside the supplied
 interval, with no added maximum age. This is distinct from canonical readiness's
 existing 500 ms limit. Correlation remains diagnostic-only and proves no cause.
 
-Pure Source checks cover five valid diagnostic pairs, 54 `INCONCLUSIVE`
-controls, 17 missing/latest/post-failure metadata controls, same managed
+Pure Source checks cover seven valid diagnostic pairs, 70 `INCONCLUSIVE`
+controls, 29 missing/latest/post-failure metadata controls, same managed
 references across exception unwind and `RuntimeRefs` replacement, foreign
 carrier rejection, freshness and diagnostic isolation. The actual operation's
-catch is exercised with synthetic originals; its Run body is not executed.
+catch is exercised with synthetic originals for absent/same/foreign Data and
+repeated unwind, retaining type, message, exception and first record; its Run
+body is not executed. New causal matrices cover LF/CRLF, exact raw offsets and
+byte counts, missing separators, terminal TABs and bare CR prefixes/bodies.
 Legacy controls retain 32 first-failure diagnostic refusals, three partial and
 two foreign failures, seven identity, seven readiness and 13 pose refusals,
 nine Source causal mutations and hashes of all nine original GSC functions.
 The operation still has one wire read, three log reads and six existing clock
 references; its frozen-readiness gate still precedes arm. No new engine getter,
 wire/log/clock query, retry, protection action or diagnostic arm hook is added.
+
+Root requested changes on Source head `d0f9c98e6f3ada0cf55e81e3529055197ae4a080`:
+the optional reader could skip an initial owned `FAIL` without its separator,
+candidate locators could skip CR-prefixed physical lines, and the operation
+catch could overwrite foreign exception Data. That head and the failed review
+remain in history; the correction uses a subsequent ordinary commit. The
+legacy first-refusal/readiness/arm behavior is unchanged.
 
 E4 remains a closed historical refusal before arm, with optional diagnostic
 interpretation `INCONCLUSIVE` and the cause of `none` unknown. Its consumed

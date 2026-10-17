@@ -117,7 +117,10 @@ $result
             if($null -eq $collisionBindings['FirstErrorRecord']){
                 $collisionBindings['FirstErrorRecord']=$operationRecord;$collisionBindings['FirstException']=$operationException
             }
-            $operationException.Data['CollisionReadinessBindings']=$collisionBindings
+            # The same carrier may already be attached; preserve any foreign value too.
+            if(!$operationException.Data.Contains('CollisionReadinessBindings')){
+                $operationException.Data['CollisionReadinessBindings']=$collisionBindings
+            }
         }
     }catch{
         # No metadata error may mask the operation's first refusal.
