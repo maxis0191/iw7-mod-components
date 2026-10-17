@@ -10,7 +10,7 @@ facts establish its distribution lineage, not an exact source commit for that
 historical build. The old file and shortcut remain recoverable in the local kit.
 
 Use client-profiles.json and Build-StandardClient.ps1 from a verified product
-source package. The new source pin de58e0a merges CB develop d9c5dea with official
+source package. The retained base pin de58e0a merges CB develop d9c5dea with official
 Aurora develop 37abcb. The CB source contains the NAT traversal, UPnP, friends,
 launcher IPC, Discord invite and movement capabilities the plain Aurora build
 would remove. One Discord conflict preserves null checking and the existing
@@ -28,6 +28,26 @@ commands are refused before MSBuild and post-build execution is disabled. The
 receipt hashes the adapter, generated project, EXE/PDB and every source file.
 Upstream LFS data is unnecessary for native compilation; fresh checkout skips its
 smudge downloads and no game assets or private Paris code are uploaded publicly.
+
+The 18 October map-transition crash after a Spaceland defeat and a vote for
+Attack was traced to the client loading-new-map hook. Its twelve-byte far jump
+overwrote the continuation that the generated stub resumed at entry plus five
+bytes. The crash dump confirmed the installed far-jump bytes; the generated
+stub's continuation lies inside that overwritten span. Native successor
+`13adfd0aba11b4173a8deac04d6e31194fc927af`
+retains the CB/Aurora merge and changes that entry to the five-byte near jump;
+the existing hook utility allocates a nearby trampoline when needed.
+Decoding the dump from the declared continuation reaches the exact fatal
+instruction through the overwritten bytes. This establishes the bad transition
+path without claiming that the dynamically allocated stub or a complete game
+call stack was captured.
+
+The standard-client builder now refuses a far jump, unknown entry address,
+changed stub or unknown continuation before project generation. The build
+receipt records the reviewed five-byte entry and continuation. Fixture tests
+reproduce the old width mismatch and preserve unrelated far jumps. Source and
+build checks remain separate from a successful occupied Spaceland-to-Attack
+rotation and owner gameplay acceptance, which are pending for this correction.
 
 The original CB updater endpoint remains unchanged. Add only -noupdate to the
 existing ordinary shortcut arguments, preserving its name, target, port27018 and
