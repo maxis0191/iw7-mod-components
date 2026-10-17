@@ -2,7 +2,7 @@
   "Schema": "iw7.client-profiles/1",
   "Standard": {
     "Repository": "https://github.com/maxis0191/iw7-mod.git",
-    "Revision": "13adfd0aba11b4173a8deac04d6e31194fc927af",
+    "Revision": "a99c04937513530648573fd4ca2a05321a90b4a5",
     "CBBase": "d9c5dea1092b5ac493d2346043b26b2e2322d09c",
     "OfficialUpstream": "37abcb260408ce7cdef0dde831bbfcad594510e3",
     "LineageRepository": "https://github.com/CBServers/iw7-mod",

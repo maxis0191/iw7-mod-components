@@ -37,6 +37,8 @@ stub's continuation lies inside that overwritten span. Native successor
 `13adfd0aba11b4173a8deac04d6e31194fc927af`
 retains the CB/Aurora merge and changes that entry to the five-byte near jump;
 the existing hook utility allocates a nearby trampoline when needed.
+The final profile pin `a99c04937513530648573fd4ca2a05321a90b4a5` adds source-only
+fork CI without optional upstream LFS data and includes namespaced branches.
 Decoding the dump from the declared continuation reaches the exact fatal
 instruction through the overwritten bytes. This establishes the bad transition
 path without claiming that the dynamically allocated stub or a complete game
