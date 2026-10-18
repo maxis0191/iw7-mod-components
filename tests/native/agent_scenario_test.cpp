@@ -145,6 +145,32 @@ int main()
         assert(parse(wire("1 1 hold " + std::string(names[i]) + (aiming(static_cast<button>(i)) ? " 250" : " 5000")), r));
         assert(static_cast<unsigned>(r.key) == i);
     }
+    // Shaolin's scanner uses the retail secondary-offhand binding. The
+    // command still requires an armed, fresh, protected private client and
+    // must release on completion, abort and protection loss.
+    assert(std::string(bindings[static_cast<unsigned>(button::smoke)]) == "+smoke");
+    for (const auto stop : {0, 1, 2})
+    {
+        scenario offhand(42, nonce);
+        safety offhand_s{true, true, "cp_disco", 1000};
+        std::vector<std::pair<button, bool>> offhand_events;
+        const auto offhand_dispatch = [&](button key, bool down) { offhand_events.emplace_back(key, down); };
+        assert(std::string(offhand.accept({42, nonce, 1, 1, action::hold, button::smoke, 400}, 1000, offhand_s, offhand_dispatch)) == "not_armed");
+        assert(offhand_events.empty());
+        assert(std::string(offhand.accept({42, nonce, 2, 2, action::arm}, 1000, offhand_s, offhand_dispatch)) == "armed");
+        assert(std::string(offhand.accept({42, nonce, 3, 3, action::hold, button::smoke, 400}, 1000, offhand_s, offhand_dispatch)) == "dispatched");
+        assert(offhand_events.size() == 1 && offhand_events.front() == std::make_pair(button::smoke, true));
+        if (stop == 0)
+            assert(std::string(offhand.tick(1400, offhand_s, offhand_dispatch)) == "step_complete");
+        else if (stop == 1)
+            assert(std::string(offhand.accept({42, nonce, 4, 4, action::abort}, 1001, offhand_s, offhand_dispatch)) == "aborted");
+        else
+        {
+            offhand_s.protected_now = false;
+            assert(std::string(offhand.tick(1001, offhand_s, offhand_dispatch)) == "protection_lost");
+        }
+        assert(!offhand.pending() && offhand_events.size() == 2 && offhand_events.back() == std::make_pair(button::smoke, false));
+    }
     for (auto key : {button::aim_left, button::aim_right, button::aim_up, button::aim_down})
     {
         assert((std::string(bindings[static_cast<unsigned>(key)]) == std::array<const char*, 4>{"+left", "+right", "+lookup", "+lookdown"}[static_cast<unsigned>(key) - static_cast<unsigned>(button::aim_left)]));

@@ -1,5 +1,8 @@
 # IW7-Mod components
 
+Private agent input includes a protected [secondary-offhand binding](docs/AGENT-OFFHAND.md)
+for real scanner input tests, retaining the existing identity and release gates.
+
 Private engine/client components, voice protocol, native diagnostics, scoped test hooks and shared process/resource helpers. Server gameplay rules and asset serializers have other owners.
 
 This repository is private. It complements the public owner forks; it does not

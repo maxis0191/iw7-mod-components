@@ -15,7 +15,7 @@
 namespace iw7::agent
 {
     enum class button : unsigned { forward, back, left, right, jump, melee, use, reload, ads, fire,
-        aim_left, aim_right, aim_up, aim_down, talk, none };
+        aim_left, aim_right, aim_up, aim_down, talk, smoke, none };
     inline bool aiming(button key) { return key >= button::aim_left && key <= button::aim_down; }
     // Read-only adapter layout proven by retail KeyDown/KeyUp and movement
     // binding cases. This is kbutton state, not a usercmd or gameplay outcome.
@@ -35,12 +35,12 @@ namespace iw7::agent
         if (index >= movement_key_offsets.size()) return false;
         offset = movement_key_offsets[index]; return true;
     }
-    inline constexpr std::array<const char*, 15> bindings{
+    inline constexpr std::array<const char*, 16> bindings{
         "+forward", "+back", "+moveleft", "+moveright", "+gostand", "+melee", "+activate", "+reload", "+speed_throw", "+attack",
-        "+left", "+right", "+lookup", "+lookdown", "+talk"};
-    inline constexpr std::array<std::string_view, 16> names{
+        "+left", "+right", "+lookup", "+lookdown", "+talk", "+smoke"};
+    inline constexpr std::array<std::string_view, 17> names{
         "forward", "back", "left", "right", "jump", "melee", "use", "reload", "ads", "fire",
-        "aim_left", "aim_right", "aim_up", "aim_down", "talk", "none"};
+        "aim_left", "aim_right", "aim_up", "aim_down", "talk", "smoke", "none"};
     struct key_probe { std::uintptr_t code{}, address{}; std::int32_t displacement{}; bool lea_rdi{}; };
     inline bool key_probe_for(button key, key_probe& result)
     {
