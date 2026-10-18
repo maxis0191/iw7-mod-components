@@ -2,6 +2,10 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "standard_client_loading_hook_test",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/standard_client_loading_hook_test.ps1"]
+    },
+    {
       "id": "source_guard_root_candidate_test",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/source_guard_root_candidate_test.ps1"]
     },

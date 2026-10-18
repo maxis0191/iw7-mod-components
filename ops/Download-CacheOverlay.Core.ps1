@@ -8,8 +8,10 @@ function Get-IW7DownloadSourceHash([string]$Source) {
 }
 
 function Assert-IW7DownloadCachePin([string]$Source, [string]$Commit) {
-    if ($Commit -cnotin @($IW7DownloadCacheCommit, '993737428781c4357fe21ecd375300e39a29a654')) { throw 'Unsupported download-cache upstream revision.' }
-    $expectedHash = if ($Commit -ceq $IW7DownloadCacheCommit) { $IW7DownloadCacheBaseSHA256 } else { 'C5D3E6353D87FDB023F3AA41EE662AD4DB1DD0A3BBC8C3209B3CC66594811C55' }
+    if ($Commit -cnotin @($IW7DownloadCacheCommit, '993737428781c4357fe21ecd375300e39a29a654', 'cfca45b11ee14641945b9a264a95638387f48a4a')) { throw 'Unsupported download-cache upstream revision.' }
+    $expectedHash = if ($Commit -ceq $IW7DownloadCacheCommit) { $IW7DownloadCacheBaseSHA256 }
+        elseif ($Commit -ceq '993737428781c4357fe21ecd375300e39a29a654') { 'C5D3E6353D87FDB023F3AA41EE662AD4DB1DD0A3BBC8C3209B3CC66594811C55' }
+        else { '31FB5DCB2D407B51673DEDF0E2C5054D2A0EDC1BB95D25952517D7B69ACF635E' }
     if ((Get-IW7DownloadSourceHash $Source) -cne $expectedHash) {
         throw 'Pinned download-cache source hash changed.'
     }

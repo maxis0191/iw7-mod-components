@@ -2,13 +2,29 @@
 
 ## Source identity and compatibility
 
-The ServerModules profile now builds the owner fork integration commit
+The retained ServerModules base is the owner fork integration commit
 `993737428781c4357fe21ecd375300e39a29a654`. Its parents are the retained
 `77e6d4d24e918ee363b3feee3735c3b889dff7d7` and official Aurora develop
 `37abcb260408ce7cdef0dde831bbfcad594510e3` (official merge on 2026-10-11).
 The generic-only merge is retained on the owner's public fork integration branch;
 private Paris components remain in this private product and its source dependencies.
 No private source or runtime data was published to the Aurora project.
+
+The 18 October official default-branch refresh still resolves to that same
+`37abcb260408ce7cdef0dde831bbfcad594510e3`; there are no newer default-branch
+commits to integrate. Unmerged feature branches are outside this update.
+The profile now pins successor `cfca45b11ee14641945b9a264a95638387f48a4a` of
+the retained integration. It applies the same five-byte loading-new-map jump
+correction as the standard CB client. The Paris executable is also used as the
+VC v2 client, so its client transition path needs this correction even though
+no corresponding dedicated-server crash has been demonstrated.
+
+The build checks the loading hook after its owned client download-cache overlay
+and records the source contract in the receipt. The new native pin has its own
+exact normalized source hash in that overlay's allowlist; old pin/hash pairs and
+frozen experiment/checkpoint pins remain unchanged. Native build, private runtime
+qualification, guarded promotion and owner transition gameplay remain pending
+for this successor. Earlier production evidence below belongs to the old build.
 
 All nineteen official commits after the previous common ancestor were reviewed.
 The sixteen-file integration includes shader preload cache persistence, usermap
@@ -48,6 +64,18 @@ Local download-cache ownership/writer/receipt regression passes with both exact
 native pins. The scheduler source is identical at both pins and retains the same
 reviewed clean/profiler/watch hashes. Native voice/parser/capture/protection tests
 and private dedicated qualification are recorded with the installation evidence.
+
+The map-transition successor `cfca45b11ee14641945b9a264a95638387f48a4a`
+retains scheduler Git blob `d235aeee97891254b1c38b7841e01700e130220d` from
+`77e6d4d`/`9937374`. Its first normal server build stopped before final native
+compilation because the checkpoint helper treated that successor as an unknown
+pin and refused the existing owned profiler overlay. The helper now recognizes
+only its disabled BeforeDebugger/AfterDebugger transitions, using the unchanged
+full profiler/watch hashes; `-Enabled` still refuses this successor. The Source
+regression invokes the real Apply entry against temporary Source files, reproduces
+the earlier refusal, and checks known transitions, mutations and unknown pins.
+This correction does not qualify another native build, debugger/watch activation,
+game transition or deployment. The failed package remains immutable.
 
 GitHub Source checks on the reviewed head did not execute: the primary check
 annotation reports the existing account payment/spending-limit refusal; jobs have

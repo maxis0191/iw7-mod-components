@@ -2,6 +2,8 @@
   "schema": "iw7.product/1",
   "id": "iw7-mod-components",
   "exports": [
+    "ops/standard-client/Loading-NewMap.Core.ps1",
+    "tests/ops/standard_client_loading_hook_test.ps1",
     "docs/STANDARD-CLIENT-UPDATE.md",
     "ops/standard-client/premake-build-only.lua",
     "client-profiles.json",
@@ -414,7 +416,7 @@
   "resolution": "Non-recursive exact revisions; no dependency may contribute an already owned path.",
   "upstream": {
     "repository": "maxis0191/iw7-mod",
-    "revision": "993737428781c4357fe21ecd375300e39a29a654",
-    "usage": "ServerModules integrates Aurora develop 37abcb260408ce7cdef0dde831bbfcad594510e3 with retained Paris generic fixes; historical experiment and legacy pins remain explicit."
+    "revision": "cfca45b11ee14641945b9a264a95638387f48a4a",
+    "usage": "ServerModules retains Aurora develop 37abcb260408ce7cdef0dde831bbfcad594510e3 and Paris generic fixes, with the shared voice-client map-transition correction; historical experiment and legacy pins remain explicit."
   }
 }
