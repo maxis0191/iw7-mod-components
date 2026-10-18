@@ -10,8 +10,8 @@ client, fresh protection, duration and release gates. It accepts no arbitrary
 console command. Completion, abort and protection loss release the offhand.
 All earlier binding indexes remain unchanged; requests use typed string names.
 
-The generic Source tests cover parsing, unarmed refusal, actual dispatched
-binding and release paths. An isolated build with its independent AppData,
+The generic Source tests cover parsing, unarmed refusal, the fixed binding
+mapping and modeled dispatch/release paths. An isolated build with its independent AppData,
 auth mutex and profiles is required for simultaneous testing alongside an
 occupied owner client. Source tests do not establish scanner gameplay.
 
