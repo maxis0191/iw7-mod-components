@@ -231,7 +231,117 @@ function Get-IW7ResourceStatus {
 function Invoke-IW7ResourceJob {
     param([Parameter(Mandatory)][scriptblock]$Body,[Parameter(Mandatory)][string]$Scope,
         [ValidateSet('Build','Extract','Analysis')][string]$Kind='Build',
-        [long]$PhysicalBytes=4GB,[long]$CommitBytes=6GB,[string]$Owner='native build')
+        [long]$PhysicalBytes=4GB,[long]$CommitBytes=6GB,[string]$Owner='native build',
+        [scriptblock]$BeforeReleaseCheck=$null,[object]$OriginalContext=$null)
+    if ($PSBoundParameters.ContainsKey('BeforeReleaseCheck') -or $PSBoundParameters.ContainsKey('OriginalContext')) {
+        if (!$PSBoundParameters.ContainsKey('BeforeReleaseCheck') -or !$PSBoundParameters.ContainsKey('OriginalContext') -or
+            $null -eq $BeforeReleaseCheck -or $null -eq $OriginalContext) { throw 'BeforeReleaseCheck and OriginalContext must be supplied together and non-null.' }
+        # A caller-owned, fresh data object only: no coercion, scripted accessors
+        # or adapter setters may fail to retain the actual lease after admission.
+        $jobNames=@('ResourceJobLease','ResourceJobFirstErrorRecord','ResourceJobFirstException',
+            'ResourceJobSecondaryErrors','ResourceJobReleaseAttempted','ResourceJobReleaseReturned')
+        if ($OriginalContext -isnot [Management.Automation.PSCustomObject] -or
+            @($OriginalContext.PSObject.Properties).Count -ne $jobNames.Count) { throw 'OriginalContext must be the exact fresh six-slot mutable data object.' }
+        $jobSlots=@{}
+        foreach ($jobName in $jobNames) {
+            $jobSlot=$OriginalContext.PSObject.Properties[$jobName]
+            if ($null -eq $jobSlot -or $jobSlot.Name -cne $jobName -or
+                $jobSlot.GetType() -ne [Management.Automation.PSNoteProperty] -or
+                !$jobSlot.IsGettable -or !$jobSlot.IsSettable) { throw 'OriginalContext requires only mutable note-property slots.' }
+            $jobSlots[$jobName]=$jobSlot
+        }
+        $jobSecondary=$jobSlots.ResourceJobSecondaryErrors.Value
+        if ($null -ne $jobSlots.ResourceJobLease.Value -or $null -ne $jobSlots.ResourceJobFirstErrorRecord.Value -or
+            $null -ne $jobSlots.ResourceJobFirstException.Value -or
+            $null -eq $jobSecondary -or $jobSecondary.GetType() -ne [Collections.Generic.List[Management.Automation.ErrorRecord]] -or
+            $jobSecondary.Count -ne 0 -or $jobSlots.ResourceJobReleaseAttempted.Value -isnot [bool] -or
+            $jobSlots.ResourceJobReleaseAttempted.Value -or $jobSlots.ResourceJobReleaseReturned.Value -isnot [bool] -or
+            $jobSlots.ResourceJobReleaseReturned.Value) { throw 'OriginalContext must contain fresh typed release/error slots.' }
+        $jobContext=$OriginalContext
+        $jobLease=$null;$jobToken=$null;$jobProcess=$null;$jobPriority=$null
+        $jobPriorityCaptured=$false;$jobPriorityRestored=$false;$jobHookApproved=$false
+        $jobFirstRecord=$null
+        try {
+            $jobLease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+            $jobSlots.ResourceJobLease.Value=$jobLease
+            if ($null -eq $jobLease -or $jobLease.Token -isnot [string] -or $jobLease.Token -cnotmatch '\A[0-9a-f]{32}\z') { throw 'Actual returned lease with its original token is required.' }
+            $jobToken=$jobLease.Token
+            $jobProcess=Get-Process -Id $PID
+            $jobPriority=$jobProcess.PriorityClass
+            if ($jobPriority -isnot [Diagnostics.ProcessPriorityClass]) { throw 'Original host priority is unknown; release refused.' }
+            $jobPriorityCaptured=$true
+            $jobProcess.PriorityClass='BelowNormal'
+            & $Body
+        } catch {
+            $jobFirstRecord=$_
+            $jobSlots.ResourceJobFirstErrorRecord.Value=$jobFirstRecord
+            $jobSlots.ResourceJobFirstException.Value=$jobFirstRecord.Exception
+        } finally {
+            if ($null -ne $jobLease) {
+                if ($jobPriorityCaptured) {
+                    try {
+                        $jobProcess.PriorityClass=$jobPriority
+                        if ($jobProcess.PriorityClass -ne $jobPriority) { throw 'Original host priority restoration readback differs.' }
+                        $jobPriorityRestored=$true
+                    }
+                    catch {
+                        if ($null -eq $jobFirstRecord) {
+                            $jobFirstRecord=$_;$jobSlots.ResourceJobFirstErrorRecord.Value=$jobFirstRecord
+                            $jobSlots.ResourceJobFirstException.Value=$jobFirstRecord.Exception
+                        } else { $jobSecondary.Add($_) }
+                    }
+                }
+                try {
+                    $jobExpectedException=if ($null -ne $jobFirstRecord) { $jobFirstRecord.Exception } else { $null }
+                    if (![object]::ReferenceEquals($OriginalContext,$jobContext)) { throw 'OriginalContext reference changed; release refused.' }
+                    foreach ($jobName in $jobNames) {
+                        if (![object]::ReferenceEquals($jobContext.PSObject.Properties[$jobName],$jobSlots[$jobName])) { throw 'OriginalContext slot changed; release refused.' }
+                    }
+                    if (![object]::ReferenceEquals($jobSlots.ResourceJobLease.Value,$jobLease) -or
+                        ![object]::ReferenceEquals($jobSlots.ResourceJobSecondaryErrors.Value,$jobSecondary) -or
+                        ![object]::ReferenceEquals($jobSlots.ResourceJobFirstErrorRecord.Value,$jobFirstRecord) -or
+                        ![object]::ReferenceEquals($jobSlots.ResourceJobFirstException.Value,$jobExpectedException) -or
+                        $jobSlots.ResourceJobReleaseAttempted.Value -isnot [bool] -or $jobSlots.ResourceJobReleaseAttempted.Value -or
+                        $jobSlots.ResourceJobReleaseReturned.Value -isnot [bool] -or $jobSlots.ResourceJobReleaseReturned.Value -or
+                        $jobLease.Token -cne $jobToken) { throw 'Original release/error/lease state changed; release refused.' }
+                    $jobHookResult=& $BeforeReleaseCheck $jobContext
+                    if ($jobHookResult -isnot [bool] -or !$jobHookResult) { throw 'BeforeReleaseCheck must return exactly Boolean true.' }
+                    # The hook is observational; recheck the same references after it.
+                    if (![object]::ReferenceEquals($OriginalContext,$jobContext)) { throw 'OriginalContext reference changed in release check.' }
+                    foreach ($jobName in $jobNames) {
+                        if (![object]::ReferenceEquals($jobContext.PSObject.Properties[$jobName],$jobSlots[$jobName])) { throw 'OriginalContext slot changed in release check.' }
+                    }
+                    if (![object]::ReferenceEquals($jobSlots.ResourceJobLease.Value,$jobLease) -or
+                        ![object]::ReferenceEquals($jobSlots.ResourceJobSecondaryErrors.Value,$jobSecondary) -or
+                        ![object]::ReferenceEquals($jobSlots.ResourceJobFirstErrorRecord.Value,$jobFirstRecord) -or
+                        ![object]::ReferenceEquals($jobSlots.ResourceJobFirstException.Value,$jobExpectedException) -or
+                        $jobSlots.ResourceJobReleaseAttempted.Value -isnot [bool] -or $jobSlots.ResourceJobReleaseAttempted.Value -or
+                        $jobSlots.ResourceJobReleaseReturned.Value -isnot [bool] -or $jobSlots.ResourceJobReleaseReturned.Value -or
+                        $jobLease.Token -cne $jobToken) { throw 'Release check changed original release/error/lease state.' }
+                    $jobHookApproved=$true
+                } catch {
+                    if ($null -eq $jobFirstRecord) {
+                        $jobFirstRecord=$_;$jobSlots.ResourceJobFirstErrorRecord.Value=$jobFirstRecord
+                        $jobSlots.ResourceJobFirstException.Value=$jobFirstRecord.Exception
+                    } else { $jobSecondary.Add($_) }
+                }
+                if ($jobPriorityRestored -and $jobHookApproved) {
+                    $jobSlots.ResourceJobReleaseAttempted.Value=$true
+                    try {
+                        Exit-IW7ResourceLease -Token $jobToken
+                        $jobSlots.ResourceJobReleaseReturned.Value=$true
+                    } catch {
+                        if ($null -eq $jobFirstRecord) {
+                            $jobFirstRecord=$_;$jobSlots.ResourceJobFirstErrorRecord.Value=$jobFirstRecord
+                            $jobSlots.ResourceJobFirstException.Value=$jobFirstRecord.Exception
+                        } else { $jobSecondary.Add($_) }
+                    }
+                }
+            }
+        }
+        if ($null -ne $jobFirstRecord) { throw $jobFirstRecord }
+        return
+    }
     $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
     $process=Get-Process -Id $PID
     $priority=$process.PriorityClass

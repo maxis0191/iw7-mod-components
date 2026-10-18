@@ -165,6 +165,68 @@ planned scenario still needs admission before launch.
 
 ## Build, extraction and analysis
 
+### Inactive retained-release opt-in (Source only)
+
+`Invoke-IW7ResourceJob` now has optional `BeforeReleaseCheck` and
+`OriginalContext` parameters. No builder or runtime caller opts in. Both
+parameters **omitted** retain the literal legacy implementation, its Body
+arguments and admission estimates. An explicit null, a half-pair or a reused
+context refuses before admission. This addition does not qualify normal-build
+child containment, artifact inventory, compiler output or a new launch path.
+
+The opt-in requires the caller's original mutable `PSCustomObject`, with exactly
+six ordinary, settable note properties. Do not convert, clone or deserialize it.
+Its fresh data shape is:
+
+```powershell
+# Data shape only; not an authorized invocation or a process-lifetime guard.
+$originalContext = [pscustomobject]@{
+    ResourceJobLease = $null
+    ResourceJobFirstErrorRecord = $null
+    ResourceJobFirstException = $null
+    ResourceJobSecondaryErrors = [Collections.Generic.List[Management.Automation.ErrorRecord]]::new()
+    ResourceJobReleaseAttempted = $false
+    ResourceJobReleaseReturned = $false
+}
+```
+
+The function validates these slots before Enter and immediately retains the
+same returned lease before process/priority setup. The callback receives that
+same object explicitly and must observe it without changing its slots. Only one
+Boolean `true` result approves the check; strings, numbers, arrays, multiple
+outputs, no output, false or an exception refuse release. Priority restoration
+must also be known. The original lease/token, slot and error-list references are
+rechecked after the callback. There is still exactly one admission.
+
+The first captured ErrorRecord and Exception remain the same objects. Ordered
+secondary priority/check/release errors cannot mask an earlier setup/Body error.
+PowerShell can expose another outer ErrorRecord when it propagates; that does
+not replace the retained first inner record or Exception. A known failed Body
+may release after an approving check and known priority restoration, but remains
+failed. A failed release attempt keeps its lease reference and records no known
+release. `ResourceJobReleaseReturned` means only that Exit returned; fresh
+registry absence and real host closure remain separate proofs. Do not serialize
+the live context, lease, ErrorRecord or Exception.Data.
+
+This adapter never creates/closes native owners, disposes caller guards, changes
+CanExit/Passed/Ready, resets/stops the caller's clock or exits the host.
+**A refusing hook alone does not retain a noninteractive PowerShell process.**
+Before any future activation, its original caller must have a separately
+reviewed exact physical/managed NoExit entry, fixed AppDomain/PSVariable roots
+retaining the same context/owners/handles/guards/lease/clock across return or
+throw, and an original-host terminal gate after real closure/readbacks. Returning
+from a sourced script or leaving a lease file is not a true-exit proof. No PID or
+JSON reconstruction is a substitute. Without that caller, this API is inactive
+and has no runtime-retention qualification.
+
+The narrow `tests/ops/resource_scheduler_test.ps1
+-RetainedReleaseSourceOnly` mode runs the actual function extracted by AST with
+fake admission/release/process/priority/check dependencies. It returns before
+the Core import, real registry and historical cross-process contenders. Those
+Source causals do not establish a real lease, NoExit host, descendant closure,
+compiler/build/game result or full legacy-suite pass. Subsequent child coverage
+and postbuild evidence remain separate work.
+
 Build-Voice and Build-RhinoZoneTool acquire a heavy-job lease around compilation,
 default to one MSBuild node, disable compiler multiprocess expansion, disable
 node reuse and run at BelowNormal priority. The caller's priority is restored in

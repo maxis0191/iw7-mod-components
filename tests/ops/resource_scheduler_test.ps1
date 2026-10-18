@@ -1,4 +1,191 @@
-param([switch]$Contender,[string]$TestRoot,[string]$ResultPath)
+param([switch]$Contender,[string]$TestRoot,[string]$ResultPath,[switch]$RetainedReleaseSourceOnly)
+if ($RetainedReleaseSourceOnly) {
+    $ErrorActionPreference='Stop'
+    # Return before the Core import, real registry, process query and contenders.
+    $tokens=$null;$parseErrors=$null
+    $sourceAST=[Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot '../../ops/Resource-Scheduler.Core.ps1'),[ref]$tokens,[ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Production Source parse failed.' }
+    $production=@($sourceAST.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-IW7ResourceJob'},$true))
+    if ($production.Count-ne1) { throw 'One exact production function required.' }
+    $productionText=$production[0].Extent.Text
+    $script:releaseSourceChecks=0
+    function Assert-ReleaseSource($Value,[string]$Message) {
+        $script:releaseSourceChecks++
+        if (!$Value) { throw $Message }
+    }
+    function New-ReleaseSourceContext {
+        [pscustomobject]@{
+            ResourceJobLease=$null;ResourceJobFirstErrorRecord=$null;ResourceJobFirstException=$null
+            ResourceJobSecondaryErrors=[Collections.Generic.List[Management.Automation.ErrorRecord]]::new()
+            ResourceJobReleaseAttempted=$false;ResourceJobReleaseReturned=$false
+        }
+    }
+    function Invoke-ReleaseSourceCase([string]$Mode='True',[scriptblock]$Configure,[object]$Context) {
+        if ($null-eq$Context) { $Context=New-ReleaseSourceContext }
+        $case=[pscustomobject]@{
+            Mode=$Mode;Context=$Context;Events=[Collections.Generic.List[string]]::new()
+            Lease=[pscustomobject]@{Token='0123456789abcdef0123456789abcdef'}
+            EnterCount=0;ExitCount=0;BodyCount=0;HookCount=0
+            EnterFails=$false;ProcessFails=$false;PriorityReadFails=$false;PriorityUnknown=$false
+            LowerFails=$false;RestoreFails=$false;RestoreSilent=$false;BodyFails=$false;ExitFails=$false;HalfPair=$false
+            ExplicitNullHook=$false;ExplicitNullContext=$false;NoPair=$false;ContextOnly=$false;HookMutation=$false
+            BodyException=[InvalidOperationException]::new('authored body failure')
+            HookException=[InvalidOperationException]::new('authored hook failure')
+            ExitException=[InvalidOperationException]::new('authored release failure')
+            Output=$null;Caught=$null;HookContext=$null;FirstSeenByHook=$null;FirstExceptionSeenByHook=$null
+            ExitToken=$null;Priority=[Diagnostics.ProcessPriorityClass]::Normal;ObservedArguments=$null
+        }
+        if ($Configure) { & $Configure $case }
+        & {
+            param($case,$productionText)
+            . ([scriptblock]::Create($productionText))
+            function Enter-IW7ResourceLease {
+                param($Scope,$Kind,$PhysicalBytes,$CommitBytes,$Owner)
+                $case.Events.Add('enter');$case.EnterCount++
+                $case.ObservedArguments=@($Scope,$Kind,$PhysicalBytes,$CommitBytes,$Owner)
+                if ($case.EnterFails) { throw 'authored admission failure' }
+                return $case.Lease
+            }
+            function Exit-IW7ResourceLease {
+                param($Token)
+                $case.Events.Add('exit');$case.ExitCount++;$case.ExitToken=$Token
+                if ($case.ExitFails) { throw $case.ExitException }
+            }
+            function Get-Process {
+                param($Id)
+                $case.Events.Add('process')
+                if ($case.ProcessFails) { throw 'authored process lookup failure' }
+                $fake=[pscustomobject]@{State=$case}
+                $fake|Add-Member ScriptProperty PriorityClass {
+                    $this.State.Events.Add('priority-read')
+                    if ($this.State.PriorityReadFails) { throw 'authored priority read failure' }
+                    if ($this.State.PriorityUnknown) { return $null }
+                    $this.State.Priority
+                } {
+                    param($value)
+                    $event=if($value-eq[Diagnostics.ProcessPriorityClass]::BelowNormal){'lower'}else{'restore'}
+                    $this.State.Events.Add($event)
+                    if (($event-ceq'lower'-and$this.State.LowerFails)-or($event-ceq'restore'-and$this.State.RestoreFails)) { throw ('authored '+$event+' failure') }
+                    if ($event-ceq'restore'-and$this.State.RestoreSilent) { return }
+                    $this.State.Priority=$value
+                }
+                return $fake
+            }
+            $body={
+                $case.Events.Add('body');$case.BodyCount++
+                if ($case.BodyFails) { throw $case.BodyException }
+                'authored body output'
+            }
+            $hook={
+                param($actualContext)
+                $case.Events.Add('hook');$case.HookCount++;$case.HookContext=$actualContext
+                $case.FirstSeenByHook=$actualContext.ResourceJobFirstErrorRecord
+                $case.FirstExceptionSeenByHook=$actualContext.ResourceJobFirstException
+                if ($case.HookMutation) { $actualContext.ResourceJobLease=[pscustomobject]@{Token=$case.Lease.Token} }
+                switch -CaseSensitive ($case.Mode) {
+                    'True' { $true }
+                    'False' { $false }
+                    'String' { 'true' }
+                    'Number' { 1 }
+                    'Array' { ,@($true) }
+                    'Two' { $true;$true }
+                    'Empty' { }
+                    'Throw' { throw $case.HookException }
+                }
+            }
+            $arguments=@{Scope='source-only-scope';Kind='Analysis';PhysicalBytes=17;CommitBytes=23;Owner='authored owner';Body=$body}
+            if (!$case.NoPair) {
+                if (!$case.ContextOnly) { $arguments.BeforeReleaseCheck=if($case.ExplicitNullHook){$null}else{$hook} }
+                if (!$case.HalfPair) { $arguments.OriginalContext=if($case.ExplicitNullContext){$null}else{$case.Context} }
+            }
+            try { $case.Output=Invoke-IW7ResourceJob @arguments }
+            catch { $case.Caught=$_ }
+        } $case $productionText
+        return $case
+    }
+    $legacy=@(
+        '    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner',
+        '    $process=Get-Process -Id $PID',
+        '    $priority=$process.PriorityClass',
+        '    try {',
+        '        $process.PriorityClass=''BelowNormal''',
+        '        & $Body',
+        '    } finally {',
+        '        $process.PriorityClass=$priority',
+        '        Exit-IW7ResourceLease -Token $lease.Token',
+        '    }',
+        '}'
+    ) -join [string][char]10
+    Assert-ReleaseSource ($productionText.Replace([string][char]13,'').EndsWith($legacy,[StringComparison]::Ordinal)) 'The literal legacy implementation changed.'
+    $legacyCase=Invoke-ReleaseSourceCase -Configure {param($c)$c.NoPair=$true}
+    Assert-ReleaseSource (!$legacyCase.Caught-and$legacyCase.EnterCount-eq1-and$legacyCase.ExitCount-eq1-and$legacyCase.HookCount-eq0) 'Default did not use only the original branch.'
+    Assert-ReleaseSource ($null-eq$legacyCase.Context.ResourceJobLease-and$legacyCase.Output-ceq'authored body output') 'Default changed caller state or Body output.'
+    $normal=Invoke-ReleaseSourceCase
+    Assert-ReleaseSource (!$normal.Caught-and$normal.Output-ceq'authored body output') 'Known normal outcome failed or changed Body output.'
+    Assert-ReleaseSource (($normal.Events-join',')-ceq'enter,process,priority-read,lower,body,restore,priority-read,hook,exit') 'Actual function order differs.'
+    Assert-ReleaseSource ([object]::ReferenceEquals($normal.Context.ResourceJobLease,$normal.Lease)-and[object]::ReferenceEquals($normal.HookContext,$normal.Context)) 'Original context/lease reference was copied.'
+    Assert-ReleaseSource ($normal.Context.ResourceJobReleaseAttempted-and$normal.Context.ResourceJobReleaseReturned-and$normal.ExitCount-eq1-and$normal.ExitToken-ceq$normal.Lease.Token) 'Known release outcome differs.'
+    Assert-ReleaseSource (($normal.ObservedArguments-join'|')-ceq'source-only-scope|Analysis|17|23|authored owner') 'Existing admission arguments changed.'
+    foreach($configuration in @(
+        {param($c)$c.HalfPair=$true},
+        {param($c)$c.ContextOnly=$true},
+        {param($c)$c.ExplicitNullHook=$true},
+        {param($c)$c.ExplicitNullContext=$true},
+        {param($c)$c.ExplicitNullHook=$true;$c.ExplicitNullContext=$true}
+    )) {
+        $refused=Invoke-ReleaseSourceCase -Configure $configuration
+        Assert-ReleaseSource ($refused.Caught-and$refused.EnterCount-eq0-and$refused.BodyCount-eq0) 'Explicit null/half-pair reached admission.'
+    }
+    $contexts=@(@{},[version]'1.2',(New-ReleaseSourceContext),(New-ReleaseSourceContext),(New-ReleaseSourceContext))
+    $script:forbiddenContextAccesses=0
+    $contexts[2].PSObject.Properties.Remove('ResourceJobLease')
+    $contexts[2]|Add-Member ScriptProperty ResourceJobLease {$script:forbiddenContextAccesses++;throw 'must not read scripted getter'} {$script:forbiddenContextAccesses++;throw 'must not call scripted setter'}
+    $contexts[3].ResourceJobSecondaryErrors=[Collections.ArrayList]::new()
+    $contexts[4].ResourceJobReleaseReturned='false'
+    foreach($context in $contexts) {
+        $refused=Invoke-ReleaseSourceCase -Context $context
+        Assert-ReleaseSource ($refused.Caught-and$refused.EnterCount-eq0) 'Wrong type/scripted/readonly/typed slots reached admission.'
+    }
+    Assert-ReleaseSource ($script:forbiddenContextAccesses-eq0) 'Validation executed a scripted context getter/setter.'
+    foreach($mode in @('False','String','Number','Array','Two','Empty','Throw')) {
+        $refused=Invoke-ReleaseSourceCase -Mode $mode
+        Assert-ReleaseSource ($refused.Caught-and$refused.EnterCount-eq1-and$refused.ExitCount-eq0) ('Non-strict hook result released: '+$mode)
+        Assert-ReleaseSource ([object]::ReferenceEquals($refused.Context.ResourceJobLease,$refused.Lease)-and!$refused.Context.ResourceJobReleaseAttempted-and!$refused.Context.ResourceJobReleaseReturned) 'Unknown release lost same lease or fabricated release.'
+        Assert-ReleaseSource ([object]::ReferenceEquals($refused.Context.ResourceJobFirstException,$refused.Caught.Exception)) 'Hook primary Exception changed on rethrow.'
+    }
+    $bodyFailed=Invoke-ReleaseSourceCase -Configure {param($c)$c.BodyFails=$true}
+    Assert-ReleaseSource ($bodyFailed.ExitCount-eq1-and$bodyFailed.Context.ResourceJobReleaseReturned) 'Known failed Body could not release after explicit known check.'
+    Assert-ReleaseSource ([object]::ReferenceEquals($bodyFailed.Context.ResourceJobFirstException,$bodyFailed.BodyException)-and[object]::ReferenceEquals($bodyFailed.Caught.Exception,$bodyFailed.BodyException)) 'Body primary Exception was replaced.'
+    Assert-ReleaseSource ([object]::ReferenceEquals($bodyFailed.FirstSeenByHook,$bodyFailed.Context.ResourceJobFirstErrorRecord)-and[object]::ReferenceEquals($bodyFailed.FirstExceptionSeenByHook,$bodyFailed.Context.ResourceJobFirstException)) 'First record/Exception was not retained identically.'
+    $combined=Invoke-ReleaseSourceCase -Mode Throw -Configure {param($c)$c.BodyFails=$true;$c.RestoreFails=$true}
+    Assert-ReleaseSource ($combined.ExitCount-eq0-and$combined.HookCount-eq1-and$combined.Context.ResourceJobSecondaryErrors.Count-eq2) 'Priority failure masked hook or allowed release.'
+    Assert-ReleaseSource ([object]::ReferenceEquals($combined.Caught.Exception,$combined.BodyException)-and[object]::ReferenceEquals($combined.Context.ResourceJobFirstException,$combined.BodyException)) 'Combined failures masked Body.'
+    Assert-ReleaseSource ($combined.Context.ResourceJobSecondaryErrors[0].Exception.Message-like'*restore failure*'-and[object]::ReferenceEquals($combined.Context.ResourceJobSecondaryErrors[1].Exception,$combined.HookException)) 'Secondary errors were reordered or copied.'
+    foreach($property in @('ProcessFails','PriorityReadFails','PriorityUnknown','LowerFails','RestoreFails','RestoreSilent','EnterFails')) {
+        $failure=Invoke-ReleaseSourceCase -Configure ([scriptblock]::Create('param($c)$c.'+$property+'=$true'))
+        Assert-ReleaseSource ($failure.Caught-and$failure.EnterCount-eq1) ('Setup failure did not propagate: '+$property)
+        if($property-cin@('ProcessFails','PriorityReadFails','PriorityUnknown','RestoreFails','RestoreSilent')) {
+            Assert-ReleaseSource ($failure.ExitCount-eq0-and$failure.HookCount-eq1-and[object]::ReferenceEquals($failure.Context.ResourceJobLease,$failure.Lease)) 'Unknown priority/process must retain lease but still observe hook.'
+        }
+        if($property-ceq'EnterFails') { Assert-ReleaseSource ($failure.ExitCount-eq0-and$failure.HookCount-eq0-and$null-eq$failure.Context.ResourceJobLease) 'Failed Enter manufactured a lease or cleanup.' }
+        if($property-ceq'LowerFails') { Assert-ReleaseSource ($failure.BodyCount-eq0-and$failure.ExitCount-eq1) 'Known restored priority after lower failure differs.' }
+    }
+    $releaseFailed=Invoke-ReleaseSourceCase -Configure {param($c)$c.ExitFails=$true}
+    Assert-ReleaseSource ($releaseFailed.ExitCount-eq1-and$releaseFailed.Context.ResourceJobReleaseAttempted-and!$releaseFailed.Context.ResourceJobReleaseReturned) 'Exit throw fabricated known release.'
+    Assert-ReleaseSource ([object]::ReferenceEquals($releaseFailed.Caught.Exception,$releaseFailed.ExitException)-and[object]::ReferenceEquals($releaseFailed.Context.ResourceJobLease,$releaseFailed.Lease)) 'Release failure lost original exception/lease.'
+    $mutation=Invoke-ReleaseSourceCase -Configure {param($c)$c.HookMutation=$true}
+    Assert-ReleaseSource ($mutation.Caught-and$mutation.ExitCount-eq0) 'Foreign same-token lease substituted in hook was accepted.'
+    foreach($used in @($normal,$combined,$releaseFailed)) {
+        $first=$used.Context.ResourceJobFirstErrorRecord;$exception=$used.Context.ResourceJobFirstException;$lease=$used.Context.ResourceJobLease
+        $repeated=Invoke-ReleaseSourceCase -Context $used.Context
+        Assert-ReleaseSource ($repeated.Caught-and$repeated.EnterCount-eq0) 'Reused/terminal context began a second admission.'
+        Assert-ReleaseSource ([object]::ReferenceEquals($used.Context.ResourceJobFirstErrorRecord,$first)-and[object]::ReferenceEquals($used.Context.ResourceJobFirstException,$exception)-and[object]::ReferenceEquals($used.Context.ResourceJobLease,$lease)) 'Repeated unwind rewrote original retained state.'
+    }
+    Write-Output ("PASS "+$script:releaseSourceChecks+" retained-release Source assertions; actual function AST, fake lease/process/priority/hook only; no Core import, native provider, contender or real registry.")
+    return
+}
+
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/../../ops/Resource-Scheduler.Core.ps1"
 function Assert($Value,[string]$Message) { if (!$Value) { throw $Message } }
