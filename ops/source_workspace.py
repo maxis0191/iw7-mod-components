@@ -17,6 +17,62 @@ import zipfile
 MAX_TOTAL = 32 * 1024 * 1024
 MAX_FILE = 1024 * 1024
 FORBIDDEN = {'.exe', '.dll', '.pdb', '.obj', '.lib', '.ff', '.pak', '.xpak', '.sabs', '.sabl', '.dmp', '.cgsc', '.gscbin'}
+# One reviewed finite constexpr table, not a configurable large-file allowance.
+# Git blob and exported LF-byte identity are distinct and both are required.
+_FINITE_SCHEMA_SOURCE = (
+    'x64-zt-extensions',
+    'tools-source/asset-bridge/weapon-export/native_pair_body_schema.hpp',
+    '8eac8f40be1a306f48d30c0bdfdcbfdc45e0f666',
+    1073140,
+    'dbedd4632d8bb20686c8c1355d4b0200fc2c6149ba141897007f41252f555b75',
+)
+_UNRECORDED_DIGEST = object()
+
+
+def check_source_metadata(owner, relative, blob, size, *, sha256=_UNRECORDED_DIGEST):
+    expected_owner, expected_path, expected_blob, expected_size, expected_sha = _FINITE_SCHEMA_SOURCE
+    # Reserve case variants before the generic cap, including smaller mutants.
+    reserved = isinstance(relative, str) and relative.casefold() == expected_path.casefold()
+    if reserved:
+        if (type(owner) is not str or owner != expected_owner or
+                type(relative) is not str or relative != expected_path or
+                type(blob) is not str or blob != expected_blob or
+                type(size) is not int or size != expected_size or
+                (sha256 is not _UNRECORDED_DIGEST and
+                 (type(sha256) is not str or sha256 != expected_sha))):
+            raise ValueError('Finite schema Source identity differs')
+    elif type(size) is not int or size < 0 or size > MAX_FILE:
+        raise ValueError('Oversized or invalid source length: ' + str(relative))
+    return reserved
+
+
+def check_source_bytes(owner, relative, blob, raw):
+    reserved = check_source_metadata(owner, relative, blob, len(raw))
+    digest = hashlib.sha256(raw).hexdigest()
+    if reserved and digest != _FINITE_SCHEMA_SOURCE[4]:
+        raise ValueError('Finite schema Source bytes differ')
+    # Check the reserved raw identity before decoding; BOM/CRLF are not aliases.
+    raw.decode('utf-8-sig')
+    if b'\x00' in raw:
+        raise ValueError('Binary source payload refused: ' + relative)
+    return digest
+
+
+def read_source_entry(root, entry):
+    """Recheck recorded identity and physical metadata before each source read."""
+    relative = entry['path']
+    safe_relative(relative)
+    check_source_metadata(entry['owner'], relative, entry['blob'], entry['bytes'], sha256=entry['sha256'])
+    file = ordinary(Path(root) / relative)
+    size = file.stat().st_size
+    check_source_metadata(entry['owner'], relative, entry['blob'], size, sha256=entry['sha256'])
+    if type(entry['bytes']) is not int or size != entry['bytes']:
+        raise ValueError('Generated source changed: ' + relative)
+    raw = file.read_bytes()
+    digest = check_source_bytes(entry['owner'], relative, entry['blob'], raw)
+    if len(raw) != entry['bytes'] or digest != entry['sha256']:
+        raise ValueError('Generated source changed: ' + relative)
+    return raw
 
 def git(root, *args):
     return subprocess.check_output(['git', '-C', str(root), *args], encoding='utf-8').strip()
@@ -92,15 +148,17 @@ def read_dependencies(project, revision, product, archive):
             if identity not in expected or relative.casefold() in seen:
                 raise ValueError('Unexpected dependency owner, revision or path')
             seen.add(relative.casefold())
+            check_source_metadata(entry['owner'], relative, entry['blob'], entry['bytes'], sha256=entry['sha256'])
             info = package.getinfo(relative)
-            if info.file_size > MAX_FILE or info.file_size != entry['bytes'] or stat.S_ISLNK(info.external_attr >> 16):
+            check_source_metadata(entry['owner'], relative, entry['blob'], info.file_size, sha256=entry['sha256'])
+            if info.file_size != entry['bytes'] or stat.S_ISLNK(info.external_attr >> 16):
                 raise ValueError('Invalid dependency source member')
             total += info.file_size
             if total > MAX_TOTAL:
                 raise ValueError('Dependency source budget exceeded')
             raw = package.read(info)
-            raw.decode('utf-8-sig')
-            if b'\x00' in raw or hashlib.sha256(raw).hexdigest() != entry['sha256']:
+            digest = check_source_bytes(entry['owner'], relative, entry['blob'], raw)
+            if len(raw) != entry['bytes'] or digest != entry['sha256']:
                 raise ValueError('Dependency source member digest differs')
             entries.append((relative, raw, entry))
         if len(entries) != len(expected):
@@ -112,14 +170,15 @@ def pack_dependencies(workspace, output):
     output = ordinary(output, missing=True)
     entries = [e for e in data['files'] if e['owner'] != data['product']]
     metadata = dict(schema='iw7.source-dependencies/1', files=entries, runtime_qualified=False)
+    manifest_raw = (json.dumps(metadata, sort_keys=True, indent=2)+'\n').encode()
+    if len(manifest_raw) > MAX_FILE:
+        raise ValueError('Dependency manifest too large')
     with output.open('xb') as destination, zipfile.ZipFile(destination, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         members = []
         for entry in entries:
-            raw = ordinary(Path(workspace) / entry['path']).read_bytes()
-            if len(raw) != entry['bytes'] or hashlib.sha256(raw).hexdigest() != entry['sha256']:
-                raise ValueError('Dependency source changed while packing')
+            raw = read_source_entry(workspace, entry)
             members.append((entry['path'], raw))
-        members.append(('dependencies.json', (json.dumps(metadata, sort_keys=True, indent=2)+'\n').encode()))
+        members.append(('dependencies.json', manifest_raw))
         for name, raw in sorted(members):
             info = zipfile.ZipInfo(name, date_time=(2026, 10, 13, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
@@ -173,7 +232,8 @@ def prepare(project, revision, bindings, output, cache=None, package=None):
             seen.add(relative.casefold())
             file = ordinary(root / relative)
             size = file.stat().st_size
-            if size > MAX_FILE or total + size > MAX_TOTAL:
+            check_source_metadata(source['id'], relative, tree[relative], size)
+            if total + size > MAX_TOTAL:
                 raise ValueError('Source composition byte budget exceeded')
             # Export committed content with Git's checkout filters. Reading the
             # object instead of mutable worktree bytes prevents a change/read/
@@ -183,12 +243,12 @@ def prepare(project, revision, bindings, output, cache=None, package=None):
             # checkout omits .gitattributes and local autocrlf differs.
             raw = subprocess.check_output(['git', '-C', str(root), '--attr-source=' + commit,
                                            'cat-file', '--filters', commit + ':' + relative])
-            raw.decode('utf-8-sig')
-            if b'\x00' in raw or len(raw) > MAX_FILE or total + len(raw) > MAX_TOTAL:
+            digest = check_source_bytes(source['id'], relative, tree[relative], raw)
+            if total + len(raw) > MAX_TOTAL:
                 raise ValueError('Non-text or oversized filtered source input refused')
             total += len(raw)
             entries.append((relative, raw, dict(path=relative, owner=source['id'], commit=commit,
-                            blob=tree[relative], bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())))
+                            blob=tree[relative], bytes=len(raw), sha256=digest)))
         # Batch Git's own attribute/filter-aware hash calculation: preserve CRLF
         # source contracts without pretending a Git blob is a checkout-byte hash.
         names = source['files']
@@ -222,9 +282,7 @@ def verify(output):
         if entry['path'].casefold() in seen or entry['commit'] != data['revisions'].get(entry['owner']):
             raise ValueError('Duplicate or inconsistent source identity')
         seen.add(entry['path'].casefold())
-        raw = ordinary(output / entry['path']).read_bytes()
-        if len(raw) != entry['bytes'] or hashlib.sha256(raw).hexdigest() != entry['sha256']:
-            raise ValueError('Generated source changed: ' + entry['path'])
+        raw = read_source_entry(output, entry)
         total += len(raw)
     if total != data['bytes'] or total > MAX_TOTAL:
         raise ValueError('Generated source total differs')

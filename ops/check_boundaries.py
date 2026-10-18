@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-from source_workspace import FORBIDDEN, safe_relative
+from source_workspace import check_source_bytes, check_source_metadata, safe_relative
 
 META = {'README.md', 'AGENTS.md', 'CONTRIBUTING.md', '.gitignore', '.gitattributes',
         'product.json', 'checks.json', 'dependency-package.json', 'bootstrap.ps1', 'checks.ps1', 'LICENSE.upstream'}
@@ -32,7 +32,7 @@ def check(root):
     names = set()
     for row in tracked:
         info, path = row.split('\t',1)
-        mode = info.split()[0]
+        mode, blob, _ = info.split()
         if mode not in ('100644','100755'):
             raise ValueError('Vendored submodule or redirected source refused: ' + path)
         names.add(path)
@@ -42,12 +42,9 @@ def check(root):
         if path not in declared and path not in META and not path.startswith(('.github/', '.codex/', 'migration/', 'licenses/')):
             raise ValueError('Unclassified tracked component: ' + path)
         size = (root/path).stat().st_size
-        if size > 1024*1024:
-            raise ValueError('Oversized tracked source or payload: ' + path)
+        check_source_metadata(product['id'], path, blob, size)
         raw = (root/path).read_bytes()
-        raw.decode('utf-8-sig')
-        if b'\x00' in raw:
-            raise ValueError('Binary payload refused: ' + path)
+        check_source_bytes(product['id'], path, blob, raw)
     if declared - names:
         raise ValueError('Export missing from tracked tree: ' + ', '.join(sorted(declared-names)))
     for prefix in ('src/client/', 'src/zonetool/', 'deps/', 'vendor/', 'game/', 'zone/'):
