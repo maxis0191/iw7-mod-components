@@ -165,6 +165,107 @@ planned scenario still needs admission before launch.
 
 ## Build, extraction and analysis
 
+### Inactive retained-release opt-in (Source only)
+
+`Invoke-IW7ResourceJob` has an inactive opt-in comprising `BeforeReleaseCheck`,
+`OriginalContext` and `RetentionRoot`. No builder or runtime caller opts in.
+All three parameters **omitted** retain the literal legacy implementation, its
+Body arguments and admission estimates. An explicit null, partial triple or
+used/malformed input refuses before admission. This addition does not qualify
+normal-build child containment, artifact inventory, compiler output or a launch
+path. The earlier six-slot-only implementation and its 69 Source assertions
+were insufficient: mutable mirrors could lose ownership/errors after unwind,
+and token arrays could evade late filtered comparisons.
+
+`OriginalContext` is the caller's original mutable `PSCustomObject`, with exactly
+six ordinary, settable note properties. These are diagnostic mirrors, not
+authority. Do not convert, clone or deserialize this object. Its fresh shape is:
+
+```powershell
+# Data shape only; not an authorized invocation or a process-lifetime guard.
+$originalContext = [pscustomobject]@{
+    ResourceJobLease = $null
+    ResourceJobFirstErrorRecord = $null
+    ResourceJobFirstException = $null
+    ResourceJobSecondaryErrors = $null
+    ResourceJobReleaseAttempted = $false
+    ResourceJobReleaseReturned = $false
+}
+```
+
+Before Invoke, the original caller creates one fresh, registered, empty mutable
+`PSVariable` in its retained scope. It retains that exact variable in its own
+original root and registers the same object in the current AppDomain at
+`IW7.ResourceJob.RetainedRelease.` plus the variable's ASCII identifier (at most
+64 characters). Pass the actual variable as `RetentionRoot`; a name, copied
+receipt or reconstructed owner is insufficient. Core validates its actual CLR
+type, registration, empty value, absence of validation attributes and mutable
+options before Enter. Core binds a standard .NET read-only owner view, makes
+that variable ReadOnly and checks the
+same variable/value/AppDomain binding before admission. This is not a caller
+activation recipe.
+
+Private-scope writers retain the same context and all six original property
+objects independently of those mirrors. Immediately after Enter, before mirror
+writes, token getters, priority setup or Body, the owner retains the actual
+returned lease. Body and hook cannot find the writers by ordinary child-scope
+variable lookup. The owner exposes bounded read-only collections/entry metadata,
+not their mutable backing stores. Removing/replacing/nulling a mirror refuses
+release without repairing it or overwriting foreign data; the original lease,
+properties and errors remain reachable from the caller's variable and AppDomain
+after return or exception. Read-only views retain live object references; this
+is not isolation against deliberate in-process reflection or root destruction.
+
+The callback receives the same context explicitly and must observe it without
+changing its slots or roots. Only one Boolean `true` result approves the check;
+strings, numbers, arrays, multiple outputs, no output, false or an exception
+refuse release. Priority restoration must also be known. Before/after Body and
+hook, and immediately before Exit, Core rechecks the original roots/view and
+every committed error-journal entry. The live original token property must hold
+one `System.String` of exactly 32 lowercase hex characters and match the captured
+string with ordinal `String.Equals`. Arrays, coercion, filtered `-cne` results,
+fallback tokens and token repair cannot authorize release. There is still one
+admission.
+
+The first captured ErrorRecord and Exception remain the same objects. Before
+fallible mirror projection, Core assigns the first once and appends each of the
+four finite failure frontiers (setup/Body, priority, check, release) to its private
+journal. Its read-only live view contains ordinal/frontier and original
+ErrorRecord/Exception references. The secondary view is bound before Enter;
+`Clear`, reorder, replacement or entry edits cannot erase authoritative records.
+Count, order, values and reference identities are verified, not only list
+identity; overflow refuses release. Ordered secondaries cannot mask an earlier
+setup/Body error.
+PowerShell can expose another outer ErrorRecord when it propagates; that does
+not replace the retained first inner record or Exception. A known failed Body
+may release after an approving check and known priority restoration, but remains
+failed. A failed release attempt keeps its lease reference and records no known
+release. `ResourceJobReleaseReturned` means only that Exit returned; fresh
+registry absence and real host closure remain separate proofs. Do not serialize
+the live context, lease, ErrorRecord or Exception.Data.
+
+This adapter never creates/closes native owners, disposes caller guards, changes
+CanExit/Passed/Ready, resets/stops the caller's clock or exits the host.
+**A refusing hook alone does not retain a noninteractive PowerShell process.**
+Before any future activation, its original caller must have a separately
+reviewed exact physical/managed NoExit entry, fixed AppDomain/PSVariable roots
+retaining the same context/owners/handles/guards/lease/clock across return or
+throw, and an original-host terminal gate after real closure/readbacks. Returning
+from a sourced script or leaving a lease file is not a true-exit proof. No PID or
+JSON reconstruction is a substitute. Without that caller, this API is inactive
+and has no runtime-retention qualification.
+
+The narrow `tests/ops/resource_scheduler_test.ps1
+-RetainedReleaseSourceOnly` mode runs the actual function and token predicate
+extracted by AST with fake admission/release/process/priority/check dependencies
+and owned managed root witnesses. It checks actual lease/error references after
+unwind, private-writer visibility, read-only journal mutations, token frontiers,
+strict check results and literal legacy parity. It returns before the Core
+import, real registry and historical cross-process contenders. Those Source
+causals do not establish a real lease, NoExit host, descendant closure,
+compiler/build/game result or full legacy-suite pass. Subsequent child coverage
+and postbuild evidence remain separate work.
+
 Build-Voice and Build-RhinoZoneTool acquire a heavy-job lease around compilation,
 default to one MSBuild node, disable compiler multiprocess expansion, disable
 node reuse and run at BelowNormal priority. The caller's priority is restored in
