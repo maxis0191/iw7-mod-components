@@ -65,6 +65,18 @@ native pins. The scheduler source is identical at both pins and retains the same
 reviewed clean/profiler/watch hashes. Native voice/parser/capture/protection tests
 and private dedicated qualification are recorded with the installation evidence.
 
+The map-transition successor `cfca45b11ee14641945b9a264a95638387f48a4a`
+retains scheduler Git blob `d235aeee97891254b1c38b7841e01700e130220d` from
+`77e6d4d`/`9937374`. Its first normal server build stopped before final native
+compilation because the checkpoint helper treated that successor as an unknown
+pin and refused the existing owned profiler overlay. The helper now recognizes
+only its disabled BeforeDebugger/AfterDebugger transitions, using the unchanged
+full profiler/watch hashes; `-Enabled` still refuses this successor. The Source
+regression invokes the real Apply entry against temporary Source files, reproduces
+the earlier refusal, and checks known transitions, mutations and unknown pins.
+This correction does not qualify another native build, debugger/watch activation,
+game transition or deployment. The failed package remains immutable.
+
 GitHub Source checks on the reviewed head did not execute: the primary check
 annotation reports the existing account payment/spending-limit refusal; jobs have
 runner_id 0 and no steps. This is not passing CI. The current AGENTS.md conditional
