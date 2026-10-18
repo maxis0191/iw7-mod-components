@@ -33,6 +33,18 @@ the exported-byte SHA remain separate receipt fields. Existing Source packages,
 dependency archives and native writer receipts are immutable; corrections use
 fresh packages and reviewed dependency pins, never retroactive normalization.
 
+The 1MiB per-file and manifest limits and 32MiB composition limit remain. One
+reviewed finite constexpr Source table has a closed qualification in the shared
+helper: owner `x64-zt-extensions`, path
+`tools-source/asset-bridge/weapon-export/native_pair_body_schema.hpp`, Git blob
+`8eac8f40be1a306f48d30c0bdfdcbfdc45e0f666`, exactly 1073140 LF bytes and SHA-256
+`dbedd4632d8bb20686c8c1355d4b0200fc2c6149ba141897007f41252f555b75`.
+That path and its case variants are reserved even below 1MiB; another owner,
+blob or byte identity is refused. Boundary, composition, archive import,
+verification and each packing read share this qualification. It is neither a
+configurable size exception nor permission to consume runtime inputs. Existing
+generated packages and dependency pins are not changed by this helper update.
+
 The command does not install a game, copy retail assets, build native code,
 launch a process fixture, deploy, publish, or change Main. Build/run entrypoints
 inside the package retain their own input, identity, resource and authorization
