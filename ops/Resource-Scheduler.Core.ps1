@@ -232,114 +232,221 @@ function Invoke-IW7ResourceJob {
     param([Parameter(Mandatory)][scriptblock]$Body,[Parameter(Mandatory)][string]$Scope,
         [ValidateSet('Build','Extract','Analysis')][string]$Kind='Build',
         [long]$PhysicalBytes=4GB,[long]$CommitBytes=6GB,[string]$Owner='native build',
-        [scriptblock]$BeforeReleaseCheck=$null,[object]$OriginalContext=$null)
-    if ($PSBoundParameters.ContainsKey('BeforeReleaseCheck') -or $PSBoundParameters.ContainsKey('OriginalContext')) {
-        if (!$PSBoundParameters.ContainsKey('BeforeReleaseCheck') -or !$PSBoundParameters.ContainsKey('OriginalContext') -or
-            $null -eq $BeforeReleaseCheck -or $null -eq $OriginalContext) { throw 'BeforeReleaseCheck and OriginalContext must be supplied together and non-null.' }
-        # A caller-owned, fresh data object only: no coercion, scripted accessors
-        # or adapter setters may fail to retain the actual lease after admission.
-        $jobNames=@('ResourceJobLease','ResourceJobFirstErrorRecord','ResourceJobFirstException',
+        [scriptblock]$BeforeReleaseCheck=$null,[object]$OriginalContext=$null,[object]$RetentionRoot=$null)
+    if ($PSBoundParameters.ContainsKey('BeforeReleaseCheck') -or $PSBoundParameters.ContainsKey('OriginalContext') -or
+        $PSBoundParameters.ContainsKey('RetentionRoot')) {
+        foreach ($private:jobArgument in @('BeforeReleaseCheck','OriginalContext','RetentionRoot')) {
+            if (!$PSBoundParameters.ContainsKey($private:jobArgument) -or $null -eq $PSBoundParameters[$private:jobArgument]) {
+                throw 'BeforeReleaseCheck, OriginalContext and RetentionRoot must be supplied together and non-null.'
+            }
+        }
+        $private:jobNames=@('ResourceJobLease','ResourceJobFirstErrorRecord','ResourceJobFirstException',
             'ResourceJobSecondaryErrors','ResourceJobReleaseAttempted','ResourceJobReleaseReturned')
         if ($OriginalContext -isnot [Management.Automation.PSCustomObject] -or
-            @($OriginalContext.PSObject.Properties).Count -ne $jobNames.Count) { throw 'OriginalContext must be the exact fresh six-slot mutable data object.' }
-        $jobSlots=@{}
-        foreach ($jobName in $jobNames) {
-            $jobSlot=$OriginalContext.PSObject.Properties[$jobName]
-            if ($null -eq $jobSlot -or $jobSlot.Name -cne $jobName -or
-                $jobSlot.GetType() -ne [Management.Automation.PSNoteProperty] -or
-                !$jobSlot.IsGettable -or !$jobSlot.IsSettable) { throw 'OriginalContext requires only mutable note-property slots.' }
-            $jobSlots[$jobName]=$jobSlot
+            @($OriginalContext.PSObject.Properties).Count -ne 6) { throw 'OriginalContext requires the fresh six-slot data view.' }
+        $private:jobSlots=@{}
+        foreach ($private:jobName in $private:jobNames) {
+            $private:jobSlot=$OriginalContext.PSObject.Properties[$private:jobName]
+            if ($null -eq $private:jobSlot -or $private:jobSlot.Name -cne $private:jobName -or
+                $private:jobSlot.GetType() -ne [Management.Automation.PSNoteProperty] -or
+                !$private:jobSlot.IsGettable -or !$private:jobSlot.IsSettable) { throw 'Only mutable original note-property view slots are accepted.' }
+            $private:jobSlots[$private:jobName]=$private:jobSlot
         }
-        $jobSecondary=$jobSlots.ResourceJobSecondaryErrors.Value
-        if ($null -ne $jobSlots.ResourceJobLease.Value -or $null -ne $jobSlots.ResourceJobFirstErrorRecord.Value -or
-            $null -ne $jobSlots.ResourceJobFirstException.Value -or
-            $null -eq $jobSecondary -or $jobSecondary.GetType() -ne [Collections.Generic.List[Management.Automation.ErrorRecord]] -or
-            $jobSecondary.Count -ne 0 -or $jobSlots.ResourceJobReleaseAttempted.Value -isnot [bool] -or
-            $jobSlots.ResourceJobReleaseAttempted.Value -or $jobSlots.ResourceJobReleaseReturned.Value -isnot [bool] -or
-            $jobSlots.ResourceJobReleaseReturned.Value) { throw 'OriginalContext must contain fresh typed release/error slots.' }
-        $jobContext=$OriginalContext
-        $jobLease=$null;$jobToken=$null;$jobProcess=$null;$jobPriority=$null
-        $jobPriorityCaptured=$false;$jobPriorityRestored=$false;$jobHookApproved=$false
-        $jobFirstRecord=$null
+        foreach ($private:jobName in $private:jobNames[0..3]) {
+            if ($null -ne $private:jobSlots[$private:jobName].Value) { throw 'OriginalContext view is already used or malformed.' }
+        }
+        foreach ($private:jobName in $private:jobNames[4..5]) {
+            if ($private:jobSlots[$private:jobName].Value -isnot [bool] -or $private:jobSlots[$private:jobName].Value) {
+                throw 'Fresh Boolean release mirrors are required.'
+            }
+        }
+        # Standard CLR property access bypasses any added PowerShell accessor.
+        $private:jobTypeMethod=[object].GetMethod('GetType')
+        if ($private:jobTypeMethod.Invoke($RetentionRoot,$null) -ne [Management.Automation.PSVariable]) { throw 'The actual caller PSVariable is required.' }
+        $private:jobRoot=$RetentionRoot
+        $private:jobRootValue=[Management.Automation.PSVariable].GetProperty('Value')
+        $private:jobRootOptions=[Management.Automation.PSVariable].GetProperty('Options')
+        $private:jobRootName=[Management.Automation.PSVariable].GetProperty('Name').GetValue($private:jobRoot)
+        $private:jobInitialOptions=$private:jobRootOptions.GetValue($private:jobRoot)
+        if ($private:jobRootName -cnotmatch '\A[A-Za-z_][A-Za-z0-9_]{0,63}\z' -or
+            $null -ne $private:jobRootValue.GetValue($private:jobRoot) -or
+            [Management.Automation.PSVariable].GetProperty('Attributes').GetValue($private:jobRoot).Count -ne 0 -or
+            ($private:jobInitialOptions -band ([Management.Automation.ScopedItemOptions]::ReadOnly -bor
+                [Management.Automation.ScopedItemOptions]::Constant)) -ne 0) { throw 'A fresh mutable empty caller root is required.' }
+        $private:jobDomainKey='IW7.ResourceJob.RetainedRelease.'+$private:jobRootName
+        if (![object]::ReferenceEquals((Get-Variable -Name $private:jobRootName -ErrorAction SilentlyContinue),$private:jobRoot) -or
+            ![object]::ReferenceEquals([AppDomain]::CurrentDomain.GetData($private:jobDomainKey),$private:jobRoot)) {
+            throw 'The same registered caller variable and AppDomain witness are required before admission.'
+        }
+        # Only private writers can mutate these containers. The hook gets a view.
+        $private:jobContext=$OriginalContext
+        $private:jobJournal=[Collections.Generic.List[object]]::new(4)
+        $private:jobSecondary=[Collections.Generic.List[Management.Automation.ErrorRecord]]::new(4)
+        $private:jobJournalView=$private:jobJournal.AsReadOnly()
+        $private:jobSecondaryView=$private:jobSecondary.AsReadOnly()
+        $private:jobEvidence=[object[]]::new(4)
+        $private:jobJournalCount=0
+        $private:jobStore=[Collections.Generic.Dictionary[string,object]]::new(16,[StringComparer]::Ordinal)
+        foreach ($private:jobKey in @('Lease','Token','TokenSlot','FirstErrorRecord','FirstException','OverflowErrorRecord','OverflowException')) {
+            $private:jobStore[$private:jobKey]=$null
+        }
+        foreach ($private:jobKey in @('ReleaseAttempted','ReleaseReturned','ViewContradiction','JournalOverflow')) { $private:jobStore[$private:jobKey]=$false }
+        $private:jobStore['OriginalContext']=$private:jobContext
+        $private:jobSlotArray=[Management.Automation.PSNoteProperty[]]::new(6)
+        for ($private:jobIndex=0;$private:jobIndex-lt6;$private:jobIndex++) { $private:jobSlotArray[$private:jobIndex]=$private:jobSlots[$private:jobNames[$private:jobIndex]] }
+        $private:jobStore['OriginalSlots']=[array]::AsReadOnly($private:jobSlotArray)
+        $private:jobStore['Journal']=$private:jobJournalView
+        $private:jobStore['SecondaryErrors']=$private:jobSecondaryView
+        $private:jobOwner=[Collections.ObjectModel.ReadOnlyDictionary[string,object]]::new($private:jobStore)
+        $private:jobExpected=@{}
+        foreach ($private:jobName in $private:jobNames) { $private:jobExpected[$private:jobName]=$private:jobSlots[$private:jobName].Value }
+        $private:jobProjection=@{ResourceJobLease='Lease';ResourceJobFirstErrorRecord='FirstErrorRecord';ResourceJobFirstException='FirstException';
+            ResourceJobSecondaryErrors='SecondaryErrors';ResourceJobReleaseAttempted='ReleaseAttempted';ResourceJobReleaseReturned='ReleaseReturned'}
+        $private:jobRootValue.SetValue($private:jobRoot,$private:jobOwner)
+        $private:jobBoundOptions=$private:jobInitialOptions -bor [Management.Automation.ScopedItemOptions]::ReadOnly
+        $private:jobRootOptions.SetValue($private:jobRoot,$private:jobBoundOptions)
+        if (![object]::ReferenceEquals($private:jobRootValue.GetValue($private:jobRoot),$private:jobOwner) -or
+            $private:jobRootOptions.GetValue($private:jobRoot) -ne $private:jobBoundOptions -or
+            ![object]::ReferenceEquals([AppDomain]::CurrentDomain.GetData($private:jobDomainKey),$private:jobRoot)) { throw 'Durable caller binding failed before admission.' }
+
+        # Dot-invoked private helpers run here; external Body/hook child scopes
+        # cannot resolve the private writers by ordinary variable resolution.
+        $private:jobProject={
+            foreach ($private:jobName in $private:jobNames) {
+                $private:jobSlot=$private:jobSlots[$private:jobName]
+                $private:jobOld=$private:jobExpected[$private:jobName]
+                $private:jobSame=[object]::ReferenceEquals($private:jobContext.PSObject.Properties[$private:jobName],$private:jobSlot)
+                if ($private:jobSame) {
+                    if ($private:jobName -cin $private:jobNames[4..5]) {
+                        $private:jobSame=$private:jobSlot.Value -is [bool] -and $private:jobSlot.Value -eq $private:jobOld
+                    } else { $private:jobSame=[object]::ReferenceEquals($private:jobSlot.Value,$private:jobOld) }
+                }
+                if (!$private:jobSame) { $private:jobStore['ViewContradiction']=$true;continue }
+                $private:jobNew=$private:jobStore[$private:jobProjection[$private:jobName]]
+                $private:jobSlot.Value=$private:jobNew
+                $private:jobExpected[$private:jobName]=$private:jobNew
+            }
+        }
+        $private:jobRecordError={
+            param([Management.Automation.ErrorRecord]$jobCapturedRecord,[string]$jobCapturedFrontier)
+            # Capture authority before any fallible projection to caller mirrors.
+            if ($null -eq $private:jobStore['FirstErrorRecord']) {
+                $private:jobStore['FirstErrorRecord']=$jobCapturedRecord
+                $private:jobStore['FirstException']=$jobCapturedRecord.Exception
+            }
+            if ($private:jobJournalCount -ge 4) {
+                $private:jobStore['JournalOverflow']=$true
+                if ($null -eq $private:jobStore['OverflowErrorRecord']) {
+                    $private:jobStore['OverflowErrorRecord']=$jobCapturedRecord;$private:jobStore['OverflowException']=$jobCapturedRecord.Exception
+                }
+                return
+            }
+            $private:jobRow=[Collections.Generic.Dictionary[string,object]]::new(4,[StringComparer]::Ordinal)
+            $private:jobRow['Ordinal']=$private:jobJournalCount
+            $private:jobRow['Frontier']=$jobCapturedFrontier
+            $private:jobRow['ErrorRecord']=$jobCapturedRecord
+            $private:jobRow['Exception']=$jobCapturedRecord.Exception
+            $private:jobEntry=[Collections.ObjectModel.ReadOnlyDictionary[string,object]]::new($private:jobRow)
+            $private:jobJournal.Add($private:jobEntry)
+            $private:jobEvidence[$private:jobJournalCount]=[object[]]@($private:jobEntry,$jobCapturedRecord,$jobCapturedRecord.Exception,$jobCapturedFrontier)
+            if ($private:jobJournalCount -gt 0) { $private:jobSecondary.Add($jobCapturedRecord) }
+            $private:jobJournalCount++
+            . $private:jobProject
+        }
+        $private:jobAssert={
+            param([switch]$jobCheckToken)
+            if (![object]::ReferenceEquals($RetentionRoot,$private:jobRoot) -or
+                ![object]::ReferenceEquals($private:jobRootValue.GetValue($private:jobRoot),$private:jobOwner) -or
+                $private:jobRootOptions.GetValue($private:jobRoot) -ne $private:jobBoundOptions -or
+                ![object]::ReferenceEquals([AppDomain]::CurrentDomain.GetData($private:jobDomainKey),$private:jobRoot)) { throw 'Original durable owner/root binding changed.' }
+            if ($private:jobStore['JournalOverflow'] -or $private:jobStore['ViewContradiction'] -or
+                ![object]::ReferenceEquals($OriginalContext,$private:jobContext) -or
+                ![object]::ReferenceEquals($private:jobStore['Journal'],$private:jobJournalView) -or
+                ![object]::ReferenceEquals($private:jobStore['SecondaryErrors'],$private:jobSecondaryView) -or
+                $private:jobJournal.Count -ne $private:jobJournalCount -or
+                $private:jobSecondary.Count -ne [Math]::Max(0,$private:jobJournalCount-1)) { throw 'Original error journal/view state changed.' }
+            for ($private:jobIndex=0;$private:jobIndex-lt$private:jobJournalCount;$private:jobIndex++) {
+                $private:jobSeen=$private:jobJournal[$private:jobIndex];$private:jobSaved=$private:jobEvidence[$private:jobIndex]
+                if (![object]::ReferenceEquals($private:jobSeen,$private:jobSaved[0]) -or $private:jobSeen.Count-ne4 -or
+                    $private:jobSeen['Ordinal'] -isnot [int] -or $private:jobSeen['Ordinal'] -ne $private:jobIndex -or
+                    $private:jobSeen['Frontier'] -isnot [string] -or ![string]::Equals($private:jobSeen['Frontier'],$private:jobSaved[3],[StringComparison]::Ordinal) -or
+                    ![object]::ReferenceEquals($private:jobSeen['ErrorRecord'],$private:jobSaved[1]) -or
+                    ![object]::ReferenceEquals($private:jobSeen['Exception'],$private:jobSaved[2]) -or
+                    ($private:jobIndex-gt0-and![object]::ReferenceEquals($private:jobSecondary[$private:jobIndex-1],$private:jobSaved[1]))) { throw 'Committed original error-journal prefix differs.' }
+            }
+            if ($private:jobJournalCount-gt0-and
+                (![object]::ReferenceEquals($private:jobStore['FirstErrorRecord'],$private:jobEvidence[0][1]) -or
+                 ![object]::ReferenceEquals($private:jobStore['FirstException'],$private:jobEvidence[0][2]))) { throw 'First original ErrorRecord/Exception changed.' }
+            foreach ($private:jobName in $private:jobNames) {
+                if (![object]::ReferenceEquals($private:jobContext.PSObject.Properties[$private:jobName],$private:jobSlots[$private:jobName])) { throw 'Original view property removed or replaced.' }
+                $private:jobValue=$private:jobSlots[$private:jobName].Value
+                if ($private:jobName -cin $private:jobNames[4..5]) {
+                    if ($private:jobValue -isnot [bool] -or $private:jobValue -ne $private:jobExpected[$private:jobName]) { throw 'Original Boolean view mirror changed.' }
+                } elseif (![object]::ReferenceEquals($private:jobValue,$private:jobExpected[$private:jobName])) { throw 'Original view reference changed.' }
+            }
+            if ($jobCheckToken) {
+                $private:jobLease=$private:jobStore['Lease']
+                if ($null-eq$private:jobLease-or![object]::ReferenceEquals($private:jobLease.PSObject.Properties['Token'],$private:jobStore['TokenSlot'])) { throw 'Original lease/token property changed.' }
+                $private:jobLiveToken=$private:jobStore['TokenSlot'].Value
+                if ($private:jobLiveToken -isnot [string] -or $private:jobLiveToken -cnotmatch '\A[0-9a-f]{32}\z' -or
+                    ![string]::Equals($private:jobLiveToken,$private:jobStore['Token'],[StringComparison]::Ordinal)) { throw 'The live original lease token must remain one exact scalar string.' }
+            }
+        }
+        . $private:jobProject
+        . $private:jobAssert
+        $private:jobProcess=$null;$private:jobPriority=$null
+        $private:jobPriorityCaptured=$false;$private:jobPriorityRestored=$false;$private:jobHookApproved=$false
         try {
-            $jobLease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
-            $jobSlots.ResourceJobLease.Value=$jobLease
-            if ($null -eq $jobLease -or $jobLease.Token -isnot [string] -or $jobLease.Token -cnotmatch '\A[0-9a-f]{32}\z') { throw 'Actual returned lease with its original token is required.' }
-            $jobToken=$jobLease.Token
-            $jobProcess=Get-Process -Id $PID
-            $jobPriority=$jobProcess.PriorityClass
-            if ($jobPriority -isnot [Diagnostics.ProcessPriorityClass]) { throw 'Original host priority is unknown; release refused.' }
-            $jobPriorityCaptured=$true
-            $jobProcess.PriorityClass='BelowNormal'
+            $private:jobStore['Lease']=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+            # The caller's root already owns this actual lease, before mirrors/getters.
+            $private:jobLease=$private:jobStore['Lease']
+            if ($null-eq$private:jobLease) { throw 'Actual returned lease required.' }
+            $private:jobTokenSlot=$private:jobLease.PSObject.Properties['Token']
+            if ($null-eq$private:jobTokenSlot-or$private:jobTokenSlot.GetType()-ne[Management.Automation.PSNoteProperty]) { throw 'Original scalar lease-token data property required.' }
+            $private:jobStore['TokenSlot']=$private:jobTokenSlot
+            $private:jobLiveToken=$private:jobTokenSlot.Value
+            if ($private:jobLiveToken -isnot [string] -or $private:jobLiveToken -cnotmatch '\A[0-9a-f]{32}\z') { throw 'One original32hex scalar token required.' }
+            $private:jobStore['Token']=$private:jobLiveToken
+            . $private:jobProject
+            . $private:jobAssert -jobCheckToken
+            $private:jobProcess=Get-Process -Id $PID
+            $private:jobPriority=$private:jobProcess.PriorityClass
+            if ($private:jobPriority -isnot [Diagnostics.ProcessPriorityClass]) { throw 'Original host priority is unknown.' }
+            $private:jobPriorityCaptured=$true
+            $private:jobProcess.PriorityClass='BelowNormal'
+            . $private:jobAssert -jobCheckToken
             & $Body
-        } catch {
-            $jobFirstRecord=$_
-            $jobSlots.ResourceJobFirstErrorRecord.Value=$jobFirstRecord
-            $jobSlots.ResourceJobFirstException.Value=$jobFirstRecord.Exception
-        } finally {
-            if ($null -ne $jobLease) {
-                if ($jobPriorityCaptured) {
+            . $private:jobAssert -jobCheckToken
+        } catch { . $private:jobRecordError -jobCapturedRecord $_ -jobCapturedFrontier 'SetupBody' }
+        finally {
+            if ($null-ne$private:jobStore['Lease']) {
+                if ($private:jobPriorityCaptured) {
                     try {
-                        $jobProcess.PriorityClass=$jobPriority
-                        if ($jobProcess.PriorityClass -ne $jobPriority) { throw 'Original host priority restoration readback differs.' }
-                        $jobPriorityRestored=$true
-                    }
-                    catch {
-                        if ($null -eq $jobFirstRecord) {
-                            $jobFirstRecord=$_;$jobSlots.ResourceJobFirstErrorRecord.Value=$jobFirstRecord
-                            $jobSlots.ResourceJobFirstException.Value=$jobFirstRecord.Exception
-                        } else { $jobSecondary.Add($_) }
-                    }
+                        $private:jobProcess.PriorityClass=$private:jobPriority
+                        if ($private:jobProcess.PriorityClass-ne$private:jobPriority) { throw 'Original priority restoration readback differs.' }
+                        $private:jobPriorityRestored=$true
+                    } catch { . $private:jobRecordError -jobCapturedRecord $_ -jobCapturedFrontier 'Priority' }
                 }
                 try {
-                    $jobExpectedException=if ($null -ne $jobFirstRecord) { $jobFirstRecord.Exception } else { $null }
-                    if (![object]::ReferenceEquals($OriginalContext,$jobContext)) { throw 'OriginalContext reference changed; release refused.' }
-                    foreach ($jobName in $jobNames) {
-                        if (![object]::ReferenceEquals($jobContext.PSObject.Properties[$jobName],$jobSlots[$jobName])) { throw 'OriginalContext slot changed; release refused.' }
-                    }
-                    if (![object]::ReferenceEquals($jobSlots.ResourceJobLease.Value,$jobLease) -or
-                        ![object]::ReferenceEquals($jobSlots.ResourceJobSecondaryErrors.Value,$jobSecondary) -or
-                        ![object]::ReferenceEquals($jobSlots.ResourceJobFirstErrorRecord.Value,$jobFirstRecord) -or
-                        ![object]::ReferenceEquals($jobSlots.ResourceJobFirstException.Value,$jobExpectedException) -or
-                        $jobSlots.ResourceJobReleaseAttempted.Value -isnot [bool] -or $jobSlots.ResourceJobReleaseAttempted.Value -or
-                        $jobSlots.ResourceJobReleaseReturned.Value -isnot [bool] -or $jobSlots.ResourceJobReleaseReturned.Value -or
-                        $jobLease.Token -cne $jobToken) { throw 'Original release/error/lease state changed; release refused.' }
-                    $jobHookResult=& $BeforeReleaseCheck $jobContext
-                    if ($jobHookResult -isnot [bool] -or !$jobHookResult) { throw 'BeforeReleaseCheck must return exactly Boolean true.' }
-                    # The hook is observational; recheck the same references after it.
-                    if (![object]::ReferenceEquals($OriginalContext,$jobContext)) { throw 'OriginalContext reference changed in release check.' }
-                    foreach ($jobName in $jobNames) {
-                        if (![object]::ReferenceEquals($jobContext.PSObject.Properties[$jobName],$jobSlots[$jobName])) { throw 'OriginalContext slot changed in release check.' }
-                    }
-                    if (![object]::ReferenceEquals($jobSlots.ResourceJobLease.Value,$jobLease) -or
-                        ![object]::ReferenceEquals($jobSlots.ResourceJobSecondaryErrors.Value,$jobSecondary) -or
-                        ![object]::ReferenceEquals($jobSlots.ResourceJobFirstErrorRecord.Value,$jobFirstRecord) -or
-                        ![object]::ReferenceEquals($jobSlots.ResourceJobFirstException.Value,$jobExpectedException) -or
-                        $jobSlots.ResourceJobReleaseAttempted.Value -isnot [bool] -or $jobSlots.ResourceJobReleaseAttempted.Value -or
-                        $jobSlots.ResourceJobReleaseReturned.Value -isnot [bool] -or $jobSlots.ResourceJobReleaseReturned.Value -or
-                        $jobLease.Token -cne $jobToken) { throw 'Release check changed original release/error/lease state.' }
-                    $jobHookApproved=$true
-                } catch {
-                    if ($null -eq $jobFirstRecord) {
-                        $jobFirstRecord=$_;$jobSlots.ResourceJobFirstErrorRecord.Value=$jobFirstRecord
-                        $jobSlots.ResourceJobFirstException.Value=$jobFirstRecord.Exception
-                    } else { $jobSecondary.Add($_) }
-                }
-                if ($jobPriorityRestored -and $jobHookApproved) {
-                    $jobSlots.ResourceJobReleaseAttempted.Value=$true
+                    . $private:jobAssert -jobCheckToken
+                    $private:jobHookResult=& $BeforeReleaseCheck $private:jobContext
+                    if ($private:jobHookResult -isnot [bool] -or !$private:jobHookResult) { throw 'BeforeReleaseCheck must return exactly Boolean true.' }
+                    . $private:jobAssert -jobCheckToken
+                    $private:jobHookApproved=$true
+                } catch { . $private:jobRecordError -jobCapturedRecord $_ -jobCapturedFrontier 'Check' }
+                if ($private:jobPriorityRestored-and$private:jobHookApproved) {
                     try {
-                        Exit-IW7ResourceLease -Token $jobToken
-                        $jobSlots.ResourceJobReleaseReturned.Value=$true
-                    } catch {
-                        if ($null -eq $jobFirstRecord) {
-                            $jobFirstRecord=$_;$jobSlots.ResourceJobFirstErrorRecord.Value=$jobFirstRecord
-                            $jobSlots.ResourceJobFirstException.Value=$jobFirstRecord.Exception
-                        } else { $jobSecondary.Add($_) }
-                    }
+                        . $private:jobAssert -jobCheckToken
+                        $private:jobStore['ReleaseAttempted']=$true
+                        Exit-IW7ResourceLease -Token $private:jobLiveToken
+                        $private:jobStore['ReleaseReturned']=$true
+                        . $private:jobProject
+                        . $private:jobAssert -jobCheckToken
+                    } catch { . $private:jobRecordError -jobCapturedRecord $_ -jobCapturedFrontier 'Release' }
                 }
             }
         }
-        if ($null -ne $jobFirstRecord) { throw $jobFirstRecord }
+        if ($null-ne$private:jobStore['FirstErrorRecord']) { throw $private:jobStore['FirstErrorRecord'] }
         return
     }
     $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
