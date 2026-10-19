@@ -681,6 +681,84 @@ an observation nor establish available capacity or memory exhaustion; they are n
 admission or stop rules. A performance report remains an observation requiring
 scenario, repetition and instrumentation-overhead controls.
 
+### Declared phases and comparison windows
+
+Legacy `metrics`, `hotspots` and comparison `changes` remain all-row descriptive
+observations. Equal generic labels (or two absent contexts) never make
+`contexts_match` true. A separate `phase` report and `phase_comparison` expose
+closed-window values, exclusions and channel coverage. They do not establish an
+optimization, actual game workload or owner acceptance.
+
+For a future authorized collection, `iw7_watch.py --comparison-context <json>`
+requires explicit `--measurement-start-seconds` and `--measurement-end-seconds`.
+Both offsets must lie within `--seconds`, after the selected warmup. For example,
+30 seconds of warmup followed by 120 measured seconds uses collection 150,
+start 30 and end 150; the window is not extended when samples are missing.
+
+The context is a closed object with these required declarations:
+
+```json
+{
+  "map": "cp_zmb",
+  "phase": "round_active",
+  "declared_clients": 1,
+  "actors": {"zombies": 24},
+  "pending": {"spawns": 0},
+  "resolution": "not_applicable",
+  "scale": "not_applicable",
+  "options": {"dedicated": true},
+  "config_hashes": {"server": "<lowercase SHA256>"},
+  "script_hashes": {"scripts": "<lowercase SHA256>"},
+  "builds": {"Server": "<target image lowercase SHA256>"}
+}
+```
+
+Replace the explanatory hash strings with actual 64-character hashes. Counts are
+explicit nonnegative integers, not booleans/default zero. Options are nonempty,
+finite scalar declarations. Rendering requires positive `[width,height]` and
+scale; the exact pair `not_applicable` is for headless collections only, not
+unknown client settings. Build keys must match the collection targets and their
+image pins. Config/script/build declarations are not automatic game-state
+attestation. Compare controls exactly; build differences are displayed separately
+as experimental variables, never silently treated as equal controls.
+
+The header records a unique collection ID, requested measurement bounds and the
+observed collection start in `windows.GetTickCount64.ms`. Its matching complete
+row records the observed end and completion state. `monotonic` still schedules
+the observer; UTC is display metadata. Neither is silently substituted for that
+clock. An absent/invalid footer, mixed clocks, unequal phase durations or an
+uncollected part of the window prevents qualified phase differences.
+The collector takes a final acquisition at/after its requested duration before
+writing completion; this does not move the requested measurement bounds. Native
+periods still need actual emitted bounds: the final collector read alone does
+not prove that a native channel covers the end.
+
+CPU/I/O phase periods conservatively span the previous process-sample acquisition
+start through its current end in GetTickCount64. CPU rates use separate
+`python.perf_counter.seconds` brackets immediately around `obs.sample()`, before
+threads or UDP work. The actual process counter read is inside that envelope;
+the minimum/maximum possible elapsed intervals give lower/upper CPU percentages.
+The midpoint estimate remains descriptive. Phase comparison reports p95 bounds
+and does not qualify an apparent CPU delta when the ranges overlap. The clocks
+are not mapped or substituted for one another; millisecond phase readings have
+GetTickCount64 quantization, while rate brackets use perf_counter resolution.
+Threads have their own acquisition/rate brackets, and UDP has its own bracket.
+Memory snapshots retain only their process-acquisition brackets. Native `tick_ms` is preserved
+as emission time; late ingestion never moves an old row into the current phase.
+Only actual Source period bounds are used, including `server_ticks.window_ms`.
+Unbounded render windows, GPU acquisition times and inclusive timing scopes stay
+descriptive rather than deriving a period from a rate or ingestion timestamp.
+
+Only periods entirely inside the closed window supply phase values; crossing
+periods are excluded without prorating. Their known intervals can establish
+coverage at the edges. Each channel reports count, observed temporal extent,
+exclusion reasons and whether the period union covers the window. Memory/thread/
+UDP acquisition brackets describe snapshot uncertainty, not continuous coverage;
+their phase-filtered values therefore remain descriptive. A missing/ambiguous interval or relevant coverage gap prevents that
+channel's qualified difference without invalidating other covered channels.
+PresentMon remains separate per PID/swapchain: without an explicit temporal clock
+correspondence, it never becomes a qualified CPU/native phase comparison.
+
 Arbitrary visual/gameplay bugs, all bytecode loops, every allocation owner and
 all engine subsystems cannot be inferred by this tool. Add targeted assertions,
 regions, allocation/ETW stacks or framebuffer evidence when the broad sensors

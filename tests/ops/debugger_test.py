@@ -5,6 +5,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest import mock
 import uuid
 import zipfile
 import sys
@@ -303,6 +304,191 @@ class DebuggerTests(unittest.TestCase):
         r = dbg.perf_report(self.write("empty.jsonl", ""))
         self.assertEqual(r["metrics"], {})
         self.assertNotEqual(r["acceptance"], "passed")
+
+    def phase_context(self):
+        return {"map": "cp_zmb", "phase": "round_active", "declared_clients": 1,
+                "actors": {"zombies": 24}, "pending": {"spawns": 0},
+                "resolution": "not_applicable", "scale": "not_applicable", "options": {"dedicated": True},
+                "config_hashes": {"server": "a" * 64}, "script_hashes": {"scripts": "b" * 64},
+                "builds": {"Server": "c" * 64}}
+
+    def phase_trace(self, name, rows, context=None, finish=True):
+        header = {"type": "header", "scenario": "generic laboratory", "comparison_context": context or self.phase_context(),
+                  "collection_id": "a" * 32, "clock": dbg.WINDOWS_CLOCK, "collection_start_ms": 0,
+                  "measurement_window": {"clock": dbg.WINDOWS_CLOCK, "start_ms": 1000, "end_ms": 4000}}
+        complete = {"type": "complete", "collection_id": "a" * 32, "clock": dbg.WINDOWS_CLOCK,
+                    "collection_end_ms": 5000, "collection_complete": True}
+        return self.write(name, "\n".join(json.dumps(x) for x in [header, *rows, *([complete] if finish else [])]))
+
+    def phase_samples(self, values=(10, 20, 30)):
+        return [{"type": "sample", "target": "Server", "cpu_core_percent": value, "private_bytes": 100 + i,
+                 "cpu_rate_bounds": {"clock": dbg.CPU_RATE_CLOCK, "lower_percent": value, "upper_percent": value,
+                                     "minimum_interval_seconds": 1.0, "maximum_interval_seconds": 1.0},
+                 "acquisition": {"clock": dbg.WINDOWS_CLOCK, "start_ms": 2000 + i * 1000, "end_ms": 2000 + i * 1000},
+                 "cpu_period": {"clock": dbg.WINDOWS_CLOCK, "start_ms": 1000 + i * 1000, "end_ms": 2000 + i * 1000}}
+                for i, value in enumerate(values)]
+
+    def test_post_counter_threads_and_udp_cost_cannot_fabricate_cpu_gain(self):
+        results, post_times = [], []
+        for delay in (.05, .5):
+            class Clock:
+                now = 0.0
+            clock = Clock()
+            class FakeObserver:
+                calls = 0
+                def sample(self):
+                    value = {"cpu_seconds": self.calls * .1}
+                    self.calls += 1
+                    return value
+                def threads(self):
+                    clock.now += delay
+                    return {(1, 1): .1}
+            observer = FakeObserver()
+            with mock.patch.object(watch, "windows_tick_ms", side_effect=lambda: int(clock.now * 1000)), \
+                 mock.patch.object(watch.time, "perf_counter", side_effect=lambda: clock.now):
+                before, before_phase, before_rate = watch.acquire_process(observer)
+                clock.now = 1.0
+                current, current_phase, current_rate = watch.acquire_process(observer)
+                _, thread_phase, _ = watch.acquire_threads(observer)
+                clock.now += delay  # Synthetic UDP work, after the original CPU acquisition.
+                results.append(watch.cpu_rate(current["cpu_seconds"] - before["cpu_seconds"], before_rate, current_rate))
+                post_times.append(clock.now)
+                self.assertEqual(current_phase["end_ms"], 1000)
+                self.assertGreater(thread_phase["end_ms"], current_phase["end_ms"])
+                self.assertEqual(before_phase["start_ms"], 0)
+        self.assertNotEqual(post_times[0], post_times[1])
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(results[0][0], 10)
+
+    def test_cpu_uncertainty_overlap_cannot_qualify_apparent_gain(self):
+        before = self.phase_trace("precise-cpu.jsonl", self.phase_samples())
+        rows = self.phase_samples((9, 19, 29))
+        for row in rows:
+            row["cpu_rate_bounds"].update({"lower_percent": 0, "upper_percent": 50})
+        after = self.phase_trace("uncertain-cpu.jsonl", rows)
+        result = dbg.compare_reports(before, after)
+        self.assertTrue(result["contexts_match"])
+        self.assertEqual(result["phase_comparison"]["changes"], [])
+        self.assertEqual(result["phase_comparison"]["exclusions"]["Server:cpu_core_percent"], ["cpu_rate_uncertainty_overlaps"])
+        self.assertIn("Server:cpu_core_percent", [x["metric"] for x in result["changes"]])
+
+    def test_cpu_rate_bounds_are_required_for_phase_comparison(self):
+        rows = self.phase_samples(); del rows[1]["cpu_rate_bounds"]
+        result = dbg.perf_report(self.phase_trace("rate-unknown.jsonl", rows))
+        self.assertIn("cpu_rate_uncertainty_missing_or_invalid", result["phase"]["channels"]["Server:cpu_core_percent"]["reasons"])
+
+    def test_generic_or_absent_contexts_never_match(self):
+        for rows in ([], [{"type": "header", "scenario": "same generic laboratory"}]):
+            path = self.write("generic" + str(len(rows)) + ".jsonl", "\n".join(json.dumps(x) for x in rows))
+            result = dbg.compare_reports(path, path)
+            self.assertFalse(result["contexts_match"])
+            self.assertEqual(result["phase_comparison"]["changes"], [])
+
+    def test_declared_context_is_strict_and_headless_is_explicit(self):
+        context = self.phase_context()
+        self.assertIs(dbg.comparison_context(context), context)
+        mutants = []
+        for key in context:
+            bad = {**context}; del bad[key]; mutants.append(bad)
+        mutants += [{**context, "extra": 0}, {**context, "declared_clients": False},
+                    {**context, "actors": {}}, {**context, "pending": {"spawns": False}},
+                    {**context, "options": {"scale": float("inf")}}, {**context, "options": {"scale": 10 ** 1000}},
+                    {**context, "script_hashes": {}}, {**context, "builds": {"Client": "c" * 64}},
+                    {**context, "resolution": [1920, 1080], "scale": True}]
+        for bad in mutants:
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError): dbg.comparison_context(bad)
+        rendered = {**context, "resolution": [1920, 1080], "scale": 1.0, "builds": {"Client": "c" * 64}}
+        self.assertIs(dbg.comparison_context(rendered), rendered)
+
+    def test_phase_controls_and_build_variable_are_separate(self):
+        before = self.phase_trace("phase-before.jsonl", self.phase_samples())
+        changed_build = self.phase_context(); changed_build["builds"]["Server"] = "d" * 64
+        after = self.phase_trace("phase-after.jsonl", self.phase_samples((20, 40, 60)), changed_build)
+        result = dbg.compare_reports(before, after)
+        self.assertTrue(result["contexts_match"])
+        self.assertEqual(result["build_differences"], [{"target": "Server", "before": "c" * 64, "after": "d" * 64}])
+        self.assertEqual([x["metric"] for x in result["phase_comparison"]["changes"]], ["Server:cpu_core_percent"])
+        self.assertAlmostEqual(result["phase_comparison"]["changes"][0]["delta_percent"], 100)
+        other_map = self.phase_trace("other-map.jsonl", self.phase_samples(), {**self.phase_context(), "map": "cp_rave"})
+        self.assertFalse(dbg.compare_reports(before, other_map)["contexts_match"])
+        self.assertEqual(dbg.compare_reports(before, other_map)["phase_comparison"]["changes"], [])
+
+    def test_warmup_history_and_crossing_periods_are_not_prorated(self):
+        rows = self.phase_samples()
+        rows += [{"type": "sample", "target": "Server", "cpu_core_percent": 999,
+                  "cpu_period": {"clock": dbg.WINDOWS_CLOCK, "start_ms": a, "end_ms": b}}
+                 for a, b in ((0, 900), (900, 1500), (3500, 4500), (4500, 5000))]
+        report = dbg.perf_report(self.phase_trace("bounds.jsonl", rows))
+        self.assertEqual(report["metrics"]["Server:cpu_core_percent"]["count"], 7)
+        self.assertEqual(report["phase"]["metrics"]["Server:cpu_core_percent"]["mean"], 20)
+        channel = report["phase"]["channels"]["Server:cpu_core_percent"]
+        self.assertEqual(channel["excluded"]["outside_or_crossing_window"], 4)
+        self.assertTrue(channel["qualified"])
+
+    def test_sparse_memory_brackets_do_not_claim_whole_window_coverage(self):
+        report = dbg.perf_report(self.phase_trace("sparse.jsonl", self.phase_samples()))
+        cpu = report["phase"]["channels"]["Server:cpu_core_percent"]
+        memory = report["phase"]["channels"]["Server:private_bytes"]
+        self.assertTrue(cpu["qualified"])
+        self.assertEqual(memory["count"], 3)
+        self.assertEqual((memory["observed_start_ms"], memory["observed_end_ms"]), (2000, 4000))
+        self.assertFalse(memory["qualified"])
+        self.assertIn("uncovered_measurement_window", memory["reasons"])
+
+    def test_missing_time_mixed_clock_and_missing_target_are_explicit(self):
+        for field in (None, {"clock": "monotonic", "start_ms": 1000, "end_ms": 2000},
+                      {"clock": dbg.WINDOWS_CLOCK, "start_ms": True, "end_ms": 2000}):
+            rows = self.phase_samples(); rows[0]["cpu_period"] = field
+            report = dbg.perf_report(self.phase_trace("missing-" + str(field is None) + str(field.get("clock") if field else "") + ".jsonl", rows))
+            self.assertIn("acquisition_interval_or_clock_missing", report["phase"]["channels"]["Server:cpu_core_percent"]["reasons"])
+        rows = self.phase_samples(); rows[0]["target"] = "Other"
+        report = dbg.perf_report(self.phase_trace("undeclared-target.jsonl", rows))
+        self.assertIn("target_not_declared", report["phase"]["channels"]["Other:cpu_core_percent"]["reasons"])
+
+    def test_missing_or_incomplete_collection_cannot_qualify(self):
+        path = self.phase_trace("unfinished.jsonl", self.phase_samples(), finish=False)
+        self.assertEqual(dbg.compare_reports(path, path)["phase_comparison"]["changes"], [])
+        original = self.phase_trace("finished.jsonl", self.phase_samples())
+        rows = list(dbg.jsonl(original))
+        for key, value in (("collection_complete", False), ("collection_id", "b" * 32),
+                           ("collection_end_ms", 3000), ("clock", "utc")):
+            changed = [*rows[:-1], {**rows[-1], key: value}]
+            path = self.write("bad-finish-" + key + ".jsonl", "\n".join(json.dumps(x) for x in changed))
+            self.assertEqual(dbg.compare_reports(original, path)["phase_comparison"]["changes"], [])
+
+    def test_native_emission_time_filters_late_ingested_history(self):
+        rows = [{"type": "server_ticks", "target": "Server", "clock": dbg.WINDOWS_CLOCK,
+                 "tick_ms": end, "window_ms": 1000, "hz": rate, "at_utc": "late ingestion is not emission time"}
+                for end, rate in ((1000, 999), (2000, 20), (3000, 20), (4000, 20), (5000, 999))]
+        rows += [{"type": "timing", "target": "Server", "tick_ms": 2000, "calls": 1, "total_us": 2000, "max_us": 2000}]
+        report = dbg.perf_report(self.phase_trace("native-history.jsonl", rows))
+        self.assertEqual(report["phase"]["metrics"]["Server:simulation_hz"]["mean"], 20)
+        self.assertTrue(report["phase"]["channels"]["Server:simulation_hz"]["qualified"])
+        self.assertEqual(report["hotspots"][0]["total_us"], 2000)
+        self.assertIn("inclusive_scope_period_unqualified", report["phase"]["channels"]["Server:timing"]["excluded"])
+
+    def test_presentmon_and_unbounded_render_stay_descriptive(self):
+        context = {**self.phase_context(), "resolution": [1920, 1080], "scale": 1.0}
+        rows = self.phase_samples() + [
+            {"type": "present_window", "target": "Server", "swapchain": "a", "present_rate_fps": 60, "max_ms": 20, "clock": dbg.WINDOWS_CLOCK, "tick_ms": 2000},
+            {"type": "render_window", "target": "Server", "swapchain_slot": 0, "callback_rate_fps": 60, "mean_interval_ms": 16, "max_interval_ms": 20, "clock": dbg.WINDOWS_CLOCK, "tick_ms": 2000}]
+        report = dbg.perf_report(self.phase_trace("separate-render.jsonl", rows, context))
+        self.assertIn("Server:a:present_rate_fps", report["metrics"])
+        self.assertIn("presentmon_clock_correspondence_missing", report["phase"]["channels"]["Server:a:present_rate_fps"]["reasons"])
+        self.assertIn("source_period_unknown", report["phase"]["channels"]["Server:renderer_0:callback_rate_fps"]["reasons"])
+        self.assertTrue(report["phase"]["channels"]["Server:cpu_core_percent"]["qualified"])
+
+    def test_coverage_gaps_are_scoped_and_duration_is_controlled(self):
+        rows = self.phase_samples() + [{"type": "coverage", "sensor": "render", "target": "Server", "clock": dbg.WINDOWS_CLOCK, "tick_ms": 2000}]
+        before = self.phase_trace("scoped-gap.jsonl", rows)
+        self.assertTrue(dbg.perf_report(before)["phase"]["channels"]["Server:cpu_core_percent"]["qualified"])
+        rows.append({"type": "coverage", "sensor": "all", "target": "Server", "clock": dbg.WINDOWS_CLOCK, "tick_ms": 2000})
+        after = self.phase_trace("all-gap.jsonl", rows)
+        self.assertIn("coverage_gap_or_time_unknown", dbg.perf_report(after)["phase"]["channels"]["Server:cpu_core_percent"]["reasons"])
+        changed = list(dbg.jsonl(before)); changed[0]["measurement_window"]["end_ms"] = 3000
+        shorter = self.write("shorter.jsonl", "\n".join(json.dumps(x) for x in changed))
+        self.assertIn("phase_duration_differs_or_unknown", dbg.compare_reports(before, shorter)["phase_comparison"]["reasons"])
 
     def test_lexing_preserves_lines(self):
         text = 'main() {\n print("while(1) { wait;"); // wait\n /* multi\n line */\n loop();\n}'

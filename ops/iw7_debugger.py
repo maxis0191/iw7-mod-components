@@ -21,6 +21,177 @@ import zipfile
 REPO = Path(__file__).resolve().parents[1]
 MAX_INPUT = 256 * 1024 * 1024
 SCHEMA = "iw7.debugger/1"
+WINDOWS_CLOCK = "windows.GetTickCount64.ms"
+CPU_RATE_CLOCK = "python.perf_counter.seconds"
+
+
+def _finite_number(value):
+    try:
+        return type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def comparison_context(value):
+    """Validate declarations, never attest the actual game workload."""
+    keys = {"map", "phase", "declared_clients", "actors", "pending", "resolution", "scale",
+            "options", "config_hashes", "script_hashes", "builds"}
+    def text(x):
+        return type(x) is str and bool(x.strip()) and len(x) <= 256
+    def counts(x):
+        return type(x) is dict and bool(x) and all(text(k) and type(v) is int and v >= 0 for k, v in x.items())
+    def hashes(x):
+        return type(x) is dict and bool(x) and all(text(k) and type(v) is str and re.fullmatch(r"[0-9a-f]{64}", v) for k, v in x.items())
+    if type(value) is not dict or set(value) != keys:
+        raise ValueError("Closed structured comparison context required")
+    if not all(text(value[k]) for k in ("map", "phase")) or type(value["declared_clients"]) is not int or value["declared_clients"] < 0:
+        raise ValueError("Explicit map, phase and declared client count required")
+    if not counts(value["actors"]) or not counts(value["pending"]) or not all(hashes(value[k]) for k in ("config_hashes", "script_hashes", "builds")):
+        raise ValueError("Explicit actor/pending counts and per-target build/config/script hashes required")
+    options = value["options"]
+    if type(options) is not dict or not options or not all(text(k) and type(v) in (str, bool, int, float) and
+            (text(v) if type(v) is str else type(v) is bool or _finite_number(v)) for k, v in options.items()):
+        raise ValueError("Nonempty finite declared options required")
+    resolution, scale = value["resolution"], value["scale"]
+    if resolution == "not_applicable" and scale == "not_applicable":
+        if any("client" in target.casefold() or "render" in target.casefold() for target in value["builds"]):
+            raise ValueError("Rendering targets require explicit resolution and scale")
+    elif not (type(resolution) is list and len(resolution) == 2 and all(type(n) is int and n > 0 for n in resolution)
+              and _finite_number(scale) and scale > 0):
+        raise ValueError("Explicit positive resolution/scale or headless not_applicable pair required")
+    return value
+
+
+def _interval(value, positive=False):
+    if (type(value) is dict and set(value) == {"clock", "start_ms", "end_ms"} and
+            value["clock"] == WINDOWS_CLOCK and all(type(value[k]) is int and value[k] >= 0 for k in ("start_ms", "end_ms")) and
+            value["end_ms"] >= value["start_ms"] + int(positive)):
+        return value["start_ms"], value["end_ms"]
+    return None
+
+
+def _phase_values(row):
+    target = str(row.get("target", "unknown"))
+    typ = row.get("type")
+    if typ == "sample":
+        for key in ("cpu_core_percent", "private_bytes", "working_set", "read_bytes_delta", "write_bytes_delta", "thread_count", "physical_percent", "commit_percent", "udp_rtt_ms"):
+            if row.get(key) is not None:
+                kind = "cpu" if key in ("cpu_core_percent", "read_bytes_delta", "write_bytes_delta") else "threads" if key == "thread_count" else "udp" if key == "udp_rtt_ms" else "sample"
+                yield target + ":" + key, row[key], kind
+    elif typ == "server_ticks":
+        yield target + ":simulation_hz", row.get("hz"), "native"
+    elif typ == "render_window":
+        for key in ("callback_rate_fps", "mean_interval_ms", "max_interval_ms"):
+            yield target + ":renderer_" + str(row.get("swapchain_slot", "unknown")) + ":" + key, row.get(key), "native"
+    elif typ == "gpu_budget" and row.get("hresult") == 0:
+        for key in ("usage_bytes", "budget_bytes"):
+            yield target + ":gpu_" + key, row.get(key), "native"
+    elif typ == "present_window":
+        for key, source in (("present_rate_fps", "present_rate_fps"), ("window_max_frame_ms", "max_ms")):
+            yield target + ":" + str(row.get("swapchain", "unknown")) + ":" + key, row.get(source), "present"
+
+
+def phase_report(path):
+    """Separate closed-window evidence from compatible all-row descriptive metrics."""
+    headers, finishes = [], []
+    for row in jsonl(path):
+        if row.get("type") == "header" and "comparison_context" in row: headers.append(row)
+        if row.get("type") == "complete" and "collection_id" in row: finishes.append(row)
+    reasons, context, window = [], None, None
+    header = headers[0] if len(headers) == 1 else {}
+    if len(headers) != 1: reasons.append("structured_collection_header_missing_or_multiple")
+    try: context = comparison_context(header.get("comparison_context"))
+    except ValueError: reasons.append("declared_context_invalid_or_missing")
+    window = _interval(header.get("measurement_window"), True)
+    if window is None: reasons.append("closed_measurement_window_missing_or_invalid")
+    collection_id = header.get("collection_id")
+    matches = [row for row in finishes if row.get("collection_id") == collection_id]
+    finish = matches[0] if len(matches) == 1 else {}
+    start, end = header.get("collection_start_ms"), finish.get("collection_end_ms")
+    complete = (type(collection_id) is str and re.fullmatch(r"[0-9a-f]{32}", collection_id) is not None and
+                len(matches) == 1 and finish.get("collection_complete") is True and
+                header.get("clock") == finish.get("clock") == WINDOWS_CLOCK and
+                type(start) is int and type(end) is int and 0 <= start <= end)
+    if not complete: reasons.append("collection_incomplete_or_clock_unknown")
+    if window and complete and not start <= window[0] < window[1] <= end:
+        reasons.append("measurement_window_not_fully_collected")
+    values, excluded, blocked, spans, kinds, targets = defaultdict(list), defaultdict(Counter), defaultdict(set), defaultdict(list), {}, {}
+    cpu_lower, cpu_upper = defaultdict(list), defaultdict(list)
+    gaps = []
+    for row in jsonl(path):
+        if row.get("type") == "coverage" or (row.get("type") == "alert" and
+                (str(row.get("code", "")).startswith("coverage.") or row.get("code") == "process.exit")):
+            gaps.append(row)
+        if row.get("type") == "timing":
+            excluded[str(row.get("target", "unknown")) + ":timing"]["inclusive_scope_period_unqualified"] += 1
+        for key, value, kind in _phase_values(row):
+            kinds[key], targets[key] = kind, row.get("target")
+            reason, interval = None, None
+            if context and context["resolution"] == "not_applicable" and row.get("type") in ("render_window", "gpu_budget", "present_window"):
+                if "headless_context_has_render_data" not in reasons: reasons.append("headless_context_has_render_data")
+            if not _finite_number(value): reason = "invalid_metric"
+            elif "clock" in row and row["clock"] != WINDOWS_CLOCK: reason = "source_clock_unknown_or_mixed"
+            elif context and row.get("target") not in context["builds"]: reason = "target_not_declared"
+            elif kind == "present": reason = "presentmon_clock_correspondence_missing"
+            elif kind in ("cpu", "sample", "threads", "udp"):
+                interval = _interval(row.get({"cpu": "cpu_period", "sample": "acquisition", "threads": "thread_acquisition", "udp": "udp_acquisition"}[kind]), kind == "cpu")
+                if interval is None: reason = "acquisition_interval_or_clock_missing"
+            elif row.get("clock") != WINDOWS_CLOCK: reason = "source_clock_unknown_or_mixed"
+            else:
+                interval = _interval(row.get("source_period"), True)
+                if interval is None and row.get("type") == "server_ticks" and type(row.get("tick_ms")) is int and type(row.get("window_ms")) is int:
+                    interval = _interval({"clock": row["clock"], "start_ms": row["tick_ms"] - row["window_ms"], "end_ms": row["tick_ms"]}, True)
+                if interval is None: reason = "source_period_unknown"
+            if reason:
+                excluded[key][reason] += 1; blocked[key].add(reason); continue
+            if not window:
+                excluded[key]["measurement_window_unknown"] += 1; continue
+            left, right = interval
+            if right >= window[0] and left <= window[1]: spans[key].append((max(left, window[0]), min(right, window[1])))
+            if left < window[0] or right > window[1]:
+                excluded[key]["outside_or_crossing_window"] += 1; continue
+            if key.endswith(":cpu_core_percent"):
+                bounds = row.get("cpu_rate_bounds")
+                expected = {"clock", "lower_percent", "upper_percent", "minimum_interval_seconds", "maximum_interval_seconds"}
+                if (type(bounds) is not dict or set(bounds) != expected or bounds["clock"] != CPU_RATE_CLOCK or
+                        not all(_finite_number(bounds[k]) for k in expected - {"clock"}) or
+                        not 0 <= bounds["lower_percent"] <= value <= bounds["upper_percent"] or
+                        not 0 < bounds["minimum_interval_seconds"] <= bounds["maximum_interval_seconds"]):
+                    excluded[key]["cpu_rate_uncertainty_missing_or_invalid"] += 1
+                    blocked[key].add("cpu_rate_uncertainty_missing_or_invalid"); continue
+                cpu_lower[key].append(bounds["lower_percent"]); cpu_upper[key].append(bounds["upper_percent"])
+            values[key].append(value)
+    channels = {}
+    for key in sorted(set(values) | set(excluded)):
+        cursor = window[0] if window else None
+        for left, right in sorted(spans[key]):
+            if cursor is not None and left <= cursor: cursor = max(cursor, right)
+        covered = bool(window and cursor >= window[1] and kinds.get(key) in ("cpu", "native"))
+        channel_reasons = set(blocked[key])
+        if kinds.get(key) in ("sample", "threads", "udp"):
+            channel_reasons.add("snapshot_only_coverage_not_established")
+        for gap in gaps:
+            if gap.get("target") not in (None, "all", targets.get(key)): continue
+            sensor = str(gap.get("sensor", gap.get("code", "all")))
+            kind = kinds.get(key)
+            if not (sensor == "all" or sensor == "process.exit" or
+                    (kind == "native" and ("native" in sensor or ("render" in sensor and ":renderer_" in key) or
+                                            ("gpu_budget" in sensor and ":gpu_" in key))) or
+                    (kind == "present" and any(name in sensor for name in ("present", "displayed_fps")))): continue
+            tick = gap.get("tick_ms")
+            if gap.get("clock") == WINDOWS_CLOCK and type(tick) is int and window and not window[0] <= tick <= window[1]: continue
+            channel_reasons.add("coverage_gap_or_time_unknown")
+        if not covered: channel_reasons.add("uncovered_measurement_window")
+        if not values[key]: channel_reasons.add("no_fully_contained_observations")
+        channels[key] = {"count": len(values[key]), "observed_start_ms": min((x[0] for x in spans[key]), default=None),
+                         "observed_end_ms": max((x[1] for x in spans[key]), default=None), "window_covered": covered,
+                         "excluded": dict(excluded[key]), "reasons": sorted(channel_reasons),
+                         "qualified": not reasons and not channel_reasons}
+    return {"declared_context": context, "window": header.get("measurement_window"), "collection_complete": complete,
+            "reasons": reasons, "metrics": {key: quantiles(rows) for key, rows in values.items()}, "channels": channels,
+            "cpu_p95_bounds": {key: {"clock": CPU_RATE_CLOCK, "lower_percent": quantiles(cpu_lower[key])["p95"],
+                                      "upper_percent": quantiles(cpu_upper[key])["p95"]} for key in cpu_lower},
+            "limits": "Declarations are not game attestation. Whole periods only, no prorating. Sparse snapshot brackets may leave coverage unknown; legacy metrics remain descriptive."}
 
 
 def digest(path):
@@ -459,6 +630,7 @@ def perf_report(path, token_root=None):
             "coverage": dict(coverage), "alerts": dict(alerts), "coverage_gaps": gaps, "context": context, "identities": identities,
             "metrics": {k: quantiles(v) for k, v in metrics.items()}, "hotspots": hot,
             "high_pressure_samples": high_pressure,
+            "phase": phase_report(path),
             "acceptance": "observation; scenario/repetition/overhead controls required",
             "limits": "CPU uses one-core scale (100% = one busy logical CPU). Wall scopes overlap; do not sum nested timings. No renderer FPS claim. high_pressure_samples retains the legacy commit_percent >85 heuristic; it is not proof of exhaustion or an observation/admission/stop rule."}
 
@@ -490,8 +662,41 @@ def compare_reports(before, after):
         av, bv = a["metrics"][key]["p95"], b["metrics"][key]["p95"]
         changes.append({"metric": key, "before_p95": av, "after_p95": bv,
                         "delta_percent": 100 * (bv - av) / av if av else None})
+    ap, bp = a["phase"], b["phase"]
+    ac, bc = ap["declared_context"], bp["declared_context"]
+    def controls(context):
+        return json.dumps({**{k: v for k, v in context.items() if k != "builds"},
+                           "build_targets": sorted(context["builds"])}, sort_keys=True, allow_nan=False)
+    contexts_match = ac is not None and bc is not None and controls(ac) == controls(bc)
+    build_changes = [{"target": target, "before": ac["builds"].get(target), "after": bc["builds"].get(target)}
+                     for target in sorted(set(ac["builds"]) | set(bc["builds"]))
+                     if ac["builds"].get(target) != bc["builds"].get(target)] if ac and bc else []
+    phase_reasons = ["before:" + x for x in ap["reasons"]] + ["after:" + x for x in bp["reasons"]]
+    if not contexts_match: phase_reasons.append("declared_controls_differ_or_unknown")
+    aw, bw = _interval(ap["window"], True), _interval(bp["window"], True)
+    if not aw or not bw or aw[1] - aw[0] != bw[1] - bw[0]: phase_reasons.append("phase_duration_differs_or_unknown")
+    phase_changes, exclusions = [], {}
+    for key in sorted(set(ap["channels"]) | set(bp["channels"])):
+        left, right = ap["channels"].get(key), bp["channels"].get(key)
+        why = phase_reasons + (["channel_missing"] if left is None or right is None else
+                              ["before:" + x for x in left["reasons"]] + ["after:" + x for x in right["reasons"]])
+        if why: exclusions[key] = sorted(set(why)); continue
+        av, bv = ap["metrics"][key]["p95"], bp["metrics"][key]["p95"]
+        change = {"metric": key, "before_p95": av, "after_p95": bv,
+                  "delta_percent": 100 * (bv - av) / av if av else None}
+        if key.endswith(":cpu_core_percent"):
+            lower_a, upper_a = (ap["cpu_p95_bounds"][key][k] for k in ("lower_percent", "upper_percent"))
+            lower_b, upper_b = (bp["cpu_p95_bounds"][key][k] for k in ("lower_percent", "upper_percent"))
+            if not (lower_b > upper_a or upper_b < lower_a or lower_a == upper_a == lower_b == upper_b):
+                exclusions[key] = ["cpu_rate_uncertainty_overlaps"]; continue
+            change.update({"before_p95_range": [lower_a, upper_a], "after_p95_range": [lower_b, upper_b],
+                           "delta_percent_range": [100 * (lower_b - upper_a) / upper_a, 100 * (upper_b - lower_a) / lower_a] if lower_a > 0 else None})
+        phase_changes.append(change)
     return {"schema": SCHEMA, "kind": "comparison", "changes": changes,
-            "contexts_match": a["context"] == b["context"],
+            "contexts_match": contexts_match, "build_differences": build_changes,
+            "phase_comparison": {"changes": phase_changes, "exclusions": exclusions, "reasons": phase_reasons,
+                                 "before_channels": ap["channels"], "after_channels": bp["channels"],
+                                 "meaning": "Only closed-window covered channels; build differences are explicit experimental variables, not equal controls or proof of optimization."},
             "pressure_free": not a["high_pressure_samples"] and not b["high_pressure_samples"],
             "conclusion": "Descriptive difference only; equal workloads, settings, duration and repeated A/B are required for optimization evidence. pressure_free only means neither trace has legacy commit_percent >85 samples; it does not establish capacity or exhaustion."}
 
