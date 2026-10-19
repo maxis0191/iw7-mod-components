@@ -159,7 +159,12 @@ void client_tick() {
     const auto foreground=GetForegroundWindow(); DWORD owner{};GetWindowThreadProcessId(foreground,&owner);
     bool focused=owner==GetCurrentProcessId();
 #ifdef IW7_CUTSCENE_PRIVATE_TEST
-    if(test_keys) focused=paris_test_fixture::client_protection_current(paris_test_fixture::client_protection(nullptr),GetTickCount64());
+    if(test_keys) {
+        // Refuse stale private dispatch; the server already expires heartbeats.
+        // Do not invent a physical key-up on a delayed safety observation.
+        if(!paris_test_fixture::client_protection_current(paris_test_fixture::client_protection(nullptr),GetTickCount64()))return;
+        focused=true;
+    }
 #endif
     if(focused && !(*game::keyCatchers & 1)) {
         for(unsigned i=0;i<keys.size();++i)if(keys[i])mask|=1u<<i;
