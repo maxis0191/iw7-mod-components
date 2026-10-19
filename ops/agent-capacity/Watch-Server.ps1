@@ -37,7 +37,7 @@ $plan|ConvertTo-Json|Set-Content (Join-Path $case 'plan.local.json')
 $lease=$null;$transaction=$null;$journalTransaction=$null;$server=$null;$session=$null;$result=$null;$failure=$null;$cleanupError=$null;$restored=$false;$stopResult=$null;$ownedExited=$false;$leaseReleased=$false
 $pageReader=$null;$pageReaderClosed=$true;$pageCapture=$null;$pageCaptureError=$null;$textCapture=$null
 try{
-    $lease=Enter-IW7ResourceLease -Scope $CandidateRoot -Kind Runtime -PhysicalBytes $budget.PhysicalBytes -CommitBytes $budget.CommitBytes -Owner 'Capacity watch server only; no client'
+    $lease=Enter-IW7ResourceLease -Scope $CandidateRoot -Kind Runtime -PhysicalBytes $budget.PhysicalBytes -CommitBytes $budget.CommitBytes -Owner 'Capacity watch server only; no client' -RequireNewLease
     # Recheck scope/ports under the reservation, before the first staged byte.
     Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
     $stage=[pscustomobject]@{GameRoot=$CandidateRoot;MutableFiles=@('iw7-paris-agent-lab.exe','iw7-mod/server_capacity_watch.cfg');
