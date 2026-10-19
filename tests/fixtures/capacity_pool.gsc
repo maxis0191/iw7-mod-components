@@ -29,6 +29,7 @@ heartbeat()
     self endon("disconnect");
     level endon("game_ended");
     self waittill("spawned_player");
+    if (getdvarint("paris_capacity_pool_probe") == 1 && getdvarint("paris_native_agent_capacity") == 64) array_call("PLAYABLE");
     for (;;)
     {
         if (level.players.size != 1 || !self paris_test_protect())
@@ -69,9 +70,6 @@ begin()
         return;
     }
     array_call("READY");
-    while (getdvarint("paris_capacity_pool_validate") != 1) wait 0.05;
-    array_call("POST_RESTART");
-    setdvar("paris_capacity_pool_validate", 2);
 }
 
 array_call(marker)

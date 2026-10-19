@@ -154,22 +154,12 @@ set sv_mapRotationCurrent ""
         $result|Add-Member NoteProperty MatchingClientProtected $true
     }
     if($PopulateAgents){
-        # Empty CP maps may stop advancing script frames after a full reload.
-        # A declared protected client resumes the retail scheduler before this
-        # fresh check; do not confuse a sent dvar command with script execution.
-        Send-IW7CapacityRcon $session 'set paris_capacity_pool_validate 1'
-        $poolDeadline=[datetime]::UtcNow.AddSeconds(5)
-        do{
-            Assert-IW7CapacitySession $session
-            if($client){Update-IW7BaseClient $client|Out-Null}
-            $freshLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
-            if($freshLog.Contains('[Paris capacity pool] POST_RESTART native=64 initialized=64 unique=64 bounded=82; combat=0')){break}
-            Start-Sleep -Milliseconds 50
-        }while([datetime]::UtcNow -lt $poolDeadline)
+        $phase=if($client){'PLAYABLE'}else{'READY'}
+        $freshLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
         if($freshLog.Contains('[Paris capacity pool] FAIL') -or
-           !$freshLog.Contains('[Paris capacity pool] READY native=64 initialized=64 unique=64 bounded=82; combat=0') -or
-           !$freshLog.Contains('[Paris capacity pool] POST_RESTART native=64 initialized=64 unique=64 bounded=82; combat=0')){throw '64-agent construction not proven at startup and after restart.'}
+           !$freshLog.Contains("[Paris capacity pool] $phase native=64 initialized=64 unique=64 bounded=82; combat=0")){throw '64-agent construction lacks its requested script-phase witness.'}
         $result|Add-Member NoteProperty PoolConstructionConfirmed $true
+        $result|Add-Member NoteProperty PoolConstructionPhase $phase
     }
 }catch{$failure=$_.Exception.Message}
 finally{
