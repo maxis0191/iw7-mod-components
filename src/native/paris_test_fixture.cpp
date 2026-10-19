@@ -911,10 +911,13 @@ namespace paris_test_fixture
             // Retail CP allocates16 client records despite a four-player game.
             // Inspect every allocated record; any unprotected occupant refuses.
             if (!clients || *game::svs_numclients > 16) return;
-            std::lock_guard lock(safety_mutex);
+            // This callback runs on main. refresh_protection writes a dvar and
+            // can wait for the server thread; holding safety_mutex here would
+            // deadlock a simultaneous server damage/protection query. Read the
+            // current safety state, releasing its lock before command dispatch.
             for (unsigned slot = 0; slot < *game::svs_numclients; ++slot)
                 if (clients[slot].header.state >= game::CS_CONNECTED &&
-                    (clients[slot].header.state != game::CS_ACTIVE || !refresh_protection(slot))) return;
+                    (clients[slot].header.state != game::CS_ACTIVE || !is_protected_player(static_cast<int>(slot)))) return;
             command::execute("map " + map, false);
             utils::io::write_file("iw7-mod/paris-server-client.response", request);
             console::info("[Paris voice base test] Owned protected map request queued: %s.\n", map.c_str());
