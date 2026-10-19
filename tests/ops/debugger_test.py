@@ -1,5 +1,6 @@
 """Evidence semantics and malformed/private input regression tests."""
 import importlib.util
+import io
 import json
 from pathlib import Path
 import struct
@@ -169,6 +170,121 @@ class DebuggerTests(unittest.TestCase):
         self.assertEqual(tail.lines(), ['{"type":"sample"}'])
         path.write_bytes(b"")
         with self.assertRaises(ValueError): tail.lines()
+
+    def run_watch_main(self, *, disabled=False, smi=None, child=None, transitive=False, fail_sample=False):
+        """Exercise the real collector with synthetic files and OS/child adapters installed first."""
+        output = self.path / "watch.jsonl"
+        record = {"name": "Server", "pid": 123, "image": str(self.path / "synthetic-image"),
+                  "created_utc": "1970-01-01T00:00:00Z", "sha256": "a" * 64}
+        if transitive:
+            record["stdout"] = str(self.write("stdout.log", "script runtime error: synthetic\n"))
+            self.write("iw7-debugger-123-authored.jsonl", json.dumps(
+                {"type": "server_ticks", "tick_ms": 1000, "hz": 20, "game_time_ms": 1}) + "\n")
+            (self.path / "minidumps").mkdir()
+            with zipfile.ZipFile(self.path / "minidumps/crash.zip", "w") as archive:
+                archive.writestr("synthetic.dmp", make_dump())
+        targets = self.write("targets.json", json.dumps([record]))
+        observers = []
+
+        class FakeObserver:
+            def __init__(self, pid, image, created, sha):
+                self.identity = {"pid": pid, "image": Path(image).name, "created_utc": created, "sha256": sha}
+                self.calls = 0
+                self.closed = False
+                observers.append(self)
+
+            def sample(self):
+                self.calls += 1
+                if fail_sample and self.calls == 2:
+                    raise OSError("synthetic sample failure")
+                return {"cpu_seconds": self.calls * .1, "private_bytes": 100, "working_set": 200,
+                        "page_faults": 0, "read_bytes": 0, "write_bytes": 0,
+                        "physical_percent": 1, "commit_percent": 1}
+
+            def threads(self):
+                return {}
+
+            def close(self):
+                self.closed = True
+
+        class Clock:
+            now = 0.0
+
+            def sleep(self, seconds):
+                self.now += seconds
+
+        clock = Clock()
+        argv = ["iw7_watch.py", "--targets", str(targets), "--seconds", "1", "--output", str(output)]
+        if disabled:
+            argv.append("--no-gpu-device-sensor")
+        if transitive:
+            argv += ["--port", "27116"]
+        with mock.patch.object(sys, "argv", argv), mock.patch.object(sys, "stdout", io.StringIO()), \
+             mock.patch.object(watch, "Observer", FakeObserver), mock.patch.object(watch, "local_output", return_value=output), \
+             mock.patch.object(watch, "windows_tick_ms", side_effect=lambda: 1000 + int(clock.now * 1000)), \
+             mock.patch.object(watch.time, "monotonic", side_effect=lambda: clock.now), \
+             mock.patch.object(watch.time, "perf_counter", side_effect=lambda: clock.now), \
+             mock.patch.object(watch.time, "sleep", side_effect=clock.sleep), \
+             mock.patch.object(watch, "udp_sample", return_value={"udp": "valid", "udp_rtt_ms": 1, "server": {"clients": "0"}}) as udp, \
+             mock.patch.object(watch.shutil, "which", return_value=smi) as discovery, \
+             mock.patch.object(watch.subprocess, "run", side_effect=child or AssertionError("Unexpected child")) as launch, \
+             mock.patch.object(sys.modules["iw7_debugger"], "git", side_effect=AssertionError("Unexpected Git")):
+            if fail_sample:
+                with self.assertRaisesRegex(OSError, "synthetic sample failure"):
+                    watch.main()
+            else:
+                watch.main()
+        self.assertEqual(len(observers), 1)
+        self.assertTrue(observers[0].closed)
+        return [json.loads(line) for line in output.read_text().splitlines()], discovery, launch, udp
+
+    def test_watch_main_gpu_disabled_skips_discovery_and_child(self):
+        rows, discovery, launch, _ = self.run_watch_main(disabled=True, smi="synthetic-nvidia-smi")
+        discovery.assert_not_called()
+        launch.assert_not_called()
+        self.assertEqual([r["status"] for r in rows if r.get("sensor") == "gpu_device"], ["disabled_by_request"])
+        self.assertFalse(any(r["type"] == "gpu" for r in rows))
+        self.assertEqual(rows[-1]["type"], "complete")
+
+    def test_watch_main_default_gpu_unavailable(self):
+        rows, discovery, launch, _ = self.run_watch_main()
+        discovery.assert_called_once_with("nvidia-smi")
+        launch.assert_not_called()
+        self.assertEqual([r["status"] for r in rows if r.get("sensor") == "gpu_device"], ["unavailable"])
+
+    def test_watch_main_default_gpu_keeps_argv_and_timeout(self):
+        result = watch.subprocess.CompletedProcess([], 0, "128, 4, 50\n", "")
+        rows, discovery, launch, _ = self.run_watch_main(smi="synthetic-nvidia-smi", child=lambda *a, **k: result)
+        discovery.assert_called_once_with("nvidia-smi")
+        launch.assert_called_once_with(["synthetic-nvidia-smi", "--query-gpu=memory.used,utilization.gpu,temperature.gpu",
+                                       "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=3)
+        gpu = next(r for r in rows if r["type"] == "gpu")
+        self.assertEqual((gpu["status"], gpu["values"]), ("valid", "128, 4, 50"))
+
+    def test_watch_main_default_gpu_timeout_remains_coverage(self):
+        def timeout(*args, **kwargs):
+            raise watch.subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+        rows, discovery, launch, _ = self.run_watch_main(smi="synthetic-nvidia-smi", child=timeout)
+        discovery.assert_called_once_with("nvidia-smi")
+        self.assertEqual(launch.call_count, 1)
+        self.assertEqual([r["status"] for r in rows if r.get("sensor") == "gpu_device"], ["timeout"])
+
+    def test_watch_main_disabled_preserves_udp_logs_native_dump_and_closure(self):
+        rows, discovery, launch, udp = self.run_watch_main(disabled=True, transitive=True)
+        discovery.assert_not_called()
+        launch.assert_not_called()
+        self.assertGreater(udp.call_count, 0)
+        self.assertTrue(any(r.get("code") == "gsc.runtime" for r in rows))
+        self.assertTrue(any(r["type"] == "server_ticks" for r in rows))
+        dump = next(r for r in rows if r.get("code") == "crash.new_dump")
+        self.assertEqual(dump["report"]["exception"]["thread_id"], 77)
+
+    def test_watch_main_disabled_closes_observer_after_sample_failure(self):
+        rows, discovery, launch, _ = self.run_watch_main(disabled=True, fail_sample=True)
+        discovery.assert_not_called()
+        launch.assert_not_called()
+        self.assertEqual([r["status"] for r in rows if r.get("sensor") == "gpu_device"], ["disabled_by_request"])
+        self.assertFalse(any(r["type"] == "complete" for r in rows))
 
     def test_multitarget_perf_does_not_mix_server_client(self):
         path = self.write("multi.jsonl", '\n'.join(json.dumps(x) for x in [
