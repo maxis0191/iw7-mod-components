@@ -306,7 +306,7 @@ set sv_mapRotationCurrent ""
             $originalTools=(Get-AppxPackage Microsoft.WinDbg).InstallLocation+'/amd64'
             $cdb=Resolve-IW7BasePath $CandidateRoot 'iw7-mod/capacity-tools/cdb.exe'
             if((Get-FileHash $cdb).Hash -cne '5F54ABAFCA3AE5638BBF807D402FABB350A64575C1DFA9FBFC7F5732DF5BEE67'){throw 'Reviewed scoped CDB identity differs.'}
-            foreach($name in @('cdb.exe','dbgeng.dll','dbghelp.dll','dbgcore.dll')){
+            foreach($name in @('cdb.exe','dbgeng.dll','dbghelp.dll','dbgcore.dll','dbgmodel.dll')){
                 $scoped=Join-Path (Split-Path $cdb) $name
                 if((Get-FileHash $scoped).Hash -cne (Get-FileHash (Join-Path $originalTools $name)).Hash){throw 'Scoped debugger runtime differs from the retained Microsoft package.'}
             }
