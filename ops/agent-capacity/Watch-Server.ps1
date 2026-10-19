@@ -308,7 +308,7 @@ set sv_mapRotationCurrent ""
             $dump=Join-Path $case 'client-fatal-memory.local.dmp'
             if($dump.Contains('"') -or (Test-Path $dump)){throw 'Fresh literal crash capture required.'}
             $arguments='-pvr -p '+$client.Identity.PID+' -c ".dump /ma \"'+$dump+'\"; qd"'
-            $reader=[IW7LabProcess]::StartOwned($cdb,$arguments,(Split-Path $cdb),"$case/crash-memory.stdout.log","$case/crash-memory.stderr.log",'', $false,$false,$false,0)
+            $reader=[IW7LabProcess]::StartOwned($cdb,$arguments,(Split-Path $cdb),"$case/crash-memory.stdout.log","$case/crash-memory.stderr.log",$client.DesktopName,$false,$false,$false,0)
             $readerIdentity=$reader.ReadIdentity()
             Add-IW7ResourceProcess -Token $lease.Token -ProcessId $readerIdentity.PID
             if(!$reader.WaitForExit(60000)){$reader.Terminate(3758096386);if(!$reader.WaitForExit(5000)){throw 'Crash reader closure unconfirmed.'};throw 'Crash memory capture timed out.'}
