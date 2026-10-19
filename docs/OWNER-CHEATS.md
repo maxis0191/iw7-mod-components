@@ -86,3 +86,5 @@ inputs with the isolated OwnerCheats build prepared under runtime/voice-package.
 Supply separate CandidateRoot, ProtectedGameRoot and a fresh Output directory;
 use Effects for the real positive/negative command. It never operates on Main.
 Public promotion/startup and natural owner gameplay are separate evidence.
+
+Inventory qualification uses the original owned wincon stdin pipe, with two fixed client teleport lines and five allowlisted dedicated map lines, bounded to20 writes per process and fresh native safety. CONIN keyboard injection is not a witness for children whose stdin is redirected. Windows transport tests verify actual reader consumption separately from gameplay.

@@ -346,7 +346,8 @@
     "tools-source/community-download/tests/native_stubs.hpp",
     "tools-source/community-download/tests/test_download.cpp",
     "tools-source/community-download/validation.json",
-    "tools-source/community-download/verify_archive.py"
+    "tools-source/community-download/verify_archive.py",
+    "tests/ops/inventory_console_test.ps1"
   ],
   "dependencies": [
     {
