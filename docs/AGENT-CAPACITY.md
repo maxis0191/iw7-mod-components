@@ -1,5 +1,106 @@
 # Capacité native : préparer un port cohérent vers 48 agents
 
+## Diagnostic actuel qualifié, capacité inchangée — 19 octobre 2026
+
+Le second essai utilise le source `8ef8f1e` et le binaire
+`87A9717D2C817369E59BF689B35EB6F98717CA6ABE09E657EEBFA9188B808024`,
+compilé le 19 octobre à 14:15:22 UTC. Les deux rôles scheduler valident leurs
+canaries ; un unique restart vide produit 18 écritures et l'accusé natif final
+confirme zéro erreur, DR/handler fermés. Le reader conserve huit pages stables,
+32 KiB de payload, avec 16 lectures/64 KiB et ferme son handle. Le dédié quitte
+normalement (code 0), la transaction est restaurée et la réservation libérée.
+Ni Main, ni le client habituel ne sont modifiés. Aucun joueur ni scénario de
+combat n'est lancé ; ce résultat n'est pas une mesure de performance à 48.
+
+Le journal original SHA256 est
+`307CBAC33E6644B9F36DE034085243643C7DD01BBB1898E78E86922E9038FE85` ;
+le résultat `A067434052EEF03B63E9A9182B1548576C4A09571ACFCFCB58DFB615750ED4C8` ;
+le manifeste des pages `9853FF03AE3D7D00A0FA2750D8DABA6CB5FA0DE25F5565034C762F53045B5409`.
+Les bytes et contextes restent locaux, ignorés. Le premier essai échoué reste
+conservé séparément ; son succès de restauration ne devient pas un succès natif.
+
+La lecture bornée des nouvelles pages retrouve les deux sites candidats de
+publication et ferme le backedge statique d'initialisation : la taille de
+remplissage est `0x78180`, le pas `0x5010`, et la comparaison de boucle est
+`0x78180`, soit 24 records. `14B5383F9` recharge le pointeur B8 et reconduit le
+chemin vers `140B20B01`. Le callee de sortie `140AC6AA0..140AC6B40` initialise
+aussi deux tables fixes de 336 et 4 200 octets (42 × 8 et 210 × 20). Leur sens,
+leurs consommateurs et leur redimensionnement restent à établir. Ce callee
+n'est pas identifié comme un allocateur. Le chemin après `140B20B29` atteint
+`14B3C5D01`, hors des pages actuelles.
+
+Les instructions sont lues après le restart : aucune exécution complète de la
+boucle, attribution globale des writers ou sémantique d'allocateur n'est inventée.
+Cinq pages déjà connues correspondent aux hashes 9F ; la page `141238000` diffère
+de l'ancien hash et sa nouvelle identité est conservée. Les corps effectivement
+lus restent distincts d'une image retail intacte ou d'un contrat de protocole.
+
+**48 reste non livré.** La suite utile est le port cohérent des pools,
+initialisations, réservations, tables/références et données client, puis les
+mesures en combat et multijoueur. Garder l'allocation à 24 jusqu'à qualification
+de ce candidat complet. Le besoin exact est 48 zombies ordinaires **plus** les
+places des spéciaux, suivi dans [Server #324](https://github.com/maxis0191/iw7-paris-server/issues/324).
+
+## Reprise demandée le 19 octobre 2026
+
+L'objectif humain est désormais **48 zombies ordinaires plus des places pour
+les ennemis spéciaux**. Il ne s'agit pas de partager 48 places entre tous les
+ennemis. Le nombre de places supplémentaires devra être dimensionné avec les
+réservations natives des cinq cartes ; aucune capacité étendue n'est livrée.
+
+La reprise du capteur autorise le pin moteur cfca45b1 dans le seul profil
+diagnostic isolé. Son scheduler a exactement le même blob Git
+`d235aeee97891254b1c38b7841e01700e130220d` que les deux pins déjà admis.
+Les transformations et leurs empreintes restent identiques. Les tests passent
+par le vrai script Apply et conservent le refus des sources inconnues, du
+profil ordinaire et des autres pins. Cette qualification de source ne prouve
+ni canary matérielle, ni writer, ni capacité supplémentaire ; il faut ensuite
+mesurer le dédié privé, sans employer Main ou le client occupé.
+
+Le runner dédié seul n'installe plus les scripts gameplay Server, absents des
+exports Native. Il sauvegarde et retire temporairement les seuls GSC candidats,
+emploie une configuration CP retail minimale à 24 agents, puis restaure la
+transaction. Il exige un build dont le heartbeat est supprimé, un mot de passe,
+loopback et `sv_lanOnly=1` dans les arguments et la configuration. Les profils et
+la banque candidats restent sauvegardés ; aucune donnée de Main n'est employée.
+
+Le premier essai de reprise a réellement compilé le diagnostic E903C4C5 et
+exécuté le dédié seul, privé, sur 27946. Les deux rôles scheduler ont démontré
+leurs canaries matérielles ; un seul `map_restart` vide a produit 18 événements
+d'écriture. Les RIP après écriture sont `1412BFCD9` (reset), `14C1ED66C` (compte
+redevenu 24) et `14BFE5A30` (pointeur redevenu non nul). Ce sont des sites observés,
+pas encore des propriétaires/instructions/allocateurs attribués.
+
+L'essai reste **échoué** : l'accusé final de fermeture du capteur manque. Le
+dédié exact a ensuite quitté normalement (code 0), la transaction est restaurée
+et la réservation libérée. Le journal original est conservé. La correction
+évite de recréer des tickets pour un rôle déjà fermé et permet l'acquittement
+d'un ticket non réclamé ou publié seulement après fin de son thread original
+et fin du helper ; un ticket réclamé ou une notification active restent protégés.
+Le prochain essai doit confirmer cette fermeture. Une option du runner conserve
+ensuite uniquement les pages explicitement sélectionnées depuis ce journal,
+avec double comparaison et fermeture du handle de lecture. La première sélection
+de trois pages est conservée comme API, sans avoir été exécutée.
+Une autre adresse observée exige une nouvelle sélection ; aucun scan n'est ajouté.
+
+La recherche dans les archives locales a aussi retrouvé un état plus avancé
+que les notes intégrées : le commit historique `e75abe4f` fermait déjà les
+checkpoints avant l'arrêt du helper. Son garde `helper_stop` est repris ici dans
+la registration et la décision de ticket. Le reçu local 9F du 7 octobre décrit
+18 écritures et une fermeture complète en 1 281 ms, puis des lectures bornées
+des continuations. Il conserve explicitement `Capacity48Ready=false` et
+`AllocatorIdentified=false`. Ces preuves historiques ne qualifient pas un nouveau
+binaire ; elles servent à poursuivre l'analyse plutôt qu'à rejouer les anciennes
+commandes ou à restaurer leur laboratoire retiré.
+
+La sélection actuelle `writer-path-20261019` réunit huit pages (32 KiB conservés,
+16 lectures/64 KiB lus) : les deux writers observés, leurs continuations
+`140406000/140B20000`, les cibles de remplissage/base-init `1412BF000/141238000`,
+puis les deux seuls compléments manquants proposés par 9F : `14B538000/140AC6000`.
+Le rapport historique relie les deux derniers au jump `140B20B1A` et au call
+`140B20B23`. Leurs noms ne certifient pas un allocateur ni l'exécution complète
+de la boucle. Aucune commande de capture historique n'est réutilisée.
+
 The complete isolated native build from1bcb19c now compiles and links, executable
 A29488DF and matching PDB verified with all32 source hashes. This includes the
 reviewed actual-context checkpoint TU and scheduler overlay. The next vacant
