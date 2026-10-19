@@ -19,9 +19,11 @@ uncommitted sequence. Its bounded clock advance refills enough bytes but less
 than one frame token. It also checks listener delivery, committed replay refusal,
 normal refill and backward-time refusal without private state getters.
 
-This revision is Source-only pending separately authorized before/after compilation
-and fixture execution. Earlier test results below do not qualify the new case.
-No microphone, game, LAN/WAN, playback quality or CPU improvement is claimed.
+The pinned standalone transport fixture failed with the `a969a826` header (exit 1: `FAIL: byte-rejected packets spent fresh-speech frame quota`).
+With corrected code/fixture `af8e15141ba05fa3bb544dec39be136917c5ead0`, it passed its existing regressions and 200000 seeded mutations (exit 0).
+C2 stages returned `0/1/0/0`, followed by known release of the single lease and the retained host's true exit `0`.
+This qualifies the standalone fixture compilation only, not a full game-component build; this later documentation head is not separately compiled.
+No microphone, game, LAN/WAN, playback quality, CPU improvement or retail readiness is established.
 
 ## Delayed duplicate quota correction - 2026-10-13
 
