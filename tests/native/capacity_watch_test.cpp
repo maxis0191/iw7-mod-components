@@ -12,7 +12,9 @@ struct agent_record {
     unsigned id;
     bool removed;
     unsigned payload;
-    bool operator==(const agent_record&) const = default;
+    bool operator==(const agent_record& other) const {
+        return id==other.id && removed==other.removed && payload==other.payload;
+    }
 };
 static std::vector<agent_record> agent_wire_roundtrip(const std::vector<agent_record>& input,unsigned width,bool force_explicit=false) {
     std::vector<bool> bits;
