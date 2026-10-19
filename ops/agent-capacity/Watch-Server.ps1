@@ -5,6 +5,7 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [switch]$SkipReload,
       [ValidateSet('cp_zmb','cp_rave','cp_disco','cp_town','cp_final')][string]$Map='cp_zmb',
       [string]$CatalogRoot,[switch]$RotateBeast,
+      [string]$StandardClientPackageRoot,
       [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
       [ValidateSet(24,48)][int]$HordeOrdinary=48,[ValidateRange(0,2)][int]$HordeSpecials=2,
       [string]$RetailCpPatchPath,[string]$RetailCpPatchSHA256,
@@ -48,6 +49,19 @@ if($CatalogRoot){
 . "$ops/Lab-RunPlan.ps1"
 . "$ops/Agent-LabCrash.Core.ps1"
 . "$PSScriptRoot/Watch-Runtime.Core.ps1"
+. "$PSScriptRoot/Standard-Client.Core.ps1"
+$standardManifest=$null
+if($StandardClientPackageRoot){
+    if(!$ClientGameRoot -or !$SkipReload -or $AgentCapacity -ne 64){throw 'Standard client needs protected expanded startup.'}
+    $standardManifest=Get-Content (Join-Path $StandardClientPackageRoot 'build-manifest.json') -Raw|ConvertFrom-Json
+    if($standardManifest.Schema -cne 'iw7.standard-client-build/1' -or $standardManifest.Capacity64Capability -ne $true -or
+       $standardManifest.CapacityWireContract -cne '64-v1' -or
+       (Get-FileHash (Join-Path $StandardClientPackageRoot 'iw7-mod.exe')).Hash -cne $standardManifest.SHA256){throw 'Pinned expanded standard client required.'}
+    foreach($name in @('paris_agent_capacity.cpp','paris_agent_capacity.hpp')){
+        $row=@($standardManifest.NativeSourceHashes|Where-Object File -CEQ ('src/client/component/'+$name))
+        if($row.Count -ne 1 -or $row[0].SHA256 -cne (Get-FileHash (Join-Path $repo ('src/native/'+$name))).Hash){throw 'Standard client port source differs.'}
+    }
+}
 $CandidateRoot=(Resolve-Path -LiteralPath $CandidateRoot).Path.TrimEnd('\','/')
 $marker=Resolve-IW7BasePath $CandidateRoot 'iw7-mod/paris-isolated-lab.marker'
 if(!(Test-Path $marker) -or [IO.File]::ReadAllText($marker) -cne 'iw7-paris-isolated-lab-v1' -or
@@ -194,9 +208,13 @@ set sv_mapRotationCurrent ""
         Assert-IW7BaseVacant $ClientGameRoot
         $clientStage=[pscustomobject]@{GameRoot=$ClientGameRoot;MutableFiles=@('iw7-capacity-test-client.exe');ProfileDirectory='iw7-mod/players2';ProfileDirectories=@()}
         $clientImageTransaction=Save-IW7BaseTransaction $clientStage (Join-Path $case 'client-image-backup')
-        Copy-Item -LiteralPath $exe -Destination $clientImage
-        $clientPlan=New-IW7BaseClientPlan -GameRoot $ClientGameRoot -ClientImage $clientImage -ServerPort $ServerPort -ClientPort ($ServerPort+1) -Debugger -GraphicsProfile Reduced -Capacity64:($AgentCapacity -eq 64)
-        try{$client=Start-IW7BaseClient -Plan $clientPlan -ServerIdentity $identity -LeaseToken $lease.Token -Password $password -OutputRoot (Join-Path $case 'client')}
+        $clientExe=if($standardManifest){Join-Path $StandardClientPackageRoot 'iw7-mod.exe'}else{$exe}
+        Copy-Item -LiteralPath $clientExe -Destination $clientImage
+        $clientPlan=New-IW7BaseClientPlan -GameRoot $ClientGameRoot -ClientImage $clientImage -ServerPort $ServerPort -ClientPort ($ServerPort+1) -Debugger -GraphicsProfile Reduced -Capacity64:(!$standardManifest -and $AgentCapacity -eq 64)
+        try{
+            if($standardManifest){$client=Start-IW7CapacityStandardClient $clientPlan $identity $lease.Token $password (Join-Path $case 'client')}
+            else{$client=Start-IW7BaseClient -Plan $clientPlan -ServerIdentity $identity -LeaseToken $lease.Token -Password $password -OutputRoot (Join-Path $case 'client')}
+        }
         catch{if($_.Exception.Data.Contains('BaseClientContext')){$client=$_.Exception.Data['BaseClientContext']};throw}
         $clientDeadline=[datetime]::UtcNow.AddSeconds(180)
         do{
@@ -271,6 +289,7 @@ set sv_mapRotationCurrent ""
 finally{
     try{
         if($client){Stop-IW7BaseClient $client}
+        if($session -and $standardManifest -and $client -and $client.Transaction.Restored){Wait-IW7CapacityClientDeparture $session}
         if($session -and $clientCrash -and $clientCrash.ConfirmedFatal -and $client.Transaction.Restored){
             Wait-IW7CapacityClientDeparture $session
         }
