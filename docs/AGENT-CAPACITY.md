@@ -94,6 +94,14 @@ Aucun contournement de pointeur nul ni remplacement aveugle des autres constante
 50 (souvent des durées en millisecondes) n'est appliqué. Leurs consommateurs et
 le recyclage/client doivent être validés par le prochain essai de horde.
 
+L'image à83 champs `DC8C7641E2F634DFD3B24D0824D78533C1BF30B048CC0E2DF140C4E00A10DF98`
+se construit le19 octobre à16:44:54 UTC. Le cas J perd sa connexion client avant
+le plateau, mais ne produit aucun nouveau dump ni fatal confirmé ; le dédié quitte
+normalement avec code0, puis client/profils/dédié sont restaurés et le bail libéré.
+Ne pas décrire cette sortie comme le crash précédent. Le candidat suivant journalise
+le message et le caller de Com_Error dans ce seul profil privé, puis transmet
+l'erreur à son implémentation d'origine ; aucune déconnexion n'est supprimée.
+
 ## Diagnostic actuel qualifié, capacité inchangée — 19 octobre 2026
 
 Le second essai utilise le source `8ef8f1e` et le binaire

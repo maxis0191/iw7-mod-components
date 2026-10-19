@@ -5,10 +5,14 @@
 #include "scheduler.hpp"
 #include "console/console.hpp"
 #include <utils/flags.hpp>
+#include <utils/hook.hpp>
 #include <shellapi.h>
 #include <cstring>
 #include <cwchar>
 #include <cstdlib>
+#include <cstdarg>
+#include <cstdio>
+#include <intrin.h>
 #include <algorithm>
 #include <vector>
 #pragma comment(lib, "shell32.lib")
@@ -21,6 +25,16 @@ constexpr std::uintptr_t image_base = 0x140000000ull, image_end = 0x14C301400ull
 struct buffer { std::uintptr_t data{}; void* reservation{}; std::size_t bytes{}; };
 buffer agent_pool, sentient_pool, table8, table20;
 bool active{};
+utils::hook::detour engine_error_hook;
+void engine_error(game::errorParm code,const char* format,...) {
+    char message[4096]{};
+    std::va_list arguments;
+    va_start(arguments,format);
+    std::vsnprintf(message,sizeof(message),format ? format : "",arguments);
+    va_end(arguments);
+    console::error("[Paris capacity engine error] code=%d caller=%p message=%s\n",static_cast<int>(code),_ReturnAddress(),message);
+    engine_error_hook.invoke<void>(code,"%s",message);
+}
 struct patch { std::uintptr_t address{}; unsigned width{}; std::uint32_t before{}, after{}; };
 std::vector<patch> plan;
 
@@ -176,6 +190,10 @@ class component final : public component_interface {
             throw std::runtime_error("Capacity candidate transaction restored after failed code write");
         }
         active=true;
+        // Private diagnostic only: preserve the engine's error/drop behavior
+        // while retaining its reason before the client returns to frontend.
+        readable_code(0x140B8D830,1);
+        engine_error_hook.create(0x140B8D830,engine_error);
         scheduler::once([] {
             game::Dvar_RegisterInt("paris_native_agent_capacity",agents,agents,agents,game::DVAR_FLAG_NONE,"Private native capacity candidate");
             console::info("[Paris capacity candidate] installed agents=64 ordinary=48 special_headroom=16 characters=82 map_start=98 patches=%zu; gameplay_unqualified=1\n",plan.size());
