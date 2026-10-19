@@ -124,6 +124,12 @@ void build_plan() {
     for (const auto field : {0x1407AF52Full,0x140823B80ull,0x140865EB9ull,0x14086F509ull,0x140872EECull}) add(field,50,agent_corpse_start,1);
     add(0x1408213F4,0xCE,0xA6,1); // lea ebx,[entity-50] -> [entity-90].
     add(0x140B2F536,42,player_corpse_start,1); // Server owner lookup uses the combined 16-slot corpse index.
+    // Character entity decoding, lookup, interpolation and teardown must agree
+    // with the enlarged information arrays. The decoder otherwise drops the
+    // first extra actor: "Received entnum 42: must index MAX_CHARACTERS_MP".
+    for (const auto field : {0x14084A551ull,0x140842A20ull,0x140842B0Bull,
+        0x14077EDEEull,0x1407801DEull,0x140780549ull,0x140805D4Eull,
+        0x140282ED8ull,0x1402854DEull,0x1405C2578ull,0x140B202DCull}) add(field,42,characters,1);
     add(0x140007781,24,agents); // Character-reference reset across the real pool.
     for (const auto address : {0x140406F77ull,0x141238588ull,0x140C14B28ull,0x140C14BF3ull,0x140C14C96ull}) add(address,0x78180,agent_bytes);
     rip(0x14C1ED662,0x145C9E590,agent_pool.data);
