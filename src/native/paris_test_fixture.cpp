@@ -960,7 +960,8 @@ namespace paris_test_fixture
             const bool vote_input = action == "votenext" || action == "voteprevious" || action == "voteboth" || action == "voteholdnext" || action == "voterelease" || action == "votewitness";
             const bool afk_input = action == "afk";
             const bool teleport_input = action == "owner_tphere" || action == "owner_tp";
-            if (teleport_input)
+            const bool cutscene_input = action == "cutscene_space" || action == "cutscene_enter" || action == "cutscene_mouse" || action == "cutscene_release";
+            if (teleport_input || cutscene_input)
             {
                 const auto* connection = party::get_server_connection_state();
                 if (!utils::flags::has_flag("paris-isolated-lab") || !lab_port() || lab_port() == 27016 ||
@@ -973,7 +974,7 @@ namespace paris_test_fixture
             if (vote_input && vote_witness_running) return;
             if (vote_input && agent_runtime.client && agent_runtime.client->active()) return;
             if (voice_control && (!utils::flags::has_flag("iw7-voice-relay") || !utils::flags::has_flag("paris-voice-base-test"))) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "rejoin_immediate" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input && !afk_input && !teleport_input) return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "rejoin_immediate" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input && !afk_input && !teleport_input && !cutscene_input) return;
             if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
                 !utils::flags::has_flag("paris-voice-base-test"))) return;
             if ((action == "voiceprobe" || action == "voicereleasedprobe" || action == "voicecodecprobe" || action == "voiceconcurrentprobe" || action == "voicesoakprobe") && (!utils::flags::has_flag("paris-voice-native-trace") ||
@@ -1014,6 +1015,8 @@ namespace paris_test_fixture
                     graphics_value("r_picmip"), graphics_value("r_picmip_bump"), graphics_value("r_picmip_spec"), GetTickCount64());
                 command::execute("capture_frame server-modules-fixture", true);
             }
+            else if (cutscene_input)
+                command::execute("paris_cutscene_test_key " + action.substr(9),true);
             else if (vote_input)
             {
                 // Fixed client usercmd buttons only, scoped to the independent lab.
