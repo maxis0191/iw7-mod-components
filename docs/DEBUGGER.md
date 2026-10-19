@@ -683,9 +683,9 @@ change establishes no performance gain or cause for the historical 32.617ms mean
 The existing `tests/native/debugger_stats_test.cpp` fixture at code commit
 `780b52361c7f46c520fc044fa508123922d6e630` was compiled and executed standalone
 on Windows in the reviewed B3 qualification. Compile/link and probe both exited
-zero with empty stderr, using C++17 and `/EHsc /W4 /WX /Od /RTC1 /MT /Z7` with an
-explicit linker PDB. Its 159-byte ASCII stdout contained exactly these two
-CRLF-terminated lines:
+zero. The build used C++17 and `/EHsc /W4 /WX /Od /RTC1 /MT /Z7` with an
+explicit linker PDB. The probe had empty stderr and 159-byte ASCII stdout
+containing exactly these two CRLF-terminated lines:
 
 ```text
 Dedicated scope2 CPU/wall pairing, identity, quality, bounds and snapshot cases passed
