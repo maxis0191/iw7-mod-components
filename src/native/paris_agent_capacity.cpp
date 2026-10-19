@@ -95,6 +95,10 @@ bool write(const patch& item, bool rollback) noexcept {
 void build_plan() {
     add(0x140C18D77,24,agents); // Selector feeds the existing dynamic SV reservations.
     add(0x1405AFFF6,42,characters); add(0x1405B0000,58,map_start);
+    // G_InitGame also owns an independent literal reservation. Leaving it at
+    // 58 lets a map entity occupy a new agent's slot (observed fatal at slot58).
+    add(0x14B54FA72,58,map_start); add(0x14B54FA7C,58,map_start);
+    add(0x140B6686F,58*0x3F8,map_start*0x3F8);
     add(0x140007781,24,agents); // Character-reference reset across the real pool.
     for (const auto address : {0x140406F77ull,0x141238588ull,0x140C14B28ull,0x140C14BF3ull,0x140C14C96ull}) add(address,0x78180,agent_bytes);
     rip(0x14C1ED662,0x145C9E590,agent_pool.data);
@@ -111,7 +115,7 @@ void build_plan() {
     add(0x14044A0CA,0x798F8,0x798F8+character_growth);
     add(0x140B205B4,0x2B7130,0x2B7130+character_growth+(characters-42)*0x40);
     for (const auto address : {0x140B1F5ADull,0x140B1F5C3ull,0x140486F35ull,0x140486F4Bull,0x140486F63ull}) add(address,0xA88,reference_bytes);
-    for (const auto address : {0x140434FD4ull,0x14044928Eull,0x14044936Cull}) add(address,42,characters);
+    for (const auto address : {0x140434FD4ull,0x14044928Eull,0x14044936Cull,0x14048C1EEull,0x14048C2CCull}) add(address,42,characters);
     // Matching private client: character array, object strides, tail and all
     // observed visibility-array accesses. No old 42-byte field is overwritten.
     for (const auto address : {0x1402409DAull,0x140240A17ull,0x140240A83ull,0x140241AD9ull,0x140241AF3ull,0x140241BCCull,0x140241BDAull,0x140242BF6ull}) add(address,0xFDEA8,client_size);

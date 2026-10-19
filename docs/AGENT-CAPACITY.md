@@ -49,6 +49,24 @@ cartes et les mesures de charge restent à établir. Aucun passage à 48 ni abse
 de lag/crash n'est encore validé ou livré sur Main. La règle GSC de 48 ordinaires
 doit être qualifiée séparément des 64 places natives.
 
+Premier port compilé : source `dc5f001`, image `BF19C5DCA0391630F8F300EE1BA7DB8AB0879BF8AB1044670C87C0A8C43B00D3`.
+Les tests natifs et l'installation des 76 patches passent, puis l'initialisation
+privée plante avant toute preuve de construction. Le dump et le dialogue fatal
+sont corrélés à la même image/PID/création : lecture de `0x4D10` avec RAX nul à
+`14044949A`, RDI=40 et RSI=`143D30C40`, soit l'entité 58. Ce n'est pas un essai
+de combat. Le dump ZIP a le hash
+`A07E4EEFABE57798CC46521338BDEBC44E2243249ACCE501F14C71C5D5B793F2`.
+La récupération du fatal confirmé ferme uniquement ce dédié, vérifie son absence,
+restaure les transactions et libère sa réservation ; le résultat échoué subsiste.
+
+Le chemin courant révèle une réservation indépendante dans G_InitGame :
+`14B54FA71` prépare EDX=58 et `14B54FA76` stocke 58 à `143C98680`.
+Le prochain candidat passe ces deux champs à 98 et la frontière de recyclage
+`140B6686F` de `58*0x3F8` à `98*0x3F8`. Deux autres boucles de sérialisation
+du tableau de références (`14048C1EE`, `14048C2CC`) passent de 42 à 82.
+Cela ne contourne pas la lecture nulle ; les emplacements réservés doivent rester
+distincts des entités carte. La nouvelle exécution reste à qualifier.
+
 ## Diagnostic actuel qualifié, capacité inchangée — 19 octobre 2026
 
 Le second essai utilise le source `8ef8f1e` et le binaire

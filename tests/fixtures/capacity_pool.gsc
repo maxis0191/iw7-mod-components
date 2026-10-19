@@ -1,7 +1,9 @@
 // Private, zero-client native construction probe. No actor is spawned in combat.
 init()
 {
-    if (!getdvarint("dedicated") || getdvarint("paris_capacity_pool_probe") != 1 ||
+    if (!getdvarint("dedicated") || !getdvarint("paris_isolated_lab") ||
+        getdvarint("net_port") < 27100 || getdvarint("net_port") > 27999 ||
+        getdvarint("paris_capacity_pool_probe") != 1 ||
         getdvarint("paris_native_agent_capacity") != 64) return;
     level thread begin();
 }
