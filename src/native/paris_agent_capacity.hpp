@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string_view>
 
 namespace paris_agent_capacity {
 constexpr std::uint32_t ordinary = 48, special_reserve = 16, agents = ordinary + special_reserve;
@@ -34,4 +35,9 @@ inline bool relative32(std::uintptr_t target, std::uintptr_t next, std::int32_t&
     return true;
 }
 bool installed() noexcept;
+inline const char* wire_contract(bool expanded) noexcept { return expanded ? "64-v1" : "24"; }
+inline bool compatible_wire(bool expanded,std::string_view peer) noexcept {
+    return expanded ? peer=="64-v1" : peer.empty() || peer=="24";
+}
+inline bool compatible_peer(std::string_view peer) noexcept { return compatible_wire(installed(),peer); }
 }

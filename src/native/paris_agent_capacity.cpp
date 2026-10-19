@@ -17,8 +17,8 @@
 #include <vector>
 #pragma comment(lib, "shell32.lib")
 
-// Private debugger candidate. Ordinary builds never include this translation
-// unit. A matching client and populated qualification are still required.
+// Explicit CP capacity profile; default builds omit this translation unit.
+// A matching peer wire contract is required. Diagnostic hooks stay private.
 namespace paris_agent_capacity {
 namespace {
 constexpr std::uintptr_t image_base = 0x140000000ull, image_end = 0x14C301400ull;
@@ -231,8 +231,14 @@ class component final : public component_interface {
     void post_unpack() override {
         if (!utils::flags::has_flag("paris-capacity-64")) return;
         const bool dedicated = game::environment::is_dedi();
-        if (!utils::flags::has_flag("paris-isolated-lab") || !utils::flags::has_flag("paris-debugger") ||
-            !(utils::flags::has_flag("cpMode") || utils::flags::has_flag("zombies")) ||
+        const bool production=utils::flags::has_flag("paris-capacity-production");
+        if(!(utils::flags::has_flag("cpMode") || utils::flags::has_flag("zombies")))
+            throw std::runtime_error("Expanded capacity requires explicit CP mode");
+        if(production) {
+            if(utils::flags::has_flag("paris-isolated-lab") || utils::flags::has_flag("paris-debugger") ||
+                utils::flags::has_flag("paris-server-test") || utils::flags::has_flag("paris-server-client-test"))
+                throw std::runtime_error("Production capacity cannot use private qualification identities");
+        } else if (!utils::flags::has_flag("paris-isolated-lab") || !utils::flags::has_flag("paris-debugger") ||
             !utils::flags::has_flag(dedicated ? "paris-server-test" : "paris-server-client-test") || !private_port(dedicated))
             throw std::runtime_error("Capacity candidate requires an explicit private CP test identity and peer port");
         try {
@@ -256,11 +262,13 @@ class component final : public component_interface {
         active=true;
         // Private diagnostic only: preserve the engine's error/drop behavior
         // while retaining its reason before the client returns to frontend.
-        readable_code(0x140B8D830,1);
-        engine_error_hook.create(0x140B8D830,engine_error);
-        if(!dedicated) {
-            readable_code(0x1408260D0,1);
-            character_render_hook.create(0x1408260D0,character_render);
+        if(!production) {
+            readable_code(0x140B8D830,1);
+            engine_error_hook.create(0x140B8D830,engine_error);
+            if(!dedicated) {
+                readable_code(0x1408260D0,1);
+                character_render_hook.create(0x1408260D0,character_render);
+            }
         }
         scheduler::once([] {
             game::Dvar_RegisterInt("paris_native_agent_capacity",agents,agents,agents,game::DVAR_FLAG_NONE,"Private native capacity candidate");

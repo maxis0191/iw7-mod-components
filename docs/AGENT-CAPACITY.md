@@ -1,5 +1,26 @@
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
+## Livraison et admission des clients en préparation — 19 octobre 2026
+
+Le cas O à127 champs (image57C24605) conserve les numéros64 à67 reçus par le
+client et tient son observation protégée75 secondes sans nouveau fatal. Son
+plateau strict échoue car les morts naturelles ne sont pas remplacées ; un
+placement forcé de Brutes déclenche aussi leur secours de navigation. Client,
+profils et dédié quittent/restaurent normalement, bail libéré. Le scénario
+corrigé doit employer les spawners natifs, remplir les places et recycler24 morts.
+
+Le profil optionnel Capacity64 prépare désormais le composant sans observateur
+privé dans les builds serveur/client normaux. Son activation de production reste
+explicite et refuse les identités de qualification. Les deux pairs annoncent
+paris_capacity=64-v1 ; leur admission vérifie le contrat avant DirectConnect et
+avant chargement côté client. Le lancement standard accepte encore un pair
+historique sans cette clé. Un pair incompatible doit recevoir un message de
+relancement, avant les paquets au format différent. Les recettes conservent les
+contrôles de protocole et les sources owner/cinématique ; refus préflight,
+édition étrangère, reprise partielle et restauration octet pour octet passent
+en tests purs. La compilation et les essais de cette admission restent à faire.
+Le défaut ne compile ni n'active la capacité, et Main reste24.
+
 ## Champ réseau à sept bits — 19 octobre 2026
 
 Le cas M, sans Brutes, reproduit le fatal. Le capteur client reçoit l'entité64

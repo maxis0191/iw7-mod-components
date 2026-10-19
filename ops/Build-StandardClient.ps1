@@ -1,10 +1,12 @@
-param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$OwnerCheats)
+param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$OwnerCheats,[switch]$Capacity64)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw | ConvertFrom-Json).Standard
 . "$PSScriptRoot/standard-client/Loading-NewMap.Core.ps1"
 . "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
 . "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
+. "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
+. "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1"
 $root=[IO.Path]::GetFullPath($NativeRoot).TrimEnd('\','/')
 if(![IO.Path]::IsPathFullyQualified($NativeRoot) -or $NativeRoot -match '[\x00-\x1f"%!]'){throw 'Absolute literal NativeRoot required.'}
 $cursor=$root
@@ -14,6 +16,7 @@ while($cursor){
 }
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
+    Remove-IW7CapacityPeerOverlay $root
     Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
     if(!(Test-Path -LiteralPath (Join-Path $root '.git'))){
@@ -24,6 +27,7 @@ Remove-IW7OwnerCheatsOverlay $root
         finally {if($null -eq $previous){Remove-Item Env:GIT_LFS_SKIP_SMUDGE -ErrorAction SilentlyContinue}else{$env:GIT_LFS_SKIP_SMUDGE=$previous}}
     }
     if((& git -C $root rev-parse HEAD).Trim() -cne $profile.Revision){throw 'Exact standard client pin required; preserve other checkouts.'}
+    $null=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled $false -PortOnly $true
     git -C $root diff --quiet HEAD
     if($LASTEXITCODE){throw 'Modified tracked standard client source refused.'}
     $untracked=@(& git -C $root ls-files --others --exclude-standard src)
@@ -51,7 +55,13 @@ Remove-IW7OwnerCheatsOverlay $root
     Copy-Item -LiteralPath $wrapperSource -Destination $wrapper -Force
     $cutsceneOverlay=$null
     $ownerCheatsOverlay=$null
+    $capacityPeerOverlay=$null
+    $capacityBuild=$null
     if($OwnerCheats){$ownerCheatsOverlay=Add-IW7OwnerCheatsOverlay $root $repo;$cutsceneOverlay=Add-IW7CutsceneOverlay $root $repo}
+    if($Capacity64){
+        $capacityBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled $true -PortOnly $true
+        $capacityPeerOverlay=Add-IW7CapacityPeerOverlay $root
+    }
     Push-Location $root
     try {
         & ./tools/premake5.exe --file=paris-build-only.lua vs2022
@@ -65,12 +75,18 @@ Remove-IW7OwnerCheatsOverlay $root
         & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false /p:PostBuildEventUseInBuild=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"
         if($LASTEXITCODE){throw 'Standard client native build failed.'}
     } finally {Pop-Location}
-    if($OwnerCheats){
+    if($OwnerCheats -or $Capacity64){
         $changed=@(& git -C $root diff --name-only HEAD)
-        if(@($changed|Where-Object{$_ -cnotin @('src/client/component/auth.cpp','src/client/component/command.cpp','src/client/component/dvar_cheats.cpp','src/client/component/gsc/script_extension.cpp','src/client/component/gsc/script_loading.cpp','src/client/component/input.cpp')}).Count){throw 'Build modified unowned tracked client source.'}
+        $allowed=@()
+        if($OwnerCheats){$allowed+=@('src/client/component/auth.cpp','src/client/component/command.cpp','src/client/component/dvar_cheats.cpp','src/client/component/gsc/script_extension.cpp','src/client/component/gsc/script_loading.cpp','src/client/component/input.cpp')}
+        if($Capacity64){$allowed+=@('src/client/component/auth.cpp','src/client/component/party.cpp')}
+        if(@($changed|Where-Object{$_ -cnotin $allowed}).Count){throw 'Build modified unowned tracked client source.'}
         foreach($row in $ownerCheatsOverlay.Files){
-            if((Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$row.Name))).Hash -cne $row.AfterSHA256){throw 'Build modified owner-cheats input.'}
+            $peer=@($capacityPeerOverlay.Files|Where-Object Name -CEQ $row.Name)
+            $expected=if($peer.Count){$peer[0].AfterSHA256}else{$row.AfterSHA256}
+            if((Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$row.Name))).Hash -cne $expected){throw 'Build modified owner-cheats input.'}
         }
+        foreach($row in $capacityPeerOverlay.Files){if((Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$row.Name))).Hash -cne $row.AfterSHA256){throw 'Build modified capacity peer input.'}}
     }else{
         git -C $root diff --quiet HEAD
         if($LASTEXITCODE){throw 'Build unexpectedly modified tracked standard client source.'}
@@ -85,6 +101,11 @@ Remove-IW7OwnerCheatsOverlay $root
     $manifest.OwnerCheatsEnabled=[bool]$OwnerCheats
     $manifest.OwnerCheatsOverlay=$ownerCheatsOverlay
     $manifest.CutsceneOverlay=$cutsceneOverlay
+    $manifest.Capacity64Capability=[bool]$Capacity64
+    $manifest.CapacityWireContract=if($Capacity64){'64-v1'}else{$null}
+    $manifest.CapacityBuild=$capacityBuild
+    $manifest.CapacityPeerOverlay=$capacityPeerOverlay
+    $manifest.CapacityPeerHelperSHA256=if($capacityPeerOverlay){(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1").Hash}else{$null}
     $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $output 'build-manifest.json')
     Write-Output "Prepared standard client: $output"
 }
