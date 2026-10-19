@@ -1,0 +1,47 @@
+{
+  "Schema": "iw7.owner-cheats-qualification/1",
+  "Date": "2026-10-19",
+  "NativeBuildSource": "ebd91fb8edd02a713ec157d30604300ca1c1627c",
+  "LocalSource": {
+    "InitialPassed": 67,
+    "InitialFailure": "Java executable absent from command PATH; no Java test ran",
+    "Groups": 68,
+    "CurrentDiagnosticsTests": 51,
+    "RemainingResolver": "Passed with existing portable Temurin21"
+  },
+  "Native": {
+    "ProductionDedicatedSHA256": "661E465EE09FCAECB8A957796E12DF3F64ABDEABA8ACBDD7270BB6FFAFFCC300",
+    "StandardClientSHA256": "2BBA620C6836FFDC33A8DC4507E0D4BE12F16C617777933F8A19A51105CF55E6",
+    "PrivateProfileSHA256": "236659E02CC3DD13B78CE2C9B930281C0823ABDB782D0B386DD2420C21BE21B2",
+    "BuildsPassed": true
+  },
+  "Private": {
+    "OtherKeyCommandChangedValues": false,
+    "OtherPrivateKeyDenied": true,
+    "ServerClosed": true,
+    "SameClaimedClientIdentity": true,
+    "RetailAssetCopies": 0,
+    "ProfilesAndBanksRestored": true,
+    "OwnerCommandAfter": [
+      23,
+      34,
+      45
+    ],
+    "ClientClosed": true,
+    "NativeCommand": "cmd setviewang",
+    "ReconnectReauthenticated": true,
+    "FreshProtection": true,
+    "OwnerAllowed": true,
+    "GlobalCheats": 0
+  },
+  "InitialSetup": "Transaction helper name failed before game launch; lease released; corrected runs retained",
+  "HostedCI": {
+    "Runner": 0,
+    "Run": "https://github.com/maxis0191/iw7-mod-components/actions/runs/39218185599",
+    "Result": "Not executed: payment/spending admission refusal; existing conditional owner exception",
+    "Head": "ebd91fb8edd02a713ec157d30604300ca1c1627c",
+    "Steps": 0
+  },
+  "PublicDeployment": false,
+  "OwnerGameplayAcceptance": false
+}
