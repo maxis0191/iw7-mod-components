@@ -524,3 +524,18 @@ Exit-IW7ResourceLease -Token $remaining[0].Token
 Assert (@((Get-IW7ResourceStatus).Leases).Count -eq 0) 'Proven closed orphan can be released.'
 Write-Output 'Resource scheduler passed: telemetry-only memory admission, unknown telemetry/identity, idempotency, PID reuse, failure cleanup and real cross-process contention.'
 Write-Output "Test evidence retained: $TestRoot"
+
+# The production client has no private fixture; classify only its explicit,
+# loopback-only test invocation, never an ordinary Paris48 player.
+$normalCapacityArgs='iw7.exe -cpMode -paris-capacity-64 -paris-capacity-production -paris-capacity-client-probe +set net_ip 127.0.0.1 +set net_port 27947'
+if(!(Test-IW7NormalCapacityClientProbe $normalCapacityArgs)){throw 'Exact normal capacity client probe refused.'}
+foreach($required in @('-cpMode','-paris-capacity-64','-paris-capacity-production','-paris-capacity-client-probe','+set net_ip 127.0.0.1','+set net_port 27947')){
+    if(Test-IW7NormalCapacityClientProbe ($normalCapacityArgs.Replace($required,''))){throw 'Incomplete production probe classified as an admitted lab.'}
+}
+foreach($private in @('-dedicated','-paris-isolated-lab','-paris-debugger','-paris-server-test','-paris-server-client-test')){
+    if(Test-IW7NormalCapacityClientProbe ($normalCapacityArgs+' '+$private)){throw 'Mixed production/private probe classified.'}
+}
+foreach($bad in @('27016','28000','279470')){
+    if(Test-IW7NormalCapacityClientProbe ($normalCapacityArgs.Replace('27947',$bad))){throw 'Unreserved probe port classified.'}
+}
+if(Test-IW7NormalCapacityClientProbe ($normalCapacityArgs.Replace('127.0.0.1','0.0.0.0'))){throw 'Non-loopback probe classified.'}

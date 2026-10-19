@@ -32,19 +32,30 @@ function Test-IW7ResourceBudget($Snapshot, [long]$PhysicalBytes, [long]$CommitBy
 function Get-IW7ResourceProcesses {
     # Do not persist command lines: lab commands contain passwords.
     @(Get-CimInstance Win32_Process -OperationTimeoutSec 5 -ErrorAction Stop | ForEach-Object {
+        $normalCapacityProbe=Test-IW7NormalCapacityClientProbe $_.CommandLine
         [pscustomobject]@{
             PID = [int]$_.ProcessId
             ParentPID = [int]$_.ParentProcessId
             CreatedUtc = if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString('o') } else { $null }
             Image = $_.ExecutablePath
             Name = $_.Name
-            Lab = [bool]($_.CommandLine -match '(?:^|\s)-paris-isolated-lab(?:\s|$)')
-            BaseClientTest = [bool]($_.CommandLine -match '(?:^|\s)-paris-server-client-test(?:\s|$)' -and $_.CommandLine -notmatch '(?:^|\s)-dedicated(?:\s|$)')
+            Lab = [bool]($normalCapacityProbe -or $_.CommandLine -match '(?:^|\s)-paris-isolated-lab(?:\s|$)')
+            BaseClientTest = [bool]($normalCapacityProbe -or ($_.CommandLine -match '(?:^|\s)-paris-server-client-test(?:\s|$)' -and $_.CommandLine -notmatch '(?:^|\s)-dedicated(?:\s|$)'))
             Heavy = [bool]($_.Name -match '^(?:iw7.*|zonetool.*|MSBuild|cl|link|java)\.exe$')
             WorkingSet = [long]$_.WorkingSetSize
             PrivateBytes = [long]$_.PrivatePageCount
         }
     })
+}
+function Test-IW7NormalCapacityClientProbe([string]$CommandLine) {
+    # Classification only; admission still requires this exact declared image,
+    # one complete Runtime reservation and registration of its real identity.
+    if(!$CommandLine -or $CommandLine -match '(?:^|\s)-(?:dedicated|paris-isolated-lab|paris-debugger|paris-server-test|paris-server-client-test)(?:\s|$)'){return $false}
+    foreach($flag in @('cpMode','paris-capacity-64','paris-capacity-production','paris-capacity-client-probe')){
+        if($CommandLine -notmatch ('(?:^|\s)-'+$flag+'(?:\s|$)')){return $false}
+    }
+    $CommandLine -match '(?:^|\s)\+set\s+net_ip\s+127\.0\.0\.1(?:\s|$)' -and
+        $CommandLine -match '(?:^|\s)\+set\s+net_port\s+27[1-9][0-9]{2}(?:\s|$)'
 }
 function Test-IW7ResourceIdentity($Record, $Process) {
     $Record -and $Process -and $Record.PID -eq $Process.PID -and $Record.CreatedUtc -and

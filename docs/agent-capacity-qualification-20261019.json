@@ -1,0 +1,350 @@
+{
+  "Schema": "iw7.agent-capacity-qualification/1",
+  "WireContract": "64-v2",
+  "OrdinaryCeiling": 48,
+  "NativeAgents": 64,
+  "Characters": 82,
+  "MapEntityStart": 98,
+  "PlayerCorpses": 8,
+  "AgentCorpses": 8,
+  "CoreQualificationSource": "5758ce1e4d42dfee59af5284eb9fef2a78c5a78d",
+  "PortCppSHA256": "8D2AE5A8528041AAF9F52287CB074D4CDB4A4D60E4885652273C00CFB80334E5",
+  "PortHeaderSHA256": "D3306C5234078903236DE141BA4EB8A9075030EF3CE048D256A1039F6133D783",
+  "Builds": {
+    "PrivateSHA256": "A398CEF343078F188DE6BF313ECF10012F2B2C1C5806B6E7787F3A79F123F120",
+    "NormalSHA256": "3AA526817A3C29118AF1D54AD472B3FA5798745AD0149C2A087206339681F6D6",
+    "StandardSHA256": "E867554AD5CDEE2434B3E81DBCF47687D969945322AAE8994B5F347CDE358BB0"
+  },
+  "StandardClientFiveMapMatrix": {
+    "Schema": "iw7.capacity-private-matrix/1",
+    "Passed": true,
+    "Maps": [
+      "cp_zmb",
+      "cp_final",
+      "cp_rave",
+      "cp_disco",
+      "cp_town"
+    ],
+    "Cases": [
+      {
+        "Map": "cp_zmb",
+        "Case": "watch-server-20261019-210722-832-0c82dfe38df74f90a9154ec7aa7d4f45",
+        "Samples": 108,
+        "Recycled": 24,
+        "RequestedProtectedSeconds": 300,
+        "HeartbeatSpanSeconds": 299.081799,
+        "SparseAgentWireConfirmed": true,
+        "Canonical": [
+          {
+            "Map": "cp_zmb",
+            "Phase": "Cold",
+            "Used": 1647,
+            "Free": 2448,
+            "NameBytes": 36572
+          },
+          {
+            "Map": "cp_zmb",
+            "Phase": "Occupied",
+            "Used": 1647,
+            "Free": 2448,
+            "NameBytes": 36572
+          },
+          {
+            "Map": "cp_final",
+            "Phase": "OccupiedRotation",
+            "Used": 4020,
+            "Free": 75,
+            "NameBytes": 83826
+          }
+        ],
+        "Restored": true,
+        "ClientRestored": true,
+        "ClientStrictAuditRestored": false,
+        "MainBankDeltaObserved": true,
+        "MainBankWriterAttributed": false,
+        "LeaseReleased": true,
+        "FixtureSHA256": "0789319053FABBF4A83C0DD401CF9000F2C5D2C897ED361D74EBE075A43DC9BC"
+      },
+      {
+        "Map": "cp_final",
+        "Case": "watch-server-20261019-211415-061-acda58418f644d9db789223fc0698c5b",
+        "Samples": 112,
+        "Recycled": 24,
+        "RequestedProtectedSeconds": 120,
+        "HeartbeatSpanSeconds": 119.114813,
+        "SparseAgentWireConfirmed": true,
+        "Canonical": [
+          {
+            "Map": "cp_final",
+            "Phase": "Cold",
+            "Used": 4017,
+            "Free": 78,
+            "NameBytes": 83730
+          },
+          {
+            "Map": "cp_final",
+            "Phase": "Occupied",
+            "Used": 4017,
+            "Free": 78,
+            "NameBytes": 83730
+          }
+        ],
+        "Restored": true,
+        "ClientRestored": true,
+        "ClientStrictAuditRestored": true,
+        "MainBankDeltaObserved": false,
+        "MainBankWriterAttributed": false,
+        "LeaseReleased": true,
+        "FixtureSHA256": "0789319053FABBF4A83C0DD401CF9000F2C5D2C897ED361D74EBE075A43DC9BC"
+      },
+      {
+        "Map": "cp_rave",
+        "Case": "watch-server-20261019-211800-170-4b5107551c6141f8a178b92d456145b4",
+        "Samples": 105,
+        "Recycled": 24,
+        "RequestedProtectedSeconds": 300,
+        "HeartbeatSpanSeconds": 298.891561,
+        "SparseAgentWireConfirmed": true,
+        "Canonical": [
+          {
+            "Map": "cp_rave",
+            "Phase": "Cold",
+            "Used": 3275,
+            "Free": 820,
+            "NameBytes": 69074
+          },
+          {
+            "Map": "cp_rave",
+            "Phase": "Occupied",
+            "Used": 3275,
+            "Free": 820,
+            "NameBytes": 69074
+          }
+        ],
+        "Restored": true,
+        "ClientRestored": true,
+        "ClientStrictAuditRestored": true,
+        "MainBankDeltaObserved": false,
+        "MainBankWriterAttributed": false,
+        "LeaseReleased": true,
+        "FixtureSHA256": "0789319053FABBF4A83C0DD401CF9000F2C5D2C897ED361D74EBE075A43DC9BC"
+      },
+      {
+        "Map": "cp_disco",
+        "Case": "watch-server-20261019-212446-122-cde8152a74324ea580c4045119b2ad7b",
+        "Samples": 110,
+        "Recycled": 24,
+        "RequestedProtectedSeconds": 120,
+        "HeartbeatSpanSeconds": 119.933726,
+        "SparseAgentWireConfirmed": true,
+        "Canonical": [
+          {
+            "Map": "cp_disco",
+            "Phase": "Cold",
+            "Used": 3568,
+            "Free": 527,
+            "NameBytes": 75301
+          },
+          {
+            "Map": "cp_disco",
+            "Phase": "Occupied",
+            "Used": 3568,
+            "Free": 527,
+            "NameBytes": 75301
+          }
+        ],
+        "Restored": true,
+        "ClientRestored": true,
+        "ClientStrictAuditRestored": true,
+        "MainBankDeltaObserved": false,
+        "MainBankWriterAttributed": false,
+        "LeaseReleased": true,
+        "FixtureSHA256": "0789319053FABBF4A83C0DD401CF9000F2C5D2C897ED361D74EBE075A43DC9BC"
+      },
+      {
+        "Map": "cp_town",
+        "Case": "watch-server-20261019-213441-757-276c6fe0335248e896d554f7252d3c6f",
+        "Samples": 109,
+        "Recycled": 24,
+        "RequestedProtectedSeconds": 120,
+        "HeartbeatSpanSeconds": 119.718318,
+        "SparseAgentWireConfirmed": true,
+        "Canonical": [
+          {
+            "Map": "cp_town",
+            "Phase": "Cold",
+            "Used": 3666,
+            "Free": 429,
+            "NameBytes": 78245
+          },
+          {
+            "Map": "cp_town",
+            "Phase": "Occupied",
+            "Used": 3666,
+            "Free": 429,
+            "NameBytes": 78245
+          }
+        ],
+        "Restored": true,
+        "ClientRestored": true,
+        "ClientStrictAuditRestored": true,
+        "MainBankDeltaObserved": false,
+        "MainBankWriterAttributed": false,
+        "LeaseReleased": true,
+        "FixtureSHA256": "2E1EEA1A3525F2F328A3063AA691346D93EE329B603827D025AC27D3A7A3435E"
+      }
+    ],
+    "FailedAttempts": [
+      {
+        "Case": "watch-server-20261019-212831-397-7389b0a8ea9048a59c0b5f80c2bc6a7b",
+        "Failure": "Private horde reported failure; stop and retain its diagnostics.",
+        "Restored": true,
+        "ClientRestored": true,
+        "LeaseReleased": true
+      },
+      {
+        "Case": "watch-server-20261019-213224-175-f6a20337742f489bba3179e94460c5af",
+        "Failure": "Private horde reported failure; stop and retain its diagnostics.",
+        "Restored": true,
+        "ClientRestored": true,
+        "LeaseReleased": true
+      }
+    ],
+    "WireContract": "64-v2",
+    "SparseWireRequired": true,
+    "StandardClientSHA256": "E867554AD5CDEE2434B3E81DBCF47687D969945322AAE8994B5F347CDE358BB0",
+    "MainDeployed": false,
+    "OwnerAccepted": false,
+    "Utc": "2026-10-19T21:40:33.641535+00:00"
+  },
+  "SimulationObservation": {
+    "Case": "watch-server-20261019-210722-832-0c82dfe38df74f90a9154ec7aa7d4f45",
+    "Windows": 269,
+    "MedianHz": 20,
+    "MinimumHz": 19.685,
+    "MaximumMeasurementWindowMs": 1016,
+    "Meaning": "Distinct simulation times observed by the GSC coroutine during sustained occupancy; not packet rate or a frame-time distribution."
+  },
+  "PerformancePair": {
+    "BothUseNative64": true,
+    "PrivateInstrumentedClient": true,
+    "Graphics": "1280x720 Reduced",
+    "ClientLimitFPS": 30,
+    "Cases": [
+      {
+        "Case": "watch-server-20261019-214034-848-5d42f4a1e67c473280e2893109321a98",
+        "Ordinary": 24,
+        "Specials": 0,
+        "ServerWindows": 49,
+        "ServerMedianHz": 20,
+        "ServerMinimumHz": 19.685,
+        "ClientWindows": 48,
+        "ClientMedianCallbackHz": 30.299100000000003,
+        "ClientMaximumIntervalMs": 50.7308,
+        "Meaning": "Matched timestamp windows inside actual population plateau, trimmed10s after its first full sample; engine render-present callback cadence, not displayed FPS.",
+        "DebuggerSHA256": {
+          "Server": "d5acff20aebaff7bfc17e5dbb79f5d08b1f02bddf7218176f0adbed4d6d946d6",
+          "Client": "5fb4b11eaf3dae552e1aa924877e4ba7f8688e97d670a0aa561dec42fa81d24f"
+        },
+        "ResourceObservationSHA256": "57ea4613679ac33b8bf1231ff854fc93f7a87f3db65dd665e5c6e73d3e5381bc",
+        "Resources": {
+          "Server": {
+            "Samples": 7,
+            "PeakPrivateMiB": 1212.3,
+            "PeakWorkingSetMiB": 1111.0
+          },
+          "Client": {
+            "Samples": 7,
+            "PeakPrivateMiB": 8810.9,
+            "PeakWorkingSetMiB": 3830.7
+          }
+        }
+      },
+      {
+        "Case": "watch-server-20261019-214419-375-77e649795c394adaa8a1af514f2ce894",
+        "Ordinary": 48,
+        "Specials": 2,
+        "ServerWindows": 50,
+        "ServerMedianHz": 20.0,
+        "ServerMinimumHz": 19.685,
+        "ClientWindows": 49,
+        "ClientMedianCallbackHz": 30.3101,
+        "ClientMaximumIntervalMs": 51.0131,
+        "DebuggerSHA256": {
+          "Server": "d892e15f94639a5717bc8728959866f43ec63cb87c25b6432edae921931fa1c2",
+          "Client": "1ceda7580cee333e76ad76dae07cfca9469dbda8ba8bf6c035279b5b0f32d116"
+        },
+        "Meaning": "Matched timestamp windows inside actual population plateau, trimmed10s after its first full sample; engine render-present callback cadence, not displayed FPS.",
+        "ResourceObservationSHA256": "8c3fa75be2074ecc5882d5432c97d97cb4a86741ef03a46afd1484ec847fa7ef",
+        "Resources": {
+          "Server": {
+            "Samples": 8,
+            "PeakPrivateMiB": 1212.4,
+            "PeakWorkingSetMiB": 1111.1
+          },
+          "Client": {
+            "Samples": 8,
+            "PeakPrivateMiB": 8863.3,
+            "PeakWorkingSetMiB": 3898.9
+          }
+        }
+      }
+    ],
+    "Meaning": "Living24/0 versus48/2 pressure in the same v2 port. Finite single-client callback/simulation/memory observation; not a stock24-allocation, displayed-FPS, WAN or four-player benchmark."
+  },
+  "FinalDeliveryRebuildPending": false,
+  "MainActivated": false,
+  "OwnerAccepted": false,
+  "MultiplayerWANMeasured": false,
+  "DeliveryBuilds": {
+    "SourceCommit": "2f43d619371e95cf0babf8c8d424fd4ecc4968db",
+    "PrivateSHA256": "2010484C334A7E540C3C5321751841F2D5138D00C0DE3C03F3CD70AA489250C2",
+    "NormalSHA256": "1EC9BB6DC7020BB6B7A9125C1E7C879E1AC6476CB7FEC2FA08F8D8E44281BB08",
+    "StandardSHA256": "39AA01F1231B359BF1BD9D8E2E34389372BD87129DC482A9598556F99BE674B6",
+    "SharedVoiceFix": "PR94",
+    "StandardSourceFilesCompared": 358,
+    "StandardSourceFilesChanged": 0,
+    "GeneratedProjectUnchanged": true,
+    "BuildWrapperUnchanged": true,
+    "ArchiveSHA256": "D74459FEAE818F0FCA05D64E13BC78211789D977384FC94B8AACFEB4828407D3",
+    "PairedCheck": {
+      "Map": "cp_zmb",
+      "ObservedSeconds": 120,
+      "Ordinary": 48,
+      "OccupiedBeastRotation": true,
+      "Schema": "iw7.capacity-delivery-check/1",
+      "Passed": true,
+      "Case": "watch-server-20261019-215656-130-01c41e00f04140219cced0ae79e9c4a1",
+      "Specials": 2,
+      "SparseWire": true,
+      "NormalSmoke": true,
+      "MainDeployed": false
+    },
+    "Canonical": [
+      {
+        "Map": "cp_zmb",
+        "Phase": "Cold",
+        "Used": 1647,
+        "Free": 2448,
+        "NameBytes": 36572
+      },
+      {
+        "Map": "cp_zmb",
+        "Phase": "Occupied",
+        "Used": 1647,
+        "Free": 2448,
+        "NameBytes": 36572
+      },
+      {
+        "Map": "cp_final",
+        "Phase": "OccupiedRotation",
+        "Used": 4020,
+        "Free": 75,
+        "NameBytes": 83826
+      }
+    ],
+    "Restored": true,
+    "ClientRestored": true,
+    "LeaseReleased": true
+  }
+}

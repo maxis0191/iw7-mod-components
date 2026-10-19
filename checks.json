@@ -2,6 +2,10 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "capacity_peer_overlay",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/capacity_peer_overlay_test.ps1"]
+    },
+    {
       "id": "cutscene_test",
       "command": [
         "pwsh",

@@ -23,8 +23,9 @@ function ConvertTo-IW7BaseKeyboardYaw($Value) {
 function New-IW7BaseClientPlan {
     param([Parameter(Mandatory)][string]$GameRoot,[Parameter(Mandatory)][string]$ClientImage,
         [ValidateRange(27100,27999)][int]$ServerPort,[ValidateRange(27100,27999)][int]$ClientPort,
-        [ValidateSet('Full','Reduced')][string]$GraphicsProfile='Full',[switch]$Debugger,$KeyboardYawDegreesPerSecond=0,$KeyboardPitchDegreesPerSecond=0,[switch]$OriginalRigConsole,[switch]$RigAssetsProbe,[switch]$RigSceneProbe,[switch]$RigSceneStockWitness,[switch]$BO3HUDPrivate)
+        [ValidateSet('Full','Reduced')][string]$GraphicsProfile='Full',[switch]$Debugger,$KeyboardYawDegreesPerSecond=0,$KeyboardPitchDegreesPerSecond=0,[switch]$OriginalRigConsole,[switch]$RigAssetsProbe,[switch]$RigSceneProbe,[switch]$RigSceneStockWitness,[switch]$BO3HUDPrivate,[switch]$Capacity64)
     $keyboardYaw=ConvertTo-IW7BaseKeyboardYaw $KeyboardYawDegreesPerSecond
+    if($Capacity64 -and !$Debugger){throw 'Private capacity client requires the debugger profile.'}
     if($BO3HUDPrivate -and $OriginalRigConsole){throw 'Private disk HUD and original-rig console plans are exclusive.'}
     if($RigAssetsProbe -and !$OriginalRigConsole){throw 'Rig assets probe requires the explicit original-rig console plan.'}
     if($RigSceneProbe -and !$RigAssetsProbe){throw 'Rig scene probe requires the explicit assets probe.'}
@@ -39,7 +40,7 @@ function New-IW7BaseClientPlan {
     $budget=Get-IW7LabRunPlan -PlannedClients 1 -GraphicsProfile $GraphicsProfile -Debugger:$Debugger
     [pscustomobject]@{Schema='iw7.base-client/1';GameRoot=$root;Image=$image;SHA256=(Get-FileHash -LiteralPath $image).Hash;
         ServerPort=$ServerPort;ClientPort=$ClientPort;GraphicsProfile=$GraphicsProfile;RunPlan=$budget;KeyboardYawDegreesPerSecond=$keyboardYaw;KeyboardPitchDegreesPerSecond=$keyboardPitch;OriginalRigConsole=[bool]$OriginalRigConsole;RigAssetsProbe=[bool]$RigAssetsProbe;RigSceneProbe=[bool]$RigSceneProbe;RigSceneStockWitness=[bool]$RigSceneStockWitness;BO3HUDPrivate=[bool]$BO3HUDPrivate;
-        MutableFiles=@('iw7-mod/agent-base-client.cfg','iw7-mod/paris-server-client.request','iw7-mod/paris-server-client.response','iw7-mod/screenshots/server-modules-fixture.bmp',
+        Capacity64=[bool]$Capacity64;MutableFiles=@('iw7-mod/agent-base-client.cfg','iw7-mod/paris-server-client.request','iw7-mod/paris-server-client.response','iw7-mod/screenshots/server-modules-fixture.bmp',
             'iw7-mod/paris-agent.session','iw7-mod/paris-agent.request','iw7-mod/paris-agent.response','iw7-mod/paris-agent.safety','iw7-mod/paris-isolated-lab.marker');
         ProfileDirectory='iw7-mod/players2';ProfileDirectories=@('iw7-mod/players2','iw7-mod/lab-appdata')}
 }
@@ -214,6 +215,12 @@ function Get-IW7BaseOriginalRigConsole($Plan) {
 }
 
 function Get-IW7BaseClientArguments($Plan,[string]$Password) {
+    $capacity64=$false
+    if($Plan.PSObject.Properties.Name -contains 'Capacity64'){
+        if($Plan.Capacity64 -isnot [bool]){throw 'Capacity64 must be an explicit boolean.'}
+        $capacity64=$Plan.Capacity64
+    }
+    if($capacity64 -and !$Plan.RunPlan.Debugger){throw 'Private capacity client requires the debugger profile.'}
     $bo3HUD=$false
     if($Plan.PSObject.Properties.Name -contains 'BO3HUDPrivate'){
         if($Plan.BO3HUDPrivate -isnot [bool]){throw 'BO3HUDPrivate must be an explicit boolean.'}
@@ -256,6 +263,7 @@ function Get-IW7BaseClientArguments($Plan,[string]$Password) {
     $pitch=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardPitchDegreesPerSecond
     if ($pitch -gt 0) { $arguments+=' +set cl_pitchspeed '+$pitch.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture) }
     if ($Plan.RunPlan.Debugger) { $arguments+=' -paris-debugger' }
+    if ($capacity64) { $arguments+=' -paris-capacity-64 +set paris_capacity_peer_port '+$Plan.ServerPort }
     if (Get-IW7BaseOriginalRigConsole $Plan) { $arguments+=' -wincon' }
     if ($rigAssets) { $arguments+=' -paris-rig-assets-probe' }
     if ($rigScene) { $arguments+=' -paris-rig-scene-probe' }
@@ -286,6 +294,13 @@ function Start-IW7BaseClient {
     if ($leases.Count -ne 1) { throw 'Unique complete reservation required.' }
     if ($PairOwnership) { Assert-IW7AgentPairLease $PairOwnership.Plan $leases[0] } else { Assert-IW7BaseLease $leases[0] $Plan $ServerIdentity }
     $serverProcess=Get-CimInstance Win32_Process -Filter "ProcessId=$($ServerIdentity.PID)"
+    if($Plan.PSObject.Properties.Name -contains 'Capacity64' -and $Plan.Capacity64){
+        if($Plan.SHA256 -cne $ServerIdentity.SHA256 -or
+           $serverProcess.CommandLine -notmatch '(?:^|\s)-paris-capacity-64(?:\s|$)' -or
+           !(Read-IW7BaseLog $ServerIdentity.Stdout).Contains('[Paris capacity candidate] installed agents=64 ordinary=48 special_headroom=16 characters=82 map_start=98')){
+            throw 'Matching private 64-agent server image and readiness required.'
+        }
+    }
     if (!$serverProcess.CommandLine -or $serverProcess.CommandLine -notmatch '(?:^|\s)-dedicated(?:\s|$)' -or
         $serverProcess.CommandLine -notmatch '(?:^|\s)-paris-server-test(?:\s|$)' -or
         $serverProcess.CommandLine -notmatch '(?:^|\s)-paris-isolated-lab(?:\s|$)' -or
