@@ -1,5 +1,6 @@
 param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
-      [ValidateRange(27100,27999)][int]$ServerPort=27116,[switch]$DryRun,[switch]$CaptureWriterPages)
+      [ValidateRange(27100,27999)][int]$ServerPort=27116,[switch]$DryRun,[switch]$CaptureWriterPages,
+      [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
 $ops=Split-Path $PSScriptRoot -Parent;$repo=Split-Path $ops -Parent
 . "$ops/Base-Client.Core.ps1"
@@ -117,11 +118,11 @@ finally{
                     . "$PSScriptRoot/CodePages.Core.ps1"
                     if(!('IW7CapacityPages' -as [type])){Add-Type -Path "$PSScriptRoot/CodePages.cs"}
                     Assert-IW7CapacitySession $session
-                    $pageReader=[IW7CapacityPages]::new([int]$identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc(),'writer-path-20261019')
+                    $pageReader=[IW7CapacityPages]::new([int]$identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc(),$WriterPagePlan)
                     $pageReaderClosed=$false
                     $pageCapture=Join-Path $case 'writer-pages'
                     $proof=[pscustomobject]@{NativeSHA256=$manifest.SHA256;Header=$journal.Header;Armed=$journal.Armed;ObservedWriterAfter=@(0x14C1ED66C,0x14BFE5A30)}
-                    Save-IW7CapacityCodePages $pageReader $pageCapture $identity 'writer-path-20261019' $proof
+                    Save-IW7CapacityCodePages $pageReader $pageCapture $identity $WriterPagePlan $proof
                     Assert-IW7CapacitySession $session
                 }catch{$pageCaptureError=$_.Exception.Message}
                 finally{

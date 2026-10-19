@@ -99,6 +99,10 @@ $path=[IW7CapacityPages]::GetPlanPages('writer-path-20261019')
 if(($path -join ',') -cne (@(0x14C1ED000,0x14BFE5000,0x140406000,0x140B20000,0x1412BF000,0x141238000,0x14B538000,0x140AC6000) -join ',')){throw 'Wrong retained writer path'}
 $path[0]=0
 if([IW7CapacityPages]::GetPlanPages('writer-path-20261019')[0] -ne 0x14C1ED000){throw 'Writer path mutable'}
+$binding=[IW7CapacityPages]::GetPlanPages('binding-continuation-20261019')
+if($binding.Count -ne 1 -or $binding[0] -ne 0x14B3C5000){throw 'Wrong binding continuation'}
+$binding[0]=0
+if([IW7CapacityPages]::GetPlanPages('binding-continuation-20261019')[0] -ne 0x14B3C5000){throw 'Binding continuation mutable'}
 foreach($bad in @('arbitrary','RESET-ENTRY-TARGETS')) {
     $refused=$false;try{$null=[IW7CapacityPages]::GetPlanPages($bad)}catch{$refused=$true}
     if(!$refused){throw 'Unknown plan accepted'}

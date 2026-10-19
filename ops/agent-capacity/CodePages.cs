@@ -26,6 +26,8 @@ public sealed class IW7CapacityPages : IDisposable {
         0x14C1ED000, 0x14BFE5000, 0x140406000, 0x140B20000,
         0x1412BF000, 0x141238000, 0x14B538000, 0x140AC6000
     };
+    // Exact continuation of the qualified 140B20B29 jump, after pool setup.
+    static readonly long[] bindingContinuationPages = { 0x14B3C5000 };
     readonly long[] instancePages;
     readonly string instancePlan;
     [StructLayout(LayoutKind.Sequential)] struct MBI {
@@ -73,6 +75,7 @@ public sealed class IW7CapacityPages : IDisposable {
         if (plan == "reset-entry-targets") return (long[])resetEntryPages.Clone();
         if (plan == "writer-sites-20261019") return (long[])writerPages.Clone();
         if (plan == "writer-path-20261019") return (long[])writerPathPages.Clone();
+        if (plan == "binding-continuation-20261019") return (long[])bindingContinuationPages.Clone();
         throw new ArgumentException("Unknown fixed page plan.");
     }
     public static void ValidatePlanAddress(string plan, long address) {
