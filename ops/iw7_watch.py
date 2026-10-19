@@ -70,7 +70,9 @@ class Detector:
             self.tick_low = 0
         self.phase = phase
         if row["commit_percent"] > 85:
-            result += self.alert("resource.pressure", now, {k: row[k] for k in ("physical_percent", "commit_percent")})
+            result += self.alert("resource.pressure", now,
+                                 {**{k: row[k] for k in ("physical_percent", "commit_percent")},
+                                  "meaning": "Legacy commit_percent >85 heuristic, not proof of exhaustion or an observation/admission/stop rule."})
         self.cpu_high = self.cpu_high + 1 if row.get("cpu_core_percent", 0) > 90 else 0
         if self.cpu_high >= 5 and now >= self.warmup:
             result += self.alert("cpu.sustained_usage", now, {"cpu_core_percent": row["cpu_core_percent"], "meaning": "Busy cores can be normal; inspect per-thread stacks and the workload."})

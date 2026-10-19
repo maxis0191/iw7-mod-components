@@ -552,11 +552,13 @@ its newly started client/server through the lab's identity/empty-session guards.
 Observe does not close a pre-existing session. An ownership/occupied-session
 conflict retains the processes/reservation for diagnosis rather than guessing.
 
-The debugger plan reserves an additional 2 GiB physical / 3 GiB commit before the first
-game process, for native tracing, observers and optional CDB/ETW diagnostics.
-Reduced one-client totals 14 GiB physical / 15 GiB commit; Full totals 18/19 GiB. Refusal
-is expected on this 32 GiB workstation under background load. Do not lower the
-budget or bypass the scheduler to produce a test. Other chats keep their slots.
+The debugger plan declares an additional 2 GiB physical / 3 GiB commit for native
+tracing, observers and optional CDB/ETW diagnostics. Its historical Reduced
+one-client totals are 14/15 GiB physical/commit; Full totals are 18/19 GiB.
+These workload estimates and fresh memory percentages are telemetry, not fixed
+admission minima or percentage stop rules. Preserve the shared scheduler's
+identity, ownership, lease and heavy-workload serialization gates; see the current
+[resource workflow](RESOURCE-WORKFLOW.md). Other chats keep their slots.
 
 ## What arrives in real time
 
@@ -670,6 +672,14 @@ success, native compilation, startup, automatic fixture behavior and owner gamep
 acceptance are different witnesses. Compare repeated A/B under the same map,
 actors, settings, phase, duration and resource pressure; measure instrumented
 versus uninstrumented overhead before accepting a performance improvement.
+
+The compatible `high_pressure_samples` counter still counts samples with
+`commit_percent >85`, and `pressure_free` only means neither compared trace
+contains such a sample. The `resource.pressure` alert retains the raw percentages
+and explicitly labels this legacy heuristic. These fields alone neither invalidate
+an observation nor establish available capacity or memory exhaustion; they are not
+admission or stop rules. A performance report remains an observation requiring
+scenario, repetition and instrumentation-overhead controls.
 
 Arbitrary visual/gameplay bugs, all bytecode loops, every allocation owner and
 all engine subsystems cannot be inferred by this tool. Add targeted assertions,

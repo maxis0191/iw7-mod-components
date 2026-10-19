@@ -267,6 +267,34 @@ class DebuggerTests(unittest.TestCase):
         self.assertFalse([x for x in detector.sample(row, 1) if x["code"] == "resource.pressure"])
         self.assertTrue([x for x in detector.sample({**row, "commit_percent": 86}, 2) if x["code"] == "resource.pressure"])
 
+    def test_high_commit_remains_observation_with_legacy_metrics(self):
+        low = self.write("low-commit.jsonl", json.dumps({"type": "sample", "commit_percent": 85}))
+        high = self.write("high-commit.jsonl", "\n".join(json.dumps({"type": "sample", "commit_percent": value}) for value in (86, 99)))
+        report = dbg.perf_report(high)
+        self.assertEqual(report["schema"], dbg.SCHEMA)
+        self.assertEqual(report["metrics"]["commit_percent"]["count"], 2)
+        self.assertEqual(report["metrics"]["commit_percent"]["mean"], 92.5)
+        self.assertEqual(report["high_pressure_samples"], 2)
+        self.assertEqual(dbg.perf_report(low)["high_pressure_samples"], 0)
+        self.assertEqual(report["acceptance"], dbg.perf_report(low)["acceptance"])
+        self.assertTrue(report["acceptance"].startswith("observation;"))
+        self.assertIn("legacy commit_percent >85", report["limits"])
+        comparison = dbg.compare_reports(low, high)
+        self.assertIs(comparison["pressure_free"], False)
+        self.assertIs(dbg.compare_reports(low, low)["pressure_free"], True)
+        self.assertIn("does not establish capacity or exhaustion", comparison["conclusion"])
+
+    def test_legacy_commit_alert_is_not_exhaustion_evidence(self):
+        row = {"type": "sample", "private_bytes": 100, "physical_percent": 99, "commit_percent": 99}
+        alerts = watch.Detector(warmup=0).sample(row, 1)
+        pressure = [alert for alert in alerts if alert["code"] == "resource.pressure"]
+        self.assertEqual(len(pressure), 1)
+        self.assertEqual(pressure[0]["evidence"]["physical_percent"], 99)
+        self.assertEqual(pressure[0]["evidence"]["commit_percent"], 99)
+        self.assertEqual(pressure[0]["causality"], "not established")
+        self.assertIn("not proof of exhaustion", pressure[0]["evidence"]["meaning"])
+        self.assertIn("observation/admission/stop", pressure[0]["evidence"]["meaning"])
+
     def test_nonfinite_and_truncated_trace(self):
         for text in ('{"type":"sample","cpu_core_percent":NaN}', '{"type":'):
             with self.assertRaises(ValueError): dbg.perf_report(self.write("bad.jsonl", text))
