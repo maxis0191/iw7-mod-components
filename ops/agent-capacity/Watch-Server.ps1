@@ -143,6 +143,7 @@ try{
 set sv_hostname "IW7 Capacity Diagnostic"
 set sv_maxclients 4
 set g_gametype "zombie"
+set ui_gametype "zombie"
 set scr_zombie_maxagents $AgentCapacity
 set paris_capacity_pool_probe $([int][bool]$PopulateAgents)
 set paris_capacity_pool_validate 0
