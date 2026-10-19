@@ -424,7 +424,61 @@ class DebuggerTests(unittest.TestCase):
         self.assertEqual(report["phase"]["metrics"]["Server:cpu_core_percent"]["mean"], 20)
         channel = report["phase"]["channels"]["Server:cpu_core_percent"]
         self.assertEqual(channel["excluded"]["outside_or_crossing_window"], 4)
+        self.assertEqual((channel["accepted_start_ms"], channel["accepted_end_ms"]), (1000, 4000))
         self.assertTrue(channel["qualified"])
+
+    def test_crossing_cpu_period_cannot_supply_accepted_window_edges(self):
+        crossing, accepted = self.phase_samples()[:2]
+        crossing["cpu_period"].update(start_ms=0, end_ms=5000)
+        accepted["cpu_period"].update(start_ms=2000, end_ms=2100)
+        path = self.phase_trace("crossing-cpu-support.jsonl", [crossing, accepted])
+        report = dbg.perf_report(path)["phase"]
+        channel = report["channels"]["Server:cpu_core_percent"]
+        self.assertEqual(report["window"], {"clock": dbg.WINDOWS_CLOCK, "start_ms": 1000, "end_ms": 4000})
+        self.assertEqual(channel["count"], 1)
+        self.assertEqual((channel["observed_start_ms"], channel["observed_end_ms"]), (1000, 4000))
+        self.assertEqual((channel["accepted_start_ms"], channel["accepted_end_ms"]), (2000, 2100))
+        self.assertEqual(channel["excluded"]["outside_or_crossing_window"], 1)
+        self.assertFalse(channel["window_covered"])
+        self.assertFalse(channel["qualified"])
+        self.assertIn("uncovered_measurement_window", channel["reasons"])
+        self.assertEqual(dbg.compare_reports(path, path)["phase_comparison"]["changes"], [])
+
+    def test_crossing_native_period_cannot_supply_accepted_window_edges_or_gap(self):
+        for periods in (((2000, 2100),), ((1000, 2000), (3000, 4000))):
+            with self.subTest(periods=periods):
+                rows = [{"type": "server_ticks", "target": "Server", "clock": dbg.WINDOWS_CLOCK,
+                         "tick_ms": right, "window_ms": right - left, "hz": 20}
+                        for left, right in ((0, 5000), *periods)]
+                path = self.phase_trace("crossing-native-support-" + str(len(periods)) + ".jsonl", rows)
+                report = dbg.perf_report(path)["phase"]
+                channel = report["channels"]["Server:simulation_hz"]
+                self.assertEqual(report["window"], {"clock": dbg.WINDOWS_CLOCK, "start_ms": 1000, "end_ms": 4000})
+                self.assertEqual(channel["count"], len(periods))
+                self.assertEqual((channel["observed_start_ms"], channel["observed_end_ms"]), (1000, 4000))
+                self.assertEqual((channel["accepted_start_ms"], channel["accepted_end_ms"]), (periods[0][0], periods[-1][1]))
+                self.assertFalse(channel["window_covered"])
+                self.assertFalse(channel["qualified"])
+                self.assertIn("uncovered_measurement_window", channel["reasons"])
+                self.assertEqual(dbg.compare_reports(path, path)["phase_comparison"]["changes"], [])
+
+    def test_invalid_cpu_metric_or_rate_bounds_cannot_supply_coverage(self):
+        for invalid in ("metric", "rate_bounds"):
+            with self.subTest(invalid=invalid):
+                rejected, accepted = self.phase_samples()[:2]
+                rejected["cpu_period"].update(start_ms=1000, end_ms=4000)
+                accepted["cpu_period"].update(start_ms=2000, end_ms=2100)
+                if invalid == "metric": rejected["cpu_core_percent"] = "unavailable"
+                else: del rejected["cpu_rate_bounds"]
+                path = self.phase_trace("invalid-cpu-support-" + invalid + ".jsonl", [rejected, accepted])
+                channel = dbg.perf_report(path)["phase"]["channels"]["Server:cpu_core_percent"]
+                self.assertEqual(channel["count"], 1)
+                self.assertEqual((channel["accepted_start_ms"], channel["accepted_end_ms"]), (2000, 2100))
+                self.assertFalse(channel["window_covered"])
+                self.assertFalse(channel["qualified"])
+                reason = "invalid_metric" if invalid == "metric" else "cpu_rate_uncertainty_missing_or_invalid"
+                self.assertEqual(channel["excluded"][reason], 1)
+                self.assertIn("uncovered_measurement_window", channel["reasons"])
 
     def test_sparse_memory_brackets_do_not_claim_whole_window_coverage(self):
         report = dbg.perf_report(self.phase_trace("sparse.jsonl", self.phase_samples()))
@@ -464,7 +518,9 @@ class DebuggerTests(unittest.TestCase):
         rows += [{"type": "timing", "target": "Server", "tick_ms": 2000, "calls": 1, "total_us": 2000, "max_us": 2000}]
         report = dbg.perf_report(self.phase_trace("native-history.jsonl", rows))
         self.assertEqual(report["phase"]["metrics"]["Server:simulation_hz"]["mean"], 20)
-        self.assertTrue(report["phase"]["channels"]["Server:simulation_hz"]["qualified"])
+        channel = report["phase"]["channels"]["Server:simulation_hz"]
+        self.assertEqual((channel["accepted_start_ms"], channel["accepted_end_ms"]), (1000, 4000))
+        self.assertTrue(channel["qualified"])
         self.assertEqual(report["hotspots"][0]["total_us"], 2000)
         self.assertIn("inclusive_scope_period_unqualified", report["phase"]["channels"]["Server:timing"]["excluded"])
 

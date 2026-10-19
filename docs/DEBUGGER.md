@@ -750,9 +750,15 @@ Unbounded render windows, GPU acquisition times and inclusive timing scopes stay
 descriptive rather than deriving a period from a rate or ingestion timestamp.
 
 Only periods entirely inside the closed window supply phase values; crossing
-periods are excluded without prorating. Their known intervals can establish
-coverage at the edges. Each channel reports count, observed temporal extent,
-exclusion reasons and whether the period union covers the window. Memory/thread/
+periods are excluded without prorating. Known temporal envelopes remain diagnostic
+only: `observed_start_ms`/`observed_end_ms` report their overlap with the window.
+Only fully contained periods with accepted metric values, after CPU rate-bound
+validation where required, supply coverage. `accepted_start_ms`/`accepted_end_ms`
+report that support's extent; even matching both window edges does not fill an
+internal gap. Each channel reports count, both extents, exclusions and whether the
+union of accepted periods covers the unchanged requested window. Unsupported
+edges or gaps leave that channel descriptive with `uncovered_measurement_window`;
+the window is never moved or shortened to match available values. Memory/thread/
 UDP acquisition brackets describe snapshot uncertainty, not continuous coverage;
 their phase-filtered values therefore remain descriptive. A missing/ambiguous interval or relevant coverage gap prevents that
 channel's qualified difference without invalidating other covered channels.

@@ -115,7 +115,7 @@ def phase_report(path):
     if not complete: reasons.append("collection_incomplete_or_clock_unknown")
     if window and complete and not start <= window[0] < window[1] <= end:
         reasons.append("measurement_window_not_fully_collected")
-    values, excluded, blocked, spans, kinds, targets = defaultdict(list), defaultdict(Counter), defaultdict(set), defaultdict(list), {}, {}
+    values, excluded, blocked, spans, support, kinds, targets = defaultdict(list), defaultdict(Counter), defaultdict(set), defaultdict(list), defaultdict(list), {}, {}
     cpu_lower, cpu_upper = defaultdict(list), defaultdict(list)
     gaps = []
     for row in jsonl(path):
@@ -161,10 +161,11 @@ def phase_report(path):
                     blocked[key].add("cpu_rate_uncertainty_missing_or_invalid"); continue
                 cpu_lower[key].append(bounds["lower_percent"]); cpu_upper[key].append(bounds["upper_percent"])
             values[key].append(value)
+            support[key].append((left, right))
     channels = {}
     for key in sorted(set(values) | set(excluded)):
         cursor = window[0] if window else None
-        for left, right in sorted(spans[key]):
+        for left, right in sorted(support[key]):
             if cursor is not None and left <= cursor: cursor = max(cursor, right)
         covered = bool(window and cursor >= window[1] and kinds.get(key) in ("cpu", "native"))
         channel_reasons = set(blocked[key])
@@ -184,7 +185,9 @@ def phase_report(path):
         if not covered: channel_reasons.add("uncovered_measurement_window")
         if not values[key]: channel_reasons.add("no_fully_contained_observations")
         channels[key] = {"count": len(values[key]), "observed_start_ms": min((x[0] for x in spans[key]), default=None),
-                         "observed_end_ms": max((x[1] for x in spans[key]), default=None), "window_covered": covered,
+                         "observed_end_ms": max((x[1] for x in spans[key]), default=None),
+                         "accepted_start_ms": min((x[0] for x in support[key]), default=None),
+                         "accepted_end_ms": max((x[1] for x in support[key]), default=None), "window_covered": covered,
                          "excluded": dict(excluded[key]), "reasons": sorted(channel_reasons),
                          "qualified": not reasons and not channel_reasons}
     return {"declared_context": context, "window": header.get("measurement_window"), "collection_complete": complete,
