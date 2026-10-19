@@ -271,21 +271,22 @@ class component final : public component_interface {
         if(production && !dedicated) {
             // The upstream -cpMode flag selects dedicated mode only. Honor
             // this explicitly CP-only client profile after engine startup.
-            scheduler::once([] { game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP); },scheduler::main);
-            if(client_probe) {
-                const auto deadline=GetTickCount64()+120000;
-                scheduler::loop([probe_port,deadline,joined=false]() mutable {
-                    if(joined || GetTickCount64()>=deadline) return;
+            const auto deadline=GetTickCount64()+120000;
+            scheduler::loop([probe_port,deadline,entered=false,finished=false]() mutable {
+                    if(finished || GetTickCount64()>=deadline) return;
+                    if(entered && !probe_port) {finished=true;return;}
                     if(game::Com_GameMode_GetActiveGameMode()!=game::GAME_MODE_CP) {
+                        if(entered) return;
                         game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP); return;
                     }
+                    entered=true;
+                    if(!probe_port) {finished=true;return;}
                     if(game::Live_SyncOnlineDataFlags(0)!=0) return;
                     game::netadr_s target{};target.type=game::NA_IP;
                     target.ip[0]=127;target.ip[3]=1;target.port=htons(static_cast<unsigned short>(probe_port));
-                    joined=true;party::connect(target);
+                    finished=true;party::connect(target);
                     console::info("[Paris capacity client probe] Ready loopback join to UDP %u.\n",probe_port);
-                },scheduler::main,100ms);
-            }
+            },scheduler::main,100ms);
         }
         // Private diagnostic only: preserve the engine's error/drop behavior
         // while retaining its reason before the client returns to frontend.
