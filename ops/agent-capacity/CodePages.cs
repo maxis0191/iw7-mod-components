@@ -147,6 +147,17 @@ public sealed class IW7CapacityPages : IDisposable {
         for (int i=0; i<length; ++i) if (first[i] != second[i]) return false;
         return true;
     }
+    public static int[] ChangedTextPages(int index, byte[] first, byte[] second) {
+        int length = TextSectionLength(index);
+        if (first == null || second == null || first.Length != length || second.Length != length)
+            throw new ArgumentException("Complete fixed executable section pair required.");
+        var result = new List<int>();
+        for (int start=0; start<length; start+=4096) {
+            int end = Math.Min(length,start+4096);
+            for (int i=start; i<end; ++i) if (first[i] != second[i]) {result.Add(start);break;}
+        }
+        return result.ToArray();
+    }
     public byte[] ReadTextSection(int index) {
         long address = TextSectionAddress(index); int length = TextSectionLength(index);
         AssertAlive();

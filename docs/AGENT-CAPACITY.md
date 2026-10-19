@@ -12,13 +12,18 @@ doivent aussi être dimensionnés ; cette dépendance ne se confond pas avec B8.
 Pour relier les consommateurs et poursuivre le port sans un lancement par
 fragment, le lecteur prépare une capture opt-in des deux seuls spans exécutables
 fixes du PE actuel : `140001000/1427E00` et `14B2B4000/104D400`, soit
-38 228 480 octets retenus et exactement quatre lectures/76 456 960 octets au
-maximum. Le handle conserve l'identité image/création, les régions doivent être
-engagées/exécutables/lisibles et les deux lectures de chaque span identiques.
+38 228 480 octets initiaux et exactement quatre lectures/76 456 960 octets au
+maximum. Le handle conserve l'identité image/création et les régions doivent être
+engagées/exécutables/lisibles. Chaque page différente est explicitement exclue
+des preuves stables ; sa deuxième version est conservée (128 pages maximum par
+span) pour reconstruire et contrôler le second hash complet.
 Aucune section de données, suspension, écriture cible ou cohérence globale n'est
 revendiquée. Les captures restent locales et ignorées. Cinq groupes de tests
-passent, dont refus de section arbitraire, données tronquées/modifiées et sortie
-existante ; l'acquisition réelle de ces deux spans reste à faire.
+passent, dont refus de section arbitraire, données tronquées et sortie existante,
+avec qualification séparée des pages modifiées. La première acquisition réelle
+a refusé une section non identique ; le capteur natif ferme et le dédié quitte
+normalement, restauré/réservation libérée. Ce cas reste échoué. La nouvelle
+acquisition doit établir les pages stables et identifier les pages changeantes.
 
 ## Diagnostic actuel qualifié, capacité inchangée — 19 octobre 2026
 

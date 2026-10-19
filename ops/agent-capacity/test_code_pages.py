@@ -64,9 +64,13 @@ foreach($mode in @('normal','partial','changed')){
     $out=Join-Path $Temp $mode
     $refused=$false;try{Save-IW7CapacityNativeText $reader $out ([pscustomobject]@{PID=123}) ([pscustomobject]@{synthetic=$true})}catch{$refused=$true}
     $record=Get-Content "$out/manifest.local.json" -Raw|ConvertFrom-Json
-    if($mode -eq 'normal'){
+    if($mode -in @('normal','changed')){
         if($refused -or !$record.complete -or $record.sections.Count -ne 2 -or $record.read_calls -ne 4 -or $record.read_bytes -ne 76456960){throw 'Fixed text capture failed'}
-        if((Get-ChildItem $out -Filter *.bin|Measure-Object Length -Sum).Sum -ne 38228480){throw 'Wrong retained text size'}
+        $extra=if($mode -eq 'changed'){8192}else{0}
+        if((Get-ChildItem $out -Filter *.bin|Measure-Object Length -Sum).Sum -ne (38228480+$extra)){throw 'Wrong retained text size'}
+        if($mode -eq 'changed'){
+            if($record.all_pages_stable -or $record.sections[0].stable_double_read -or $record.sections[0].changed_pages.Count -ne 1 -or $record.sections[0].changed_pages[0].offset -ne 0){throw 'Changed page misclassified'}
+        }elseif(!$record.all_pages_stable){throw 'Stable text falsely changed'}
         $refused=$false;try{Save-IW7CapacityNativeText $reader $out $null $null}catch{$refused=$true}
         if(!$refused){throw 'Output overwrite accepted'}
     }else{
