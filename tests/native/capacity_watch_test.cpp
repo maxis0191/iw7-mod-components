@@ -14,13 +14,13 @@ struct agent_record {
     unsigned payload;
     bool operator==(const agent_record&) const = default;
 };
-static std::vector<agent_record> agent_wire_roundtrip(const std::vector<agent_record>& input,unsigned width) {
+static std::vector<agent_record> agent_wire_roundtrip(const std::vector<agent_record>& input,unsigned width,bool force_explicit=false) {
     std::vector<bool> bits;
     const auto write=[&](unsigned v,unsigned count){for(unsigned i=0;i<count;++i)bits.push_back((v>>i)&1);};
     int previous=-1;
     for(const auto& row:input){
         write(1,1);
-        const bool predicted=static_cast<int>(row.id)==previous+1;
+        const bool predicted=!(force_explicit && row.id>=64) && static_cast<int>(row.id)==previous+1;
         write(predicted,1);
         if(!predicted)write(row.id,width);
         previous=static_cast<int>(row.id);
@@ -63,11 +63,14 @@ int main() {
         assert(agent_wire_roundtrip(consecutive,6)==consecutive); // Predictor masks the defect.
         assert(agent_wire_roundtrip(sparse,6)!=sparse);
         assert(agent_wire_roundtrip(sparse,character_bits)==sparse);
+        assert(agent_wire_roundtrip(consecutive,character_bits,true)==consecutive);
+        assert(agent_wire_roundtrip(consecutive,6,true)!=consecutive);
         std::mt19937 random(0x48A6E17u);
         for(unsigned run=0;run<20000;++run){
             std::vector<agent_record> records;
             for(unsigned i=0;i<32;++i){const bool removed=(random()&3)==0;records.push_back({static_cast<unsigned>(random()%characters),removed,removed?0u:static_cast<unsigned>(random()&0xffffu)});}
             assert(agent_wire_roundtrip(records,character_bits)==records);
+            assert(agent_wire_roundtrip(records,character_bits,true)==records);
         }
     }
     using namespace paris_capacity_watch;

@@ -31,17 +31,28 @@ utils::hook::detour engine_error_hook;
 utils::hook::detour character_render_hook;
 utils::hook::detour agent_delta_hook;
 std::atomic_uint observed_sparse_agent_deltas{};
+bool force_sparse_agent_wire{};
 void agent_delta(void* info,void* message,int time,const void* from,const void* to,int force) {
     const auto* row=to?to:from;
     unsigned number{};int previous{},before{};
     if(row)std::memcpy(&number,row,sizeof(number));
     std::memcpy(&previous,static_cast<const unsigned char*>(message)+0x2C,sizeof(previous));
     std::memcpy(&before,static_cast<const unsigned char*>(message)+0x28,sizeof(before));
-    agent_delta_hook.invoke<void>(info,message,time,from,to,force);
+    // Private stress only: choose the codec's valid explicit representation
+    // for high indices, without changing agent-state bytes. A skipped record
+    // must restore the previous predictor so both peers keep the same state.
+    const bool explicit_probe=force_sparse_agent_wire && row && number>=64 && number<characters;
+    if(explicit_probe) {
+        const int reset=-1;
+        std::memcpy(static_cast<unsigned char*>(message)+0x2C,&reset,sizeof(reset));
+    }
+    agent_delta_hook.invoke<void>(info,message,time,from,to,explicit_probe?1:force);
     int after{},reference{};
     std::memcpy(&after,static_cast<const unsigned char*>(message)+0x28,sizeof(after));
     std::memcpy(&reference,static_cast<const unsigned char*>(message)+0x2C,sizeof(reference));
-    if(number>=64 && number<characters && static_cast<int>(number)!=previous+1 &&
+    if(explicit_probe && (reference!=static_cast<int>(number) || after<=before))
+        std::memcpy(static_cast<unsigned char*>(message)+0x2C,&previous,sizeof(previous));
+    if(number>=64 && number<characters && (explicit_probe || static_cast<int>(number)!=previous+1) &&
        reference==static_cast<int>(number) && after>before && observed_sparse_agent_deltas.fetch_add(1)<20)
         console::info("[Paris capacity agent wire] explicit id=%u previous=%d removed=%u width=%u bits=%d\n",
             number,previous,to?0u:1u,character_bits,after-before);
@@ -263,6 +274,9 @@ class component final : public component_interface {
         if (!utils::flags::has_flag("paris-capacity-64")) return;
         const bool dedicated = game::environment::is_dedi();
         const bool production=utils::flags::has_flag("paris-capacity-production");
+        const bool sparse_probe=utils::flags::has_flag("paris-capacity-sparse-wire-probe");
+        if(sparse_probe && (production || !dedicated))
+            throw std::runtime_error("Sparse wire probe requires the private dedicated identity");
         const bool client_probe=utils::flags::has_flag("paris-capacity-client-probe");
         const auto probe_port=client_probe ? private_port(false) : 0;
         if(client_probe && (!production || dedicated || !probe_port))
@@ -276,6 +290,7 @@ class component final : public component_interface {
         } else if (!utils::flags::has_flag("paris-isolated-lab") || !utils::flags::has_flag("paris-debugger") ||
             !utils::flags::has_flag(dedicated ? "paris-server-test" : "paris-server-client-test") || !private_port(dedicated))
             throw std::runtime_error("Capacity candidate requires an explicit private CP test identity and peer port");
+        force_sparse_agent_wire=sparse_probe;
         try {
             agent_pool=reserve(agent_bytes); sentient_pool=reserve(sentient_bytes);
             table8=reserve(table8_bytes); table20=reserve(table20_bytes);

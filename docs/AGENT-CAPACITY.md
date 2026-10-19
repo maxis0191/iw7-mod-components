@@ -16,11 +16,13 @@ trompeur d'une suite consécutive à6 bits, l'alias d'une suite clairsemée, pui
 identités et suppressions correctes à7 bits sur20000 suites. Le contrat devient
 64-v2 : les anciens prototypes64-v1 doivent être refusés avant admission.
 
-Le témoin serveur privé observe uniquement les enregistrements réellement écrits
-avec indice explicite64+, référence finale cohérente et nombre de bits croissant.
-Il n'est pas installé en production. Le stress peut modifier brièvement les deux
-champs de faction d'un seul zombie64+, puis les restaurer, pour provoquer cette
-mise à jour sans changer un joueur ou ses armes. La nouvelle exécution jumelée
+Le témoin serveur privé observe les enregistrements réellement écrits avec indice
+explicite64+, référence finale cohérente et nombre de bits croissant. Le flag privé
+paris-capacity-sparse-wire-probe choisit la représentation explicite valide du
+codec pour ces indices, sans changer les octets d'état ou les factions. Si le
+codec n'écrit aucun enregistrement, le prédicteur précédent est restauré. Ce flag
+est refusé en production et côté client ; les garde-fous privés restent requis.
+La nouvelle exécution jumelée
 reste nécessaire ; le code établit la troncature possible, sans transformer les
 anciens contextes de crash en preuve de causalité complète.
 

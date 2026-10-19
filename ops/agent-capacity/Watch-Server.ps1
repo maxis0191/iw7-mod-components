@@ -191,6 +191,7 @@ set sv_mapRotationCurrent ""
     if(!('IW7LabProcess' -as [type])){Add-Type -Path "$ops/native/LabProcess.cs"}
     $desktop='IW7ParisLab_'+[guid]::NewGuid().ToString('N')
     $capacityFlag=if($AgentCapacity -eq 64){' -paris-capacity-64'}else{''}
+    if($RequireSparseAgentWire){$capacityFlag+=' -paris-capacity-sparse-wire-probe'}
     $crashBefore=@(Get-ChildItem -LiteralPath (Join-Path $CandidateRoot 'minidumps') -Filter '*.zip' -File -ErrorAction SilentlyContinue|ForEach-Object FullName)
     $arguments="-dedicated -allow_root_io -noupdate -nosteam -cpMode -stdout -paris-server-test -paris-isolated-lab -paris-debugger -paris-capacity-watch -paris-voice-base-test$capacityFlag +set net_ip 127.0.0.1 +set sv_lanOnly 1 +set net_port $ServerPort +exec server_capacity_watch.cfg +map_rotate"
     $server=[IW7LabProcess]::StartOwned($image,$arguments,$CandidateRoot,(Join-Path $case 'server.stdout.log'),(Join-Path $case 'server.stderr.log'),$desktop)
