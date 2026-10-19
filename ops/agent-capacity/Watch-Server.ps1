@@ -355,7 +355,7 @@ finally{
     [pscustomobject]@{Schema='iw7.capacity-watch-server/1';Result=$result;Failure=$failure;CleanupError=$cleanupError;Restored=$restored;
         ExactOwnedProcessExited=$ownedExited;Stop=$stopResult;LeaseReleased=$leaseReleased;LeaseRetained=(Get-IW7CapacityLeaseRetained $lease $leaseReleased);OutputRoot=$case;
         WriterPages=$pageCapture;WriterPageError=$pageCaptureError;WriterReaderClosed=$pageReaderClosed;
-        NativeText=$textCapture;RequestedAgentCapacity=$AgentCapacity;Crash=$crash;ClientCrash=$clientCrash;
+        NativeText=$textCapture;RequestedAgentCapacity=$AgentCapacity;Canonical=$canonical;Crash=$crash;ClientCrash=$clientCrash;
         StockCopied=$false;BaseClientTouched=[bool]$ClientGameRoot;ClientRestored=$(if($client){$client.Transaction.Restored}else{$null});WriterProven=$false;PatchReady=$false}|ConvertTo-Json -Depth 9|Set-Content (Join-Path $case 'result.local.json')
 }
 if($failure){throw "$failure ; evidence=$case"};if($cleanupError){throw "Cleanup pending: $cleanupError ; evidence=$case"};if($pageCaptureError){throw "Writer pages failed: $pageCaptureError ; evidence=$case"}
