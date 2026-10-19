@@ -92,7 +92,8 @@ void readable_netfield(std::uintptr_t field) {
     const auto start=reinterpret_cast<std::uintptr_t>(info.BaseAddress);
     const auto protect=info.Protect&0xff;
     if(address<start || address-start+12>info.RegionSize ||
-        (protect!=PAGE_READONLY && protect!=PAGE_READWRITE && protect!=PAGE_WRITECOPY))
+        (protect!=PAGE_READONLY && protect!=PAGE_READWRITE && protect!=PAGE_WRITECOPY &&
+            protect!=PAGE_EXECUTE_READ && protect!=PAGE_EXECUTE_READWRITE && protect!=PAGE_EXECUTE_WRITECOPY))
         throw std::runtime_error("Capacity netfield requires static readable data");
     std::uint32_t descriptor[3]{};
     std::memcpy(descriptor,reinterpret_cast<void*>(address),sizeof(descriptor));
