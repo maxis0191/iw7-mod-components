@@ -1,5 +1,29 @@
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
+## Client standard et rotation privée — 19 octobre 2026
+
+Le client standard B7C1AD0E, construit sur a99c049, rejoint réellement le dédié
+et tient48 ordinaires +2 Brutes,110 relevés et24 morts/remplacements dans AA.
+Le catalogue serveur23a14634 confirme cette fois le hook GSC48 : un démarrage
+dédié frais doit accepter g_gametype=zombie sans exiger un ui_gametype retenu.
+L'ancien échec de connexion venait du mode CP jamais activé côté client normal ;
+le port attend désormais son entrée CP et la disponibilité des données en ligne.
+
+La rotation privée AA bloque ensuite sans fatal : le thread principal conserve
+safety_mutex en appelant Dvar_SetInt, pendant que le thread serveur attend ce
+mutex dans is_protected_player. Les piles non suspendues et le dump concordent.
+Le garde de la requête de carte utilise maintenant la lecture de protection
+existante, sans rafraîchir les dvars ni conserver le verrou à travers la commande.
+La récupération liée au PID/création/image restaure client et dédié, libère le
+bail et préserve Main ainsi que ses écritures bancaires concurrentes. Le résultat
+échoué reste conservé ; une nouvelle rotation est nécessaire.
+
+Package-CapacityClient.ps1 prépare une archive sans assets à partir du build
+standard vérifié, conserve son reçu original et lie les sources port/peer et le
+lanceur courant par SHA256. Le même exécutable est distribué sous iw7-paris48.exe,
+avec Launch-IW7-Paris48.bat ; les exécutables ordinaires restent disponibles.
+Cette étape d'emballage ne revendique aucune nouvelle compilation ni validation.
+
 ## Qualification privée mesurée — 19 octobre 2026
 
 Le cas R tient48 zombies ordinaires et2 Brutes,116 relevés de population et
