@@ -5,7 +5,7 @@ function Get-IW7CapacityLeaseRetained($Lease,[bool]$LeaseReleased) {
 }
 function New-IW7CapacityRconPacket([string]$Secret,[string]$Command) {
     if($Secret -cnotmatch '^[A-Za-z0-9_-]{32,64}$' -or
-       ($Command -cnotmatch '^paris_capacity_arm [A-Za-z0-9_]{16,64}$' -and $Command -cnotin @('paris_capacity_stop','map_restart','quit','set paris_capacity_pool_validate 1'))) { throw 'Fixed capacity command/secret contract required.' }
+       ($Command -cnotmatch '^paris_capacity_arm [A-Za-z0-9_]{16,64}$' -and $Command -cnotin @('paris_capacity_stop','map_restart','map cp_zmb','quit','set paris_capacity_pool_validate 1'))) { throw 'Fixed capacity command/secret contract required.' }
     # Pin77 network::send defaults to space separator; rcon callback splits secret.
     ,[byte[]]([byte[]](255,255,255,255)+[Text.Encoding]::ASCII.GetBytes('rcon '+$Secret+' '+$Command))
 }
@@ -32,7 +32,7 @@ function Assert-IW7CapacitySession($Session) {
 function Send-IW7CapacityRcon($Session,[string]$Command) {
     Assert-IW7CapacitySession $Session
     $packet=New-IW7CapacityRconPacket $Session.Secret $Command
-    if($Command -ceq 'quit' -or $Command -ceq 'map_restart' -or $Command.StartsWith('paris_capacity_arm ',[StringComparison]::Ordinal)) {
+    if($Command -in @('quit','map_restart','map cp_zmb') -or $Command.StartsWith('paris_capacity_arm ',[StringComparison]::Ordinal)) {
         if(!$Session.VacancyProof -or $Session.VacancyProof.Seconds -lt 30 -or
            ([datetime]::UtcNow- $Session.VacancyProof.ObservedUtc).TotalSeconds -gt 3){throw 'Fresh continuous 30-second vacancy proof required.'}
         $info=& "$PSScriptRoot/../Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $Session.ServerPort
@@ -156,12 +156,13 @@ function Invoke-IW7CapacityWatch($Session) {
     if(!$journal -or !$journal.Armed){throw 'No actual canary/armed acknowledgement; no restart authorized.'}
     # Recheck current UDP just before this ONE restart; 30s vacancy was established.
     Wait-IW7CapacityVacant $Session -Seconds 0 -TimeoutSeconds 3
-    Send-IW7CapacityRcon $Session 'map_restart'
+    $reload=if($Session.PSObject.Properties['Plan'] -and $Session.Plan.PopulateAgents){'map cp_zmb'}else{'map_restart'}
+    Send-IW7CapacityRcon $Session $reload
     $restartSent=[datetime]::UtcNow.ToString('o');$deadline=[datetime]::UtcNow.AddSeconds(12)
     do{$journal=Read-IW7CapacityOwnedJournal $Session;if($journal -and $journal.Complete){break};Start-Sleep -Milliseconds 50}while([datetime]::UtcNow -lt $deadline)
     Send-IW7CapacityRcon $Session 'paris_capacity_stop'
     if(!$journal -or !$journal.Complete){throw 'Disarm/removal acknowledgement absent; retain lease until exact owned exit.'}
-    [pscustomobject]@{Schema='iw7.capacity-watch-runtime/1';RestartSentUtc=$restartSent;CanaryPassed=$true;NativeCleanupConfirmed=$true;
+    [pscustomobject]@{Schema='iw7.capacity-watch-runtime/1';RestartSentUtc=$restartSent;ReloadCommand=$reload;CanaryPassed=$true;NativeCleanupConfirmed=$true;
         WriteEvents=@($journal.Events|Where-Object kind -EQ 1).Count;CanaryOnly=(@($journal.Events|Where-Object kind -EQ 1).Count -eq 0);
         Events=$journal.Events;Failures=$journal.Complete.failures;CoveredRoles=$journal.Complete.covered_roles;
         WriterProven=$false;GlobalInitCoverage=$false;PatchReady=$false;JournalRelative=$Session.JournalRelative}

@@ -46,6 +46,11 @@ function Read-IW7CapacityOwnedJournal($Session){$script:reads++;if($script:reads
 $session=[pscustomobject]@{CandidateRoot=$env:TEMP;JournalRelative=('absent-'+[guid]::NewGuid()+'.jsonl');Nonce=$nonce}
 $result=Invoke-IW7CapacityWatch $session
 if(($script:commands -join '|') -cne ('vacant:30|paris_capacity_arm '+$nonce+'|vacant:0|map_restart|paris_capacity_stop') -or !$result.CanaryOnly -or $result.WriterProven){throw 'Lifecycle order/partial evidence differs.'}
+$session|Add-Member NoteProperty Plan ([pscustomobject]@{PopulateAgents=$true})
+$script:commands=@();$script:reads=0
+$full=Invoke-IW7CapacityWatch $session
+if($full.ReloadCommand -cne 'map cp_zmb' -or ($script:commands -join '|') -cne ('vacant:30|paris_capacity_arm '+$nonce+'|vacant:0|map cp_zmb|paris_capacity_stop')){throw 'Pool qualification did not select a full guarded map load.'}
+Reject {New-IW7CapacityRconPacket $secret 'map cp_town'}
 $script:terminated=$false
 $handle=[pscustomobject]@{}
 $handle|Add-Member ScriptMethod WaitForExit {$false}
