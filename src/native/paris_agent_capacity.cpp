@@ -29,6 +29,23 @@ buffer agent_pool, sentient_pool, table8, table20;
 std::atomic_bool active{};
 utils::hook::detour engine_error_hook;
 utils::hook::detour character_render_hook;
+utils::hook::detour agent_delta_hook;
+std::atomic_uint observed_sparse_agent_deltas{};
+void agent_delta(void* info,void* message,int time,const void* from,const void* to,int force) {
+    const auto* row=to?to:from;
+    unsigned number{};int previous{},before{};
+    if(row)std::memcpy(&number,row,sizeof(number));
+    std::memcpy(&previous,static_cast<const unsigned char*>(message)+0x2C,sizeof(previous));
+    std::memcpy(&before,static_cast<const unsigned char*>(message)+0x28,sizeof(before));
+    agent_delta_hook.invoke<void>(info,message,time,from,to,force);
+    int after{},reference{};
+    std::memcpy(&after,static_cast<const unsigned char*>(message)+0x28,sizeof(after));
+    std::memcpy(&reference,static_cast<const unsigned char*>(message)+0x2C,sizeof(reference));
+    if(number>=64 && number<characters && static_cast<int>(number)!=previous+1 &&
+       reference==static_cast<int>(number) && after>before && observed_sparse_agent_deltas.fetch_add(1)<20)
+        console::info("[Paris capacity agent wire] explicit id=%u previous=%d removed=%u width=%u bits=%d\n",
+            number,previous,to?0u:1u,character_bits,after-before);
+}
 std::uint64_t observed_characters[characters]{};
 void character_render(int local_client,void* entity) {
     auto state=static_cast<const unsigned char*>(entity)+0x700;
@@ -170,6 +187,16 @@ void build_plan() {
     for (const auto field : {0x14084A551ull,0x140842A20ull,0x140842B0Bull,
         0x14077EDEEull,0x1407801DEull,0x140780549ull,0x140805D4Eull,
         0x140282ED8ull,0x1402854DEull,0x1405C2578ull,0x140B202DCull}) add(field,42,characters,1);
+    // Agent-state deltas carry a second, independent character identifier.
+    // Consecutive records use the predictor and hide the old six-bit limit;
+    // a sparse update/removal for agent64 instead aliases player0. Preserve
+    // the existing predictor, record presence and removal fields; widen only
+    // its explicit index at both writers and every live/demo reader.
+    add(0x140BBFAB5,6,character_bits);
+    add(0x140BBFB08,6,character_bits);
+    add(0x1409B7542,6,character_bits);
+    add(0x140C655D8,6,character_bits);
+    add(0x140C65C51,6,character_bits);
     // Exact CP entity-state field lists contain 21 distinct clientNum records.
     // Their old six-bit wire field maps64->0 even though the server owns64.
     // Change the same descriptors on both private peers, preserving every
@@ -293,6 +320,10 @@ class component final : public component_interface {
         if(!production) {
             readable_code(0x140B8D830,1);
             engine_error_hook.create(0x140B8D830,engine_error);
+            if(dedicated) {
+                readable_code(0x140BBFA30,1);
+                agent_delta_hook.create(0x140BBFA30,agent_delta);
+            }
             if(!dedicated) {
                 readable_code(0x1408260D0,1);
                 character_render_hook.create(0x1408260D0,character_render);

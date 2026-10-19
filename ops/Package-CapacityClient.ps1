@@ -10,7 +10,7 @@ $exe=Join-Path $PackageRoot 'iw7-mod.exe'
 if($m.Schema -cne 'iw7.standard-client-build/1' -or
    $m.NativeRevision -cne 'a99c04937513530648573fd4ca2a05321a90b4a5' -or
    $m.Capacity64Capability -isnot [bool] -or !$m.Capacity64Capability -or
-   $m.CapacityWireContract -cne '64-v1' -or !$m.CapacityBuild.Compiled -or !$m.CapacityBuild.PortOnly -or
+   $m.CapacityWireContract -cne '64-v2' -or !$m.CapacityBuild.Compiled -or !$m.CapacityBuild.PortOnly -or
    $m.SHA256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or (Get-FileHash -LiteralPath $exe).Hash -cne $m.SHA256){throw 'Matched standard capacity executable provenance required.'}
 foreach($name in @('paris_agent_capacity.cpp','paris_agent_capacity.hpp')){
     $rows=@($m.CapacityBuild.SourceHashes|Where-Object File -CEQ $name)
@@ -31,7 +31,7 @@ This client supports the Paris 48-zombie server. All players joining that server
 Keep your existing iw7-mod.exe and usual launcher for ordinary servers.
 No game assets, saved profile, keys or bank data are included or replaced.
 '@|Set-Content -LiteralPath "$folder/README.txt" -Encoding utf8
-$manifest=[ordered]@{Schema='iw7.capacity-client-distribution/1';WireContract='64-v1';Ordinary=48;SpecialHeadroom=16;Executable='iw7-paris48.exe';SHA256=$m.SHA256;OriginalBuildReceiptSHA256=(Get-FileHash $receipt).Hash;LauncherSHA256=(Get-FileHash $launcher).Hash;RecipeSHA256=(Get-FileHash $PSCommandPath).Hash;BuiltUtc=$m.BuiltUtc;PackagedUtc=[datetime]::UtcNow.ToString('o');GameplayAcceptance='See linked server validation; owner and WAN acceptance remain separate.'}
+$manifest=[ordered]@{Schema='iw7.capacity-client-distribution/1';WireContract='64-v2';Ordinary=48;SpecialHeadroom=16;Executable='iw7-paris48.exe';SHA256=$m.SHA256;OriginalBuildReceiptSHA256=(Get-FileHash $receipt).Hash;LauncherSHA256=(Get-FileHash $launcher).Hash;RecipeSHA256=(Get-FileHash $PSCommandPath).Hash;BuiltUtc=$m.BuiltUtc;PackagedUtc=[datetime]::UtcNow.ToString('o');GameplayAcceptance='See linked server validation; owner and WAN acceptance remain separate.'}
 $manifest|ConvertTo-Json -Depth 5|Set-Content -LiteralPath "$folder/distribution-manifest.json"
 if((Get-FileHash "$folder/iw7-paris48.exe").Hash -cne $m.SHA256){throw 'Distribution executable hash differs.'}
 $archive=Join-Path $Output 'IW7-Paris48.zip'

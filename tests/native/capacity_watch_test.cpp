@@ -4,6 +4,41 @@
 #include <thread>
 #include <string>
 #include <vector>
+#include <random>
+
+// Independent regression model of the engine's agent-state record framing.
+// The actual runtime keeps the engine codec and changes its five index widths.
+struct agent_record {
+    unsigned id;
+    bool removed;
+    unsigned payload;
+    bool operator==(const agent_record&) const = default;
+};
+static std::vector<agent_record> agent_wire_roundtrip(const std::vector<agent_record>& input,unsigned width) {
+    std::vector<bool> bits;
+    const auto write=[&](unsigned v,unsigned count){for(unsigned i=0;i<count;++i)bits.push_back((v>>i)&1);};
+    int previous=-1;
+    for(const auto& row:input){
+        write(1,1);
+        const bool predicted=static_cast<int>(row.id)==previous+1;
+        write(predicted,1);
+        if(!predicted)write(row.id,width);
+        previous=static_cast<int>(row.id);
+        write(row.removed,1);
+        if(!row.removed)write(row.payload,16);
+    }
+    write(0,1);
+    std::size_t cursor{};
+    const auto read=[&](unsigned count){unsigned value{};for(unsigned i=0;i<count;++i){assert(cursor<bits.size());value|=static_cast<unsigned>(bits[cursor++])<<i;}return value;};
+    std::vector<agent_record> output;previous=-1;
+    while(read(1)){
+        const unsigned id=read(1)?static_cast<unsigned>(previous+1):read(width);
+        previous=static_cast<int>(id);
+        const bool removed=read(1)!=0;
+        output.push_back({id,removed,removed?0:read(16)});
+    }
+    assert(cursor==bits.size());return output;
+}
 int main() {
     {
         using namespace paris_agent_capacity;
@@ -13,8 +48,9 @@ int main() {
         for (unsigned slot=0;slot<characters;++slot) assert((slot & ((1u<<character_bits)-1))==slot);
         assert((64u & ((1u<<6)-1))==0); // Reproduce the observed legacy alias.
         assert(compatible_wire(false,"") && compatible_wire(false,"24"));
-        assert(!compatible_wire(false,"64-v1") && !compatible_wire(false,"unknown"));
-        assert(compatible_wire(true,"64-v1"));
+        assert(!compatible_wire(false,"64-v2") && !compatible_wire(false,"unknown"));
+        assert(compatible_wire(true,"64-v2"));
+        assert(!compatible_wire(true,"64-v1")); // Refuse the earlier incomplete codec.
         assert(!compatible_wire(true,"") && !compatible_wire(true,"24") && !compatible_wire(true,"unknown"));
         std::int32_t delta{};
         assert(relative32(0x180000000,0x140000000,delta) && delta == 0x40000000);
@@ -22,6 +58,17 @@ int main() {
         assert(relative32(0x180000000,0x100000000,delta) == false);
         assert(relative32(0x100000000,0x180000000,delta) && delta == std::numeric_limits<std::int32_t>::min());
         assert(!relative32(0x100000000,0x180000001,delta));
+        const std::vector<agent_record> consecutive{{62,false,9},{63,false,10},{64,false,11},{65,true,0}};
+        const std::vector<agent_record> sparse{{62,false,9},{64,false,11},{81,true,0}};
+        assert(agent_wire_roundtrip(consecutive,6)==consecutive); // Predictor masks the defect.
+        assert(agent_wire_roundtrip(sparse,6)!=sparse);
+        assert(agent_wire_roundtrip(sparse,character_bits)==sparse);
+        std::mt19937 random(0x48A6E17u);
+        for(unsigned run=0;run<20000;++run){
+            std::vector<agent_record> records;
+            for(unsigned i=0;i<32;++i){const bool removed=(random()&3)==0;records.push_back({static_cast<unsigned>(random()%characters),removed,removed?0u:static_cast<unsigned>(random()&0xffffu)});}
+            assert(agent_wire_roundtrip(records,character_bits)==records);
+        }
     }
     using namespace paris_capacity_watch;
     assert(valid_nonce("0123456789abcdef"));

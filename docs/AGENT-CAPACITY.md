@@ -1,5 +1,37 @@
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
+## Delta indépendant des agents — contrat64-v2 en qualification
+
+Les30 listes entityState actives sont bien à7 bits (21 descripteurs distincts),
+mais ce n'est pas le seul transport de l'identité. MSG_WriteDeltaAgentState
+conserve deux largeurs6 : l'enregistrement complet et la suppression. Ses trois
+lecteurs live/demo utilisent aussi6. Le prédicteur transmet les identifiants
+consécutifs sans champ explicite et masque donc ce défaut pendant le remplissage.
+Un changement isolé de l'agent64 utilise le champ court et peut devenir l'agent0.
+
+Le candidat corrige uniquement ces cinq largeurs, sans modifier les décalages6
+qui représentent le pas192 des structures. La présence et la suppression des
+enregistrements restent inchangées. Le modèle de régression reproduit le succès
+trompeur d'une suite consécutive à6 bits, l'alias d'une suite clairsemée, puis les
+identités et suppressions correctes à7 bits sur20000 suites. Le contrat devient
+64-v2 : les anciens prototypes64-v1 doivent être refusés avant admission.
+
+Le témoin serveur privé observe uniquement les enregistrements réellement écrits
+avec indice explicite64+, référence finale cohérente et nombre de bits croissant.
+Il n'est pas installé en production. Le stress peut modifier brièvement les deux
+champs de faction d'un seul zombie64+, puis les restaurer, pour provoquer cette
+mise à jour sans changer un joueur ou ses armes. La nouvelle exécution jumelée
+reste nécessaire ; le code établit la troncature possible, sans transformer les
+anciens contextes de crash en preuve de causalité complète.
+
+AF passe Spaceland et Beast, puis le client standard fatale sur Rave à1412B4CF0.
+AG Rave passe ensuite120 secondes ; AH Rave et AI Spaceland passent chacun300
+secondes avec la horde maintenue. Ces succès intermittents ne qualifient pas le
+contrat incomplet. Les outils Microsoft nécessaires au dump privé sont conservés
+dans le périmètre du dédié et liés octet pour octet au package WinDbg retenu ;
+l'admission du scheduler reste inchangée. Main reste24 et les archives64-v1 sont
+marquées non qualifiées.
+
 ## Client standard et rotation privée — 19 octobre 2026
 
 La tentative suivante AB échoue avant rotation : le serveur termine son plateau

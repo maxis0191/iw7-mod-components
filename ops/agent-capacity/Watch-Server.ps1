@@ -7,6 +7,7 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [string]$CatalogRoot,[switch]$RotateBeast,
       [string]$StandardClientPackageRoot,
       [switch]$CaptureClientCrashMemory,
+      [switch]$RequireSparseAgentWire,
       [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
       [ValidateSet(24,48)][int]$HordeOrdinary=48,[ValidateRange(0,2)][int]$HordeSpecials=2,
       [string]$RetailCpPatchPath,[string]$RetailCpPatchSHA256,
@@ -28,6 +29,7 @@ if($HordeFixturePath -or $HordeFixtureSHA256){
        (Get-FileHash -LiteralPath $HordeFixturePath).Hash -ine $HordeFixtureSHA256){throw 'Pinned bounded horde source differs.'}
 }
 if($PopulateAgents -and $AgentCapacity -ne 64){throw 'Pool construction probe requires explicit 64-agent candidate.'}
+if($RequireSparseAgentWire -and (!$HordeFixturePath -or !$ClientGameRoot -or $HordeOrdinary -ne 48)){throw 'Sparse wire witness requires the pinned active48 encounter and owned client.'}
 if($SkipReload -and (!$ClientGameRoot -or $CaptureWriterPages -or $CaptureNativeText)){throw 'Startup-only client mode cannot capture executable pages.'}
 if($ClientGameRoot -and ($CaptureWriterPages -or $CaptureNativeText -or
    ($AgentCapacity -eq 64 -and !$PopulateAgents) -or ($AgentCapacity -eq 24 -and (!$SkipReload -or $PopulateAgents)))){throw 'Client probe requires private 64-agent construction or explicit unchanged 24-agent startup baseline.'}
@@ -60,7 +62,7 @@ if($StandardClientPackageRoot){
     if(!$ClientGameRoot -or !$SkipReload -or $AgentCapacity -ne 64){throw 'Standard client needs protected expanded startup.'}
     $standardManifest=Get-Content (Join-Path $StandardClientPackageRoot 'build-manifest.json') -Raw|ConvertFrom-Json
     if($standardManifest.Schema -cne 'iw7.standard-client-build/1' -or $standardManifest.Capacity64Capability -ne $true -or
-       $standardManifest.CapacityWireContract -cne '64-v1' -or
+       $standardManifest.CapacityWireContract -cne '64-v2' -or
        (Get-FileHash (Join-Path $StandardClientPackageRoot 'iw7-mod.exe')).Hash -cne $standardManifest.SHA256){throw 'Pinned expanded standard client required.'}
     foreach($name in @('paris_agent_capacity.cpp','paris_agent_capacity.hpp')){
         $row=@($standardManifest.NativeSourceHashes|Where-Object File -CEQ ('src/client/component/'+$name))
@@ -254,6 +256,10 @@ set sv_mapRotationCurrent ""
             if($hordeLog.Contains('[Paris capacity horde] FAIL') -or !$hordeLog.Contains($expected)){throw 'Requested active horde plateau not proven.'}
             $result|Add-Member NoteProperty HordePopulationConfirmed $true
             $result|Add-Member NoteProperty Horde48PlusSpecialsConfirmed ($HordeOrdinary -eq 48 -and $HordeSpecials -eq 2)
+            if($RequireSparseAgentWire){
+                if(![regex]::IsMatch($hordeLog,'\[Paris capacity agent wire\] explicit id=(?:6[4-9]|7[0-9]|8[01]) previous=-?\d+ removed=[01] width=7 bits=\d+')){throw 'Actual sparse high-agent wire update not witnessed.'}
+                $result|Add-Member NoteProperty SparseAgentWireConfirmed $true
+            }
         }
         if($CatalogRoot){
             $pool=[IW7DoomDiagnostics]::Canonical($identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc())

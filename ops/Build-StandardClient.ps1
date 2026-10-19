@@ -106,7 +106,7 @@ Remove-IW7OwnerCheatsOverlay $root
     $manifest.OwnerCheatsOverlay=$ownerCheatsOverlay
     $manifest.CutsceneOverlay=$cutsceneOverlay
     $manifest.Capacity64Capability=[bool]$Capacity64
-    $manifest.CapacityWireContract=if($Capacity64){'64-v1'}else{$null}
+    $manifest.CapacityWireContract=if($Capacity64){'64-v2'}else{$null}
     $manifest.CapacityBuild=$capacityBuild
     $manifest.CapacityPeerOverlay=$capacityPeerOverlay
     $manifest.CapacityPeerHelperSHA256=if($capacityPeerOverlay){(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1").Hash}else{$null}
