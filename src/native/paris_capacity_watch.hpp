@@ -11,6 +11,17 @@ constexpr std::uint64_t canary_dr7 = 0x90001, data_dr7 = 0x990005;
 constexpr unsigned max_events = 64;
 constexpr std::uint64_t duration_ms = 10000;
 enum class phase : unsigned { empty, canary, data, failed, disarming, closed };
+inline unsigned checkpoint_operation(phase current, bool stopping) noexcept {
+    if (current == phase::closed) return 0;
+    return stopping ? 2u : (current == phase::empty ? 1u : 0u);
+}
+// A terminated original target cannot acknowledge a published ticket. Never
+// clear a claimed ticket or one whose helper still owns its notification.
+inline void acknowledge_exited_target_ticket(std::atomic<unsigned>& ticket, bool helper_inflight) noexcept {
+    if (helper_inflight) return;
+    auto expected=ticket.load(std::memory_order_acquire);
+    if (expected==1 || expected==3) ticket.compare_exchange_strong(expected,0,std::memory_order_acq_rel);
+}
 enum class kind : unsigned { canary_pass, write, failure, disarmed, baseline };
 struct observation {
     std::uint32_t tid{}, roles{}, slot_bits{};

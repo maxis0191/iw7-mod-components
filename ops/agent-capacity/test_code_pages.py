@@ -89,6 +89,12 @@ $two=[IW7CapacityPages]::GetPlanPages('reset-entry-targets')
 if($two.Count -ne 2 -or $two[0] -ne 0x14B8E6000 -or $two[1] -ne 0x14B4B2000){throw 'Wrong next fixed plan'}
 $two[0]=0
 if([IW7CapacityPages]::GetPlanPages('reset-entry-targets')[0] -ne 0x14B8E6000){throw 'Next plan mutable'}
+$writer=[IW7CapacityPages]::GetPlanPages('writer-sites-20261019')
+if($writer.Count -ne 3 -or $writer[0] -ne 0x1412BF000 -or $writer[1] -ne 0x14C1ED000 -or $writer[2] -ne 0x14BFE5000){throw 'Wrong observed writer plan'}
+$writer[0]=0
+if([IW7CapacityPages]::GetPlanPages('writer-sites-20261019')[0] -ne 0x1412BF000){throw 'Writer plan mutable'}
+$refused=$false;try{[IW7CapacityPages]::ValidatePlanAddress('writer-sites-20261019',0x140488000)}catch{$refused=$true}
+if(!$refused){throw 'Writer plan accepted an unrelated page'}
 foreach($bad in @('arbitrary','RESET-ENTRY-TARGETS')) {
     $refused=$false;try{$null=[IW7CapacityPages]::GetPlanPages($bad)}catch{$refused=$true}
     if(!$refused){throw 'Unknown plan accepted'}
@@ -102,7 +108,7 @@ try {
     # No game/process memory was read; query only this test's own address space.
 } finally {$native.Dispose();$p.Dispose()}
 if(!$native.Closed){throw 'Read-only self handle not closed'}
-foreach($mode in @('normal','changed','partial','protection','two')) {
+foreach($mode in @('normal','changed','partial','protection','two','writer')) {
     $reader=[pscustomobject]@{ReadCalls=0;ReadBytes=0;Mode=$mode;Queries=0}
     $reader|Add-Member ScriptMethod AssertAlive {}
     $reader|Add-Member ScriptMethod QueryPage {
@@ -123,10 +129,13 @@ foreach($mode in @('normal','changed','partial','protection','two')) {
         ,$bytes
     }
     $out=Join-Path $Temp $mode
-    $selected=if($mode -eq 'two'){'reset-entry-targets'}else{'reset-callers'}
+    $selected=if($mode -eq 'two'){'reset-entry-targets'}elseif($mode -eq 'writer'){'writer-sites-20261019'}else{'reset-callers'}
     $refused=$false;try{Save-IW7CapacityCodePages $reader $out ([pscustomobject]@{PID=123}) $selected ([pscustomobject]@{synthetic=$true})}catch{$refused=$true}
     $record=Get-Content "$out/manifest.local.json" -Raw|ConvertFrom-Json
-    if($mode -eq 'two') {
+    if($mode -eq 'writer') {
+        if($refused -or !$record.complete -or $record.pages.Count -ne 3 -or $record.read_calls -ne 6 -or $record.read_bytes -ne 24576 -or $record.page_plan -cne 'writer-sites-20261019'){throw 'Writer plan bounds failed'}
+        if(@($record.pages|Where-Object owner -CNE 'observed-writer-site').Count){throw 'Writer site mislabelled as known function owner'}
+    } elseif($mode -eq 'two') {
         if($refused -or !$record.complete -or $record.pages.Count -ne 2 -or $record.read_calls -ne 4 -or $record.read_bytes -ne 16384 -or $record.page_plan -cne 'reset-entry-targets'){throw 'Next plan bounds failed'}
         $total=(Get-ChildItem $out -Filter *.bin|Measure-Object Length -Sum).Sum
         if($total -ne 8192 -or !$record.parent_proof.synthetic -or $record.pages[0].owner -ne '140488520' -or $record.pages[1].owner -ne '140B20760'){throw 'Next plan payload/provenance failed'}

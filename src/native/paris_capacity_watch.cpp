@@ -284,7 +284,7 @@ void checkpoint_unlocked(unsigned role) noexcept {
         t=local_record;
         if(!requested.load() || handler_removed.load() || !t || t->tid.load()!=GetCurrentThreadId() || !(t->roles.load()&role))return;
         const auto state=t->state.load();
-        operation=stopping.load() ? 2u : (state==phase::empty ? 1u : 0u);
+        operation=checkpoint_operation(state,stopping.load());
         if(!operation || !t->checkpoint_done || !helper_signal || !helper_handle)return;
         ResetEvent(t->checkpoint_done);t->operation.store(operation);t->checkpoint_expires.store(GetTickCount64()+200);
         t->ticket.store(1,std::memory_order_release);SetEvent(helper_signal);
@@ -331,7 +331,10 @@ void flush() {
     bool all_closed=true;unsigned covered=0;
     for(auto& t:records) {
         if(!t.tid.load())continue;
-        if(t.state.load()!=phase::closed && t.handle.load() && WaitForSingleObject(t.handle.load(),0)==WAIT_OBJECT_0)t.state.store(phase::closed);
+        if(t.handle.load() && WaitForSingleObject(t.handle.load(),0)==WAIT_OBJECT_0) {
+            t.state.store(phase::closed);
+            acknowledge_exited_target_ticket(t.ticket,helper_inflight.load(std::memory_order_acquire));
+        }
         if(t.state.load()!=phase::closed || t.ticket.load()!=0)all_closed=false;
         if(t.canary_pass.load())covered|=t.roles.load();
     }

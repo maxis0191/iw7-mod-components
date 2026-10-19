@@ -23,6 +23,24 @@ transaction. Il exige un build dont le heartbeat est supprimé, un mot de passe,
 loopback et `sv_lanOnly=1` dans les arguments et la configuration. Les profils et
 la banque candidats restent sauvegardés ; aucune donnée de Main n'est employée.
 
+Le premier essai de reprise a réellement compilé le diagnostic E903C4C5 et
+exécuté le dédié seul, privé, sur 27946. Les deux rôles scheduler ont démontré
+leurs canaries matérielles ; un seul `map_restart` vide a produit 18 événements
+d'écriture. Les RIP après écriture sont `1412BFCD9` (reset), `14C1ED66C` (compte
+redevenu 24) et `14BFE5A30` (pointeur redevenu non nul). Ce sont des sites observés,
+pas encore des propriétaires/instructions/allocateurs attribués.
+
+L'essai reste **échoué** : l'accusé final de fermeture du capteur manque. Le
+dédié exact a ensuite quitté normalement (code 0), la transaction est restaurée
+et la réservation libérée. Le journal original est conservé. La correction
+évite de recréer des tickets pour un rôle déjà fermé et permet l'acquittement
+d'un ticket non réclamé ou publié seulement après fin de son thread original
+et fin du helper ; un ticket réclamé ou une notification active restent protégés.
+Le prochain essai doit confirmer cette fermeture. Une option du runner conserve
+ensuite uniquement les trois pages explicitement sélectionnées depuis ce journal,
+avec six lectures (24 KiB), double comparaison et fermeture du handle de lecture.
+Une autre adresse observée exige une nouvelle sélection ; aucun scan n'est ajouté.
+
 The complete isolated native build from1bcb19c now compiles and links, executable
 A29488DF and matching PDB verified with all32 source hashes. This includes the
 reviewed actual-context checkpoint TU and scheduler overlay. The next vacant

@@ -15,7 +15,7 @@ function Assert-IW7CapacityPageAdmission($Plan,$Identity,$Lease,$Process) {
 }
 
 function Save-IW7CapacityCodePages($Reader,[string]$Output,$Identity,
-    [ValidateSet("reset-callers","reset-entry-targets")][string]$PagePlan="reset-callers",$ParentProof=$null) {
+    [ValidateSet("reset-callers","reset-entry-targets","writer-sites-20261019")][string]$PagePlan="reset-callers",$ParentProof=$null) {
     if (Test-Path -LiteralPath $Output) { throw 'Fresh page output required.' }
     $cursor=Split-Path $Output -Parent
     while ($cursor) {
@@ -34,7 +34,8 @@ function Save-IW7CapacityCodePages($Reader,[string]$Output,$Identity,
             $first=$Reader.ReadPage($address);$second=$Reader.ReadPage($address)
             $record.read_calls=$Reader.ReadCalls;$record.read_bytes=$Reader.ReadBytes
             if ($first.Length -ne 4096 -or $second.Length -ne 4096) { throw 'Partial page read.' }
-            $owner=if (($PagePlan -eq 'reset-callers' -and $index -lt 4) -or ($PagePlan -eq 'reset-entry-targets' -and $index -eq 0)) { '140488520' } else { '140B20760' }
+            $owner=if ($PagePlan -eq 'writer-sites-20261019') { 'observed-writer-site' }
+                elseif (($PagePlan -eq 'reset-callers' -and $index -lt 4) -or ($PagePlan -eq 'reset-entry-targets' -and $index -eq 0)) { '140488520' } else { '140B20760' }
             $name=$owner+'-'+$address.ToString('X16')+'.bin'
             $stream=[IO.File]::Open((Join-Path $Output $name),'CreateNew','Write','None')
             try { $stream.Write($first,0,4096) } finally { $stream.Dispose() }
