@@ -1,4 +1,162 @@
-param([switch]$Contender,[string]$TestRoot,[string]$ResultPath,[switch]$RetainedReleaseSourceOnly)
+param([switch]$Contender,[string]$TestRoot,[string]$ResultPath,[switch]$RetainedReleaseSourceOnly,[switch]$InitialAdmissionSourceOnly)
+if ($InitialAdmissionSourceOnly) {
+    $ErrorActionPreference='Stop'
+    # Extract actual production definitions; return before imports/real contenders.
+    $tokens=$null;$parseErrors=$null
+    $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../../ops/Resource-Scheduler.Core.ps1'),[ref]$tokens,[ref]$parseErrors)
+    if($parseErrors.Count){throw 'Production Source parse failed.'}
+    $definitions=@(foreach($name in @('Get-IW7CanonicalScope','Read-IW7ResourceState','Enter-IW7ResourceLease')){
+        $matches=@($ast.FindAll({param($n)$n-is[Management.Automation.Language.FunctionDefinitionAst]-and$n.Name-ceq$name},$true))
+        if($matches.Count-ne1){throw ('One actual Source function required: '+$name)}
+        $matches[0].Extent.Text
+    })
+    $script:initialChecks=0;$script:initialCases=0
+    function Assert-InitialAdmission($Value,[string]$Message){$script:initialChecks++;if(!$Value){throw $Message}}
+    $scope='c:\source-only\initial-admission'
+    $baseImage='C:\source-only\base-client.exe'
+    function New-InitialAdmissionLease {
+        [pscustomobject]@{Token='0123456789abcdef0123456789abcdef';Scope=$scope;Kind='Runtime';Owner='retained owner';
+            OwnerIdentity=[pscustomobject]@{PID=987654;Image='C:\source-only\original-host.exe';CreatedUtc='2026-10-19T00:00:00.0000000Z'};
+            CreatedUtc='2026-10-19T00:00:00.0000000Z';Phase='Running';PhysicalBytes=17GB;CommitBytes=23GB;
+            BaseClientImage=$baseImage;Processes=@();MemoryObservation=[pscustomobject]@{Historical=$true}}
+    }
+    function Invoke-InitialAdmissionCase {
+        param([string]$Json='{"Version":1,"Leases":[]}',[string]$Mode='True',[switch]$Missing,[string]$RaceJson,
+            [long]$PhysicalBytes=14GB,[long]$CommitBytes=15GB,[object[]]$Live=@())
+        $script:initialCases++
+        $c=[pscustomobject]@{Json=$Json;Exists=!$Missing;RaceJson=$RaceJson;RaceApplied=$false;BeforeJson=$null;
+            BeforeParsedJson=$null;ReadState=$null;InitialMemory=$null;LockHeld=$false;LockCount=0;ReadCount=0;
+            PathCount=0;ContentCount=0;ProcessCount=0;ReclaimCount=0;SnapshotCount=0;BudgetCount=0;SaveCount=0;LiveCount=0;
+            Result=$null;Caught=$null;SavedState=$null;Budget=$null;BudgetArgs=$null;Live=$Live;
+            Snapshot=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=1MB;CommitLimit=48GB;Committed=47GB};
+            Processes=@([pscustomobject]@{PID=$PID;Image='C:\source-only\pwsh.exe';CreatedUtc='2026-10-19T01:00:00.0000000Z';
+                Name='pwsh.exe';Lab=$false;WorkingSet=0L;PrivateBytes=0L})}
+        & {
+            param($c,$definitions,$Mode,$PhysicalBytes,$CommitBytes,$scope,$baseImage)
+            foreach($definition in $definitions){. ([scriptblock]::Create($definition))}
+            # Keep the real reader body; this proxy only retains its actual result.
+            $actualReader=(Get-Command Read-IW7ResourceState -CommandType Function).ScriptBlock
+            function Get-IW7ResourceRoot { 'C:\source-only\fake-registry' }
+            function Test-Path {
+                param($LiteralPath)
+                Assert-InitialAdmission ($c.LockHeld-and$LiteralPath-ceq'C:\source-only\fake-registry\leases.json') 'Reader left the fake registry or lock.'
+                $c.PathCount++;$c.Exists
+            }
+            function Get-Content {
+                param($LiteralPath,[switch]$Raw,$ErrorAction)
+                Assert-InitialAdmission ($c.LockHeld-and$Raw-and$LiteralPath-ceq'C:\source-only\fake-registry\leases.json') 'Reader used another path/mode.'
+                $c.ContentCount++;$c.Json
+            }
+            function Read-IW7ResourceState {
+                $c.ReadCount++;$read=& $actualReader
+                $c.ReadState=$read;$c.BeforeParsedJson=$read|ConvertTo-Json -Depth 20 -Compress
+                if(@($read.Leases).Count){$c.InitialMemory=$read.Leases[0].MemoryObservation}
+                $read
+            }
+            function Invoke-IW7ResourceLock {
+                param([scriptblock]$Body)
+                if($c.LockHeld){throw 'Nested Source lock is forbidden.'}
+                $c.LockCount++;$c.LockHeld=$true
+                try {
+                    # The earlier photo is empty; a competitor wins before locked read.
+                    if($c.RaceJson){$c.Json=$c.RaceJson;$c.Exists=$true;$c.RaceApplied=$true}
+                    $c.BeforeJson=$c.Json
+                    & $Body
+                } finally {$c.LockHeld=$false}
+            }
+            function Get-IW7ResourceProcesses {$c.ProcessCount++;$c.Processes}
+            function Remove-IW7FinishedRuntimeLeases {param($State,$Processes)$c.ReclaimCount++}
+            function Get-IW7LeaseLiveProcesses {param($Lease,$Processes)$c.LiveCount++;$c.Live}
+            function Test-IW7ProcessInScope {param($Process,$Scope)throw 'Unexpected scope callback.'}
+            function Test-IW7ReservedProcess {param($Process,$Lease)throw 'Unexpected reserved-process callback.'}
+            function Get-IW7ResourceSnapshot {$c.SnapshotCount++;$c.Snapshot}
+            function Test-IW7ResourceBudget {
+                param($Snapshot,[long]$PhysicalBytes,[long]$CommitBytes)
+                $c.BudgetCount++;$c.BudgetArgs=@($PhysicalBytes,$CommitBytes)
+                $c.Budget=[pscustomobject]@{Allowed=$true;Policy='TelemetryOnly';Physical=$PhysicalBytes;Commit=$CommitBytes}
+                $c.Budget
+            }
+            function Save-IW7ResourceState {
+                param($State)
+                $c.SaveCount++;$c.SavedState=$State;$c.Json=$State|ConvertTo-Json -Depth 20 -Compress
+            }
+            try {
+                $arguments=@{Scope=$scope;Kind='Runtime';PhysicalBytes=$PhysicalBytes;CommitBytes=$CommitBytes;Owner='initial-source';BaseClientImage=$baseImage}
+                if($Mode-ceq'True'){$c.Result=Enter-IW7ResourceLease @arguments -RequireNewLease}
+                elseif($Mode-ceq'False'){$c.Result=Enter-IW7ResourceLease @arguments -RequireNewLease:$false}
+                elseif($Mode-ceq'Omitted'){$c.Result=Enter-IW7ResourceLease @arguments}
+                else{throw 'Unknown Source mode.'}
+            } catch {$c.Caught=$_}
+        } $c $definitions $Mode $PhysicalBytes $CommitBytes $scope $baseImage
+        $c
+    }
+    function Assert-InitialRefusal($Case,[string]$Name,[switch]$Malformed) {
+        Assert-InitialAdmission ($null-ne$Case.Caught-and$null-eq$Case.Result) ('No refusal: '+$Name)
+        if(!$Malformed){Assert-InitialAdmission ($Case.Caught.Exception.Message-like'A new resource lease was required;*') ('Wrong refusal: '+$Name)}
+        Assert-InitialAdmission ($Case.LockCount-eq1-and$Case.ReadCount-eq1-and!$Case.LockHeld) ('Real reader/lock not reached once: '+$Name)
+        foreach($counter in @('ProcessCount','ReclaimCount','SnapshotCount','BudgetCount','SaveCount','LiveCount')){
+            Assert-InitialAdmission ($Case.$counter-eq0) ('Forbidden callback '+$counter+': '+$Name)
+        }
+        Assert-InitialAdmission ($Case.Json-ceq$Case.BeforeJson) ('Registry text changed: '+$Name)
+        if($null-ne$Case.ReadState){
+            Assert-InitialAdmission (($Case.ReadState|ConvertTo-Json -Depth 20 -Compress)-ceq$Case.BeforeParsedJson) ('Actual parsed state mutated: '+$Name)
+        }
+    }
+    foreach($variant in @('SameScopeSameImage','DifferentScope','SameOwner','Orphan','UnknownOwner','OtherKind','Pending','Multiple','RaceAfterEmptyPhoto')){
+        $lease=New-InitialAdmissionLease
+        switch($variant){
+            'DifferentScope' {$lease.Scope='C:\source-only\foreign'}
+            'SameOwner' {$lease.OwnerIdentity=[pscustomobject]@{PID=$PID;Image='C:\source-only\pwsh.exe';CreatedUtc='2026-10-19T01:00:00.0000000Z'}}
+            'Orphan' {$lease.OwnerIdentity.PID=999999}
+            'UnknownOwner' {$lease.OwnerIdentity.Image=$null;$lease.OwnerIdentity.CreatedUtc=$null}
+            'OtherKind' {$lease.Kind='Build';$lease.BaseClientImage=$null}
+            'Pending' {$lease.Phase='Pending'}
+        }
+        $leases=@($lease)
+        if($variant-ceq'Multiple'){$leases+=New-InitialAdmissionLease}
+        $json=[pscustomobject]@{Version=1;Leases=$leases}|ConvertTo-Json -Depth 20 -Compress
+        if($variant-ceq'RaceAfterEmptyPhoto'){
+            $case=Invoke-InitialAdmissionCase -RaceJson $json
+            Assert-InitialAdmission ($case.RaceApplied-and$case.BeforeJson-ceq$json) 'Race did not install the foreign state under lock.'
+        }else{$case=Invoke-InitialAdmissionCase -Json $json}
+        Assert-InitialRefusal $case $variant
+    }
+    $badLease=New-InitialAdmissionLease;$badLease.Phase='Unknown'
+    foreach($malformed in @('{','{"Version":2,"Leases":[]}','{"Version":1,"Leases":null}',
+        ([pscustomobject]@{Version=1;Leases=@($badLease)}|ConvertTo-Json -Depth 20 -Compress))){
+        $case=Invoke-InitialAdmissionCase -Json $malformed
+        Assert-InitialRefusal $case 'Malformed real reader' -Malformed
+        Assert-InitialAdmission ($case.PathCount-eq1-and$case.ContentCount-eq1) 'Malformed case bypassed actual reader IO seams.'
+        Assert-InitialAdmission ($case.Caught.Exception.Message-notlike'A new resource lease was required;*') 'Malformed reader was replaced by the new guard.'
+    }
+    foreach($missing in @($false,$true)){
+        $case=Invoke-InitialAdmissionCase -Missing:$missing
+        Assert-InitialAdmission ($null-eq$case.Caught-and$null-ne$case.Result) 'Empty first admission failed.'
+        Assert-InitialAdmission ($case.Result.Token-is[string]-and$case.Result.Token-cmatch'^[0-9a-f]{32}$') 'Fresh token not scalar lowercase hex.'
+        Assert-InitialAdmission ($case.LockCount-eq1-and$case.ReadCount-eq1-and$case.ProcessCount-eq1-and$case.ReclaimCount-eq1-and$case.SnapshotCount-eq1-and$case.BudgetCount-eq1-and$case.SaveCount-eq1) 'Fresh path callbacks changed.'
+        Assert-InitialAdmission ($case.Result.Scope-ceq$scope-and$case.Result.BaseClientImage-ceq$baseImage-and$case.Result.Phase-ceq'Pending') 'Fresh reservation metadata changed.'
+        Assert-InitialAdmission ([object]::ReferenceEquals($case.Result.OwnerIdentity,$case.Processes[0])-and[object]::ReferenceEquals($case.SavedState,$case.ReadState)) 'Fresh actual identities/state copied.'
+        Assert-InitialAdmission ([object]::ReferenceEquals($case.Result.MemoryObservation.Snapshot,$case.Snapshot)-and[object]::ReferenceEquals($case.Result.MemoryObservation.Budget,$case.Budget)) 'Fresh memory observation changed.'
+    }
+    foreach($mode in @('Omitted','False')){
+        foreach($larger in @($false,$true)){
+            $lease=New-InitialAdmissionLease
+            $json=[pscustomobject]@{Version=1;Leases=@($lease)}|ConvertTo-Json -Depth 20 -Compress
+            $physical=if($larger){24GB}else{14GB};$commit=if($larger){27GB}else{15GB}
+            $live=@([pscustomobject]@{WorkingSet=2GB;PrivateBytes=3GB})
+            $case=Invoke-InitialAdmissionCase -Mode $mode -Json $json -PhysicalBytes $physical -CommitBytes $commit -Live $live
+            $expectedPhysical=[math]::Max($physical,17GB);$expectedCommit=[math]::Max($commit,23GB)
+            Assert-InitialAdmission ($null-eq$case.Caught-and$case.Result.Token-ceq$lease.Token) ('Legacy token/re-entry changed: '+$mode)
+            Assert-InitialAdmission ([object]::ReferenceEquals($case.Result,$case.ReadState.Leases[0])-and[object]::ReferenceEquals($case.SavedState,$case.ReadState)) 'Legacy lease/state not the real reader objects.'
+            Assert-InitialAdmission ($case.Result.PhysicalBytes-eq$expectedPhysical-and$case.Result.CommitBytes-eq$expectedCommit) 'Legacy maximum estimates changed.'
+            Assert-InitialAdmission ($case.BudgetArgs[0]-eq($expectedPhysical-2GB)-and$case.BudgetArgs[1]-eq($expectedCommit-3GB)) 'Legacy resident budget subtraction changed.'
+            Assert-InitialAdmission ($case.ProcessCount-eq1-and$case.ReclaimCount-eq1-and$case.LiveCount-eq1-and$case.SnapshotCount-eq1-and$case.BudgetCount-eq1-and$case.SaveCount-eq1) 'Legacy callbacks changed.'
+            Assert-InitialAdmission ([object]::ReferenceEquals($case.Result.MemoryObservation.Snapshot,$case.Snapshot)-and[object]::ReferenceEquals($case.Result.MemoryObservation.Budget,$case.Budget)-and![object]::ReferenceEquals($case.Result.MemoryObservation,$case.InitialMemory)) 'Legacy fresh MemoryObservation changed.'
+        }
+    }
+    Write-Output ("PASS "+$script:initialCases+" initial-admission Source cases / "+$script:initialChecks+" assertions; actual Enter/ReadState AST, fake lock/registry/process/reclaim/telemetry/budget/Save; no Core import, real registry, native telemetry, contenders or OS lifecycle.")
+    return
+}
 if ($RetainedReleaseSourceOnly) {
     $ErrorActionPreference='Stop'
     # Only the actual function AST; never import Core or run real contenders.
