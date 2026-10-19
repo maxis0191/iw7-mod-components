@@ -242,8 +242,10 @@ void post_unpack() override {
     scripting::on_shutdown([](bool,bool){active=false;waits.clear();sites.clear();observed.clear();captured={};inputs={};});
 #ifdef IW7_CUTSCENE_PRIVATE_TEST
     gsc::method::add("paris_cutscene_test_hold",[](game::scr_entref_t ent,const gsc::function_args& args)->scripting::script_value{
-        if(ent.classnum || ent.entnum>=4 || !active || !enabled || !utils::flags::has_flag("paris-isolated-lab") ||
-            !paris_test_fixture::is_protected_player(ent.entnum))return 0;
+        if(ent.classnum || ent.entnum>=4 || !active || !enabled || !utils::flags::has_flag("paris-isolated-lab"))return 0;
+        const bool protected_bot=player(ent.entnum) && game::SV_BotIsBot(ent.entnum) &&
+            (game::g_entities[ent.entnum].flags & 1) && paris_test_fixture::is_protected_player(0);
+        if(!paris_test_fixture::is_protected_player(ent.entnum) && !protected_bot)return 0;
         const auto mask=args[0].as<int>();if(mask<0 || mask>7)return 0;
         inputs[ent.entnum]={static_cast<unsigned>(mask),GetTickCount64(),epoch};return 1;
     });
@@ -264,7 +266,7 @@ void post_unpack() override {
             scheduler::loop(client_tick,scheduler::pipeline::main,25ms);
 #ifdef IW7_CUTSCENE_PRIVATE_TEST
             command::add("paris_cutscene_test_key",[](const command::params& args){
-                if(args.size()!=2 || !active && !client_epoch() || !utils::flags::has_flag("paris-isolated-lab") ||
+                if(args.size()!=2 || !client_epoch() || !utils::flags::has_flag("paris-isolated-lab") ||
                     !paris_test_fixture::client_protection_current(paris_test_fixture::client_protection(nullptr),GetTickCount64()))return;
                 const std::string action=args[1];
                 const int key=action=="space" ? game::K_SPACE:action=="enter" ? game::K_ENTER:action=="mouse" ? game::K_MOUSE1:0;
