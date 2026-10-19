@@ -16,6 +16,13 @@ profil ordinaire et des autres pins. Cette qualification de source ne prouve
 ni canary matérielle, ni writer, ni capacité supplémentaire ; il faut ensuite
 mesurer le dédié privé, sans employer Main ou le client occupé.
 
+Le runner dédié seul n'installe plus les scripts gameplay Server, absents des
+exports Native. Il sauvegarde et retire temporairement les seuls GSC candidats,
+emploie une configuration CP retail minimale à 24 agents, puis restaure la
+transaction. Il exige un build dont le heartbeat est supprimé, un mot de passe,
+loopback et `sv_lanOnly=1` dans les arguments et la configuration. Les profils et
+la banque candidats restent sauvegardés ; aucune donnée de Main n'est employée.
+
 The complete isolated native build from1bcb19c now compiles and links, executable
 A29488DF and matching PDB verified with all32 source hashes. This includes the
 reviewed actual-context checkpoint TU and scheduler overlay. The next vacant
