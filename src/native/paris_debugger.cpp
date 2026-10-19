@@ -16,6 +16,9 @@ namespace paris_debugger
         constexpr std::size_t slots = 0x2200;
         iw7::debugger::counters<slots> stats;
         iw7::debugger::frames<8> render_stats;
+        iw7::debugger::thread_cpu_counters scope2_cpu;
+        std::atomic<bool> scope2_cpu_enabled{false};
+        std::atomic<std::uint64_t> scope2_cpu_internal_errors{0};
         std::atomic<unsigned> dropped_swapchains{0};
         std::mutex gpu_mutex;
         DXGI_QUERY_VIDEO_MEMORY_INFO gpu_info{};
@@ -35,6 +38,54 @@ namespace paris_debugger
             return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count());
         }
+        void write_cpu_sample(std::ostream& out, const iw7::debugger::thread_cpu_sample& s)
+        {
+            out << "{\"before_ns\":\"" << std::to_string(s.before_ns) << "\",\"after_ns\":\"" << std::to_string(s.after_ns)
+                << "\",\"kernel_100ns\":\"" << std::to_string(s.kernel_100ns) << "\",\"user_100ns\":\"" << std::to_string(s.user_100ns) << "\"}";
+        }
+        void write_cpu_snapshot(std::ostream& out, const iw7::debugger::thread_cpu_snapshot& v, std::uint64_t tick)
+        {
+            const auto field = [&](const char* name, std::uint64_t n) { out << ",\"" << name << "\":\"" << std::to_string(n) << '"'; };
+            out << "{\"type\":\"scope2_thread_cpu_quality\",\"tick_ms\":" << tick;
+            field("started", v.started); field("completed", v.completed); field("paired", v.paired); field("active", v.active);
+            field("api_failures", v.api_failures); field("identity_failures", v.identity_failures);
+            field("clock_failures", v.clock_failures); field("cpu_rollbacks", v.cpu_rollbacks);
+            field("capacity_drops", v.capacity_drops); field("invalid_tokens", v.invalid_tokens); field("cpu_overflows", v.cpu_overflows);
+            field("internal_errors", scope2_cpu_internal_errors.exchange(0));
+            out << ",\"last_api_error\":" << v.last_api_error << ",\"saturated\":" << (v.saturated ? "true" : "false") << "}\n";
+            for (const auto& c : v.cohorts)
+            {
+                if (!c.tid || (!c.started && !c.completed && !c.active)) continue;
+                out << "{\"type\":\"scope2_thread_cpu\",\"tick_ms\":" << tick << ",\"id\":2,\"tid\":" << c.tid;
+                field("creation_filetime_100ns", c.creation_100ns);
+                field("started", c.started); field("completed", c.completed); field("paired", c.paired); field("active", c.active);
+                const auto paired_field = [&](const char* name, std::uint64_t n)
+                { if (c.paired) field(name, n); else out << ",\"" << name << "\":null"; };
+                paired_field("paired_kernel_100ns", c.kernel_100ns); paired_field("paired_user_100ns", c.user_100ns); paired_field("paired_cpu_100ns", c.cpu_100ns);
+                paired_field("paired_wall_lower_ns", c.wall_lower_ns); paired_field("paired_wall_upper_ns", c.wall_upper_ns);
+                paired_field("max_wall_lower_ns", c.max_wall_lower_ns); paired_field("max_wall_upper_ns", c.max_wall_upper_ns);
+                paired_field("acquisition_ns", c.acquisition_ns); paired_field("max_acquisition_ns", c.max_acquisition_ns);
+                out << ",\"saturated\":" << (c.saturated ? "true" : "false") << ",\"acquisition_only_ratio_min\":";
+                if (!v.saturated && !c.saturated && c.paired && c.wall_upper_ns)
+                    out << static_cast<double>(c.cpu_100ns) * 100.0 / c.wall_upper_ns;
+                else out << "null";
+                out << ",\"acquisition_only_ratio_max\":";
+                if (!v.saturated && !c.saturated && c.paired && c.wall_lower_ns)
+                    out << static_cast<double>(c.cpu_100ns) * 100.0 / c.wall_lower_ns;
+                else out << "null";
+                out << ",\"majority_classification\":\"indeterminate_cpu_resolution_unmeasured\",\"wall_lower_histogram\":[";
+                for (std::size_t i = 0; i < c.wall_lower_histogram.size(); ++i)
+                    out << (i ? ",\"" : "\"") << std::to_string(c.wall_lower_histogram[i]) << '"';
+                out << "],\"cpu_100ns_histogram\":[";
+                for (std::size_t i = 0; i < c.cpu_histogram.size(); ++i)
+                    out << (i ? ",\"" : "\"") << std::to_string(c.cpu_histogram[i]) << '"';
+                out << "],\"last_start\":";
+                if (c.paired) write_cpu_sample(out, c.last_start); else out << "null";
+                out << ",\"last_end\":";
+                if (c.paired) write_cpu_sample(out, c.last_end); else out << "null";
+                out << "}\n";
+            }
+        }
         void flush()
         {
             std::lock_guard<std::mutex> output_lock(output_mutex);
@@ -42,6 +93,7 @@ namespace paris_debugger
             const auto snapshot = stats.take();
             std::ostringstream buffer;
             const auto tick = GetTickCount64();
+            if (scope2_cpu_enabled.load(std::memory_order_relaxed)) write_cpu_snapshot(buffer, scope2_cpu.take(), tick);
             const auto rendering = render_stats.take();
             for (std::size_t i = 0; i < rendering.size(); ++i)
             {
@@ -123,11 +175,39 @@ namespace paris_debugger
         if (!start || !enabled.load(std::memory_order_acquire)) return;
         try { stats.end(id, start, now_ns()); } catch (...) {}
     }
+    void begin_scope2(scope2_state& state) noexcept
+    {
+        if (!enabled.load(std::memory_order_acquire)) return;
+        try
+        {
+            if (!stats.begin(2)) return;
+            state.wall_open = true;
+            state.wall_start = now_ns();
+            if (scope2_cpu_enabled.load(std::memory_order_relaxed) && scope2_cpu.begin(state.cpu))
+                scope2_cpu.attach_start(state.cpu, iw7::debugger::capture_current_thread_cpu());
+        }
+        catch (...) { ++scope2_cpu_internal_errors; }
+    }
+    void end_scope2(scope2_state& state) noexcept
+    {
+        if (!state.wall_open) return;
+        state.wall_open = false;
+        const auto wall_end = now_ns();
+        // A captured start is finalized even if output/enabled changed meanwhile.
+        if (state.cpu.pending())
+        {
+            try { scope2_cpu.end(state.cpu, iw7::debugger::capture_current_thread_cpu()); }
+            catch (...) { ++scope2_cpu_internal_errors; }
+        }
+        try { stats.end(2, state.wall_start, wall_end); }
+        catch (...) { ++scope2_cpu_internal_errors; }
+    }
     class component final : public component_interface
     {
         void post_unpack() override
         {
             if (!utils::flags::has_flag("paris-debugger") || !utils::flags::has_flag("paris-isolated-lab")) return;
+            scope2_cpu_enabled.store(utils::flags::has_flag("paris-debugger-thread-cpu"), std::memory_order_relaxed);
             // Fixed anonymous region IDs; no player text, engine memory reads,
             // game commands, arbitrary filenames or global dvar registration.
             gsc::function::add("paris_debug_begin", [](const gsc::function_args& args) -> scripting::script_value
@@ -165,6 +245,14 @@ namespace paris_debugger
                 output << "{\"type\":\"header\",\"schema\":\"iw7.debugger/1\",\"scenario\":\"instrumented laboratory\",\"pid\":"
                     << GetCurrentProcessId() << ",\"limits\":\"Inclusive wall scopes, not all GSC functions or renderer frames; interrupted VM scopes may not complete.\"}\n";
                 output.flush(); epoch_ = now_ns(); last_flush = GetTickCount64(); deadline = last_flush + 600000; enabled.store(true);
+                if (scope2_cpu_enabled.load(std::memory_order_relaxed))
+                {
+                    output << "{\"type\":\"scope2_thread_cpu_config\",\"identity_capacity\":4,\"cpu_unit_ns\":100,\"cpu_resolution_ns\":null,\"wall_clock\":\"steady_clock.ns\",\"histogram_upper_ns\":[";
+                    for (std::size_t i = 0; i < iw7::debugger::thread_cpu_histogram_ns.size(); ++i)
+                        output << (i ? ",\"" : "\"") << std::to_string(iw7::debugger::thread_cpu_histogram_ns[i]) << '"';
+                    output << "],\"histogram_final_bucket\":\"overflow\",\"ratio_interpretation\":\"Acquisition brackets only; CPU clock resolution unmeasured; never a rigorous majority bound.\"}\n";
+                    output.flush();
+                }
             }, scheduler::pipeline::main);
             scheduler::loop(flush, scheduler::pipeline::async, std::chrono::seconds(1));
         }

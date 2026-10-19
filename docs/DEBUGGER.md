@@ -615,6 +615,77 @@ bytecode/function automatically or measure exclusive CPU per script. A small
 dedicated GSC frame coroutine reports distinct simulation times and resets; this
 is a VM-frame witness, not packet rate or a claim about every subsystem's TPS.
 
+### Optional main-engine thread CPU observation
+
+The additional native flag `-paris-debugger-thread-cpu` opts into a dedicated
+collector for scope2 (`main_engine_call`, the call to `0x140B8E2D0`). It still
+requires both existing profiler/lab flags. The scheduler's `pipeline::main`
+finally callbacks run after this scope ends and are excluded. No wait, VSync,
+limiter, scheduler behavior or game protocol is changed. This Source addition
+does not enable the refused cfca route or its historical WatchCheckpoint;
+`EnabledCfcaMustRemainRefused=true` remains in force. No runtime route is qualified
+by editing the overlay.
+
+Only scope2 has a larger RAII token. The generic 8,704 counters and high-frequency
+GSC scope objects are unchanged. With the CPU flag omitted, scope2 keeps its wall
+measurement and makes no CPU API/identity reads. A captured scope2 start is ended
+once even if profiler output becomes disabled before its destructor runs. An
+active count in the final published window can still represent an unfinished
+scope; output closure does not prove engine quiescence.
+
+The component and standalone fixture share `capture_current_thread_cpu()` in
+`debugger_thread_cpu.hpp`: synchronous `GetThreadTimes(GetCurrentThread())`, with
+steady-clock brackets immediately around acquisition. It opens/closes no foreign
+thread handle. TID and exact creation FILETIME identify a cohort; four identities
+are retained without eviction, and further identities produce `capacity_drops`.
+Creation FILETIME and all new 64-bit counters/timestamps are decimal strings in
+JSON, avoiding loss through floating-point JSON consumers. `100ns` is the CPU
+counter's unit, **not a measured resolution or accuracy guarantee**.
+
+`scope2_thread_cpu_config` declares fixed histogram edges and unmeasured CPU
+resolution. Each flush adds `scope2_thread_cpu_quality` and per-identity
+`scope2_thread_cpu` records. Under one collector mutex, successful paired
+completions contribute CPU kernel/user deltas, wall lower/upper acquisition
+intervals, read-bracket cost, and bounded histograms. API failure, identity
+change, clock reversal, CPU rollback, capacity refusal and numeric saturation
+remain visible; failed reads never become successful zero CPU. A genuine zero
+CPU delta is valid but may reflect unmeasured timer quantization. Snapshot reset
+preserves active gauges, identity bindings and sticky saturation, not finished
+window totals. Starts and completions can cross flushes; do not equate them or
+sum active gauges.
+
+Read-bracket cost covers the acquisition envelopes, not all collector/locking
+overhead; a controlled off/on comparison is still necessary.
+
+Both CPU and wall sums in a new cohort row describe the **same completed calls**.
+They must not be combined with the separately snapshotted legacy `timing` row.
+The lower wall interval is end-read start minus start-read end; the upper is
+end-read end minus start-read start. `acquisition_only_ratio_min/max` divide the
+same CPU sum by those wall sums, or are null for absent/zero denominators or
+saturation. They account only for read placement, **not CPU clock quantization**;
+they are descriptive and may exceed one. `majority_classification` therefore
+always remains `indeterminate_cpu_resolution_unmeasured`. No rigorous conclusion
+that the thread mostly computes or waits is delivered by these ratios alone.
+
+Histogram edges are inclusive upper bounds, followed by a visible overflow
+bucket. The wall histogram uses the lower acquisition interval; CPU histogram
+edges are the same physical durations expressed in 100ns units. These are scope
+duration distributions, not displayed frametimes. Existing callback windows and
+PresentMon's `MsBetweenPresents` remain distinct cadence observations, with no
+invented event p95 or clock correspondence. Any future controlled comparison
+must retain workload/options/quality and observer-overhead evidence; this Source
+change establishes no performance gain or cause for the historical 32.617ms mean.
+
+Validation at authoring: the existing `debugger_stats_test.cpp` fixture now
+contains the portable collector cases and its Windows-only
+same-helper acquisition case are written but **not compiled or executed**. They
+cover matched cohorts, cross-window active gauges, duplicate/foreign tickets,
+API/identity/clock/CPU failures, valid zero CPU, fixed capacity, histogram edges/
+overflow, saturation and concurrent snapshots. The standalone fixture would
+qualify these helpers only, not compilation of the complete game component TU.
+No native build, SDK inspection, provider, process/game run, lease or deployment
+is authorized by this Source checkpoint.
+
 For a specific script suspect, bracket a region only in a separate lab candidate:
 
 ```c

@@ -229,6 +229,7 @@
     "ops/voice-agent/test_fake_build_copy.ps1",
     "src/native/agent_scenario.hpp",
     "src/native/debugger_stats.hpp",
+    "src/native/debugger_thread_cpu.hpp",
     "src/native/dvar_metadata.hpp",
     "src/native/paris_capacity_watch.cpp",
     "src/native/paris_capacity_watch.hpp",

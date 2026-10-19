@@ -26,7 +26,7 @@ function Set-DebugOverlay([string]$Relative,[hashtable]$Replacements,[string]$In
 }
 Set-DebugOverlay 'src/client/component/scheduler.cpp' @{
     'utils::hook::invoke<void>(0x140B15E20);'='paris_debugger::scope paris_server_scope(1);'+"`n`t`t`t"+'utils::hook::invoke<void>(0x140B15E20);';
-    'return utils::hook::invoke<void*>(0x140B8E2D0);'='paris_debugger::scope paris_main_scope(2);'+"`n`t`t`t"+'return utils::hook::invoke<void*>(0x140B8E2D0);'
+    'return utils::hook::invoke<void*>(0x140B8E2D0);'='paris_debugger::scope2 paris_main_scope;'+"`n`t`t`t"+'return utils::hook::invoke<void*>(0x140B8E2D0);'
 } '#include "paris_debugger.hpp"'
 Set-DebugOverlay 'src/client/component/gsc/script_extension.cpp' @{
     'const std::uint16_t function_id = get_function_id();'='const std::uint16_t function_id = get_function_id();'+"`n`t`t`t"+'paris_debugger::scope paris_function_scope(0x100 + function_id);';
@@ -35,7 +35,7 @@ Set-DebugOverlay 'src/client/component/gsc/script_extension.cpp' @{
 Set-DebugOverlay 'src/client/component/gui/gui.cpp' @{
     'frame_capture::on_present(swap_chain);'='frame_capture::on_present(swap_chain);'+"`n`t`t`t`t"+'paris_debugger::render_frame(swap_chain);'
 } '#include "../paris_debugger.hpp"'
-foreach ($name in @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp')) {
+foreach ($name in @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp','debugger_thread_cpu.hpp')) {
     $source=Join-Path $repo ('src/native/'+$name)
     $target=Join-Path $NativeRoot ('src/client/component/'+$name)
     if ($Enabled) { Copy-Item -LiteralPath $source -Destination $target -Force }
