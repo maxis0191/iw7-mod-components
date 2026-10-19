@@ -17,9 +17,50 @@ import subprocess
 import sys
 import time
 import zipfile
+import uuid
 
 from iw7_capture import Observer, udp_sample
-from iw7_debugger import SCHEMA, RULES, digest, dump_report, local_output, scrub
+from iw7_debugger import SCHEMA, RULES, WINDOWS_CLOCK, CPU_RATE_CLOCK, comparison_context, digest, dump_report, local_output, read_bytes, scrub
+
+
+_tick_clock = None
+
+
+def windows_tick_ms():
+    """Lazy binding: importing this module/tests does not acquire an OS clock."""
+    global _tick_clock
+    if _tick_clock is None:
+        import ctypes
+        _tick_clock = ctypes.WinDLL("kernel32", use_last_error=True).GetTickCount64
+        _tick_clock.argtypes = []
+        _tick_clock.restype = ctypes.c_ulonglong
+    return _tick_clock()
+
+
+def acquire_process(observer):
+    start_ms, start_rate = windows_tick_ms(), time.perf_counter()
+    value = observer.sample()
+    end_rate, end_ms = time.perf_counter(), windows_tick_ms()
+    return value, {"clock": WINDOWS_CLOCK, "start_ms": start_ms, "end_ms": end_ms}, (start_rate, end_rate)
+
+
+def acquire_threads(observer):
+    start_ms, start_rate = windows_tick_ms(), time.perf_counter()
+    value = observer.threads()
+    end_rate, end_ms = time.perf_counter(), windows_tick_ms()
+    return value, {"clock": WINDOWS_CLOCK, "start_ms": start_ms, "end_ms": end_ms}, (start_rate, end_rate)
+
+
+def cpu_rate(delta, previous, current):
+    """Counter reads lie inside these perf_counter brackets, not at ingestion."""
+    minimum, maximum = current[0] - previous[1], current[1] - previous[0]
+    midpoint = (minimum + maximum) / 2
+    estimate = max(0, 100 * delta / midpoint) if midpoint > 0 else 0
+    if delta < 0 or minimum <= 0 or not all(math.isfinite(x) for x in (delta, minimum, maximum, estimate)):
+        return estimate, None
+    return estimate, {"clock": CPU_RATE_CLOCK, "lower_percent": 100 * delta / maximum,
+                      "upper_percent": 100 * delta / minimum,
+                      "minimum_interval_seconds": minimum, "maximum_interval_seconds": maximum}
 
 
 class Tail:
@@ -143,18 +184,40 @@ def main():
     p.add_argument("--expected-tps", type=float, default=20)
     p.add_argument("--warmup-seconds", type=int, default=30)
     p.add_argument("--port", type=int, default=0)
+    p.add_argument("--comparison-context", help="Optional strict declared workload JSON; no game-state attestation")
+    p.add_argument("--measurement-start-seconds", type=int)
+    p.add_argument("--measurement-end-seconds", type=int)
     args = p.parse_args()
     if not math.isfinite(args.frame_budget_ms) or args.frame_budget_ms <= 0 or not 0 < args.expected_tps <= 1000:
         raise ValueError("Invalid anomaly policy")
     target_rows = json.loads(Path(args.targets).read_text(encoding="utf-8-sig"))
     if not isinstance(target_rows, list) or not 1 <= len(target_rows) <= 3:
         raise ValueError("Expected 1..3 exact target identities")
+    declared = None
+    if args.comparison_context:
+        declared = comparison_context(json.loads(read_bytes(args.comparison_context, 65536).decode("utf-8-sig")))
+        if (type(args.measurement_start_seconds) is not int or type(args.measurement_end_seconds) is not int or
+                not 0 <= args.warmup_seconds <= args.measurement_start_seconds < args.measurement_end_seconds <= args.seconds):
+            raise ValueError("Explicit closed measurement window after warmup and within collection required")
+        names = [row.get("name") for row in target_rows]
+        if len(set(names)) != len(names) or set(names) != set(declared["builds"]):
+            raise ValueError("Declared build targets must match the exact collection targets")
+        if any(type(row.get("sha256")) is not str or declared["builds"][row["name"]] != row["sha256"].lower() for row in target_rows):
+            raise ValueError("Declared build SHA256 must match each independently verified target image pin")
+    elif args.measurement_start_seconds is not None or args.measurement_end_seconds is not None:
+        raise ValueError("Measurement window requires its structured declared context")
     targets = []
     destination = local_output(args.output)
     try:
         for record in target_rows:
             observer = Observer(record["pid"], record["image"], record["created_utc"], record["sha256"])
-            targets.append({"record": record, "observer": observer, "before": observer.sample(), "threads": observer.threads(),
+            target = {"record": record, "observer": observer}
+            targets.append(target)  # Retain the observer before any sample can fail.
+            before, acquisition, rate_acquisition = acquire_process(observer)
+            threads, thread_acquisition, thread_rate_acquisition = acquire_threads(observer)
+            target.update({"before": before, "threads": threads, "before_acquisition": acquisition,
+                            "before_rate_acquisition": rate_acquisition, "thread_rate_acquisition": thread_rate_acquisition,
+                            "thread_acquisition": thread_acquisition,
                             "detector": Detector(args.frame_budget_ms, args.expected_tps, args.warmup_seconds),
                             "logs": [Tail(record[k]) for k in ("stdout", "stderr") if record.get(k)],
                             "log_context_remaining": {},
@@ -162,40 +225,67 @@ def main():
         present = Tail(args.present_csv) if args.present_csv else None
         columns = None
         with destination.open("x", encoding="utf-8") as out:
-            def write(row):
+            def write(row, native=False):
                 row.setdefault("at_utc", datetime.now(timezone.utc).isoformat())
+                if not native:
+                    row.setdefault("clock", WINDOWS_CLOCK)
+                    row.setdefault("tick_ms", windows_tick_ms())
                 out.write(json.dumps(row, allow_nan=False) + "\n"); out.flush()
                 if row.get("type") in ("alert", "coverage", "complete"):
                     print(json.dumps(row), flush=True)
-            write({"type": "header", "schema": SCHEMA, "scenario": "live supervised laboratory", "identities": [t["observer"].identity for t in targets],
+            collection_id = uuid.uuid4().hex
+            collection_start = windows_tick_ms()
+            comparison = {"collection_id": collection_id, "clock": WINDOWS_CLOCK, "collection_start_ms": collection_start}
+            if declared is not None:
+                comparison.update({"comparison_context": declared,
+                                   "measurement_window": {"clock": WINDOWS_CLOCK,
+                                       "start_ms": collection_start + args.measurement_start_seconds * 1000,
+                                       "end_ms": collection_start + args.measurement_end_seconds * 1000}})
+            write({"type": "header", "schema": SCHEMA, "scenario": "live supervised laboratory", **comparison, "identities": [t["observer"].identity for t in targets],
                    "policy": {"frame_budget_ms": args.frame_budget_ms, "expected_tps": args.expected_tps, "warmup_seconds": args.warmup_seconds},
                    "limits": "Explicit sensor coverage; arbitrary gameplay bugs, every GSC bytecode loop and GPU allocations are not fully observable."})
-            start = last = time.monotonic(); samples = 0; all_exit_time = None
+            start = time.monotonic(); samples = 0; all_exit_time = None; completion = "duration"
             smi = shutil.which("nvidia-smi")
             if not present: write({"type": "coverage", "sensor": "displayed_fps", "status": "unavailable", "reason": "No PresentMon CSV; never infer displayed FPS from CPU callbacks."})
             if not smi: write({"type": "coverage", "sensor": "gpu_device", "status": "unavailable"})
-            while time.monotonic() - start < args.seconds:
-                now = time.monotonic(); elapsed = now - start; interval = max(.001, now - last)
+            while True:
+                now = time.monotonic(); elapsed = now - start
+                final_acquisition = elapsed >= args.seconds
                 all_exited = True
                 for target in targets:
                     rec = target["record"]; name = rec["name"]; obs = target["observer"]; detector = target["detector"]
-                    current = obs.sample()
+                    current, acquisition, rate_acquisition = acquire_process(obs)
                     if current is None:
                         for event in detector.alert("process.exit", elapsed, {"identity": obs.identity, 'exit_code': obs.exit_code(), 'meaning': 'Retained-handle process exit; termination/fault causality requires logs or exception evidence.'}): write({"target": name, **event})
                     else:
                         all_exited = False
                         before = target["before"]
-                        current["cpu_core_percent"] = max(0, 100 * (current["cpu_seconds"] - before["cpu_seconds"]) / interval)
-                        thread_now = obs.threads()
+                        current["cpu_core_percent"], current["cpu_rate_bounds"] = cpu_rate(
+                            current["cpu_seconds"] - before["cpu_seconds"], target["before_rate_acquisition"], rate_acquisition)
+                        thread_now, thread_acquisition, thread_rate_acquisition = acquire_threads(obs)
+                        if args.port and name == "Server":
+                            udp_start = windows_tick_ms()
+                            current.update(udp_sample(args.port))
+                            current["udp_acquisition"] = {"clock": WINDOWS_CLOCK, "start_ms": udp_start, "end_ms": windows_tick_ms()}
                         current["thread_count"] = len(thread_now)
-                        current["threads"] = [{"id": tid, "cpu_core_percent": max(0, 100 * (cpu - target["threads"][(tid, created)]) / interval)}
-                                              for (tid, created), cpu in thread_now.items() if (tid, created) in target["threads"]]
+                        current["threads"] = []
+                        for (tid, created), cpu in thread_now.items():
+                            if (tid, created) not in target["threads"]: continue
+                            rate, bounds = cpu_rate(cpu - target["threads"][(tid, created)], target["thread_rate_acquisition"], thread_rate_acquisition)
+                            current["threads"].append({"id": tid, "cpu_core_percent": rate, "cpu_rate_bounds": bounds})
                         for key in ("read_bytes", "write_bytes"):
                             current[key + "_delta"] = max(0, current[key] - before[key])
-                        if args.port and name == "Server": current.update(udp_sample(args.port))
+                        current["acquisition"] = acquisition
+                        current["cpu_rate_acquisition"] = {"clock": CPU_RATE_CLOCK, "start_seconds": rate_acquisition[0], "end_seconds": rate_acquisition[1]}
+                        current["cpu_period"] = {"clock": WINDOWS_CLOCK, "start_ms": target["before_acquisition"]["start_ms"], "end_ms": acquisition["end_ms"]}
+                        current["thread_acquisition"] = thread_acquisition
+                        current["thread_rate_acquisition"] = {"clock": CPU_RATE_CLOCK, "start_seconds": thread_rate_acquisition[0], "end_seconds": thread_rate_acquisition[1]}
+                        current["thread_cpu_period"] = {"clock": WINDOWS_CLOCK, "start_ms": target["thread_acquisition"]["start_ms"], "end_ms": thread_acquisition["end_ms"]}
                         write({"type": "sample", "target": name, "elapsed_seconds": elapsed, **current})
                         for event in detector.sample(current, elapsed): write({"target": name, **event})
                         target["before"], target["threads"] = current, thread_now
+                        target["before_acquisition"], target["before_rate_acquisition"] = acquisition, rate_acquisition
+                        target["thread_acquisition"], target["thread_rate_acquisition"] = thread_acquisition, thread_rate_acquisition
                     for tail in target["logs"]:
                         for line in tail.lines():
                             if target['log_context_remaining'].get(str(tail.path), 0):
@@ -214,7 +304,9 @@ def main():
                     for tail in target["native"].values():
                         for line in tail.lines():
                             row = json.loads(line); target["last_native"] = elapsed; target["native_seen"] = True
-                            write({"target": name, **row})
+                            if type(row.get("tick_ms")) is int and row["tick_ms"] >= 0:
+                                row.setdefault("clock", WINDOWS_CLOCK)  # Known native producer's emission clock, never ingestion time.
+                            write({"target": name, **row}, native=True)
                             if row.get('type') == 'render_window': target['last_render'] = elapsed
                             for event in detector.native(row, elapsed): write({"target": name, **event})
                     if name == 'Client' and elapsed > 15 and elapsed - target.get('last_render', 0) > 5:
@@ -262,12 +354,17 @@ def main():
                         write({"type": "coverage", "sensor": "gpu_device", "status": "timeout"})
                 if all_exited:
                     if all_exit_time is None: all_exit_time = now
-                    if now - all_exit_time >= 5: break  # Drain final logs/crash ZIPs.
+                    if now - all_exit_time >= 5:
+                        completion = "all_targets_exited"; break  # Drain final logs/crash ZIPs.
                 else: all_exit_time = None
-                if out.tell() > 128 * 1024 * 1024: write({"type": "coverage", "sensor": "all", "status": "size_limit"}); break
-                samples += 1; last = now
+                if out.tell() > 128 * 1024 * 1024:
+                    write({"type": "coverage", "sensor": "all", "status": "size_limit"}); completion = "size_limit"; break
+                samples += 1
+                if final_acquisition: break  # Final acquisition brackets the fixed end; never move the requested window.
                 time.sleep(max(.05, 1 - (time.monotonic() - now)))
-            write({"type": "complete", "samples": samples, "gameplay_acceptance": None, "meaning": "No guarantee that uninstrumented gameplay defects were absent."})
+            write({"type": "complete", "samples": samples, "collection_id": collection_id, "clock": WINDOWS_CLOCK,
+                   "collection_end_ms": windows_tick_ms(), "collection_complete": completion != "size_limit", "reason": completion,
+                   "gameplay_acceptance": None, "meaning": "No guarantee that uninstrumented gameplay defects were absent."})
     finally:
         for target in targets: target["observer"].close()
 
