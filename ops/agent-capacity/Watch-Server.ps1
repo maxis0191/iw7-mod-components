@@ -1,7 +1,7 @@
 param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [ValidateRange(27100,27999)][int]$ServerPort=27116,[switch]$DryRun,[switch]$CaptureWriterPages,[switch]$CaptureNativeText,
       [ValidateSet(24,64)][int]$AgentCapacity=24,[switch]$PopulateAgents,
-      [string]$ClientGameRoot,[ValidateRange(1,120)][int]$ClientObserveSeconds=30,
+      [string]$ClientGameRoot,[ValidateRange(1,600)][int]$ClientObserveSeconds=30,
       [switch]$SkipReload,
       [ValidateSet('cp_zmb','cp_rave','cp_disco','cp_town','cp_final')][string]$Map='cp_zmb',
       [string]$CatalogRoot,[switch]$RotateBeast,
