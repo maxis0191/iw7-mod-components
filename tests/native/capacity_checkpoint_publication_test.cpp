@@ -23,15 +23,17 @@ int main() {
     }
     std::atomic<unsigned> ticket{2};
     std::atomic<unsigned> exited_ticket{3};
-    acknowledge_exited_target_ticket(exited_ticket,true);
+    std::atomic<bool> exited_inflight{true};
+    acknowledge_exited_target_ticket(exited_ticket,exited_inflight);
     assert(exited_ticket.load()==3);
-    acknowledge_exited_target_ticket(exited_ticket,false);
+    exited_inflight.store(false);
+    acknowledge_exited_target_ticket(exited_ticket,exited_inflight);
     assert(exited_ticket.load()==0);
     exited_ticket.store(2);
-    acknowledge_exited_target_ticket(exited_ticket,false);
+    acknowledge_exited_target_ticket(exited_ticket,exited_inflight);
     assert(exited_ticket.load()==2);
     exited_ticket.store(1);
-    acknowledge_exited_target_ticket(exited_ticket,false);
+    acknowledge_exited_target_ticket(exited_ticket,exited_inflight);
     assert(exited_ticket.load()==0);
     std::atomic<bool> inflight{true};
     const auto notify_entered=CreateEventW(nullptr,TRUE,FALSE,nullptr);
@@ -46,6 +48,8 @@ int main() {
         });
     });
     assert(WaitForSingleObject(notify_entered,1000)==WAIT_OBJECT_0);
+    assert(ticket.load(std::memory_order_acquire)==3);
+    acknowledge_exited_target_ticket(ticket,inflight);
     assert(ticket.load(std::memory_order_acquire)==3);
     ticket.store(0,std::memory_order_release); // Target's actual acknowledgement.
     const bool closure_allowed=ticket.load()==0 && !inflight.load(std::memory_order_acquire);

@@ -17,9 +17,11 @@ inline unsigned checkpoint_operation(phase current, bool stopping) noexcept {
 }
 // A terminated original target cannot acknowledge a published ticket. Never
 // clear a claimed ticket or one whose helper still owns its notification.
-inline void acknowledge_exited_target_ticket(std::atomic<unsigned>& ticket, bool helper_inflight) noexcept {
-    if (helper_inflight) return;
+inline void acknowledge_exited_target_ticket(std::atomic<unsigned>& ticket, const std::atomic<bool>& helper_inflight) noexcept {
     auto expected=ticket.load(std::memory_order_acquire);
+    // Acquire the published ticket before observing inflight, so ticket=3's
+    // publication also orders the helper's preceding inflight=true store.
+    if (helper_inflight.load(std::memory_order_acquire)) return;
     if (expected==1 || expected==3) ticket.compare_exchange_strong(expected,0,std::memory_order_acq_rel);
 }
 enum class kind : unsigned { canary_pass, write, failure, disarmed, baseline };

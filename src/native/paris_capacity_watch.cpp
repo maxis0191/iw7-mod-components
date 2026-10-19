@@ -333,7 +333,7 @@ void flush() {
         if(!t.tid.load())continue;
         if(t.handle.load() && WaitForSingleObject(t.handle.load(),0)==WAIT_OBJECT_0) {
             t.state.store(phase::closed);
-            acknowledge_exited_target_ticket(t.ticket,helper_inflight.load(std::memory_order_acquire));
+            acknowledge_exited_target_ticket(t.ticket,helper_inflight);
         }
         if(t.state.load()!=phase::closed || t.ticket.load()!=0)all_closed=false;
         if(t.canary_pass.load())covered|=t.roles.load();
