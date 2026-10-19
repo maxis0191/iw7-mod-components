@@ -279,7 +279,13 @@ void post_unpack() override {
         return active && clock()<finish_time && !(enabled && ballot.unanimous()) ? 1:0;
     });
     gsc::function::add("paris_cutscene_end",[](const gsc::function_args&)->scripting::script_value{end();return {};});
-    scripting::on_shutdown([](bool,bool){active=false;waits.clear();sites.clear();observed.clear();captured={};inputs={};});
+    scripting::on_shutdown([](bool free_scripts,bool post_shutdown){
+        if(!post_shutdown){active=false;inputs={};return;}
+        waits.clear();
+        // Retail shutdown notifies scripts before destroying their stacks.
+        // Their borrowed frames must retain both remaps and thunk storage.
+        if(free_scripts){sites.clear();observed.clear();captured={};}
+    });
 #ifdef IW7_CUTSCENE_PRIVATE_TEST
     gsc::method::add("paris_cutscene_test_hold",[](game::scr_entref_t ent,const gsc::function_args& args)->scripting::script_value{
         if(ent.classnum || ent.entnum>=4 || !active || !enabled || !utils::flags::has_flag("paris-isolated-lab"))return 0;
