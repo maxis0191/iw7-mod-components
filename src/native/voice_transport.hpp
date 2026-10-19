@@ -210,16 +210,20 @@ namespace voice::transport
                 output.push_back({slot, snapshot(slot, false)});
                 return true;
             }
-            // Rejected replays must not consume the fresh-speech quota. Keep
-            // sequence admission provisional until both budgets also pass.
+            // Rejected packets must not consume the fresh-speech quota. Publish
+            // sequence and both budgets only after complete audio admission.
             auto sequence = peer.sequence;
+            auto frames = peer.frames;
+            auto byte_budget = peer.bytes;
             if (message.type != wire::kind::audio_up || message.frames.empty() ||
                 message.frames.size() > wire::max_frames ||
                 !sequence.accept(message.sequence) ||
-                !peer.frames.accept(static_cast<unsigned>(message.frames.size()), time) ||
-                !peer.bytes.accept(bytes, time))
+                !frames.accept(static_cast<unsigned>(message.frames.size()), time) ||
+                !byte_budget.accept(bytes, time))
                 return false;
             peer.sequence = sequence;
+            peer.frames = frames;
+            peer.bytes = byte_budget;
             peer.seen = time;
             for (unsigned target = 0; target < state::max_speakers; ++target)
             {
