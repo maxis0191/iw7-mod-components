@@ -10,6 +10,8 @@ int main() {
         static_assert(ordinary == 48 && special_reserve == 16 && agents == 64);
         static_assert(server_size >= 0x46B8 + characters * 0x2CA0 + players * 0x70);
         static_assert(client_size >= client_flags + characters);
+        for (unsigned slot=0;slot<characters;++slot) assert((slot & ((1u<<character_bits)-1))==slot);
+        assert((64u & ((1u<<6)-1))==0); // Reproduce the observed legacy alias.
         std::int32_t delta{};
         assert(relative32(0x180000000,0x140000000,delta) && delta == 0x40000000);
         assert(relative32(0x140000000,0x180000000,delta) && delta == -0x40000000);

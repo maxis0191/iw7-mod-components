@@ -1,5 +1,25 @@
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
+## Champ réseau à sept bits — 19 octobre 2026
+
+Le cas M, sans Brutes, reproduit le fatal. Le capteur client reçoit l'entité64
+avec client_num0. Une lecture native limitée à800 octets, liée à l'image/PID/
+création du même dédié, confirme côté serveur client_num64 et65 pour les entités
+64 et65. Ce témoin établit la troncature pendant le transport ; la réserve seule
+ne suffit donc pas. Le fatal client et le résultat initial restent conservés.
+La récupération indépendante attend ensuite zéro client UDP pendant30 secondes,
+quitte normalement et restaure/libère ; elle ne transforme pas le test en succès.
+
+Deux sondes dédiées seules à24 quittent/restaurent normalement. La lecture des
+métadonnées CP retrouve les30 listes d'entityState, chacune à62 descripteurs.
+Le champ clientNum à l'offset0x9C utilise21 enregistrements distincts à6 bits,
+dont ET_AGENT18 à141BB4790 et ET_AGENT_CORPSE19 à141BB4D64. Le candidat les passe
+à7 bits sur les deux pairs privés, avec contrôle préalable offset/bits/hint,
+écriture de données sans permission exécutable et transaction commune aux106
+champs de code. Les autres champs et formats restent inchangés. Un client ancien
+ne peut pas partager ce format opt-in ; admission et livraison sont encore à faire.
+La nouvelle exécution48+2 et le recyclage restent obligatoires.
+
 ## Décodage des personnages après les cadavres — 19 octobre 2026
 
 Le candidat privé à95 champs (`0ac66b1`, image

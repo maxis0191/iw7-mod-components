@@ -51,7 +51,7 @@ function Wait-IW7CapacityClientDeparture($Session) {
     # Called only after exact fatal-client closure and successful restoration.
     # A residual connection grants no mutation: wait for actual zero, then the
     # ordinary stop still requires its own fresh continuous 30-second proof.
-    $deadline=[datetime]::UtcNow.AddSeconds(60)
+    $deadline=[datetime]::UtcNow.AddSeconds(180)
     do {
         Assert-IW7CapacitySession $Session
         $info=Read-IW7CapacityServerInfo $Session

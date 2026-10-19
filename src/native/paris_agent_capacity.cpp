@@ -55,7 +55,7 @@ void engine_error(game::errorParm code,const char* format,...) {
     console::error("[Paris capacity engine error] code=%d caller=%p message=%s\n",static_cast<int>(code),_ReturnAddress(),message);
     engine_error_hook.invoke<void>(code,"%s",message);
 }
-struct patch { std::uintptr_t address{}; unsigned width{}; std::uint32_t before{}, after{}; };
+struct patch { std::uintptr_t address{}; unsigned width{}; std::uint32_t before{}, after{}; bool code{true}; };
 std::vector<patch> plan;
 
 unsigned private_port(bool dedicated) {
@@ -82,6 +82,23 @@ void readable_code(std::uintptr_t address, unsigned width) {
     if (address < start || address-start+width > info.RegionSize ||
         (protect != PAGE_EXECUTE_READ && protect != PAGE_EXECUTE_READWRITE && protect != PAGE_EXECUTE_WRITECOPY))
         throw std::runtime_error("Capacity candidate requires readable executable code");
+}
+void readable_netfield(std::uintptr_t field) {
+    MEMORY_BASIC_INFORMATION info{};
+    const auto address=field-4;
+    if(address<0x141BB3F4C || address+12>0x141BB9EF8 ||
+        VirtualQuery(reinterpret_cast<void*>(address),&info,sizeof(info))!=sizeof(info) ||
+        info.State!=MEM_COMMIT || (info.Protect&PAGE_GUARD)) throw std::runtime_error("Capacity netfield unavailable");
+    const auto start=reinterpret_cast<std::uintptr_t>(info.BaseAddress);
+    const auto protect=info.Protect&0xff;
+    if(address<start || address-start+12>info.RegionSize ||
+        (protect!=PAGE_READONLY && protect!=PAGE_READWRITE && protect!=PAGE_WRITECOPY))
+        throw std::runtime_error("Capacity netfield requires static readable data");
+    std::uint32_t descriptor[3]{};
+    std::memcpy(descriptor,reinterpret_cast<void*>(address),sizeof(descriptor));
+    const auto hint=(field==0x141BB7460 || field==0x141BB775C || field==0x141BB7D98) ? 1u : 0u;
+    if(descriptor[0]!=0x9C || descriptor[1]!=6 || descriptor[2]!=hint)
+        throw std::runtime_error("Capacity clientNum netfield signature differs");
 }
 buffer reserve(std::size_t bytes) {
     const auto committed = (bytes + 32 + 4095) & ~std::size_t(4095);
@@ -119,10 +136,10 @@ void rva(std::uintptr_t field, std::uint32_t before, std::uintptr_t after) {
 bool write(const patch& item, bool rollback) noexcept {
     DWORD previous{};
     auto address = reinterpret_cast<void*>(item.address);
-    if (!VirtualProtect(address,item.width,PAGE_EXECUTE_READWRITE,&previous)) return false;
+    if (!VirtualProtect(address,item.width,item.code ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE,&previous)) return false;
     const auto value = rollback ? item.before : item.after;
     std::memcpy(address,&value,item.width);
-    const bool flushed = FlushInstructionCache(GetCurrentProcess(),address,item.width) != FALSE;
+    const bool flushed = !item.code || FlushInstructionCache(GetCurrentProcess(),address,item.width) != FALSE;
     DWORD ignored{}; const bool restored = VirtualProtect(address,item.width,previous,&ignored) != FALSE;
     return flushed && restored && !std::memcmp(address,&value,item.width);
 }
@@ -150,6 +167,19 @@ void build_plan() {
     for (const auto field : {0x14084A551ull,0x140842A20ull,0x140842B0Bull,
         0x14077EDEEull,0x1407801DEull,0x140780549ull,0x140805D4Eull,
         0x140282ED8ull,0x1402854DEull,0x1405C2578ull,0x140B202DCull}) add(field,42,characters,1);
+    // Exact CP entity-state field lists contain 21 distinct clientNum records.
+    // Their old six-bit wire field maps64->0 even though the server owns64.
+    // Change the same descriptors on both private peers, preserving every
+    // offset, change hint and unrelated six-bit field. Legacy peers cannot
+    // share this opt-in wire layout.
+    for(const auto field : {0x141BB3F50ull,0x141BB45FCull,0x141BB4790ull,0x141BB4A80ull,
+        0x141BB4D64ull,0x141BB50C0ull,0x141BB5410ull,0x141BB576Cull,0x141BB59F0ull,
+        0x141BB5C08ull,0x141BB5FB8ull,0x141BB61E8ull,0x141BB6634ull,0x141BB6858ull,
+        0x141BB6B24ull,0x141BB6E50ull,0x141BB71E8ull,0x141BB7460ull,0x141BB775Cull,
+        0x141BB7D98ull,0x141BB9EF0ull}) {
+        readable_netfield(field);
+        plan.push_back({field,4,6,character_bits,false});
+    }
     add(0x140007781,24,agents); // Character-reference reset across the real pool.
     for (const auto address : {0x140406F77ull,0x141238588ull,0x140C14B28ull,0x140C14BF3ull,0x140C14C96ull}) add(address,0x78180,agent_bytes);
     rip(0x14C1ED662,0x145C9E590,agent_pool.data);
