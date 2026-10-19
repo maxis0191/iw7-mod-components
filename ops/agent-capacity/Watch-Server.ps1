@@ -5,8 +5,15 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [switch]$SkipReload,
       [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
       [ValidateSet(24,48)][int]$HordeOrdinary=48,[ValidateRange(0,2)][int]$HordeSpecials=2,
+      [string]$RetailCpPatchPath,[string]$RetailCpPatchSHA256,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
+if($RetailCpPatchPath -or $RetailCpPatchSHA256){
+    if(![IO.Path]::IsPathFullyQualified($RetailCpPatchPath) -or $RetailCpPatchSHA256 -cnotmatch '^[A-Fa-f0-9]{64}$'){throw 'Pinned managed CP patch required.'}
+    $retailItem=Get-Item -LiteralPath $RetailCpPatchPath
+    if($retailItem.Length -lt 1 -or $retailItem.Length -gt 64KB -or $retailItem.Extension -cne '.gsc' -or
+       ($retailItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or (Get-FileHash -LiteralPath $RetailCpPatchPath).Hash -ine $RetailCpPatchSHA256){throw 'Managed CP patch identity differs.'}
+}
 if($HordeFixturePath -or $HordeFixtureSHA256){
     if(!$SkipReload -or !$ClientGameRoot -or !$PopulateAgents -or $AgentCapacity -ne 64 -or
        $ClientObserveSeconds -lt 60 -or ![IO.Path]::IsPathFullyQualified($HordeFixturePath) -or
@@ -54,7 +61,7 @@ if($ClientGameRoot){
 $budget=Get-IW7LabRunPlan -PlannedClients $plannedClients -Debugger
 $image=Resolve-IW7BasePath $CandidateRoot 'iw7-paris-agent-lab.exe'
 $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$CandidateRoot;ServerImage=$image;ServerPort=$ServerPort;
-    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;HordeOrdinary=$HordeOrdinary;HordeSpecials=$HordeSpecials;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
+    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;HordeOrdinary=$HordeOrdinary;HordeSpecials=$HordeSpecials;RetailCpPatchSHA256=$RetailCpPatchSHA256;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -80,6 +87,13 @@ try{
         if((Get-FileHash $path).Hash -cne $entry.SHA256){throw 'Script changed after snapshot.'}
     }
     foreach($entry in $transaction.Files|Where-Object {$_.Path.StartsWith('iw7-mod/custom_scripts/cp/') -and $_.Path -match '\.(gsc|gscbin)$'}){Remove-Item -LiteralPath (Resolve-IW7BasePath $CandidateRoot $entry.Path)}
+    if($RetailCpPatchPath){
+        $retailTarget=Resolve-IW7BasePath $CandidateRoot 'iw7-mod/lab-appdata/cdata/custom_scripts/cp/patches.gsc'
+        [IO.Directory]::CreateDirectory((Split-Path $retailTarget -Parent))|Out-Null
+        Copy-Item -LiteralPath $RetailCpPatchPath -Destination $retailTarget
+        if((Get-FileHash -LiteralPath $retailTarget).Hash -ine $RetailCpPatchSHA256 -or
+           (Get-FileHash -LiteralPath $RetailCpPatchPath).Hash -ine $RetailCpPatchSHA256){throw 'Managed CP patch changed during staging.'}
+    }
     if($PopulateAgents -or $ClientGameRoot){Copy-Item -LiteralPath (Join-Path $repo 'tests/fixtures/capacity_pool.gsc') -Destination (Resolve-IW7BasePath $CandidateRoot 'iw7-mod/custom_scripts/cp/capacity_pool.gsc')}
     if($HordeFixturePath){
         $target=Resolve-IW7BasePath $CandidateRoot 'iw7-mod/custom_scripts/cp/capacity_horde.gsc'
