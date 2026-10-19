@@ -12,7 +12,9 @@ function New-IW7CapacityRconPacket([string]$Secret,[string]$Command) {
 function Assert-IW7CapacitySession($Session) {
     if(!$Session -or $Session.ServerPort -lt 27100 -or $Session.ServerPort -gt 27999 -or
        !$Session.Plan.Debugger -or $Session.Plan.PlannedClients -notin @(0,1) -or $Session.Plan.StockCopied -or $Session.Plan.MainDeployed) { throw 'Owned private debugger plan required.' }
-    if($Session.Plan.PlannedClients -eq 1 -and ($Session.Plan.AgentCapacity -ne 64 -or !$Session.Plan.PopulateAgents -or !$Session.Plan.ClientImage)){throw 'Declared matching client and 64-agent construction required.'}
+    if($Session.Plan.PlannedClients -eq 1 -and (!$Session.Plan.ClientImage -or
+       ($Session.Plan.AgentCapacity -eq 64 -and !$Session.Plan.PopulateAgents) -or
+       ($Session.Plan.AgentCapacity -eq 24 -and (!$Session.Plan.SkipReload -or $Session.Plan.PopulateAgents)))){throw 'Declared matching construction client or unchanged startup baseline required.'}
     Assert-IW7BaseIdentity $Session.Identity
     if($Session.Handle.HasExited){throw 'Owned dedicated exited.'}
     $leases=@((Get-IW7ResourceStatus).Leases|Where-Object Token -CEQ $Session.LeaseToken)

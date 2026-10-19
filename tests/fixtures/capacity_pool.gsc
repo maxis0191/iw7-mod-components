@@ -3,10 +3,9 @@ init()
 {
     if (!getdvarint("dedicated") || !getdvarint("paris_isolated_lab") ||
         getdvarint("net_port") < 27100 || getdvarint("net_port") > 27999 ||
-        getdvarint("paris_capacity_pool_probe") != 1) return;
+        (getdvarint("paris_capacity_pool_probe") != 1 && getdvarint("paris_capacity_client_probe") != 1)) return;
     print("[Paris capacity pool] INIT native=" + getdvarint("paris_native_agent_capacity") + "; engine=" + getmaxagents());
-    if (getdvarint("paris_native_agent_capacity") != 64) return;
-    level thread begin();
+    if (getdvarint("paris_capacity_pool_probe") == 1 && getdvarint("paris_native_agent_capacity") == 64) level thread begin();
     if (getdvarint("paris_capacity_client_probe") == 1) level thread connections();
 }
 

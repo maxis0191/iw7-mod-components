@@ -2,10 +2,13 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [ValidateRange(27100,27999)][int]$ServerPort=27116,[switch]$DryRun,[switch]$CaptureWriterPages,[switch]$CaptureNativeText,
       [ValidateSet(24,64)][int]$AgentCapacity=24,[switch]$PopulateAgents,
       [string]$ClientGameRoot,[ValidateRange(1,120)][int]$ClientObserveSeconds=30,
+      [switch]$SkipReload,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
 if($PopulateAgents -and $AgentCapacity -ne 64){throw 'Pool construction probe requires explicit 64-agent candidate.'}
-if($ClientGameRoot -and ($AgentCapacity -ne 64 -or !$PopulateAgents -or $CaptureWriterPages -or $CaptureNativeText)){throw 'Client probe requires populated private 64-agent mode without executable capture.'}
+if($SkipReload -and (!$ClientGameRoot -or $CaptureWriterPages -or $CaptureNativeText)){throw 'Startup-only client mode cannot capture executable pages.'}
+if($ClientGameRoot -and ($CaptureWriterPages -or $CaptureNativeText -or
+   ($AgentCapacity -eq 64 -and !$PopulateAgents) -or ($AgentCapacity -eq 24 -and (!$SkipReload -or $PopulateAgents)))){throw 'Client probe requires private 64-agent construction or explicit unchanged 24-agent startup baseline.'}
 $ops=Split-Path $PSScriptRoot -Parent;$repo=Split-Path $ops -Parent
 . "$ops/Base-Client.Core.ps1"
 . "$ops/Resource-Scheduler.Core.ps1"
@@ -40,7 +43,7 @@ if($ClientGameRoot){
 $budget=Get-IW7LabRunPlan -PlannedClients $plannedClients -Debugger
 $image=Resolve-IW7BasePath $CandidateRoot 'iw7-paris-agent-lab.exe'
 $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$CandidateRoot;ServerImage=$image;ServerPort=$ServerPort;
-    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
+    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -65,7 +68,7 @@ try{
         if((Get-FileHash $path).Hash -cne $entry.SHA256){throw 'Script changed after snapshot.'}
     }
     foreach($entry in $transaction.Files|Where-Object {$_.Path.StartsWith('iw7-mod/custom_scripts/cp/') -and $_.Path -match '\.(gsc|gscbin)$'}){Remove-Item -LiteralPath (Resolve-IW7BasePath $CandidateRoot $entry.Path)}
-    if($PopulateAgents){Copy-Item -LiteralPath (Join-Path $repo 'tests/fixtures/capacity_pool.gsc') -Destination (Resolve-IW7BasePath $CandidateRoot 'iw7-mod/custom_scripts/cp/capacity_pool.gsc')}
+    if($PopulateAgents -or $ClientGameRoot){Copy-Item -LiteralPath (Join-Path $repo 'tests/fixtures/capacity_pool.gsc') -Destination (Resolve-IW7BasePath $CandidateRoot 'iw7-mod/custom_scripts/cp/capacity_pool.gsc')}
     # This native allocation probe needs retail CP only. The split Native
     # product intentionally does not vendor the Server gameplay script set.
     Copy-Item -LiteralPath $exe -Destination $image
@@ -126,13 +129,14 @@ set sv_mapRotationCurrent ""
         Start-Sleep -Milliseconds 500
     }while([datetime]::UtcNow -lt $deadline)
     if(!$info -or $info.clients -cne '0' -or $info.mapname -cne 'cp_zmb'){throw 'Startup not proven; preserve loading dedicated for diagnosis.'}
-    $result=Invoke-IW7CapacityWatch $session
+    if($SkipReload){$result=[pscustomobject]@{Schema='iw7.capacity-watch-runtime/1';ReloadCommand='none';ProbeSkipped=$true;NativeCleanupConfirmed=$false}}
+    else{$result=Invoke-IW7CapacityWatch $session}
     if($ClientGameRoot){
         Assert-IW7BaseVacant $ClientGameRoot
         $clientStage=[pscustomobject]@{GameRoot=$ClientGameRoot;MutableFiles=@('iw7-capacity-test-client.exe');ProfileDirectory='iw7-mod/players2';ProfileDirectories=@()}
         $clientImageTransaction=Save-IW7BaseTransaction $clientStage (Join-Path $case 'client-image-backup')
         Copy-Item -LiteralPath $exe -Destination $clientImage
-        $clientPlan=New-IW7BaseClientPlan -GameRoot $ClientGameRoot -ClientImage $clientImage -ServerPort $ServerPort -ClientPort ($ServerPort+1) -Debugger -GraphicsProfile Reduced -Capacity64
+        $clientPlan=New-IW7BaseClientPlan -GameRoot $ClientGameRoot -ClientImage $clientImage -ServerPort $ServerPort -ClientPort ($ServerPort+1) -Debugger -GraphicsProfile Reduced -Capacity64:($AgentCapacity -eq 64)
         try{$client=Start-IW7BaseClient -Plan $clientPlan -ServerIdentity $identity -LeaseToken $lease.Token -Password $password -OutputRoot (Join-Path $case 'client')}
         catch{if($_.Exception.Data.Contains('BaseClientContext')){$client=$_.Exception.Data['BaseClientContext']};throw}
         $clientDeadline=[datetime]::UtcNow.AddSeconds(180)
