@@ -27,7 +27,7 @@ foreach($dedicated in @($false,$true)){
   $null=$owned.WriteInventoryAuditCommand($second,$id.Image,$id.CreationFileTime,$nonce,[Environment]::TickCount64)
   if(!$owned.WaitForExit(10000) -or $owned.ExitCode -ne 0){throw 'Owned pipe reader failed.'}
   $lines=Get-Content "$root/$dedicated.out"
-  if($lines.Count -ne 2 -or $lines[0] -cne "READ:$command" -or $lines[1] -cne "READ:$second"){throw 'Exact stdin consumption differs.'}
+  if($lines.Count -ne 2 -or $lines[0] -cne "READ:$command;" -or $lines[1] -cne "READ:$second;"){throw 'Exact stdin consumption differs.'}
   $count+=2
  }finally{if($owned){if(!$owned.HasExited){$owned.Terminate(66);$null=$owned.WaitForExit(5000)};$owned.Dispose()}}
 }

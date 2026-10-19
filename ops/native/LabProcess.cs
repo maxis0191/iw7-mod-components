@@ -151,7 +151,7 @@ public static class IW7LabProcess
                     throw new InvalidOperationException("Current native safety publication expired before inventory write.");
                 if(consoleNonce!=null && !String.Equals(consoleNonce,nonce,StringComparison.Ordinal))
                     throw new InvalidOperationException("Native client nonce changed.");
-                byte[] bytes=Encoding.ASCII.GetBytes(command+"\n"); uint written;
+                byte[] bytes=Encoding.ASCII.GetBytes(command+";\n"); uint written;
                 consoleNonce=nonce; inventoryWrites++;
                 if(!WriteFile(consoleInput,bytes,(uint)bytes.Length,out written,IntPtr.Zero) || written!=bytes.Length)
                     throw new Win32Exception(Marshal.GetLastWin32Error(),"Owned inventory stdin write failed or incomplete.");
