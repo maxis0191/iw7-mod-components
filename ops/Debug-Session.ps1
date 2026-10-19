@@ -7,9 +7,21 @@ param(
     [ValidateRange(1,1000)][double]$ExpectedFps=30,
     [ValidateRange(1,1000)][double]$ExpectedTPS=20,
     [ValidateSet('cp_zmb','cp_rave','cp_disco','cp_town','cp_final')][string]$Map='cp_zmb',
-    [switch]$SkipPresentMon
+    [switch]$SkipPresentMon,
+    [string]$ComparisonContext,
+    [int]$MeasurementStartSeconds,
+    [int]$MeasurementEndSeconds
 )
 $ErrorActionPreference='Stop'
+$hasComparisonContext=$PSBoundParameters.ContainsKey('ComparisonContext')
+$hasMeasurementStart=$PSBoundParameters.ContainsKey('MeasurementStartSeconds')
+$hasMeasurementEnd=$PSBoundParameters.ContainsKey('MeasurementEndSeconds')
+if ($hasComparisonContext -or $hasMeasurementStart -or $hasMeasurementEnd) {
+    if (!$hasComparisonContext -or !$hasMeasurementStart -or !$hasMeasurementEnd -or
+        [string]::IsNullOrWhiteSpace($ComparisonContext)) { throw 'Supply ComparisonContext, MeasurementStartSeconds and MeasurementEndSeconds together.' }
+    if ($MeasurementStartSeconds -lt 30 -or $MeasurementStartSeconds -ge $MeasurementEndSeconds -or
+        $MeasurementEndSeconds -gt $Seconds) { throw 'Comparison window must satisfy 30 <= start < end <= Seconds.' }
+}
 if ($Client -and [string]::IsNullOrWhiteSpace($SeparateClientReason)) {
     throw 'The automated debugger client uses a separate lab root. Use the base client by default, or document a necessary exception with -SeparateClientReason; see docs/INSTANCE-WORKFLOW.md.'
 }
@@ -71,6 +83,11 @@ try {
     }
     $arguments=@("$PSScriptRoot/iw7_watch.py",'--targets',$targetsPath,'--seconds',"$Seconds",'--output',(Join-Path $case 'live.jsonl'),
         '--frame-budget-ms',([double](1000/$ExpectedFps)).ToString([Globalization.CultureInfo]::InvariantCulture),'--expected-tps',$ExpectedTPS.ToString([Globalization.CultureInfo]::InvariantCulture),'--port',"$($state.ServerPort)")
+    if ($hasComparisonContext) {
+        $arguments+=@('--comparison-context',$ComparisonContext,
+            '--measurement-start-seconds',$MeasurementStartSeconds.ToString([Globalization.CultureInfo]::InvariantCulture),
+            '--measurement-end-seconds',$MeasurementEndSeconds.ToString([Globalization.CultureInfo]::InvariantCulture))
+    }
     if ($present) { $arguments+=@('--present-csv',$csv) }
     & python @arguments
     if ($LASTEXITCODE) { throw "Live observer aborted; evidence remains at $case." }
