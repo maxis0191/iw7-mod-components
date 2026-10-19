@@ -90,6 +90,14 @@ $script:terminated=$false
 $late=Stop-IW7CapacityServerWithDiagnosis $session @() $env:TEMP @{}
 if(!$script:terminated -or $script:diagnosticReads -ne 2 -or $late.Kind -cne 'confirmed-fatal-recovery' -or !$session.DiagnosedCrash.ConfirmedFatal){throw 'Late exact fatal did not recover after preserving absent-UDP refusal.'}
 Remove-Item -LiteralPath $artifact
+$script:departureReads=0
+function Read-IW7CapacityServerInfo($Session){$script:departureReads++;[pscustomobject]@{clients=$(if($script:departureReads -lt 3){'1'}else{'0'});sv_running='1';mapname='cp_zmb'}}
+Wait-IW7CapacityClientDeparture $session
+if($script:departureReads -ne 3){throw 'Fatal client residual connection was not observed until actual zero.'}
+function Read-IW7CapacityServerInfo($Session){[pscustomobject]@{clients='2';sv_running='1';mapname='cp_zmb'}}
+Reject {Wait-IW7CapacityClientDeparture $session}
+function Read-IW7CapacityServerInfo($Session){[pscustomobject]@{clients='0';sv_running='1';mapname='cp_town'}}
+Reject {Wait-IW7CapacityClientDeparture $session}
 # Exact cleanup status model: file restoration does not imply lease release.
 $lease=[pscustomobject]@{Token='synthetic'};$restored=$true;$leaseReleased=$false
 function Exit-IW7ResourceLease {param($Token);throw 'Injected release failure'}

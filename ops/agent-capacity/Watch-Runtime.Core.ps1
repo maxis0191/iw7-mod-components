@@ -44,6 +44,23 @@ function Send-IW7CapacityRcon($Session,[string]$Command) {
     try{$udp.Connect('127.0.0.1',$Session.ServerPort);$null=$udp.Send($packet,$packet.Length)}finally{$udp.Dispose()}
     # Transmission is not command acknowledgement. Never return/log the secret.
 }
+function Read-IW7CapacityServerInfo($Session) {
+    & "$PSScriptRoot/../Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $Session.ServerPort
+}
+function Wait-IW7CapacityClientDeparture($Session) {
+    # Called only after exact fatal-client closure and successful restoration.
+    # A residual connection grants no mutation: wait for actual zero, then the
+    # ordinary stop still requires its own fresh continuous 30-second proof.
+    $deadline=[datetime]::UtcNow.AddSeconds(60)
+    do {
+        Assert-IW7CapacitySession $Session
+        $info=Read-IW7CapacityServerInfo $Session
+        if($info.sv_running -cne '1' -or $info.mapname -cne 'cp_zmb' -or $info.clients -cnotin @('0','1')){throw 'Private post-fatal roster differs; preserve it.'}
+        if($info.clients -ceq '0'){return}
+        Start-Sleep -Milliseconds 1000
+    }while([datetime]::UtcNow -lt $deadline)
+    throw 'Fatal client departure not witnessed; preserve server and reservation.'
+}
 function Wait-IW7CapacityVacant($Session,[int]$Seconds=30,[int]$TimeoutSeconds=90) {
     $since=$null;$deadline=[datetime]::UtcNow.AddSeconds($TimeoutSeconds)
     do {

@@ -4,6 +4,7 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [string]$ClientGameRoot,[ValidateRange(1,120)][int]$ClientObserveSeconds=30,
       [switch]$SkipReload,
       [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
+      [ValidateSet(24,48)][int]$HordeOrdinary=48,[ValidateRange(0,2)][int]$HordeSpecials=2,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
 if($HordeFixturePath -or $HordeFixtureSHA256){
@@ -53,7 +54,7 @@ if($ClientGameRoot){
 $budget=Get-IW7LabRunPlan -PlannedClients $plannedClients -Debugger
 $image=Resolve-IW7BasePath $CandidateRoot 'iw7-paris-agent-lab.exe'
 $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$CandidateRoot;ServerImage=$image;ServerPort=$ServerPort;
-    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
+    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;HordeOrdinary=$HordeOrdinary;HordeSpecials=$HordeSpecials;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -99,7 +100,8 @@ set scr_zombie_maxagents $AgentCapacity
 set paris_capacity_pool_probe $([int][bool]$PopulateAgents)
 set paris_capacity_pool_validate 0
 set paris_capacity_client_probe $plannedClients
-set paris_capacity_horde_target $(if($HordeFixturePath){48}else{0})
+set paris_capacity_horde_target $(if($HordeFixturePath){$HordeOrdinary}else{0})
+set paris_capacity_horde_specials $HordeSpecials
 set net_ip 127.0.0.1
 set sv_lanOnly 1
 set g_password "$password"
@@ -175,8 +177,10 @@ set sv_mapRotationCurrent ""
         $result|Add-Member NoteProperty MatchingClientProtected $true
         if($HordeFixturePath){
             $hordeLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
-            if($hordeLog.Contains('[Paris capacity horde] FAIL') -or !$hordeLog.Contains('[Paris capacity horde] PASS ordinary=48 special=2 total=50;')){throw 'Active ordinary48 plus specials plateau not proven.'}
-            $result|Add-Member NoteProperty Horde48PlusSpecialsConfirmed $true
+            $expected="[Paris capacity horde] PASS ordinary=$HordeOrdinary special=$HordeSpecials total=$($HordeOrdinary+$HordeSpecials);"
+            if($hordeLog.Contains('[Paris capacity horde] FAIL') -or !$hordeLog.Contains($expected)){throw 'Requested active horde plateau not proven.'}
+            $result|Add-Member NoteProperty HordePopulationConfirmed $true
+            $result|Add-Member NoteProperty Horde48PlusSpecialsConfirmed ($HordeOrdinary -eq 48 -and $HordeSpecials -eq 2)
         }
     }
     if($PopulateAgents){
@@ -196,6 +200,9 @@ set sv_mapRotationCurrent ""
 finally{
     try{
         if($client){Stop-IW7BaseClient $client}
+        if($session -and $clientCrash -and $clientCrash.ConfirmedFatal -and $client.Transaction.Restored){
+            Wait-IW7CapacityClientDeparture $session
+        }
         if($clientImageTransaction){
             Assert-IW7BaseVacant $ClientGameRoot
             Restore-IW7BaseTransaction $clientImageTransaction
