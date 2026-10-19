@@ -25,8 +25,26 @@ Only the seven known quest videos and their named dependent waits are eligible.
 The active movie's remaining duration is removed from those deadlines after
 the worker clears Bink and unfreezes players. Post-video margins remain native.
 MissingReel's combat timeout is excluded. Beast's decorative projector loops
-are excluded. Unknown or changed ScriptFiles disable skipping for that movie.
+are excluded. Unknown or ambiguous named wait layouts disable skipping for that movie.
 
-Candidate source and overlay refusal/restoration checks are prepared. Native
-build, real input, actual video/HUD rendering and quest continuation validation
-are pending; no gameplay acceptance or deployment is claimed yet.
+Qualification on 2026-10-19 uses native code c643976d772ddf1d714dd3b976618fbc40a6c414.
+All three native profiles build. Private run F passes all five maps,21 solo key
+cases and five ballots with one game client plus one protected engine test
+client. All seven fullscreen prompts were visually inspected at1280x720; the
+native overlay shows only the Space hint and a1/2 tally. The actual Rave retail
+continuation returns with its five-second post-video margin retained. Processes
+and mutable files are restored. A prior GSC-only HUD was hidden by Bink; that
+failed candidate and a private input observation correction remain in history.
+
+All70 source groups are locally validated across the complete run and bounded
+reruns of two resource-admission refusals. The existing pinned JDK21 was placed
+on command-local PATH after its initial missing-executable failure. These are
+local checks; hosted CI admission, owner acceptance and Main deployment remain
+separate. The server owns the sanitized runtime/build receipt in
+[PR327](https://github.com/maxis0191/iw7-paris-server/pull/327).
+
+The updated standard client supplies the fullscreen hint and physical Enter.
+The server retains native jump/fire fallback for older clients; that fallback
+has not received separate legacy-client gameplay acceptance. Full natural quest
+playthroughs, a second human and WAN acceptance are not claimed. Projector loops
+and scripted combat animations stay outside this video controller.
