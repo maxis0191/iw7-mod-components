@@ -39,6 +39,7 @@ $null=[IO.Directory]::CreateDirectory($case)
 $plan|ConvertTo-Json|Set-Content (Join-Path $case 'plan.local.json')
 $lease=$null;$transaction=$null;$journalTransaction=$null;$server=$null;$session=$null;$result=$null;$failure=$null;$cleanupError=$null;$restored=$false;$stopResult=$null;$ownedExited=$false;$leaseReleased=$false
 $pageReader=$null;$pageReaderClosed=$true;$pageCapture=$null;$pageCaptureError=$null;$textCapture=$null
+$crash=$null;$crashCache=@{}
 try{
     $lease=Enter-IW7ResourceLease -Scope $CandidateRoot -Kind Runtime -PhysicalBytes $budget.PhysicalBytes -CommitBytes $budget.CommitBytes -Owner 'Capacity watch server only; no client' -RequireNewLease
     # Recheck scope/ports under the reservation, before the first staged byte.
@@ -90,6 +91,7 @@ set sv_mapRotationCurrent ""
     if(!('IW7LabProcess' -as [type])){Add-Type -Path "$ops/native/LabProcess.cs"}
     $desktop='IW7ParisLab_'+[guid]::NewGuid().ToString('N')
     $capacityFlag=if($AgentCapacity -eq 64){' -paris-capacity-64'}else{''}
+    $crashBefore=@(Get-ChildItem -LiteralPath (Join-Path $CandidateRoot 'minidumps') -Filter '*.zip' -File -ErrorAction SilentlyContinue|ForEach-Object FullName)
     $arguments="-dedicated -allow_root_io -noupdate -nosteam -cpMode -stdout -paris-server-test -paris-isolated-lab -paris-debugger -paris-capacity-watch$capacityFlag +set net_ip 127.0.0.1 +set sv_lanOnly 1 +set net_port $ServerPort +exec server_capacity_watch.cfg +map_rotate"
     $server=[IW7LabProcess]::StartOwned($image,$arguments,$CandidateRoot,(Join-Path $case 'server.stdout.log'),(Join-Path $case 'server.stderr.log'),$desktop)
     $p=Get-Process -Id $server.Id
@@ -103,6 +105,8 @@ set sv_mapRotationCurrent ""
     $deadline=[datetime]::UtcNow.AddSeconds(120)
     do{
         Assert-IW7CapacitySession $session
+        $observedCrash=Get-IW7AgentNewCrash -CandidateRoot $CandidateRoot -Identity $identity -Before $crashBefore -OutputRoot $case -Cache $crashCache
+        if($observedCrash){$crash=$observedCrash;if($crash.ConfirmedFatal){throw 'Correlated native fatal during private startup; dump preserved.'}}
         try{$info=& "$ops/Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $ServerPort}catch{$info=$null}
         if($info -and $info.sv_running -ceq '1' -and $info.mapname -ceq 'cp_zmb' -and $info.clients -ceq '0'){break}
         Start-Sleep -Milliseconds 500
@@ -118,7 +122,9 @@ set sv_mapRotationCurrent ""
 }catch{$failure=$_.Exception.Message}
 finally{
     try{
-        if($session -and !$server.HasExited){
+        if($session -and !$server.HasExited -and $crash -and $crash.ConfirmedFatal){
+            $stopResult=Stop-IW7CapacityConfirmedFatal $session $crash
+        }elseif($session -and !$server.HasExited){
             if($CaptureWriterPages -or $CaptureNativeText){
                 try{
                     $journal=Read-IW7CapacityOwnedJournal $session
@@ -173,7 +179,7 @@ finally{
     [pscustomobject]@{Schema='iw7.capacity-watch-server/1';Result=$result;Failure=$failure;CleanupError=$cleanupError;Restored=$restored;
         ExactOwnedProcessExited=$ownedExited;Stop=$stopResult;LeaseReleased=$leaseReleased;LeaseRetained=(Get-IW7CapacityLeaseRetained $lease $leaseReleased);OutputRoot=$case;
         WriterPages=$pageCapture;WriterPageError=$pageCaptureError;WriterReaderClosed=$pageReaderClosed;
-        NativeText=$textCapture;RequestedAgentCapacity=$AgentCapacity;
+        NativeText=$textCapture;RequestedAgentCapacity=$AgentCapacity;Crash=$crash;
         StockCopied=$false;BaseClientTouched=$false;WriterProven=$false;PatchReady=$false}|ConvertTo-Json -Depth 9|Set-Content (Join-Path $case 'result.local.json')
 }
 if($failure){throw "$failure ; evidence=$case"};if($cleanupError){throw "Cleanup pending: $cleanupError ; evidence=$case"};if($pageCaptureError){throw "Writer pages failed: $pageCaptureError ; evidence=$case"}

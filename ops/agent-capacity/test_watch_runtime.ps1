@@ -58,6 +58,26 @@ function Wait-IW7CapacityVacant($Session,[int]$Seconds=30,[int]$TimeoutSeconds=9
 function Send-IW7CapacityRcon($Session,[string]$Command){throw 'Current occupied fixture'}
 Reject {Stop-IW7CapacityOwnedServer $session}
 if($script:terminated){throw 'Refused command triggered termination.'}
+# Fatal recovery requires a retained matching artifact AND a fresh exact dialog.
+$artifact=Join-Path $env:TEMP ('capacity-fatal-pure-'+[guid]::NewGuid()+'.bin')
+[IO.File]::WriteAllText($artifact,'synthetic fatal artifact')
+$hash=(Get-FileHash $artifact).Hash
+$session|Add-Member NoteProperty Identity ([pscustomobject]@{PID=123;SHA256=$hash})
+$fatal=[pscustomobject]@{ConfirmedFatal=$true;Artifact=$artifact;OriginalDumpName='synthetic.zip';Report=[pscustomobject]@{correlated=$true;expected_pid=123;image=[pscustomobject]@{sha256=$hash};dump=[pscustomobject]@{sha256=$hash}}}
+function Read-IW7AgentFatalDialog($Identity){'synthetic dialog'}
+function Test-IW7AgentFatalEvidence($Report,$Dialog,$OriginalDumpName){$false}
+Reject {Stop-IW7CapacityConfirmedFatal $session $fatal}
+if($script:terminated){throw 'Missing fresh fatal dialog allowed termination.'}
+function Test-IW7AgentFatalEvidence($Report,$Dialog,$OriginalDumpName){$true}
+$fatal.Report.expected_pid=124
+Reject {Stop-IW7CapacityConfirmedFatal $session $fatal}
+if($script:terminated){throw 'Foreign fatal PID allowed termination.'}
+$fatal.Report.expected_pid=123
+$handle|Add-Member -Force ScriptMethod WaitForExit {$true}
+$handle|Add-Member ScriptMethod get_ExitCode {3758096385}
+$fatalResult=Stop-IW7CapacityConfirmedFatal $session $fatal
+if(!$script:terminated -or $fatalResult.Kind -cne 'confirmed-fatal-recovery'){throw 'Confirmed owned fatal recovery failed.'}
+Remove-Item -LiteralPath $artifact
 # Exact cleanup status model: file restoration does not imply lease release.
 $lease=[pscustomobject]@{Token='synthetic'};$restored=$true;$leaseReleased=$false
 function Exit-IW7ResourceLease {param($Token);throw 'Injected release failure'}

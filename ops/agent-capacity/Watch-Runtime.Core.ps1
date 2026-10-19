@@ -179,3 +179,16 @@ function Stop-IW7CapacityOwnedServer($Session) {
     if(!$Session.Handle.WaitForExit(5000)){throw 'Owned exit unconfirmed; preserve lease and snapshots.'}
     [pscustomobject]@{Code=$Session.Handle.get_ExitCode();Kind=$(if($forced){'forced'}else{'quit'});RequestError=$null}
 }
+function Stop-IW7CapacityConfirmedFatal($Session,$Crash) {
+    Assert-IW7CapacitySession $Session
+    if(!$Crash -or !$Crash.ConfirmedFatal -or !$Crash.Report.correlated -or
+       $Crash.Report.expected_pid -ne $Session.Identity.PID -or
+       $Crash.Report.image.sha256 -ine $Session.Identity.SHA256 -or
+       (Get-FileHash -LiteralPath $Crash.Artifact).Hash -ine $Crash.Report.dump.sha256){throw 'Same retained fatal artifact/image required.'}
+    $dialog=Read-IW7AgentFatalDialog $Session.Identity
+    if(!(Test-IW7AgentFatalEvidence $Crash.Report $dialog $Crash.OriginalDumpName)){throw 'Current exact fatal dialog absent; preserve process.'}
+    Assert-IW7CapacitySession $Session
+    $Session.Handle.Terminate(3758096385)
+    if(!$Session.Handle.WaitForExit(5000)){throw 'Exact fatal process exit not confirmed; preserve reservation.'}
+    [pscustomobject]@{Code=$Session.Handle.get_ExitCode();Kind='confirmed-fatal-recovery';RequestError=$null}
+}
