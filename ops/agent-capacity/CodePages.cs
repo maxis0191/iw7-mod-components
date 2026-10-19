@@ -20,6 +20,12 @@ public sealed class IW7CapacityPages : IDisposable {
     static readonly long[] resetEntryPages = { 0x14B8E6000, 0x14B4B2000 };
     // Exact pages selected from the 2026-10-19 hardware writer journal.
     static readonly long[] writerPages = { 0x1412BF000, 0x14C1ED000, 0x14BFE5000 };
+    // Two observed writers and the exact continuation/fill/initialization
+    // targets retained in the historical 9F follow-up report. No address input.
+    static readonly long[] writerPathPages = {
+        0x14C1ED000, 0x14BFE5000, 0x140406000, 0x140B20000,
+        0x1412BF000, 0x141238000, 0x14B538000, 0x140AC6000
+    };
     readonly long[] instancePages;
     readonly string instancePlan;
     [StructLayout(LayoutKind.Sequential)] struct MBI {
@@ -66,6 +72,7 @@ public sealed class IW7CapacityPages : IDisposable {
         if (plan == "reset-callers") return (long[])allowedPages.Clone();
         if (plan == "reset-entry-targets") return (long[])resetEntryPages.Clone();
         if (plan == "writer-sites-20261019") return (long[])writerPages.Clone();
+        if (plan == "writer-path-20261019") return (long[])writerPathPages.Clone();
         throw new ArgumentException("Unknown fixed page plan.");
     }
     public static void ValidatePlanAddress(string plan, long address) {

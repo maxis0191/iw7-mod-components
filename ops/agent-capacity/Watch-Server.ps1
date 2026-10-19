@@ -117,11 +117,11 @@ finally{
                     . "$PSScriptRoot/CodePages.Core.ps1"
                     if(!('IW7CapacityPages' -as [type])){Add-Type -Path "$PSScriptRoot/CodePages.cs"}
                     Assert-IW7CapacitySession $session
-                    $pageReader=[IW7CapacityPages]::new([int]$identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc(),'writer-sites-20261019')
+                    $pageReader=[IW7CapacityPages]::new([int]$identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc(),'writer-path-20261019')
                     $pageReaderClosed=$false
                     $pageCapture=Join-Path $case 'writer-pages'
                     $proof=[pscustomobject]@{NativeSHA256=$manifest.SHA256;Header=$journal.Header;Armed=$journal.Armed;ObservedWriterAfter=@(0x14C1ED66C,0x14BFE5A30)}
-                    Save-IW7CapacityCodePages $pageReader $pageCapture $identity 'writer-sites-20261019' $proof
+                    Save-IW7CapacityCodePages $pageReader $pageCapture $identity 'writer-path-20261019' $proof
                     Assert-IW7CapacitySession $session
                 }catch{$pageCaptureError=$_.Exception.Message}
                 finally{

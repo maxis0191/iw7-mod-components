@@ -37,8 +37,9 @@ et la réservation libérée. Le journal original est conservé. La correction
 d'un ticket non réclamé ou publié seulement après fin de son thread original
 et fin du helper ; un ticket réclamé ou une notification active restent protégés.
 Le prochain essai doit confirmer cette fermeture. Une option du runner conserve
-ensuite uniquement les trois pages explicitement sélectionnées depuis ce journal,
-avec six lectures (24 KiB), double comparaison et fermeture du handle de lecture.
+ensuite uniquement les pages explicitement sélectionnées depuis ce journal,
+avec double comparaison et fermeture du handle de lecture. La première sélection
+de trois pages est conservée comme API, sans avoir été exécutée.
 Une autre adresse observée exige une nouvelle sélection ; aucun scan n'est ajouté.
 
 La recherche dans les archives locales a aussi retrouvé un état plus avancé
@@ -50,6 +51,14 @@ des continuations. Il conserve explicitement `Capacity48Ready=false` et
 `AllocatorIdentified=false`. Ces preuves historiques ne qualifient pas un nouveau
 binaire ; elles servent à poursuivre l'analyse plutôt qu'à rejouer les anciennes
 commandes ou à restaurer leur laboratoire retiré.
+
+La sélection actuelle `writer-path-20261019` réunit huit pages (32 KiB conservés,
+16 lectures/64 KiB lus) : les deux writers observés, leurs continuations
+`140406000/140B20000`, les cibles de remplissage/base-init `1412BF000/141238000`,
+puis les deux seuls compléments manquants proposés par 9F : `14B538000/140AC6000`.
+Le rapport historique relie les deux derniers au jump `140B20B1A` et au call
+`140B20B23`. Leurs noms ne certifient pas un allocateur ni l'exécution complète
+de la boucle. Aucune commande de capture historique n'est réutilisée.
 
 The complete isolated native build from1bcb19c now compiles and links, executable
 A29488DF and matching PDB verified with all32 source hashes. This includes the

@@ -95,6 +95,10 @@ $writer[0]=0
 if([IW7CapacityPages]::GetPlanPages('writer-sites-20261019')[0] -ne 0x1412BF000){throw 'Writer plan mutable'}
 $refused=$false;try{[IW7CapacityPages]::ValidatePlanAddress('writer-sites-20261019',0x140488000)}catch{$refused=$true}
 if(!$refused){throw 'Writer plan accepted an unrelated page'}
+$path=[IW7CapacityPages]::GetPlanPages('writer-path-20261019')
+if(($path -join ',') -cne (@(0x14C1ED000,0x14BFE5000,0x140406000,0x140B20000,0x1412BF000,0x141238000,0x14B538000,0x140AC6000) -join ',')){throw 'Wrong retained writer path'}
+$path[0]=0
+if([IW7CapacityPages]::GetPlanPages('writer-path-20261019')[0] -ne 0x14C1ED000){throw 'Writer path mutable'}
 foreach($bad in @('arbitrary','RESET-ENTRY-TARGETS')) {
     $refused=$false;try{$null=[IW7CapacityPages]::GetPlanPages($bad)}catch{$refused=$true}
     if(!$refused){throw 'Unknown plan accepted'}
@@ -108,7 +112,7 @@ try {
     # No game/process memory was read; query only this test's own address space.
 } finally {$native.Dispose();$p.Dispose()}
 if(!$native.Closed){throw 'Read-only self handle not closed'}
-foreach($mode in @('normal','changed','partial','protection','two','writer')) {
+foreach($mode in @('normal','changed','partial','protection','two','writer','writer-path')) {
     $reader=[pscustomobject]@{ReadCalls=0;ReadBytes=0;Mode=$mode;Queries=0}
     $reader|Add-Member ScriptMethod AssertAlive {}
     $reader|Add-Member ScriptMethod QueryPage {
@@ -129,10 +133,13 @@ foreach($mode in @('normal','changed','partial','protection','two','writer')) {
         ,$bytes
     }
     $out=Join-Path $Temp $mode
-    $selected=if($mode -eq 'two'){'reset-entry-targets'}elseif($mode -eq 'writer'){'writer-sites-20261019'}else{'reset-callers'}
+    $selected=if($mode -eq 'two'){'reset-entry-targets'}elseif($mode -eq 'writer'){'writer-sites-20261019'}elseif($mode -eq 'writer-path'){'writer-path-20261019'}else{'reset-callers'}
     $refused=$false;try{Save-IW7CapacityCodePages $reader $out ([pscustomobject]@{PID=123}) $selected ([pscustomobject]@{synthetic=$true})}catch{$refused=$true}
     $record=Get-Content "$out/manifest.local.json" -Raw|ConvertFrom-Json
-    if($mode -eq 'writer') {
+    if($mode -eq 'writer-path') {
+        if($refused -or !$record.complete -or $record.pages.Count -ne 8 -or $record.read_calls -ne 16 -or $record.read_bytes -ne 65536 -or $record.page_plan -cne 'writer-path-20261019'){throw 'Writer path bounds failed'}
+        if(@($record.pages|Where-Object owner -CNE 'selected-writer-path').Count){throw 'Writer path mislabelled as known function owner'}
+    } elseif($mode -eq 'writer') {
         if($refused -or !$record.complete -or $record.pages.Count -ne 3 -or $record.read_calls -ne 6 -or $record.read_bytes -ne 24576 -or $record.page_plan -cne 'writer-sites-20261019'){throw 'Writer plan bounds failed'}
         if(@($record.pages|Where-Object owner -CNE 'observed-writer-site').Count){throw 'Writer site mislabelled as known function owner'}
     } elseif($mode -eq 'two') {
