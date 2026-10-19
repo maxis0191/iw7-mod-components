@@ -208,6 +208,83 @@ int main()
                     "fresh downlink burst quota changed");
         }
 
+        // A byte-rejected packet must not spend frame tokens. Use the real
+        // handshake/wire boundary and compare an identical server without the
+        // extra rejected traffic; no private quota state is inspected.
+        fixture byte_rejections;
+        byte_rejections.join(0, byte_rejections.a);
+        byte_rejections.join(1, byte_rejections.b);
+        auto control = byte_rejections.server;
+        w::message byte_rejected;
+        unsigned admitted_large{};
+        for (; admitted_large < 100; ++admitted_large)
+        {
+            const auto large = roundtrip(byte_rejections.a.audio(
+                std::string(w::max_frame_bytes, 'x')));
+            const auto bytes = static_cast<unsigned>(w::encode(large).size());
+            std::vector<t::delivery> output, control_output;
+            const bool accepted = byte_rejections.server.receive(
+                0, large, bytes, byte_rejections.time, output);
+            require(control.receive(0, large, bytes, byte_rejections.time,
+                                    control_output) == accepted,
+                    "byte-quota control diverged before rejected traffic");
+            if (!accepted)
+            {
+                require(output.empty() && control_output.empty(),
+                        "byte-rejected audio was relayed");
+                byte_rejected = large;
+                break;
+            }
+        }
+        require(!byte_rejected.frames.empty() && admitted_large + 1 < 100,
+                "byte quota was not isolated before the frame burst limit");
+        const auto rejected_bytes = static_cast<unsigned>(w::encode(byte_rejected).size());
+        for (unsigned i = 0; i < 100; ++i)
+        {
+            std::vector<t::delivery> output;
+            require(!byte_rejections.server.receive(0, byte_rejected, rejected_bytes,
+                                                    byte_rejections.time, output) &&
+                        output.empty(),
+                    "byte-rejected retry was admitted");
+        }
+        // Reuse the uncommitted sequence with a smaller canonical payload.
+        // Refill enough bytes for it, but less than one frame token, so the
+        // comparison cannot hide quota loss behind a full frame refill.
+        auto small = byte_rejected;
+        small.frames = {"x"};
+        small = roundtrip(small);
+        const auto small_bytes = static_cast<unsigned>(w::encode(small).size());
+        const auto refill_ms = (small_bytes * 1000ull + 16000 - 1) / 16000;
+        require(refill_ms * 60 < 1000, "byte-quota witness refilled a whole frame");
+        byte_rejections.time += refill_ms;
+        std::vector<t::delivery> control_output, output;
+        require(control.receive(0, small, small_bytes, byte_rejections.time,
+                                control_output) && control_output.size() == 1,
+                "byte-quota control could not admit fresh small speech");
+        require(byte_rejections.server.receive(0, small, small_bytes,
+                                              byte_rejections.time, output) &&
+                    output.size() == 1,
+                "byte-rejected packets spent fresh-speech frame quota");
+        require(byte_rejections.down(byte_rejections.b, output[0].data).audio,
+                "fresh small speech did not reach its listener");
+        require(!byte_rejections.server.receive(0, small, small_bytes,
+                                               byte_rejections.time, output) && output.empty(),
+                "committed byte-quota sequence replay was admitted");
+        byte_rejections.time += 1000;
+        const auto refilled = roundtrip(byte_rejections.a.audio("after refill"));
+        require(byte_rejections.server.receive(
+                    0, refilled, static_cast<unsigned>(w::encode(refilled).size()),
+                    byte_rejections.time, output),
+                "transactional quota did not refill");
+        const auto backward = roundtrip(byte_rejections.a.audio("after backward time"));
+        const auto backward_bytes = static_cast<unsigned>(w::encode(backward).size());
+        require(!byte_rejections.server.receive(0, backward, backward_bytes,
+                                               byte_rejections.time - 1, output) && output.empty(),
+                "backward audio time was admitted");
+        require(byte_rejections.server.receive(0, backward, backward_bytes,
+                                              byte_rejections.time, output),
+                "backward-time refusal committed provisional audio state");
+
         // Lost challenge/welcome and expired challenge recover by retry/new nonce.
         fixture loss;
         auto lost_hello = loss.a.tick(loss.time)[0];
