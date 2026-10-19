@@ -1,5 +1,40 @@
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
+## Qualification64-v2 avec le client standard — 19 octobre2026
+
+La série réelle sur les cinq cartes passe48 ordinaires +2 spéciaux et24 morts/
+remplacements par carte : Spaceland108 relevés/300s, Beast112/120s, Rave105/300s,
+Shaolin110/120s et Attack109/120s. Chaque cas exige le hook GSC48, la protection
+moteur fraîche avec cheats0/inactivity0, les64 constructions natives et de vrais
+indices64+ explicitement écrits sur7 bits. Les processus sortent, les fichiers
+gérés/profils restaurent et les baux sont libérés. Spaceland rejoint ensuite Beast
+avec le même client et75 noms libres ; Beast à froid conserve78 noms libres.
+
+Deux préparations Attack ont échoué avant remplissage : le boss géant précréé
+occupait déjà un agent et sa réservation. Le journal identifie crab_boss/axis ;
+la fixture conserve maintenant ce rôle, ainsi que les alliés, et ne les compte
+pas parmi ses50 hostiles. La politique de production continue de compter toutes
+les places réellement occupées/réservées. Aucun état de quête n'est forcé.
+
+L'audit strict Spaceland reste faux à cause d'un changement bancaire observé sur
+Main. Les audits distincts prouvent la restauration de nos fichiers gérés et
+l'absence de modification du Main statique ; les nouveaux octets bancaires sont
+préservés et leur auteur n'est pas attribué. Ce résultat n'est pas renommé en
+succès d'audit strict. Les quatre autres cas ont aussi l'audit strict vrai.
+
+Les reçus et SHA256 complets sont conservés dans
+[le bilan structuré](agent-capacity-qualification-20261019.json). Le serveur
+Spaceland donne20Hz médians, minimum19,685 sur269 fenêtres pendant l'occupation
+maintenue. La comparaison instrumentée24/0 contre48/2 passe :20Hz serveur médians dans
+les deux cas,30,2991 puis30,3101 rappels de présentation/s médians et intervalles
+maximaux50,7308 puis51,0131ms. La mémoire privée client observée passe de8810,9
+à8863,3MiB ; celle du dédié de1212,3 à1212,4MiB. Ces observations ne mesurent pas
+la différence avec une allocation native stock24, les deux pools restant64. Ces tests
+utilisent un seul client privé en1280×720 réduit sous limite30 ; ils ne constituent
+pas une acceptation propriétaire, WAN, quatre joueurs ou une garantie sans lag.
+Le build de livraison doit aussi reprendre le correctif vocal PR94 fusionné
+pendant ces essais. Main reste24 ; les PR95/328 et la promotion restent à terminer.
+
 ## Delta indépendant des agents — contrat64-v2 en qualification
 
 Les30 listes entityState actives sont bien à7 bits (21 descripteurs distincts),
