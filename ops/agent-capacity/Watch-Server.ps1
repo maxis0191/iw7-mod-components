@@ -66,6 +66,7 @@ set sv_maxclients 4
 set g_gametype "zombie"
 set scr_zombie_maxagents $AgentCapacity
 set paris_capacity_pool_probe $([int][bool]$PopulateAgents)
+set paris_capacity_pool_validate 0
 set net_ip 127.0.0.1
 set sv_lanOnly 1
 set g_password "$password"
@@ -114,9 +115,17 @@ set sv_mapRotationCurrent ""
     if(!$info -or $info.clients -cne '0' -or $info.mapname -cne 'cp_zmb'){throw 'Startup not proven; preserve loading dedicated for diagnosis.'}
     $result=Invoke-IW7CapacityWatch $session
     if($PopulateAgents){
-        $freshLog=[IO.File]::ReadAllText((Join-Path $case 'server.stdout.log'))
+        Send-IW7CapacityRcon $session 'set paris_capacity_pool_validate 1'
+        $poolDeadline=[datetime]::UtcNow.AddSeconds(5)
+        do{
+            Assert-IW7CapacitySession $session
+            $freshLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
+            if($freshLog.Contains('[Paris capacity pool] POST_RESTART native=64 initialized=64 unique=64 bounded=82; combat=0')){break}
+            Start-Sleep -Milliseconds 50
+        }while([datetime]::UtcNow -lt $poolDeadline)
         if($freshLog.Contains('[Paris capacity pool] FAIL') -or
-           [regex]::Matches($freshLog,[regex]::Escape('[Paris capacity pool] READY native=64 initialized=64 unique=64 bounded=82; combat=0')).Count -lt 2){throw '64-agent construction not proven at startup and restart.'}
+           !$freshLog.Contains('[Paris capacity pool] READY native=64 initialized=64 unique=64 bounded=82; combat=0') -or
+           !$freshLog.Contains('[Paris capacity pool] POST_RESTART native=64 initialized=64 unique=64 bounded=82; combat=0')){throw '64-agent construction not proven at startup and after restart.'}
         $result|Add-Member NoteProperty PoolConstructionConfirmed $true
     }
 }catch{$failure=$_.Exception.Message}

@@ -5,7 +5,7 @@ function Get-IW7CapacityLeaseRetained($Lease,[bool]$LeaseReleased) {
 }
 function New-IW7CapacityRconPacket([string]$Secret,[string]$Command) {
     if($Secret -cnotmatch '^[A-Za-z0-9_-]{32,64}$' -or
-       ($Command -cnotmatch '^paris_capacity_arm [A-Za-z0-9_]{16,64}$' -and $Command -cnotin @('paris_capacity_stop','map_restart','quit'))) { throw 'Fixed capacity command/secret contract required.' }
+       ($Command -cnotmatch '^paris_capacity_arm [A-Za-z0-9_]{16,64}$' -and $Command -cnotin @('paris_capacity_stop','map_restart','quit','set paris_capacity_pool_validate 1'))) { throw 'Fixed capacity command/secret contract required.' }
     # Pin77 network::send defaults to space separator; rcon callback splits secret.
     ,[byte[]]([byte[]](255,255,255,255)+[Text.Encoding]::ASCII.GetBytes('rcon '+$Secret+' '+$Command))
 }

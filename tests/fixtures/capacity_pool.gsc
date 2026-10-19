@@ -35,6 +35,19 @@ begin()
         print("[Paris capacity pool] FAIL native/script count differs");
         return;
     }
+    array_call("READY");
+    while (getdvarint("paris_capacity_pool_validate") != 1) wait 0.05;
+    array_call("POST_RESTART");
+    setdvar("paris_capacity_pool_validate", 2);
+}
+
+array_call(marker)
+{
+    if (getmaxagents() != 64 || !isdefined(level.agentarray) || level.agentarray.size != 64 || level.numagents != 64)
+    {
+        print("[Paris capacity pool] FAIL " + marker + " count");
+        return;
+    }
     seen = [];
     foreach (agent in level.agentarray)
     {
@@ -46,5 +59,5 @@ begin()
         }
         seen[slot] = true;
     }
-    print("[Paris capacity pool] READY native=64 initialized=64 unique=64 bounded=82; combat=0");
+    print("[Paris capacity pool] " + marker + " native=64 initialized=64 unique=64 bounded=82; combat=0");
 }
