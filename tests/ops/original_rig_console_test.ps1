@@ -99,6 +99,6 @@ try {
     Refuses {$owned.WriteCapacityLifecycle('connect',$identity.Image,$identity.CreationFileTime)} 'Capacity connect replay accepted.'
     $owned.WriteCapacityLifecycle('stop',$identity.Image,$identity.CreationFileTime)
     $deadline=[datetime]::UtcNow.AddSeconds(10)
-    do{$text=Read-IW7BaseLog "$root/capacity.out";if($text.Contains('CONSUMED:quit')){break};Start-Sleep -Milliseconds 50}while([datetime]::UtcNow -lt $deadline)
-    Check ($text.Contains('CONSUMED:connect 127.0.0.1:27946') -and $text.Contains('CONSUMED:quit')) 'Fixed capacity lifecycle lines not consumed.'
+    do{$text=Read-IW7BaseLog "$root/capacity.out";if($text.Contains('CONSUMED:quit;')){break};Start-Sleep -Milliseconds 50}while([datetime]::UtcNow -lt $deadline)
+    Check ($text.Contains('CONSUMED:connect 127.0.0.1:27946;') -and $text.Contains('CONSUMED:quit;')) 'Fixed delimited capacity lifecycle lines not consumed.'
 }finally{Close-Owned $owned}

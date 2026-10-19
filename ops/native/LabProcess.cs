@@ -110,7 +110,9 @@ public static class IW7LabProcess
                 var identity=ReadIdentity();
                 if(identity.CreationFileTime!=expectedCreation || !String.Equals(identity.Image,expectedImage,StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Capacity client identity differs");
                 string command=action=="connect" ? "connect 127.0.0.1:"+capacityPeerPort : "quit";
-                byte[] bytes=Encoding.ASCII.GetBytes(command+"\n");uint written;
+                // wincon uses getline and passes the line to Cbuf_AddText
+                // without its newline. Keep a fixed engine command delimiter.
+                byte[] bytes=Encoding.ASCII.GetBytes(command+";\n");uint written;
                 consoleSent.Add(action);
                 if(!WriteFile(consoleInput,bytes,(uint)bytes.Length,out written,IntPtr.Zero) || written!=bytes.Length) throw new Win32Exception(Marshal.GetLastWin32Error(),"Capacity lifecycle write incomplete");
             }
