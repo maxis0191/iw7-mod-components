@@ -9,6 +9,7 @@
 #include "scheduler.hpp"
 #include "console/console.hpp"
 #include "command.hpp"
+#include "game/scripting/execution.hpp"
 #include <utils/cryptography.hpp>
 #include <utils/io.hpp>
 #include <charconv>
@@ -39,6 +40,44 @@ namespace owner_cheats
         game::netadr_s client_host{};
         std::string client_connection, client_nonce, server_nonce, client_identity;
         std::uint64_t client_sent{}, client_issued{}, client_granted{};
+
+        game::client_t* connection(unsigned slot);
+        void teleport(int owner, const command::params_sv& args, bool here)
+        {
+            const auto reply = [owner](const char* text)
+            { game::SV_GameSendServerCommand(owner, game::SV_CMD_RELIABLE, text); };
+            if (!server_allowed(owner)) { reply("f \"Owner authentication required.\""); return; }
+            const auto query = args.join(1);
+            if (!policy::safe_target(query)) { reply("f \"Usage: tp <name|#ID> or tphere <name|#ID>. IDs: .players\""); return; }
+            try
+            {
+                std::vector<std::pair<int, std::string>> players;
+                for (unsigned slot = 0; slot < 4; ++slot)
+                    if (connection(slot))
+                        players.emplace_back(slot, scripting::entity({static_cast<uint16_t>(slot), 0}).get<std::string>("name"));
+                const auto target = policy::target_slot(query, players);
+                if (target < 0) { reply("f \"No unique player found. Use .players and #ID.\""); return; }
+                if (target == owner) { reply("f \"Choose another player.\""); return; }
+                const scripting::entity player({static_cast<uint16_t>(here ? target : owner), 0});
+                const scripting::entity destination({static_cast<uint16_t>(here ? owner : target), 0});
+                for (const auto& entity : {player, destination})
+                {
+                    if (!scripting::call<int>("isalive", {entity}) || entity.get<std::string>("sessionstate") != "playing" ||
+                        entity.call("islinked").as<int>() ||
+                        scripting::call_script_function(entity, "scripts/cp/cp_laststand", "player_in_laststand", {}).as<int>())
+                    { reply("f \"Both players must be alive, standing and unlinked.\""); return; }
+                }
+                const auto origin = destination.get<scripting::vector>("origin");
+                if (!server_allowed(owner) || !connection(target)) return;
+                // Native GSC SetOrigin updates the entity/teleport state as well
+                // as playerState; a raw ps.origin write leaves stale prediction.
+                player.call("setorigin", {origin});
+                reply("f \"Teleport complete.\"");
+                console::info("[Owner teleport] actor=%d target=%d here=%d\n", owner, target, here);
+            }
+            catch (const std::exception&)
+            { reply("f \"Teleport refused; player state unavailable.\""); }
+        }
 
         std::string nonce()
         { std::string bytes(32, '\0'); utils::cryptography::random::get_data(bytes.data(), bytes.size()); return policy::hex(bytes); }
@@ -207,6 +246,19 @@ namespace owner_cheats
                     else console::info("[Owner cheats] local_allowed=%d\n", client_allowed());
                 });
                 if (!configured) return;
+                if (dedicated)
+                {
+                    command::add_sv("tp", [](int slot, const command::params_sv& args) { teleport(slot, args, false); });
+                    command::add_sv("tphere", [](int slot, const command::params_sv& args) { teleport(slot, args, true); });
+                }
+                else for (const auto* name : {"tp", "tphere"})
+                    command::add(name, [name](const command::params& args)
+                    {
+                        const auto target = args.join(1);
+                        if (!client_allowed() || !policy::safe_target(target))
+                        { console::info("Owner access required. Usage: %s <name|#ID>; IDs: .players\n", name); return; }
+                        command::execute(std::string("cmd ") + name + " \"" + target + "\"");
+                    });
                 network::on(wire, receive);
                 if (dedicated) scheduler::loop(server_tick, scheduler::pipeline::server, 100ms);
                 else scheduler::loop(client_tick, scheduler::pipeline::main, 100ms);

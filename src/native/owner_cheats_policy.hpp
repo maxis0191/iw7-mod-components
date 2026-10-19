@@ -3,9 +3,51 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <utility>
 
 namespace owner_cheats::policy
 {
+    inline std::string name_key(std::string_view name)
+    {
+        std::string result;
+        for (std::size_t i = 0; i < name.size(); ++i)
+        {
+            if (name[i] == '^' && i + 1 < name.size() && name[i+1] >= '0' && name[i+1] <= '9') { ++i; continue; }
+            const auto c = static_cast<unsigned char>(name[i]);
+            result += static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
+        }
+        return result;
+    }
+    // Public .players displays entity slot + 1, never the raw engine slot.
+    inline int target_slot(std::string_view query, const std::vector<std::pair<int, std::string>>& players)
+    {
+        const auto key = name_key(query);
+        if (key.empty()) return -1;
+        if (key.front() == '#' || (key.front() >= '0' && key.front() <= '9'))
+        {
+            const auto digits = key.front() == '#' ? key.substr(1) : key;
+            if (digits.size() == 1 && digits[0] >= '1' && digits[0] <= '4')
+            {
+                for (const auto& [slot, name] : players) if (slot == digits[0] - '1') return slot;
+                return -1;
+            }
+            if (key.front() == '#') return -1;
+        }
+        int exact = -1, partial = -1, exact_count = 0, partial_count = 0;
+        for (const auto& [slot, name] : players)
+        {
+            const auto candidate = name_key(name);
+            if (candidate == key) { exact = slot; ++exact_count; }
+            if (candidate.find(key) != std::string::npos) { partial = slot; ++partial_count; }
+        }
+        return exact_count == 1 ? exact : exact_count == 0 && partial_count == 1 ? partial : -1;
+    }
+    inline bool safe_target(std::string_view value)
+    {
+        if (value.empty() || value.size() > 128) return false;
+        for (const unsigned char c : value) if (c < 32 || c == 127 || c == '"' || c == '\\' || c == ';') return false;
+        return true;
+    }
     inline bool hex_token(std::string_view value, std::size_t length)
     {
         if (value.size() != length) return false;

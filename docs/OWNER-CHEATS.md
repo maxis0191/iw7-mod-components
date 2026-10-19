@@ -1,5 +1,14 @@
 # Persistent owner-only native console access
 
+Console `tp <name|#ID>` moves the authenticated owner to another active player;
+`tphere <name|#ID>` brings that player to the owner. `cmd tp` and `cmd tphere`
+also work. IDs match the public chat `.players` list (engine slot plus one).
+Exact names win over unique case-insensitive fragments; colors are ignored and
+ambiguous names are refused. Both players must be alive, standing and unlinked.
+Movement uses the engine's GSC SetOrigin, retaining its teleport bookkeeping.
+The client shorthand requires the matching OwnerCheats client build. Access is
+checked again on the dedicated; global cheats and trust files stay unchanged.
+
 Owner request, 19 October 2026: allow cheats only for the owner's client on the
 public dedicated. This supersedes the earlier absence of native console access;
 it does not restore the cancelled chat administration commands.
