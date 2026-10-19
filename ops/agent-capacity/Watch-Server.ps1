@@ -186,6 +186,7 @@ set sv_mapRotationCurrent ""
             $newClientCrash=Get-IW7AgentNewCrash -CandidateRoot $ClientGameRoot -Identity $client.Identity -Before @() -OutputRoot $case -Cache $clientCrashCache
             if($newClientCrash){$clientCrash=$newClientCrash;throw 'Correlated native client exception; artifact retained.'}
             Update-IW7BaseClient $client|ConvertTo-Json -Compress|Add-Content (Join-Path $case 'client/protection.jsonl')
+            if($HordeFixturePath -and (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')).Contains('[Paris capacity horde] FAIL')){throw 'Private horde reported failure; stop and retain its diagnostics.'}
             Start-Sleep -Milliseconds 250
         }while([datetime]::UtcNow -lt $observeUntil)
         $result|Add-Member NoteProperty MatchingClientProtected $true

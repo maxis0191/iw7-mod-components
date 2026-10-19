@@ -95,6 +95,7 @@ Remove-IW7OwnerCheatsOverlay $root
     if(Test-Path -LiteralPath $output){throw 'Fresh standard client package output required.'}
     [IO.Directory]::CreateDirectory($output)|Out-Null
     foreach($file in @('iw7-mod.exe','iw7-mod.pdb')){Copy-Item -LiteralPath (Join-Path $root ('build/bin/x64/Release/'+$file)) -Destination (Join-Path $output $file)}
+    if($Capacity64){Copy-Item -LiteralPath (Join-Path $repo 'config/Launch-IW7-Paris48.bat') -Destination $output}
     $identity=& "$PSScriptRoot/Get-SourceIdentity.ps1" -Root $repo
     $manifest=[ordered]@{Schema='iw7.standard-client-build/1';NativeRevision=$profile.Revision;NativeTree=(& git -C $root rev-parse 'HEAD^{tree}').Trim();OfficialUpstream=$profile.OfficialUpstream;CBBase=$profile.CBBase;ProjectCommit=$identity.Commit;SourceIdentity=$identity;SHA256=(Get-FileHash (Join-Path $output 'iw7-mod.exe')).Hash;SymbolsSHA256=(Get-FileHash (Join-Path $output 'iw7-mod.pdb')).Hash;BuiltUtc=[datetime]::UtcNow.ToString('o');AutoUpdate='Locally merged profile: retain existing CB updater URL, launch using documented -noupdate to prevent an older remote binary/data overwrite';NativeSourceHashes=@(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File|Sort-Object FullName|ForEach-Object{@{File=[IO.Path]::GetRelativePath($root,$_.FullName).Replace('\','/');SHA256=(Get-FileHash $_.FullName).Hash}});GeneratedProjectSHA256=(Get-FileHash $project).Hash;BuildOnlyWrapperSHA256=(Get-FileHash $wrapper).Hash;AutoCopySuppressed=$true;GameplayAcceptance='Pending owner gameplay; no FPS, WAN, NAT or microphone claim'}
     $manifest.LoadingNewMapHook=$loadingHook
@@ -106,6 +107,7 @@ Remove-IW7OwnerCheatsOverlay $root
     $manifest.CapacityBuild=$capacityBuild
     $manifest.CapacityPeerOverlay=$capacityPeerOverlay
     $manifest.CapacityPeerHelperSHA256=if($capacityPeerOverlay){(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1").Hash}else{$null}
+    $manifest.CapacityLauncherSHA256=if($Capacity64){(Get-FileHash -LiteralPath (Join-Path $output 'Launch-IW7-Paris48.bat')).Hash}else{$null}
     $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $output 'build-manifest.json')
     Write-Output "Prepared standard client: $output"
 }
