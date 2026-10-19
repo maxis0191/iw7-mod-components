@@ -132,7 +132,7 @@ function Enter-IW7ResourceLease {
         [ValidateSet('Runtime','Build','Extract','Analysis')][string]$Kind,
         [Parameter(Mandatory)][long]$PhysicalBytes, [Parameter(Mandatory)][long]$CommitBytes,
         [Parameter(Mandatory)][ValidateLength(1,100)][string]$Owner,
-        [string]$BaseClientImage)
+        [string]$BaseClientImage, [switch]$RequireNewLease)
     $canonical = Get-IW7CanonicalScope $Scope
     if ($PhysicalBytes -le 0 -or $CommitBytes -le 0) { throw 'A positive full-workload reservation is required.' }
     if ($BaseClientImage) {
@@ -142,6 +142,9 @@ function Enter-IW7ResourceLease {
     }
     Invoke-IW7ResourceLock {
         $state = Read-IW7ResourceState
+        if ($RequireNewLease -and @($state.Leases).Count) {
+            throw 'A new resource lease was required; an existing reservation is retained. Do not retry without RequireNewLease.'
+        }
         $processes = @(Get-IW7ResourceProcesses)
         Remove-IW7FinishedRuntimeLeases $state $processes
         $same = @($state.Leases | Where-Object { $_.Scope -eq $canonical -and $_.Kind -eq $Kind })

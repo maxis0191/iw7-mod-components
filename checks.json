@@ -320,6 +320,18 @@
       ]
     },
     {
+      "id": "resource_scheduler_initial_admission_source_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_test.ps1",
+        "-InitialAdmissionSourceOnly"
+      ]
+    },
+    {
       "id": "test_privacy_overlay_test",
       "command": [
         "pwsh",

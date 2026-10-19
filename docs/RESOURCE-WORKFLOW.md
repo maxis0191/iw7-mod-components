@@ -76,6 +76,29 @@ A file handle opened with no sharing serializes snapshot/check/reserve/write.
 The atomic JSON replacement retains one previous version for diagnosis. Registry
 content is local operational state, not source and not a security boundary.
 
+Callers that require an initial reservation, rather than runtime re-entry, can
+opt into `Enter-IW7ResourceLease -RequireNewLease`. Inside the existing admission
+lock, immediately after the real registry reader validates the state, this mode
+refuses **any existing lease** before process enumeration, finished-runtime
+reclamation, re-entry, memory observation, budget calculation or registry writes.
+This includes the same owner, scope or base-client image and orphaned or unknown
+owners. A prior empty photograph cannot authorize a lease that wins the race
+before this locked read. A malformed registry remains a reader refusal.
+
+Omitting the switch, or explicitly passing `-RequireNewLease:$false`, preserves
+the existing runtime re-entry behavior, token, maximum estimates and refreshed
+memory observation. A refused initial reservation must not fall back to an
+unflagged retry, adopt or release another lease, or delete registry state. This
+optional API does not activate a consumer: advance its explicit Native pin and
+prepare fresh verified source inputs before adoption.
+
+The dedicated `resource_scheduler_initial_admission_source_test` check selects
+`-InitialAdmissionSourceOnly` before the legacy suite imports Core or starts
+contenders. It exercises the actual admission and registry-reader AST with
+in-memory registry/process/lock/telemetry/write fakes. Its evidence is Source
+control flow and compatibility, not a real lock race, registry write, native
+memory sample, process lifecycle, game test or physical NoExit qualification.
+
 Reserve the **complete planned scenario before starting its first process**.
 RAM and commit estimates are separate observations, without reserves or an
 estimate-based launch refusal. Baseline usage includes Windows, Codex, browsers
