@@ -184,6 +184,7 @@ def main():
     p.add_argument("--expected-tps", type=float, default=20)
     p.add_argument("--warmup-seconds", type=int, default=30)
     p.add_argument("--port", type=int, default=0)
+    p.add_argument("--no-gpu-device-sensor", action="store_true", help="Skip nvidia-smi discovery and whole-device GPU sampling")
     p.add_argument("--comparison-context", help="Optional strict declared workload JSON; no game-state attestation")
     p.add_argument("--measurement-start-seconds", type=int)
     p.add_argument("--measurement-end-seconds", type=int)
@@ -245,9 +246,12 @@ def main():
                    "policy": {"frame_budget_ms": args.frame_budget_ms, "expected_tps": args.expected_tps, "warmup_seconds": args.warmup_seconds},
                    "limits": "Explicit sensor coverage; arbitrary gameplay bugs, every GSC bytecode loop and GPU allocations are not fully observable."})
             start = time.monotonic(); samples = 0; all_exit_time = None; completion = "duration"
-            smi = shutil.which("nvidia-smi")
+            smi = None if args.no_gpu_device_sensor else shutil.which("nvidia-smi")
             if not present: write({"type": "coverage", "sensor": "displayed_fps", "status": "unavailable", "reason": "No PresentMon CSV; never infer displayed FPS from CPU callbacks."})
-            if not smi: write({"type": "coverage", "sensor": "gpu_device", "status": "unavailable"})
+            if args.no_gpu_device_sensor:
+                write({"type": "coverage", "sensor": "gpu_device", "status": "disabled_by_request"})
+            elif not smi:
+                write({"type": "coverage", "sensor": "gpu_device", "status": "unavailable"})
             while True:
                 now = time.monotonic(); elapsed = now - start
                 final_acquisition = elapsed >= args.seconds

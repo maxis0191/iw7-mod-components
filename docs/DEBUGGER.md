@@ -591,6 +591,14 @@ frames and display cadence require interpretation. Missing access/CSV/presentati
 are reported as missing coverage, never as smooth rendering. NVIDIA device VRAM,
 utilization and temperature are optional and cover the whole shared GPU.
 
+For a collection without the NVIDIA device subprocess, pass
+`--no-gpu-device-sensor` directly to `iw7_watch.py`. It skips both `nvidia-smi`
+discovery and launch, recording `gpu_device` coverage as `disabled_by_request`,
+never as zero GPU use. Omit the flag to retain the existing discovery, command
+and three-second timeout. This does not disable native DXGI budget records or
+the separate PresentMon launcher in `Debug-Session.ps1`; that wrapper does not
+forward this option. No performance improvement is established by disabling it.
+
 The diagnostic build also records cadence at the pinned fork's existing render-
 present callback, with eight fixed swapchain channels. This works without ETW
 privileges, but callback rate is still not displayed FPS. A local COM query on
