@@ -680,17 +680,33 @@ invented event p95 or clock correspondence. Any future controlled comparison
 must retain workload/options/quality and observer-overhead evidence; this Source
 change establishes no performance gain or cause for the historical 32.617ms mean.
 
-The existing `debugger_stats_test.cpp` fixture contains portable collector cases
-and a Windows-only same-helper acquisition case. All new cases are written but
-**not compiled or executed**. They
-cover matched cohorts, cross-window active gauges, duplicate/foreign tickets,
-API/identity/clock/CPU failures, valid zero CPU, fixed capacity, histogram edges/
-overflow, saturation and concurrent snapshots. The standalone fixture would
-qualify these helpers only, not compilation of the complete game component TU.
-The component's enable-toggle integration has Source review only; the fixture
-exercises collector ticket finalization, not an executed game component toggle.
-No native build, SDK inspection, provider, process/game run, lease or deployment
-is authorized by this Source checkpoint.
+The existing `tests/native/debugger_stats_test.cpp` fixture at code commit
+`780b52361c7f46c520fc044fa508123922d6e630` was compiled and executed standalone
+on Windows in the reviewed B3 qualification. Compile/link and probe both exited
+zero with empty stderr, using C++17 and `/EHsc /W4 /WX /Od /RTC1 /MT /Z7` with an
+explicit linker PDB. Its 159-byte ASCII stdout contained exactly these two
+CRLF-terminated lines:
+
+```text
+Dedicated scope2 CPU/wall pairing, identity, quality, bounds and snapshot cases passed
+Debugger counter bounds, interruption, rollover and contention passed
+```
+
+The portable collector cases, existing counter cases and current-thread Windows
+acquisition through the shared helper passed. They cover matched cohorts,
+cross-window active gauges, duplicate/foreign tickets, API/identity/clock/CPU
+failures, valid zero CPU, fixed capacity, histogram edges/overflow, saturation
+and concurrent snapshots. The run released its lease and reached known closure
+with a real terminal exit zero.
+
+This qualifies the standalone fixture and shared helpers only: the full
+`paris_debugger.cpp` translation unit, complete game component, game execution,
+deployment and performance acceptance are not qualified. The component's
+enable-toggle integration still has Source review only; the fixture exercises
+collector ticket finalization, not an executed game component toggle. Adjacent
+CPU API reads do not establish clock resolution or whether the engine computes
+or waits: `indeterminate_cpu_resolution_unmeasured` remains unchanged. A future
+engine observation still requires the controlled off/on comparison above.
 
 For a specific script suspect, bracket a region only in a separate lab candidate:
 
