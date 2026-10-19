@@ -4,6 +4,7 @@
 #include "game/game.hpp"
 #include "scheduler.hpp"
 #include "console/console.hpp"
+#include "party.hpp"
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <shellapi.h>
@@ -14,6 +15,7 @@
 #include <cstdio>
 #include <intrin.h>
 #include <algorithm>
+#include <atomic>
 #include <vector>
 #pragma comment(lib, "shell32.lib")
 
@@ -24,7 +26,7 @@ namespace {
 constexpr std::uintptr_t image_base = 0x140000000ull, image_end = 0x14C301400ull;
 struct buffer { std::uintptr_t data{}; void* reservation{}; std::size_t bytes{}; };
 buffer agent_pool, sentient_pool, table8, table20;
-bool active{};
+std::atomic_bool active{};
 utils::hook::detour engine_error_hook;
 utils::hook::detour character_render_hook;
 std::uint64_t observed_characters[characters]{};
@@ -224,7 +226,9 @@ void check_guards() {
     for (const auto& pool : {agent_pool,sentient_pool,table8,table20})
         for (unsigned i=0;i<16;++i) if (*reinterpret_cast<const unsigned char*>(pool.data-16+i)!=0xA7 ||
             *reinterpret_cast<const unsigned char*>(pool.data+pool.bytes+i)!=0xA7) {
-            active=false; game::Com_Error(game::ERR_DROP,"Private capacity storage boundary changed"); return;
+            // Installed patches remain process-resident. Never downgrade the
+            // peer contract to24 while the 64-agent layout is still installed.
+            game::Com_Error(game::ERR_FATAL,"Capacity storage boundary changed"); return;
         }
 }
 class component final : public component_interface {
@@ -232,6 +236,10 @@ class component final : public component_interface {
         if (!utils::flags::has_flag("paris-capacity-64")) return;
         const bool dedicated = game::environment::is_dedi();
         const bool production=utils::flags::has_flag("paris-capacity-production");
+        const bool client_probe=utils::flags::has_flag("paris-capacity-client-probe");
+        const auto probe_port=client_probe ? private_port(false) : 0;
+        if(client_probe && (!production || dedicated || !probe_port))
+            throw std::runtime_error("Normal capacity client probe requires its explicit private loopback peer port");
         if(!(utils::flags::has_flag("cpMode") || utils::flags::has_flag("zombies")))
             throw std::runtime_error("Expanded capacity requires explicit CP mode");
         if(production) {
@@ -260,6 +268,25 @@ class component final : public component_interface {
             throw std::runtime_error("Capacity candidate transaction restored after failed code write");
         }
         active=true;
+        if(production && !dedicated) {
+            // The upstream -cpMode flag selects dedicated mode only. Honor
+            // this explicitly CP-only client profile after engine startup.
+            scheduler::once([] { game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP); },scheduler::main);
+            if(client_probe) {
+                const auto deadline=GetTickCount64()+120000;
+                scheduler::loop([probe_port,deadline,joined=false]() mutable {
+                    if(joined || GetTickCount64()>=deadline) return;
+                    if(game::Com_GameMode_GetActiveGameMode()!=game::GAME_MODE_CP) {
+                        game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP); return;
+                    }
+                    if(game::Live_SyncOnlineDataFlags(0)!=0) return;
+                    game::netadr_s target{};target.type=game::NA_IP;
+                    target.ip[0]=127;target.ip[3]=1;target.port=htons(static_cast<unsigned short>(probe_port));
+                    joined=true;party::connect(target);
+                    console::info("[Paris capacity client probe] Ready loopback join to UDP %u.\n",probe_port);
+                },scheduler::main,100ms);
+            }
+        }
         // Private diagnostic only: preserve the engine's error/drop behavior
         // while retaining its reason before the client returns to frontend.
         if(!production) {
