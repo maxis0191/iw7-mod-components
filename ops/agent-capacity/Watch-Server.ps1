@@ -288,6 +288,10 @@ set sv_mapRotationCurrent ""
 }
 finally{
     try{
+        if($standardManifest -and $client -and $client.Handle -and !$client.Handle.HasExited){
+            $id=$client.Handle.ReadIdentity()
+            $null=Invoke-IW7OwnedStop -Handle $client.Handle -TimeoutMs 10000 -StopAction {$client.Handle.WriteCapacityLifecycle('stop',$id.Image,$id.CreationFileTime)}
+        }
         if($client){Stop-IW7BaseClient $client}
         if($session -and $standardManifest -and $client -and $client.Transaction.Restored){Wait-IW7CapacityClientDeparture $session}
         if($session -and $clientCrash -and $clientCrash.ConfirmedFatal -and $client.Transaction.Restored){
