@@ -10,6 +10,7 @@
 #include "console/console.hpp"
 #include "command.hpp"
 #include "game/scripting/execution.hpp"
+#include "gsc/script_extension.hpp"
 #include <utils/cryptography.hpp>
 #include <utils/io.hpp>
 #include <charconv>
@@ -40,6 +41,8 @@ namespace owner_cheats
         game::netadr_s client_host{};
         std::string client_connection, client_nonce, server_nonce, client_identity;
         std::uint64_t client_sent{}, client_issued{}, client_granted{};
+        struct connection_epoch { game::netadr_s endpoint{}; std::string token; };
+        std::vector<connection_epoch> epochs;
 
         game::client_t* connection(unsigned slot);
         void teleport(int owner, const command::params_sv& args, bool here)
@@ -227,12 +230,28 @@ namespace owner_cheats
         if (!endpoint) return;
         std::lock_guard lock(state_mutex);
         for (auto& s : sessions) if (s.connection && network::are_addresses_equal(s.endpoint, *endpoint)) s = {};
+        // A direct connection gets a new opaque token; map loads retain it.
+        // This is lifetime bookkeeping, independent of owner authentication.
+        for (auto it = epochs.begin(); it != epochs.end(); ++it)
+            if (network::are_addresses_equal(it->endpoint, *endpoint)) { epochs.erase(it); break; }
+        if (epochs.size() >= 16) epochs.erase(epochs.begin());
+        epochs.push_back({*endpoint, nonce()});
     }
     class component final : public component_interface
     {
     public:
         void post_unpack() override
         {
+            gsc::method::add("paris_get_connection_id", [](game::scr_entref_t ent, const gsc::function_args&) -> scripting::script_value
+            {
+                std::lock_guard lock(state_mutex);
+                if (ent.classnum != 0) return scripting::script_value{};
+                const auto* client = connection(ent.entnum);
+                if (!client) return scripting::script_value{};
+                for (const auto& epoch : epochs)
+                    if (network::are_addresses_equal(epoch.endpoint, client->remoteAddress)) return epoch.token;
+                return scripting::script_value{};
+            });
             scheduler::once([]
             {
                 const bool dedicated = game::environment::is_dedi();
