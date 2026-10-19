@@ -1,5 +1,28 @@
 # Generic voice transport core
 
+## Transactional uplink quotas - 2026-10-19
+
+The server previously debited its frame budget before checking the byte budget.
+A canonical audio packet refused by the byte limit could therefore spend tokens
+reserved for later fresh speech. Sequence admission alone was provisional; the
+two quotas were not one transaction.
+
+Uplink admission now stages the existing sequence window and both budgets, then
+commits all three and the last-seen time only after every check passes. Frame,
+byte and control limits, refill rates, wire format, handshake and client behavior
+are unchanged. This does not exempt accepted traffic from either quota or turn
+the transport into a raw-UDP flood defense.
+
+The existing public-API fixture adds a byte-saturated sender and an identical
+control, repeated byte refusals, then a smaller canonical packet using the still
+uncommitted sequence. Its bounded clock advance refills enough bytes but less
+than one frame token. It also checks listener delivery, committed replay refusal,
+normal refill and backward-time refusal without private state getters.
+
+This revision is Source-only pending separately authorized before/after compilation
+and fixture execution. Earlier test results below do not qualify the new case.
+No microphone, game, LAN/WAN, playback quality or CPU improvement is claimed.
+
 ## Delayed duplicate quota correction - 2026-10-13
 
 The server and listener previously charged their frame budgets before rejecting
