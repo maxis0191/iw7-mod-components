@@ -99,6 +99,10 @@ void build_plan() {
     // 58 lets a map entity occupy a new agent's slot (observed fatal at slot58).
     add(0x14B54FA72,58,map_start); add(0x14B54FA7C,58,map_start);
     add(0x140B6686F,58*0x3F8,map_start*0x3F8);
+    // ClonePlayer/CloneAgent each keep eight corpse entities. Their independent
+    // allocators must follow the expanded character range instead of42/50.
+    add(0x140B67402,42,player_corpse_start,1);
+    add(0x140C1BB22,50,agent_corpse_start,1);
     add(0x140007781,24,agents); // Character-reference reset across the real pool.
     for (const auto address : {0x140406F77ull,0x141238588ull,0x140C14B28ull,0x140C14BF3ull,0x140C14C96ull}) add(address,0x78180,agent_bytes);
     rip(0x14C1ED662,0x145C9E590,agent_pool.data);

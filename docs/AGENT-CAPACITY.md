@@ -67,6 +67,33 @@ du tableau de références (`14048C1EE`, `14048C2CC`) passent de 42 à 82.
 Cela ne contourne pas la lecture nulle ; les emplacements réservés doivent rester
 distincts des entités carte. La nouvelle exécution reste à qualifier.
 
+## Client jouable puis collision des cadavres — 19 octobre 2026
+
+L'image corrigée `2F1FB14961A00EA25FA74F771ED1E6DFE8099F5F7312E181AE8BFDC5BE360BC4`
+(source `9ecb4cf`, 15:59:33 UTC) construit64 agents distincts. Le cas H confirme
+à nouveau64 dans le callback du client jouable, maintient sa protection30 secondes,
+quitte normalement et restaure client/profils/dédié avec libération. Résultat local
+`C337D363A13CBF23EA9EB6B60B97318C46403F3F29B2B5F984191514F3685DE8`.
+Le témoin24 correspondant passe aussi. Les essais à rechargement préalable à vide
+n'ont pas obtenu de client jouable ; leur acceptation reste ouverte, distincte
+du démarrage direct. Un contrôle ancien de lecture de journal et une attente
+GSC post-restart ont échoué et sont conservés ; le témoin PLAYABLE les remplace.
+
+Le cas I de horde s'arrête avant son plateau48+2 : un nouveau fatal au même RIP
+`14044949A` lit `0x4D10`, avec RDI=32 et l'entité50. Le client est restauré ; le
+dédié fatal est corrélé au dump/dialogue, fermé par son handle exact, puis restauré.
+Le ZIP a le hash `55CB3EA671189E3471ECFA570D70C0A7EACDC9D073EA8F5CE8EA1DA2CAF70844`.
+Le résultat échoué et la récupération indépendante restent distincts.
+
+Le callee courant de `cloneagent` (`140C1A650` -> `140C1BB10`) réserve huit
+entités par `index + 50`. Le callee de `cloneplayer` (`140B0B270` -> `140B673F0`)
+en réserve huit par `index + 42`. Ce sont les deux partitions de cadavres ; les
+records de métadonnées `0x2CC0` et leurs comptes8 restent inchangés. Le candidat
+suivant déplace leurs débuts à90 et82, après les82 personnages et avant la carte98.
+Aucun contournement de pointeur nul ni remplacement aveugle des autres constantes
+50 (souvent des durées en millisecondes) n'est appliqué. Leurs consommateurs et
+le recyclage/client doivent être validés par le prochain essai de horde.
+
 ## Diagnostic actuel qualifié, capacité inchangée — 19 octobre 2026
 
 Le second essai utilise le source `8ef8f1e` et le binaire
