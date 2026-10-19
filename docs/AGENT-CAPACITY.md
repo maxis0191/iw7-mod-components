@@ -1,5 +1,21 @@
 # Capacité native : préparer un port cohérent vers 48 agents
 
+## Reprise demandée le 19 octobre 2026
+
+L'objectif humain est désormais **48 zombies ordinaires plus des places pour
+les ennemis spéciaux**. Il ne s'agit pas de partager 48 places entre tous les
+ennemis. Le nombre de places supplémentaires devra être dimensionné avec les
+réservations natives des cinq cartes ; aucune capacité étendue n'est livrée.
+
+La reprise du capteur autorise le pin moteur cfca45b1 dans le seul profil
+diagnostic isolé. Son scheduler a exactement le même blob Git
+`d235aeee97891254b1c38b7841e01700e130220d` que les deux pins déjà admis.
+Les transformations et leurs empreintes restent identiques. Les tests passent
+par le vrai script Apply et conservent le refus des sources inconnues, du
+profil ordinaire et des autres pins. Cette qualification de source ne prouve
+ni canary matérielle, ni writer, ni capacité supplémentaire ; il faut ensuite
+mesurer le dédié privé, sans employer Main ou le client occupé.
+
 The complete isolated native build from1bcb19c now compiles and links, executable
 A29488DF and matching PDB verified with all32 source hashes. This includes the
 reviewed actual-context checkpoint TU and scheduler overlay. The next vacant

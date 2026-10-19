@@ -285,6 +285,7 @@ $fixtureRoot=Join-Path $fixtureParent ('iw7-watch-disabled-source-'+[guid]::NewG
 $fixturePath=Join-Path $fixtureRoot 'src/client/component/scheduler.cpp'
 $knownSuccessor='cfca45b11ee14641945b9a264a95638387f48a4a'
 $legacyPins=@('77e6d4d24e918ee363b3feee3735c3b889dff7d7','993737428781c4357fe21ecd375300e39a29a654')
+$enabledPins=@($legacyPins)+@($knownSuccessor)
 $unknownPin='1111111111111111111111111111111111111111'
 $applySourceFixtureState=@{GitReads=0}
 function Invoke-ApplySourceFixture([string]$Commit,[string]$Phase,[bool]$Enabled) {
@@ -323,7 +324,7 @@ try {
         Assert (!$result.Enabled -and !$result.Ready -and (Same ([IO.File]::ReadAllBytes($fixturePath)) $nativeOverlays.Clean)) 'Disabled AfterDebugger changed the clean Source.'
         Assert-ApplySourceRefuses $nativeOverlays.Profiler $pin AfterDebugger $false
     }
-    foreach($pin in $legacyPins) {
+    foreach($pin in $enabledPins) {
         [IO.File]::WriteAllBytes($fixturePath,$nativeOverlays.Profiler)
         $result=Invoke-ApplySourceFixture $pin BeforeDebugger $true
         Assert ($result.Enabled -and (Same ([IO.File]::ReadAllBytes($fixturePath)) $nativeOverlays.Profiler)) 'Legacy enabled BeforeDebugger changed.'
@@ -331,7 +332,7 @@ try {
         Assert ($result.Enabled -and (Same ([IO.File]::ReadAllBytes($fixturePath)) $nativeOverlays.Enabled)) 'Legacy enabled AfterDebugger changed.'
     }
     foreach($phase in @('BeforeDebugger','AfterDebugger')) {
-        Assert-ApplySourceRefuses $nativeOverlays.Clean $knownSuccessor $phase $true
+        Assert-ApplySourceRefuses ($encoding.GetBytes($nativeSchedulerFixture+"`n// unowned mutation`n")) $knownSuccessor $phase $true
         Assert-ApplySourceRefuses ($encoding.GetBytes($nativeSchedulerFixture+"`n// unowned mutation`n")) $knownSuccessor $phase $false
         Assert-ApplySourceRefuses $nativeOverlays.Profiler $unknownPin $phase $false
         Assert-ApplySourceRefuses $nativeOverlays.Clean $unknownPin $phase $true
@@ -340,7 +341,7 @@ try {
     [IO.File]::WriteAllBytes($fixturePath,$nativeClean)
     $result=Invoke-ApplySourceFixture $unknownPin BeforeDebugger $false
     Assert (!$result.Enabled -and !$result.Ready -and (Same ([IO.File]::ReadAllBytes($fixturePath)) $nativeClean)) 'Unknown clean-only legacy behavior changed.'
-    Assert ($applySourceFixtureState.GitReads -eq 27) 'The real Apply Source entry was skipped or performed an unexpected Git read.'
+    Assert ($applySourceFixtureState.GitReads -eq 31) 'The real Apply Source entry was skipped or performed an unexpected Git read.'
 } finally {
     $resolvedFixture=[IO.Path]::GetFullPath($fixtureRoot)
     if([IO.Path]::GetDirectoryName($resolvedFixture) -cne $fixtureParent -or
