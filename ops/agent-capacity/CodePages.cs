@@ -30,6 +30,9 @@ public sealed class IW7CapacityPages : IDisposable {
     static readonly long[] bindingContinuationPages = { 0x14B3C5000 };
     readonly long[] instancePages;
     readonly string instancePlan;
+    static readonly long[] textStarts = { 0x140001000, 0x14B2B4000 };
+    static readonly int[] textLengths = { 0x1427E00, 0x104D400 };
+    readonly int[] textReads = new int[2];
     [StructLayout(LayoutKind.Sequential)] struct MBI {
         public IntPtr BaseAddress, AllocationBase;
         public uint AllocationProtect; public ushort PartitionId;
@@ -127,6 +130,48 @@ public sealed class IW7CapacityPages : IDisposable {
         var bytes = new byte[4096]; UIntPtr got;
         if (!ReadProcessMemory(handle, new IntPtr(address), bytes, (UIntPtr)4096, out got) || got.ToUInt64() != 4096) throw new Win32Exception(Marshal.GetLastWin32Error());
         ReadCalls++; ReadBytes += 4096;
+        return bytes;
+    }
+    // Fixed executable sections from the current retail PE. No writable data,
+    // arbitrary addresses, full process dump or suspension is accepted here.
+    public static long TextSectionAddress(int index) {
+        if (index < 0 || index >= 2) throw new ArgumentException("Outside two fixed executable sections.");
+        return textStarts[index];
+    }
+    public static int TextSectionLength(int index) {
+        TextSectionAddress(index); return textLengths[index];
+    }
+    public static bool SameTextSection(int index, byte[] first, byte[] second) {
+        int length = TextSectionLength(index);
+        if (first == null || second == null || first.Length != length || second.Length != length) return false;
+        for (int i=0; i<length; ++i) if (first[i] != second[i]) return false;
+        return true;
+    }
+    public byte[] ReadTextSection(int index) {
+        long address = TextSectionAddress(index); int length = TextSectionLength(index);
+        AssertAlive();
+        if (textReads[index] >= 2) throw new InvalidOperationException("Fixed text double-read bound exceeded.");
+        ++textReads[index];
+        long cursor = address, end = checked(address + length); int regions = 0;
+        while (cursor < end) {
+            if (++regions > 512) throw new InvalidOperationException("Executable section region bound exceeded.");
+            MBI info;
+            if (VirtualQueryEx(handle, new IntPtr(cursor), out info, (UIntPtr)48).ToUInt64() != 48)
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            uint basic = info.Protect & 0xff;
+            long start = info.BaseAddress.ToInt64(); ulong size = info.RegionSize.ToUInt64();
+            if (info.State != 0x1000 || (info.Protect & 0x100) != 0 ||
+                (basic != 0x20 && basic != 0x40 && basic != 0x80) ||
+                start > cursor || size == 0 || size > long.MaxValue ||
+                start > long.MaxValue - (long)size || start + (long)size <= cursor)
+                throw new InvalidOperationException("Fixed text range is not readable committed executable memory.");
+            cursor = Math.Min(end, start + (long)size);
+        }
+        var bytes = new byte[length]; UIntPtr got;
+        if (!ReadProcessMemory(handle, new IntPtr(address), bytes, (UIntPtr)length, out got) || got.ToUInt64() != (ulong)length)
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        ReadCalls++; ReadBytes += length;
+        AssertAlive();
         return bytes;
     }
     public void Dispose() {

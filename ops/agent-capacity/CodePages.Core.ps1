@@ -14,6 +14,37 @@ function Assert-IW7CapacityPageAdmission($Plan,$Identity,$Lease,$Process) {
     }
 }
 
+function Save-IW7CapacityNativeText($Reader,[string]$Output,$Identity,$ParentProof) {
+    if(Test-Path -LiteralPath $Output){throw 'Fresh executable-text output required.'}
+    $cursor=Split-Path $Output -Parent
+    while($cursor){
+        if((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Redirected text output refused.'}
+        $cursor=Split-Path $cursor -Parent
+    }
+    $null=[IO.Directory]::CreateDirectory($Output)
+    $record=[ordered]@{schema='iw7.capacity-native-text/1';identity=$Identity;parent_proof=$ParentProof;
+        complete=$false;sections=@();target_written=$false;target_suspended=$false;global_snapshot_coherent=$false;
+        data_sections_captured=$false;pristine=$false;read_calls_before=$Reader.ReadCalls;read_bytes_before=$Reader.ReadBytes}
+    try{
+        foreach($index in @(0,1)){
+            $Reader.AssertAlive()
+            $first=$Reader.ReadTextSection($index);$second=$Reader.ReadTextSection($index)
+            if(![IW7CapacityPages]::SameTextSection($index,$first,$second)){throw 'Executable text changed or a complete fixed section is absent.'}
+            $name='native-text-'+$index+'.bin'
+            $stream=[IO.File]::Open((Join-Path $Output $name),'CreateNew','Write','None')
+            try{$stream.Write($first,0,$first.Length)}finally{$stream.Dispose()}
+            $record.sections+=@([ordered]@{index=$index;address=('0x'+[IW7CapacityPages]::TextSectionAddress($index).ToString('X'));
+                bytes=$first.Length;path=$name;stable_double_read=$true;sha256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([byte[]]$first))})
+        }
+        $Reader.AssertAlive();$record.complete=$true
+    }catch{$record.failure=$_.Exception.Message;throw}
+    finally{
+        $record.read_calls=$Reader.ReadCalls-$record.read_calls_before;$record.read_bytes=$Reader.ReadBytes-$record.read_bytes_before
+        $stream=[IO.File]::Open((Join-Path $Output 'manifest.local.json'),'CreateNew','Write','None')
+        try{$bytes=[Text.Encoding]::UTF8.GetBytes(($record|ConvertTo-Json -Depth 9));$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}
+    }
+}
+
 function Save-IW7CapacityCodePages($Reader,[string]$Output,$Identity,
     [ValidateSet("reset-callers","reset-entry-targets","writer-sites-20261019","writer-path-20261019","binding-continuation-20261019")][string]$PagePlan="reset-callers",$ParentProof=$null) {
     if (Test-Path -LiteralPath $Output) { throw 'Fresh page output required.' }

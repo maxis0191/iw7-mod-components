@@ -32,6 +32,55 @@ class Reader:
 
 
 class Tests(unittest.TestCase):
+    def test_fixed_native_text_capture_and_partial_refusal(self):
+        repo = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            script = Path(temp) / 'text.ps1'
+            script.write_text(r'''param($Repo,$Temp)
+$ErrorActionPreference='Stop'
+Add-Type -Path "$Repo/ops/agent-capacity/CodePages.cs"
+. "$Repo/ops/agent-capacity/CodePages.Core.ps1"
+if([IW7CapacityPages]::TextSectionAddress(0) -ne 0x140001000 -or
+   [IW7CapacityPages]::TextSectionAddress(1) -ne 0x14B2B4000 -or
+   [IW7CapacityPages]::TextSectionLength(0) -ne 0x1427E00 -or
+   [IW7CapacityPages]::TextSectionLength(1) -ne 0x104D400){throw 'Fixed PE sections differ'}
+foreach($bad in @(-1,2,100)){
+    $refused=$false;try{$null=[IW7CapacityPages]::TextSectionLength($bad)}catch{$refused=$true}
+    if(!$refused){throw 'Arbitrary section accepted'}
+}
+foreach($mode in @('normal','partial','changed')){
+    $reader=[pscustomobject]@{ReadCalls=0;ReadBytes=0;Mode=$mode}
+    $reader|Add-Member ScriptMethod AssertAlive {}
+    $reader|Add-Member ScriptMethod ReadTextSection {
+        param($index)
+        $this.ReadCalls++
+        $size=[IW7CapacityPages]::TextSectionLength($index)
+        if($this.Mode -eq 'partial' -and $index -eq 1){$size--}
+        $bytes=[byte[]]::new($size)
+        if($this.Mode -eq 'changed'){$bytes[0]=$this.ReadCalls}
+        $this.ReadBytes+=$size
+        ,$bytes
+    }
+    $out=Join-Path $Temp $mode
+    $refused=$false;try{Save-IW7CapacityNativeText $reader $out ([pscustomobject]@{PID=123}) ([pscustomobject]@{synthetic=$true})}catch{$refused=$true}
+    $record=Get-Content "$out/manifest.local.json" -Raw|ConvertFrom-Json
+    if($mode -eq 'normal'){
+        if($refused -or !$record.complete -or $record.sections.Count -ne 2 -or $record.read_calls -ne 4 -or $record.read_bytes -ne 76456960){throw 'Fixed text capture failed'}
+        if((Get-ChildItem $out -Filter *.bin|Measure-Object Length -Sum).Sum -ne 38228480){throw 'Wrong retained text size'}
+        $refused=$false;try{Save-IW7CapacityNativeText $reader $out $null $null}catch{$refused=$true}
+        if(!$refused){throw 'Output overwrite accepted'}
+    }else{
+        if(!$refused -or $record.complete -or !$record.failure){throw 'Incomplete/changed section accepted'}
+        $expected=if($mode -eq 'partial'){1}else{0}
+        if($record.sections.Count -ne $expected){throw 'Partial prefix not retained accurately'}
+    }
+    if($record.target_written -or $record.target_suspended -or $record.global_snapshot_coherent -or $record.data_sections_captured -or $record.pristine){throw 'False text capture claim'}
+}
+''', encoding='utf-8')
+            result = subprocess.run(['pwsh', '-NoProfile', '-File', str(script), str(repo), temp],
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_fixed_bounds_and_no_pristine_claim(self):
         plan = pages.plan()
         self.assertEqual(len(plan), 8)

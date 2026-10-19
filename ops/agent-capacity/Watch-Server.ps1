@@ -1,5 +1,5 @@
 param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
-      [ValidateRange(27100,27999)][int]$ServerPort=27116,[switch]$DryRun,[switch]$CaptureWriterPages,
+      [ValidateRange(27100,27999)][int]$ServerPort=27116,[switch]$DryRun,[switch]$CaptureWriterPages,[switch]$CaptureNativeText,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
 $ops=Split-Path $PSScriptRoot -Parent;$repo=Split-Path $ops -Parent
@@ -35,7 +35,7 @@ $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow
 $null=[IO.Directory]::CreateDirectory($case)
 $plan|ConvertTo-Json|Set-Content (Join-Path $case 'plan.local.json')
 $lease=$null;$transaction=$null;$journalTransaction=$null;$server=$null;$session=$null;$result=$null;$failure=$null;$cleanupError=$null;$restored=$false;$stopResult=$null;$ownedExited=$false;$leaseReleased=$false
-$pageReader=$null;$pageReaderClosed=$true;$pageCapture=$null;$pageCaptureError=$null
+$pageReader=$null;$pageReaderClosed=$true;$pageCapture=$null;$pageCaptureError=$null;$textCapture=$null
 try{
     $lease=Enter-IW7ResourceLease -Scope $CandidateRoot -Kind Runtime -PhysicalBytes $budget.PhysicalBytes -CommitBytes $budget.CommitBytes -Owner 'Capacity watch server only; no client'
     # Recheck scope/ports under the reservation, before the first staged byte.
@@ -107,7 +107,7 @@ set sv_mapRotationCurrent ""
 finally{
     try{
         if($session -and !$server.HasExited){
-            if($CaptureWriterPages){
+            if($CaptureWriterPages -or $CaptureNativeText){
                 try{
                     $journal=Read-IW7CapacityOwnedJournal $session
                     if(!$journal -or !$journal.Armed){throw 'Writer pages require the same live journal and hardware canaries.'}
@@ -120,9 +120,15 @@ finally{
                     Assert-IW7CapacitySession $session
                     $pageReader=[IW7CapacityPages]::new([int]$identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc(),$WriterPagePlan)
                     $pageReaderClosed=$false
-                    $pageCapture=Join-Path $case 'writer-pages'
                     $proof=[pscustomobject]@{NativeSHA256=$manifest.SHA256;Header=$journal.Header;Armed=$journal.Armed;ObservedWriterAfter=@(0x14C1ED66C,0x14BFE5A30)}
-                    Save-IW7CapacityCodePages $pageReader $pageCapture $identity $WriterPagePlan $proof
+                    if($CaptureWriterPages){
+                        $pageCapture=Join-Path $case 'writer-pages'
+                        Save-IW7CapacityCodePages $pageReader $pageCapture $identity $WriterPagePlan $proof
+                    }
+                    if($CaptureNativeText){
+                        $textCapture=Join-Path $case 'native-text'
+                        Save-IW7CapacityNativeText $pageReader $textCapture $identity $proof
+                    }
                     Assert-IW7CapacitySession $session
                 }catch{$pageCaptureError=$_.Exception.Message}
                 finally{
@@ -155,6 +161,7 @@ finally{
     [pscustomobject]@{Schema='iw7.capacity-watch-server/1';Result=$result;Failure=$failure;CleanupError=$cleanupError;Restored=$restored;
         ExactOwnedProcessExited=$ownedExited;Stop=$stopResult;LeaseReleased=$leaseReleased;LeaseRetained=(Get-IW7CapacityLeaseRetained $lease $leaseReleased);OutputRoot=$case;
         WriterPages=$pageCapture;WriterPageError=$pageCaptureError;WriterReaderClosed=$pageReaderClosed;
+        NativeText=$textCapture;
         StockCopied=$false;BaseClientTouched=$false;WriterProven=$false;PatchReady=$false}|ConvertTo-Json -Depth 9|Set-Content (Join-Path $case 'result.local.json')
 }
 if($failure){throw "$failure ; evidence=$case"};if($cleanupError){throw "Cleanup pending: $cleanupError ; evidence=$case"};if($pageCaptureError){throw "Writer pages failed: $pageCaptureError ; evidence=$case"}

@@ -1,5 +1,25 @@
 # Capacité native : préparer un port cohérent vers 48 agents
 
+## Port direct en cours — 19 octobre 2026
+
+La reprise humaine demande de réaliser directement le port. Le suivi du chemin
+après l'initialisation conserve maintenant la page `14B3C5000` sur un dédié
+privé restauré : `14B3C5D01` prépare EDX=24 et ECX=66 avant `140AF6310`.
+La référence retenue de ce callee publie un autre stockage à `143C986A0`,
+avec comptes A8/AC et pas `0xA0`. Son buffer fixe et son remplissage distinct
+doivent aussi être dimensionnés ; cette dépendance ne se confond pas avec B8.
+
+Pour relier les consommateurs et poursuivre le port sans un lancement par
+fragment, le lecteur prépare une capture opt-in des deux seuls spans exécutables
+fixes du PE actuel : `140001000/1427E00` et `14B2B4000/104D400`, soit
+38 228 480 octets retenus et exactement quatre lectures/76 456 960 octets au
+maximum. Le handle conserve l'identité image/création, les régions doivent être
+engagées/exécutables/lisibles et les deux lectures de chaque span identiques.
+Aucune section de données, suspension, écriture cible ou cohérence globale n'est
+revendiquée. Les captures restent locales et ignorées. Cinq groupes de tests
+passent, dont refus de section arbitraire, données tronquées/modifiées et sortie
+existante ; l'acquisition réelle de ces deux spans reste à faire.
+
 ## Diagnostic actuel qualifié, capacité inchangée — 19 octobre 2026
 
 Le second essai utilise le source `8ef8f1e` et le binaire
