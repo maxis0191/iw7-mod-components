@@ -1,7 +1,7 @@
 function Set-IW7CapacityWatchBuildCopy {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$NativeRoot,
           [Parameter(Mandatory)][bool]$Enabled)
-    $names=@('paris_capacity_watch.cpp','paris_capacity_watch.hpp')
+    $names=@('paris_capacity_watch.cpp','paris_capacity_watch.hpp','paris_agent_capacity.cpp','paris_agent_capacity.hpp')
     $component=Join-Path $NativeRoot 'src/client/component'
     if (!(Test-Path -LiteralPath $component -PathType Container)) { throw 'Native component directory absent.' }
     foreach ($base in @($component,(Join-Path $RepoRoot 'src/native'))) {
@@ -11,7 +11,7 @@ function Set-IW7CapacityWatchBuildCopy {
             $cursor=Split-Path $cursor -Parent
         }
     }
-    # Preflight both files before mutation; preserve unknown edits.
+    # Preflight every file before mutation; preserve unknown edits.
     $rows=@(foreach($name in $names) {
         $source=Join-Path $RepoRoot ('src/native/'+$name)
         $target=Join-Path $component $name
@@ -30,5 +30,5 @@ function Set-IW7CapacityWatchBuildCopy {
             if((Get-FileHash -LiteralPath $row.Target).Hash -cne $row.SHA256) { throw 'Capacity build copy hash differs.' }
         } elseif(Test-Path -LiteralPath $row.Target) { Remove-Item -LiteralPath $row.Target }
     }
-    [pscustomobject]@{Compiled=$Enabled;Files=$names;RuntimeActivation='Explicit private isolated dedicated flags and arm command only';SourceHashes=@($rows|ForEach-Object{[pscustomobject]@{File=$_.File;SHA256=$_.SHA256}})}
+    [pscustomobject]@{Compiled=$Enabled;Files=$names;RuntimeActivation='Private isolated identity only; observer arm command or explicit paris-capacity-64 flag';SourceHashes=@($rows|ForEach-Object{[pscustomobject]@{File=$_.File;SHA256=$_.SHA256}})}
 }

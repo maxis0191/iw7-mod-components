@@ -5,7 +5,7 @@ $root=Join-Path $repo ('runtime/capacity-copy-pure-'+[guid]::NewGuid().ToString(
 $components=Join-Path $root 'src/client/component'
 $null=[IO.Directory]::CreateDirectory($components)
 $enabled=Set-IW7CapacityWatchBuildCopy $repo $root $true
-if(!$enabled.Compiled -or $enabled.Files.Count -ne 2){throw 'Isolated source pair missing'}
+if(!$enabled.Compiled -or $enabled.Files.Count -ne 4){throw 'Isolated capacity source groups missing'}
 foreach($row in $enabled.SourceHashes){if((Get-FileHash (Join-Path $components $row.File)).Hash -cne $row.SHA256){throw 'Copy integrity failed'}}
 $disabled=Set-IW7CapacityWatchBuildCopy $repo $root $false
 if($disabled.Compiled -or @(Get-ChildItem $components).Count){throw 'Ordinary profile still has watcher'}

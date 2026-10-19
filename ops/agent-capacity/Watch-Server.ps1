@@ -1,5 +1,6 @@
 param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [ValidateRange(27100,27999)][int]$ServerPort=27116,[switch]$DryRun,[switch]$CaptureWriterPages,[switch]$CaptureNativeText,
+      [ValidateSet(24,64)][int]$AgentCapacity=24,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
 $ops=Split-Path $PSScriptRoot -Parent;$repo=Split-Path $ops -Parent
@@ -25,10 +26,11 @@ foreach($row in $manifest.SourceHashes){
 foreach($name in @('paris_capacity_watch.cpp','paris_capacity_watch.hpp')){
     if(@($manifest.SourceHashes|Where-Object File -CEQ $name).Count -ne 1){throw 'Watcher source pin absent/duplicated.'}
 }
+if($AgentCapacity -eq 64 -and @($manifest.SourceHashes|Where-Object File -CEQ 'paris_agent_capacity.cpp').Count -ne 1){throw 'Capacity prototype source absent from native build.'}
 $budget=Get-IW7LabRunPlan -PlannedClients 0 -Debugger
 $image=Resolve-IW7BasePath $CandidateRoot 'iw7-paris-agent-lab.exe'
 $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$CandidateRoot;ServerImage=$image;ServerPort=$ServerPort;
-    PlannedClients=0;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
+    PlannedClients=0;AgentCapacity=$AgentCapacity;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -59,7 +61,7 @@ try{
 set sv_hostname "IW7 Capacity Diagnostic"
 set sv_maxclients 4
 set g_gametype "zombie"
-set scr_zombie_maxagents 24
+set scr_zombie_maxagents $AgentCapacity
 set net_ip 127.0.0.1
 set sv_lanOnly 1
 set g_password "$password"
@@ -84,7 +86,8 @@ set sv_mapRotationCurrent ""
     [IO.File]::WriteAllText((Resolve-IW7BasePath $CandidateRoot 'iw7-mod/server_capacity_watch.cfg'),$config,[Text.UTF8Encoding]::new($false))
     if(!('IW7LabProcess' -as [type])){Add-Type -Path "$ops/native/LabProcess.cs"}
     $desktop='IW7ParisLab_'+[guid]::NewGuid().ToString('N')
-    $arguments="-dedicated -allow_root_io -noupdate -nosteam -cpMode -stdout -paris-server-test -paris-isolated-lab -paris-debugger -paris-capacity-watch +set net_ip 127.0.0.1 +set sv_lanOnly 1 +set net_port $ServerPort +exec server_capacity_watch.cfg +map_rotate"
+    $capacityFlag=if($AgentCapacity -eq 64){' -paris-capacity-64'}else{''}
+    $arguments="-dedicated -allow_root_io -noupdate -nosteam -cpMode -stdout -paris-server-test -paris-isolated-lab -paris-debugger -paris-capacity-watch$capacityFlag +set net_ip 127.0.0.1 +set sv_lanOnly 1 +set net_port $ServerPort +exec server_capacity_watch.cfg +map_rotate"
     $server=[IW7LabProcess]::StartOwned($image,$arguments,$CandidateRoot,(Join-Path $case 'server.stdout.log'),(Join-Path $case 'server.stderr.log'),$desktop)
     $p=Get-Process -Id $server.Id
     try{$identity=[pscustomobject]@{PID=$server.Id;Image=$image;CreatedUtc=$p.StartTime.ToUniversalTime().ToString('o');SHA256=$manifest.SHA256;Stdout=(Join-Path $case 'server.stdout.log');DesktopName=$desktop}}finally{$p.Dispose()}
@@ -161,7 +164,7 @@ finally{
     [pscustomobject]@{Schema='iw7.capacity-watch-server/1';Result=$result;Failure=$failure;CleanupError=$cleanupError;Restored=$restored;
         ExactOwnedProcessExited=$ownedExited;Stop=$stopResult;LeaseReleased=$leaseReleased;LeaseRetained=(Get-IW7CapacityLeaseRetained $lease $leaseReleased);OutputRoot=$case;
         WriterPages=$pageCapture;WriterPageError=$pageCaptureError;WriterReaderClosed=$pageReaderClosed;
-        NativeText=$textCapture;
+        NativeText=$textCapture;RequestedAgentCapacity=$AgentCapacity;
         StockCopied=$false;BaseClientTouched=$false;WriterProven=$false;PatchReady=$false}|ConvertTo-Json -Depth 9|Set-Content (Join-Path $case 'result.local.json')
 }
 if($failure){throw "$failure ; evidence=$case"};if($cleanupError){throw "Cleanup pending: $cleanupError ; evidence=$case"};if($pageCaptureError){throw "Writer pages failed: $pageCaptureError ; evidence=$case"}

@@ -1,4 +1,4 @@
-# Capacité native : préparer un port cohérent vers 48 agents
+# Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
 ## Port direct en cours — 19 octobre 2026
 
@@ -23,7 +23,31 @@ passent, dont refus de section arbitraire, données tronquées et sortie existan
 avec qualification séparée des pages modifiées. La première acquisition réelle
 a refusé une section non identique ; le capteur natif ferme et le dédié quitte
 normalement, restauré/réservation libérée. Ce cas reste échoué. La nouvelle
-acquisition doit établir les pages stables et identifier les pages changeantes.
+acquisition a conservé les deux spans et exclu quatre pages différentes :
+`14121D000`, `141280000`, `14B770000`, `14C0B0000`. Le manifeste local a le hash
+`958AD7FA2EAD7E931CD87656DF40C429995C71DF42D92B15B39DA684C8FD917E`.
+La fermeture UDP de ce cas a échoué ; à l'investigation le processus exact était
+absent, sans code de sortie connu. La récupération indépendante a préservé le
+résultat échoué et le journal, vérifié l'absence du candidat, restauré les deux
+transactions et libéré sa réservation. Cela ne prouve pas une sortie normale.
+
+Le candidat privé `paris_agent_capacity` implémente maintenant K=64 : 48 ordinaires
+et une réserve provisoire de 16, 82 personnages et début des entités carte à 98.
+Il reloge les agents, sentients et tables de travail, agrandit les objets de
+personnages serveur/client et les références associées. Les formats et compteurs
+existants sont conservés. Les accès à RVA absolue sont distincts des accès RIP.
+Les longueurs de sauvegarde des tables 8/20 octets utilisent déjà leurs comptes
+dynamiques. Le stockage voisin `145D16710` appartient à un autre objet et reste
+intact ; sa proximité n'en fait pas la fin logique de notre nouveau pool.
+
+Le port n'est compilé que dans le profil privé debugger. Il est désactivé sans
+`-paris-capacity-64` et exige une identité CP isolée et un port privé explicites.
+Les emplacements attendus sont vérifiés avant une transaction d'écriture ; les
+buffers restent vivants jusqu'à la fermeture du processus, avec gardes suivies.
+La compilation, la création de 64 agents avec client correspondant, les cinq
+cartes et les mesures de charge restent à établir. Aucun passage à 48 ni absence
+de lag/crash n'est encore validé ou livré sur Main. La règle GSC de 48 ordinaires
+doit être qualifiée séparément des 64 places natives.
 
 ## Diagnostic actuel qualifié, capacité inchangée — 19 octobre 2026
 

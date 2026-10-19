@@ -1,9 +1,22 @@
 #include "../../src/native/paris_capacity_watch.hpp"
+#include "../../src/native/paris_agent_capacity.hpp"
 #include <cassert>
 #include <thread>
 #include <string>
 #include <vector>
 int main() {
+    {
+        using namespace paris_agent_capacity;
+        static_assert(ordinary == 48 && special_reserve == 16 && agents == 64);
+        static_assert(server_size >= 0x46B8 + characters * 0x2CA0 + players * 0x70);
+        static_assert(client_size >= client_flags + characters);
+        std::int32_t delta{};
+        assert(relative32(0x180000000,0x140000000,delta) && delta == 0x40000000);
+        assert(relative32(0x140000000,0x180000000,delta) && delta == -0x40000000);
+        assert(relative32(0x180000000,0x100000000,delta) == false);
+        assert(relative32(0x100000000,0x180000000,delta) && delta == std::numeric_limits<std::int32_t>::min());
+        assert(!relative32(0x100000000,0x180000001,delta));
+    }
     using namespace paris_capacity_watch;
     assert(valid_nonce("0123456789abcdef"));
     assert(!valid_nonce("short") && !valid_nonce("0123456789abc;ef"));
