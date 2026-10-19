@@ -42,6 +42,10 @@ if($CatalogRoot){
     foreach($f in $catalog){if((Get-FileHash (Join-Path $CatalogRoot $f.path)).Hash -ine $f.sha256){throw 'Catalog source differs.'}}
     $reader=@($catalogManifest.files|Where-Object path -CEQ 'ops/native/DoomDiagnostics.cs')
     if($reader.Count -ne 1 -or (Get-FileHash (Join-Path $CatalogRoot $reader[0].path)).Hash -ine $reader[0].sha256){throw 'Pinned catalog capacity reader required.'}
+    foreach($path in @('ops/modding/Agent-Restoration.Core.ps1','ops/hud-lab/HudFileIdentity.cs')){
+        $row=@($catalogManifest.files|Where-Object path -CEQ $path)
+        if($row.Count -ne 1 -or (Get-FileHash (Join-Path $CatalogRoot $path)).Hash -ine $row[0].sha256){throw 'Pinned catalog bank isolation source required.'}
+    }
 }
 . "$ops/Base-Client.Core.ps1"
 . "$ops/Resource-Scheduler.Core.ps1"
@@ -99,6 +103,7 @@ $lease=$null;$transaction=$null;$journalTransaction=$null;$server=$null;$session
 $pageReader=$null;$pageReaderClosed=$true;$pageCapture=$null;$pageCaptureError=$null;$textCapture=$null
 $crash=$null;$crashCache=@{}
 $client=$null;$clientImageTransaction=$null
+$bankIsolation=$null;$clientManagedRestored=$false
 $clientCrash=$null;$clientCrashCache=@{}
 try{
     $leaseOptions=@{}
@@ -106,8 +111,12 @@ try{
     $lease=Enter-IW7ResourceLease -Scope $CandidateRoot -Kind Runtime -PhysicalBytes $budget.PhysicalBytes -CommitBytes $budget.CommitBytes -Owner 'Private capacity construction and optional matching client' -RequireNewLease @leaseOptions
     # Recheck scope/ports under the reservation, before the first staged byte.
     Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
+    if($ClientGameRoot -and $CatalogRoot){
+        . (Join-Path $CatalogRoot 'ops/modding/Agent-Restoration.Core.ps1')
+        $bankIsolation=New-IW7AgentBankIsolation $ClientGameRoot $CandidateRoot
+    }
     $stage=[pscustomobject]@{GameRoot=$CandidateRoot;MutableFiles=@('iw7-paris-agent-lab.exe','iw7-mod/server_capacity_watch.cfg','iw7-mod/paris-server-client.request','iw7-mod/paris-server-client.response');
-        ProfileDirectory='iw7-mod/players2';ProfileDirectories=@('iw7-mod/custom_scripts/cp','iw7-mod/lab-appdata','mods/paris_beta/bank','iw7-mod/players2')}
+        ProfileDirectory='iw7-mod/players2';ProfileDirectories=@('iw7-mod/custom_scripts/cp','iw7-mod/lab-appdata','mods/paris_beta/bank','mods/paris_beta/stats','iw7-mod/players2')}
     $transaction=Save-IW7BaseTransaction $stage (Join-Path $case 'dedicated-backup')
     # Keep the reusable stock. Retire only saved custom script files, not directories.
     foreach($entry in $transaction.Files|Where-Object {$_.Path.StartsWith('iw7-mod/custom_scripts/cp/') -and $_.Path -match '\.(gsc|gscbin)$'}){
@@ -293,14 +302,21 @@ finally{
             $id=$client.Handle.ReadIdentity()
             $null=Invoke-IW7OwnedStop -Handle $client.Handle -TimeoutMs 10000 -StopAction {$client.Handle.WriteCapacityLifecycle('stop',$id.Image,$id.CreationFileTime)}
         }
-        if($client){Stop-IW7BaseClient $client}
-        if($session -and $standardManifest -and $client -and $client.Transaction.Restored){Wait-IW7CapacityClientDeparture $session}
-        if($session -and $clientCrash -and $clientCrash.ConfirmedFatal -and $client.Transaction.Restored){
+        if($client){
+            Stop-IW7BaseClient $client -AgentMainBankIsolation $bankIsolation
+            $clientManagedRestored=if($bankIsolation){$bankIsolation.Audits.Count -gt 0 -and @($bankIsolation.Audits|Where-Object {!$_.ManagedFilesRestored -or !$_.StaticMainUnchanged}).Count -eq 0}else{$client.Transaction.Restored}
+            if(!$clientManagedRestored){throw 'Owned client restoration not verified.'}
+        }
+        if($session -and $standardManifest -and $client -and $clientManagedRestored){Wait-IW7CapacityClientDeparture $session}
+        if($session -and $clientCrash -and $clientCrash.ConfirmedFatal -and $clientManagedRestored){
             Wait-IW7CapacityClientDeparture $session
         }
         if($clientImageTransaction){
             Assert-IW7BaseVacant $ClientGameRoot
-            Restore-IW7BaseTransaction $clientImageTransaction
+            if($bankIsolation){
+                $audit=Restore-IW7AgentMainTransaction $clientImageTransaction $bankIsolation
+                if(!$audit.ManagedFilesRestored -or !$audit.StaticMainUnchanged){throw 'Owned client image restoration not verified.'}
+            }else{Restore-IW7BaseTransaction $clientImageTransaction}
         }
         if($session -and !$server.HasExited -and $crash -and $crash.ConfirmedFatal){
             $stopResult=Stop-IW7CapacityConfirmedFatal $session $crash
@@ -361,7 +377,7 @@ finally{
         ExactOwnedProcessExited=$ownedExited;Stop=$stopResult;LeaseReleased=$leaseReleased;LeaseRetained=(Get-IW7CapacityLeaseRetained $lease $leaseReleased);OutputRoot=$case;
         WriterPages=$pageCapture;WriterPageError=$pageCaptureError;WriterReaderClosed=$pageReaderClosed;
         NativeText=$textCapture;RequestedAgentCapacity=$AgentCapacity;Canonical=$canonical;Crash=$crash;ClientCrash=$clientCrash;
-        StockCopied=$false;BaseClientTouched=[bool]$ClientGameRoot;ClientRestored=$(if($client){$client.Transaction.Restored}else{$null});WriterProven=$false;PatchReady=$false}|ConvertTo-Json -Depth 9|Set-Content (Join-Path $case 'result.local.json')
+        StockCopied=$false;BaseClientTouched=[bool]$ClientGameRoot;ClientRestored=$(if($client){$clientManagedRestored}else{$null});ClientStrictAuditRestored=$(if($client){$client.Transaction.Restored}else{$null});MainBankDeltasObserved=$(if($bankIsolation){@($bankIsolation.Audits|Where-Object MainBankDeltaObserved).Count -gt 0}else{$null});MainBankWriterAttributed=$false;WriterProven=$false;PatchReady=$false}|ConvertTo-Json -Depth 9|Set-Content (Join-Path $case 'result.local.json')
 }
 if($failure){throw "$failure ; evidence=$case"};if($cleanupError){throw "Cleanup pending: $cleanupError ; evidence=$case"};if($pageCaptureError){throw "Writer pages failed: $pageCaptureError ; evidence=$case"}
 Write-Output "Capacity server probe restored=$restored evidence=$case"
