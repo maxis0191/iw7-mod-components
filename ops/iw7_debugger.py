@@ -459,8 +459,8 @@ def perf_report(path, token_root=None):
             "coverage": dict(coverage), "alerts": dict(alerts), "coverage_gaps": gaps, "context": context, "identities": identities,
             "metrics": {k: quantiles(v) for k, v in metrics.items()}, "hotspots": hot,
             "high_pressure_samples": high_pressure,
-            "acceptance": "invalid under memory pressure" if high_pressure else "observation; scenario/repetition/overhead controls required",
-            "limits": "CPU uses one-core scale (100% = one busy logical CPU). Wall scopes overlap; do not sum nested timings. No renderer FPS claim."}
+            "acceptance": "observation; scenario/repetition/overhead controls required",
+            "limits": "CPU uses one-core scale (100% = one busy logical CPU). Wall scopes overlap; do not sum nested timings. No renderer FPS claim. high_pressure_samples retains the legacy commit_percent >85 heuristic; it is not proof of exhaustion or an observation/admission/stop rule."}
 
 
 def presents_report(path, pid=None):
@@ -493,7 +493,7 @@ def compare_reports(before, after):
     return {"schema": SCHEMA, "kind": "comparison", "changes": changes,
             "contexts_match": a["context"] == b["context"],
             "pressure_free": not a["high_pressure_samples"] and not b["high_pressure_samples"],
-            "conclusion": "Descriptive difference only; equal workloads, settings, duration and repeated A/B are required for optimization evidence."}
+            "conclusion": "Descriptive difference only; equal workloads, settings, duration and repeated A/B are required for optimization evidence. pressure_free only means neither trace has legacy commit_percent >85 samples; it does not establish capacity or exhaustion."}
 
 
 def cdb_report(path):
