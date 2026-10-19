@@ -1,5 +1,9 @@
 # IW7-Mod components
 
+Optional [owner-only native console access](docs/OWNER-CHEATS.md) keeps public
+`sv_cheats=0`, authenticates the owner and server with pinned keys, and retains
+the standard console commands. Source/build/runtime qualification is separate.
+
 Private agent input includes a protected [secondary-offhand binding](docs/AGENT-OFFHAND.md)
 for real scanner input tests, retaining the existing identity and release gates.
 

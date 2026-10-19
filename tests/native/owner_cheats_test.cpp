@@ -1,0 +1,51 @@
+#include <cassert>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include "../../src/native/owner_cheats_policy.hpp"
+#include "../../src/native/owner_cheats_crypto.hpp"
+
+using namespace owner_cheats;
+std::string read(const std::filesystem::path& path)
+{ std::ifstream file(path, std::ios::binary); return {std::istreambuf_iterator<char>(file), {}}; }
+int main(int argc, char** argv)
+{
+    assert(argc == 2);
+    const std::filesystem::path root(argv[1]);
+    crypto::key owner, owner_public, server, server_public, malformed;
+    assert(owner.load(read(root/"client/iw7-mod/owner-cheats/client-private.blob"), true));
+    assert(owner_public.load(read(root/"server/iw7-mod/owner-cheats/owner-public.blob"), false));
+    assert(server.load(read(root/"server/iw7-mod/owner-cheats/server-private.blob"), true));
+    assert(server_public.load(read(root/"client/iw7-mod/owner-cheats/trusted-server-public.blob"), false));
+    assert(!malformed.load(std::string(104, 'x'), true));
+    assert(!malformed.load(read(root/"client/iw7-mod/owner-cheats/client-private.blob"), false));
+    const std::string c(64,'a'), s(64,'b'), id="123456789abcdef0";
+    const auto challenge=policy::message('S',id,c,s), proof=policy::message('P',id,c,s);
+    const auto server_signature=server.sign(challenge), owner_signature=owner.sign(proof);
+    assert(server_public.verify(challenge, server_signature));
+    assert(owner_public.verify(proof, owner_signature));
+    assert(!owner_public.verify(proof, server.sign(proof))); // Another private key cannot impersonate the owner.
+    assert(!owner_public.verify(policy::message('P',"0",c,s),owner_signature));
+    assert(!owner_public.verify(policy::message('A',id,c,s),owner_signature));
+    assert(!owner_public.verify(policy::message('P',id,s,c),owner_signature));
+    assert(!server_public.verify(challenge,owner_signature));
+    assert(owner_public.sign(proof).empty());
+    assert(!owner_public.verify(proof, "short"));
+    policy::proof p{c,s,10000,0,false};
+    assert(!p.allowed(1));
+    assert(!p.consume(c,std::string(64,'c'),1,true));
+    assert(p.consume(c,s,1,owner_public.verify(proof,owner_signature)));
+    assert(p.allowed(45000)); assert(!p.allowed(45001));
+    assert(!p.consume(c,s,2,true)); // One-time proof, including a previously valid signature.
+    policy::proof expired{c,s,10000,0,false}; assert(!expired.consume(c,s,10000,true));
+    policy::proof rejected{c,s,10000,0,false}; assert(!rejected.consume(c,s,1,false));
+    assert(!rejected.consume(c,s,2,true)); assert(!rejected.allowed(2));
+    p={}; assert(!p.allowed(2)); // Disconnect/reconnect cannot inherit a grant.
+    assert(policy::hex(policy::unhex(c,32))==c);
+    assert(policy::unhex("A0",1).empty());
+    assert(policy::words("H "+id+" "+c).size()==3);
+    assert(policy::words("H  "+id).empty());
+    assert(policy::words(std::string(513,'a')).empty());
+    assert(policy::words("H x\ny").empty());
+    std::cout << "Owner key, mutual server proof, impersonation, nonce, replay, expiry and malformed-input checks pass.\n";
+}
