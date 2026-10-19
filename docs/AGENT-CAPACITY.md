@@ -1,5 +1,37 @@
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
+## Qualification privée mesurée — 19 octobre 2026
+
+Le cas R tient48 zombies ordinaires et2 Brutes,116 relevés de population et
+trois cycles de8 morts/remplacements. Le client reste protégé120 secondes ;
+client et dédié quittent/restaurent, bail libéré, aucun nouveau fatal. Sur le
+plateau,59 fenêtres serveur donnent une médiane20 Hz (minimum19,685) ;58 fenêtres
+client donnent30,306 rappels de présentation/s sous sa limite30, intervalle
+maximal49,123 ms. Ce sont des cadences instrumentées en1280×720 réduit, sans
+preuve de FPS affichés, latence WAN ou absence universelle de saccades.
+
+Les builds normal serveur017243B6 et client standardFB16381D compilent avec le
+port seul. Le smoke normal construit64 agents sans les flags privés et refuse
+les clients sans contrat,24 et inconnu avant toute admission ; compteur0 avant
+et après chaque essai, fermeture normale/restauration confirmées. Un petit
+lanceur Paris48 active le format64-v1 ; le lancement standard reste au format24.
+
+Le premier stress Beast complet (AL) atteint48+2 puis fatale côté client à
+1412B4CF0 (lecture nulle, arbre d'animation du joueur0). L'origine n'est pas
+établie par ce seul contexte. Le scénario utilisait la création générique des
+cryptides. Les callbacks retail corrigés ne reproduisent pas ce fatal ; V échoue
+sur un renouvellement trop court, puis X passe90 relevés et24 remplacements.
+Conserver ces échecs, les sources et leurs dumps privés. Aucun patch de lecture
+nulle ou désactivation d'assertion ne masque le symptôme.
+
+Le contrôle24 ordinaire/0 spécial avec le catalogue complet passe113 relevés.
+La qualification finale doit vérifier explicitement le hook GSC48, les cinq
+cartes, le client distribuable et Beast après rotation occupée. Le profil privé
+initial omettait ui_gametype : son simple chargement du catalogue ne prouve pas
+que Rush avait installé les hooks. Le scénario final exige cette preuve avant
+de prendre séparément possession de son fournisseur de stress. Main reste24 ;
+pas de garantie « zéro lag » ni d'acceptation propriétaire déduite de ces essais.
+
 ## Livraison et admission des clients en préparation — 19 octobre 2026
 
 Le cas O à127 champs (image57C24605) conserve les numéros64 à67 reçus par le
