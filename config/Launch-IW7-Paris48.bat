@@ -6,4 +6,4 @@ if not exist "iw7-paris48.exe" (
   pause
   exit /b 1
 )
-start "" "%~dp0iw7-paris48.exe" -noupdate -cpMode -paris-capacity-64 -paris-capacity-production %*
+start "" "%~dp0iw7-paris48.exe" -noupdate -nosteam -cpMode -paris-capacity-64 -paris-capacity-production %*
