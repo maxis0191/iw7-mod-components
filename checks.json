@@ -2,92 +2,253 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "cutscene_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/cutscene_test.ps1",
+        "-Compile"
+      ]
+    },
+    {
       "id": "owner_cheats_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/owner_cheats_test.ps1", "-Compile"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/owner_cheats_test.ps1",
+        "-Compile"
+      ]
     },
     {
       "id": "standard_client_loading_hook_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/standard_client_loading_hook_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/standard_client_loading_hook_test.ps1"
+      ]
     },
     {
       "id": "source_guard_root_candidate_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/source_guard_root_candidate_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/source_guard_root_candidate_test.ps1"
+      ]
     },
     {
       "id": "immutable_snapshot_cursor_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/immutable_snapshot_cursor_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/immutable_snapshot_cursor_test.ps1"
+      ]
     },
     {
       "id": "voice_speech_cache_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/voice_speech_cache_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/voice_speech_cache_test.ps1"
+      ]
     },
     {
       "id": "resource_owned_process_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/resource_owned_process_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_owned_process_test.ps1"
+      ]
     },
     {
       "id": "capacity_word_provenance_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/capacity_word_provenance_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/capacity_word_provenance_test.ps1"
+      ]
     },
     {
       "id": "author_platform_display_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/author_platform_display_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/author_platform_display_test.ps1"
+      ]
     },
     {
       "id": "author_platform_result_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/author_platform_result_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/author_platform_result_test.ps1"
+      ]
     },
     {
       "id": "author_platform_source_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/author_platform_source_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/author_platform_source_test.ps1"
+      ]
     },
     {
       "id": "stock_links_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/stock_links_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/stock_links_test.ps1"
+      ]
     },
     {
       "id": "bo3_zombies_hud_source",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "ops/Test-BO3HUDSource.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "ops/Test-BO3HUDSource.ps1"
+      ]
     },
     {
       "id": "raygun_weapon_authoring_test",
-      "command": ["python", "-B", "tests/ops/raygun_weapon_authoring_test.py"]
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/raygun_weapon_authoring_test.py"
+      ]
     },
     {
       "id": "iw7_neutral_clone_test",
-      "command": ["python", "-B", "tests/ops/iw7_neutral_clone_test.py"]
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/iw7_neutral_clone_test.py"
+      ]
     },
     {
       "id": "collision_player_result_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_player_result_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/collision_player_result_test.ps1"
+      ]
     },
     {
       "id": "collision_player_source_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_player_source_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/collision_player_source_test.ps1"
+      ]
     },
     {
       "id": "collision_probe_transport_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_probe_transport_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/collision_probe_transport_test.ps1"
+      ]
     },
     {
       "id": "collision_probe_result_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_probe_result_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/collision_probe_result_test.ps1"
+      ]
     },
     {
       "id": "rig_assets_probe_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/rig_assets_probe_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/rig_assets_probe_test.ps1"
+      ]
     },
     {
       "id": "original_rig_console_caller_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/original_rig_console_caller_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/original_rig_console_caller_test.ps1"
+      ]
     },
     {
       "id": "original_rig_console_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/original_rig_console_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/original_rig_console_test.ps1"
+      ]
     },
     {
       "id": "collision_provider_build_test",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/collision_provider_build_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/collision_provider_build_test.ps1"
+      ]
     },
     {
       "id": "base_client_context_test",

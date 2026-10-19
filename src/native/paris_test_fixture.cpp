@@ -908,7 +908,9 @@ namespace paris_test_fixture
             // Only the owned, protected loopback party can change the test map.
             // This fixture is absent from ordinary server operation.
             const auto* clients = *game::svs_clients;
-            if (!clients || *game::svs_numclients > 4) return;
+            // Retail CP allocates16 client records despite a four-player game.
+            // Inspect every allocated record; any unprotected occupant refuses.
+            if (!clients || *game::svs_numclients > 16) return;
             std::lock_guard lock(safety_mutex);
             for (unsigned slot = 0; slot < *game::svs_numclients; ++slot)
                 if (clients[slot].header.state >= game::CS_CONNECTED &&
@@ -957,12 +959,22 @@ namespace paris_test_fixture
             const bool voice_control = action == "voicemute" || action == "voiceunmute" || action == "voicedisable" || action == "voiceenable" || action == "voicerestore" || action == "voicecodecprobe" || action == "voiceconcurrentprobe" || action == "voicesoakprobe";
             const bool vote_input = action == "votenext" || action == "voteprevious" || action == "voteboth" || action == "voteholdnext" || action == "voterelease" || action == "votewitness";
             const bool afk_input = action == "afk";
+            const bool teleport_input = action == "owner_tphere" || action == "owner_tp";
+            const bool cutscene_input = action == "cutscene_space" || action == "cutscene_enter" || action == "cutscene_mouse" || action == "cutscene_release";
+            if (teleport_input || cutscene_input)
+            {
+                const auto* connection = party::get_server_connection_state();
+                if (!utils::flags::has_flag("paris-isolated-lab") || !lab_port() || lab_port() == 27016 ||
+                    !iw7::agent::scenario::safe(agent_safety, GetTickCount64()) ||
+                    !connection || !connection->hostDefined || !loopback(connection->host) ||
+                    ntohs(connection->host.port) != lab_port() || !game::CL_IsGameClientActive(0)) return;
+            }
             if (afk_input && !utils::flags::has_flag("paris-isolated-lab")) return;
             if (vote_input && !utils::flags::has_flag("paris-isolated-lab")) return;
             if (vote_input && vote_witness_running) return;
             if (vote_input && agent_runtime.client && agent_runtime.client->active()) return;
             if (voice_control && (!utils::flags::has_flag("iw7-voice-relay") || !utils::flags::has_flag("paris-voice-base-test"))) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "rejoin_immediate" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input && !afk_input) return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "rejoin_immediate" && action != "voiceprobe" && action != "voicereleasedprobe" && action != "witnessroster" && action != "registerwitness" && !voice_control && !vote_input && !afk_input && !teleport_input && !cutscene_input) return;
             if ((action == "witnessroster" || action == "registerwitness") && (!utils::flags::has_flag("paris-voice-registration-witness") ||
                 !utils::flags::has_flag("paris-voice-base-test"))) return;
             if ((action == "voiceprobe" || action == "voicereleasedprobe" || action == "voicecodecprobe" || action == "voiceconcurrentprobe" || action == "voicesoakprobe") && (!utils::flags::has_flag("paris-voice-native-trace") ||
@@ -1003,6 +1015,8 @@ namespace paris_test_fixture
                     graphics_value("r_picmip"), graphics_value("r_picmip_bump"), graphics_value("r_picmip_spec"), GetTickCount64());
                 command::execute("capture_frame server-modules-fixture", true);
             }
+            else if (cutscene_input)
+                command::execute("paris_cutscene_test_key " + action.substr(9),true);
             else if (vote_input)
             {
                 // Fixed client usercmd buttons only, scoped to the independent lab.
@@ -1022,6 +1036,7 @@ namespace paris_test_fixture
                 else vote_buttons(action == "votenext" || action == "voteboth" || action == "voteholdnext",
                     action == "voteprevious" || action == "voteboth", action == "voteholdnext");
             }
+            else if (teleport_input) command::execute(action == "owner_tphere" ? "tphere #2" : "tp #2", true);
             else if (action == "help") command::execute("cmd say ..help", true);
             // Retail chat consumes its leading control byte before GSC say.
             else if (afk_input) command::execute("cmd say ..afk", true);

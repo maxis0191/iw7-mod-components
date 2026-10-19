@@ -4,6 +4,7 @@ $repo=Split-Path $PSScriptRoot -Parent
 $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw | ConvertFrom-Json).Standard
 . "$PSScriptRoot/standard-client/Loading-NewMap.Core.ps1"
 . "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
+. "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
 $root=[IO.Path]::GetFullPath($NativeRoot).TrimEnd('\','/')
 if(![IO.Path]::IsPathFullyQualified($NativeRoot) -or $NativeRoot -match '[\x00-\x1f"%!]'){throw 'Absolute literal NativeRoot required.'}
 $cursor=$root
@@ -13,7 +14,8 @@ while($cursor){
 }
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
-    Remove-IW7OwnerCheatsOverlay $root
+    Remove-IW7CutsceneOverlay $root
+Remove-IW7OwnerCheatsOverlay $root
     if(!(Test-Path -LiteralPath (Join-Path $root '.git'))){
         git clone --no-checkout $profile.Repository $root
         if($LASTEXITCODE){throw 'Standard client source clone failed.'}
@@ -47,8 +49,9 @@ Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native 
     $wrapper=Join-Path $root 'paris-build-only.lua'
     if((Test-Path -LiteralPath $wrapper) -and (Get-FileHash $wrapper).Hash -ne (Get-FileHash $wrapperSource).Hash){throw 'Unowned build-only Premake wrapper; preserve it.'}
     Copy-Item -LiteralPath $wrapperSource -Destination $wrapper -Force
+    $cutsceneOverlay=$null
     $ownerCheatsOverlay=$null
-    if($OwnerCheats){$ownerCheatsOverlay=Add-IW7OwnerCheatsOverlay $root $repo}
+    if($OwnerCheats){$ownerCheatsOverlay=Add-IW7OwnerCheatsOverlay $root $repo;$cutsceneOverlay=Add-IW7CutsceneOverlay $root $repo}
     Push-Location $root
     try {
         & ./tools/premake5.exe --file=paris-build-only.lua vs2022
@@ -64,7 +67,7 @@ Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native 
     } finally {Pop-Location}
     if($OwnerCheats){
         $changed=@(& git -C $root diff --name-only HEAD)
-        if(@($changed|Where-Object{$_ -cnotin @('src/client/component/auth.cpp','src/client/component/command.cpp','src/client/component/dvar_cheats.cpp')}).Count){throw 'Build modified unowned tracked client source.'}
+        if(@($changed|Where-Object{$_ -cnotin @('src/client/component/auth.cpp','src/client/component/command.cpp','src/client/component/dvar_cheats.cpp','src/client/component/gsc/script_extension.cpp','src/client/component/gsc/script_loading.cpp','src/client/component/input.cpp')}).Count){throw 'Build modified unowned tracked client source.'}
         foreach($row in $ownerCheatsOverlay.Files){
             if((Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$row.Name))).Hash -cne $row.AfterSHA256){throw 'Build modified owner-cheats input.'}
         }
@@ -81,6 +84,7 @@ Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native 
     $manifest.LoadingNewMapHook=$loadingHook
     $manifest.OwnerCheatsEnabled=[bool]$OwnerCheats
     $manifest.OwnerCheatsOverlay=$ownerCheatsOverlay
+    $manifest.CutsceneOverlay=$cutsceneOverlay
     $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $output 'build-manifest.json')
     Write-Output "Prepared standard client: $output"
 }

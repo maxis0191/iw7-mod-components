@@ -9,6 +9,8 @@
 #include "scheduler.hpp"
 #include "console/console.hpp"
 #include "command.hpp"
+#include "game/scripting/execution.hpp"
+#include "gsc/script_extension.hpp"
 #include <utils/cryptography.hpp>
 #include <utils/io.hpp>
 #include <charconv>
@@ -39,6 +41,46 @@ namespace owner_cheats
         game::netadr_s client_host{};
         std::string client_connection, client_nonce, server_nonce, client_identity;
         std::uint64_t client_sent{}, client_issued{}, client_granted{};
+        struct connection_epoch { game::netadr_s endpoint{}; std::string token; };
+        std::vector<connection_epoch> epochs;
+
+        game::client_t* connection(unsigned slot);
+        void teleport(int owner, const command::params_sv& args, bool here)
+        {
+            const auto reply = [owner](const char* text)
+            { console::info("[Owner teleport] slot=%d result=%s\n", owner, text); game::SV_GameSendServerCommand(owner, game::SV_CMD_RELIABLE, text); };
+            if (!server_allowed(owner)) { reply("f \"Owner authentication required.\""); return; }
+            const auto query = args.join(1);
+            if (!policy::safe_target(query)) { reply("f \"Usage: tp <name|#ID> or tphere <name|#ID>. IDs: .players\""); return; }
+            try
+            {
+                std::vector<std::pair<int, std::string>> players;
+                for (unsigned slot = 0; slot < 4; ++slot)
+                    if (connection(slot))
+                        players.emplace_back(slot, scripting::entity({static_cast<uint16_t>(slot), 0}).get<std::string>("name"));
+                const auto target = policy::target_slot(query, players);
+                if (target < 0) { reply("f \"No unique player found. Use .players and #ID.\""); return; }
+                if (target == owner) { reply("f \"Choose another player.\""); return; }
+                const scripting::entity player({static_cast<uint16_t>(here ? target : owner), 0});
+                const scripting::entity destination({static_cast<uint16_t>(here ? owner : target), 0});
+                for (const auto& entity : {player, destination})
+                {
+                    if (!scripting::call<int>("isalive", {entity}) || entity.get<std::string>("sessionstate") != "playing" ||
+                        entity.call("islinked").as<int>() ||
+                        scripting::call_script_function(entity, "scripts/cp/cp_laststand", "player_in_laststand", {entity}).as<int>())
+                    { reply("f \"Both players must be alive, standing and unlinked.\""); return; }
+                }
+                const auto origin = destination.get<scripting::vector>("origin");
+                if (!server_allowed(owner) || !connection(target)) return;
+                // Native GSC SetOrigin updates the entity/teleport state as well
+                // as playerState; a raw ps.origin write leaves stale prediction.
+                player.call("setorigin", {origin});
+                reply("f \"Teleport complete.\"");
+                console::info("[Owner teleport] actor=%d target=%d here=%d\n", owner, target, here);
+            }
+            catch (const std::exception& error)
+            { console::info("[Owner teleport] state error=%s\n", error.what()); reply("f \"Teleport refused; player state unavailable.\""); }
+        }
 
         std::string nonce()
         { std::string bytes(32, '\0'); utils::cryptography::random::get_data(bytes.data(), bytes.size()); return policy::hex(bytes); }
@@ -55,7 +97,7 @@ namespace owner_cheats
             if (!game::environment::is_dedi() || !game::SV_Loaded() ||
                 game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP || !*game::svs_clients ||
                 slot >= 4 || slot >= *game::svs_numclients) return nullptr;
-            auto* c = game::svs_clients.get()[slot];
+            auto* c = policy::client_at(*game::svs_clients, *game::svs_numclients, slot);
             return c && c->header.state == game::CS_ACTIVE && c->gentity == &game::g_entities[slot] &&
                 c->gentity->client ? c : nullptr;
         }
@@ -188,12 +230,28 @@ namespace owner_cheats
         if (!endpoint) return;
         std::lock_guard lock(state_mutex);
         for (auto& s : sessions) if (s.connection && network::are_addresses_equal(s.endpoint, *endpoint)) s = {};
+        // A direct connection gets a new opaque token; map loads retain it.
+        // This is lifetime bookkeeping, independent of owner authentication.
+        for (auto it = epochs.begin(); it != epochs.end(); ++it)
+            if (network::are_addresses_equal(it->endpoint, *endpoint)) { epochs.erase(it); break; }
+        if (epochs.size() >= 16) epochs.erase(epochs.begin());
+        epochs.push_back({*endpoint, nonce()});
     }
     class component final : public component_interface
     {
     public:
         void post_unpack() override
         {
+            gsc::method::add("paris_get_connection_id", [](game::scr_entref_t ent, const gsc::function_args&) -> scripting::script_value
+            {
+                std::lock_guard lock(state_mutex);
+                if (ent.classnum != 0) return scripting::script_value{};
+                const auto* client = connection(ent.entnum);
+                if (!client) return scripting::script_value{};
+                for (const auto& epoch : epochs)
+                    if (network::are_addresses_equal(epoch.endpoint, client->remoteAddress)) return epoch.token;
+                return scripting::script_value{};
+            });
             scheduler::once([]
             {
                 const bool dedicated = game::environment::is_dedi();
@@ -207,6 +265,20 @@ namespace owner_cheats
                     else console::info("[Owner cheats] local_allowed=%d\n", client_allowed());
                 });
                 if (!configured) return;
+                if (dedicated)
+                {
+                    command::add_sv("tp", [](int slot, const command::params_sv& args) { teleport(slot, args, false); });
+                    command::add_sv("tphere", [](int slot, const command::params_sv& args) { teleport(slot, args, true); });
+                }
+                else for (const auto* name : {"tp", "tphere"})
+                    command::add(name, [name](const command::params& args)
+                    {
+                        const auto target = args.join(1);
+                        console::info("[Owner teleport] client command=%s allowed=%d\n", name, client_allowed());
+                        if (!client_allowed() || !policy::safe_target(target))
+                        { console::info("Owner access required. Usage: %s <name|#ID>; IDs: .players\n", name); return; }
+                        command::execute(std::string("cmd ") + name + " \"" + target + "\"");
+                    });
                 network::on(wire, receive);
                 if (dedicated) scheduler::loop(server_tick, scheduler::pipeline::server, 100ms);
                 else scheduler::loop(client_tick, scheduler::pipeline::main, 100ms);

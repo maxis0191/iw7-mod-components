@@ -11,6 +11,27 @@ std::string read(const std::filesystem::path& path)
 int main(int argc, char** argv)
 {
     assert(argc == 2);
+    struct mock_client { unsigned marker; char padding[127]; } clients[4]{};
+    for (unsigned slot=0; slot<4; ++slot) assert(policy::client_at(clients,4,slot)==&clients[slot]);
+    assert(!policy::client_at(clients,4,4));
+    assert(!policy::client_at(clients,1,1));
+    assert(!policy::client_at(clients,-1,0));
+    assert(!policy::client_at<mock_client>(nullptr,4,0));
+    const std::vector<std::pair<int, std::string>> roster{{0,"Owner"},{2,"^2Unknown ^7Soldier"},{3,"Unknown Friend"}};
+    assert(policy::target_slot("#3",roster)==2);
+    assert(policy::target_slot("3",roster)==2);
+    assert(policy::target_slot("#2",roster)==-1);
+    assert(policy::target_slot("#0",roster)==-1);
+    assert(policy::target_slot("UNKNOWN SOLDIER",roster)==2);
+    assert(policy::target_slot("Soldier",roster)==2);
+    assert(policy::target_slot("unknown",roster)==-1);
+    assert(policy::target_slot("#3x",roster)==-1);
+    assert(policy::target_slot("",roster)==-1);
+    assert(policy::target_slot("Owner",{{0,"Owner"},{1,"Owner"}})==-1);
+    assert(policy::safe_target("Unknown Soldier"));
+    assert(!policy::safe_target("x;quit"));
+    assert(!policy::safe_target("x\nquit"));
+    assert(!policy::safe_target("x\"quit"));
     const std::filesystem::path root(argv[1]);
     crypto::key owner, owner_public, server, server_public, malformed;
     assert(owner.load(read(root/"client/iw7-mod/owner-cheats/client-private.blob"), true));
