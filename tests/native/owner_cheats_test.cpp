@@ -11,6 +11,12 @@ std::string read(const std::filesystem::path& path)
 int main(int argc, char** argv)
 {
     assert(argc == 2);
+    struct mock_client { unsigned marker; char padding[127]; } clients[4]{};
+    for (unsigned slot=0; slot<4; ++slot) assert(policy::client_at(clients,4,slot)==&clients[slot]);
+    assert(!policy::client_at(clients,4,4));
+    assert(!policy::client_at(clients,1,1));
+    assert(!policy::client_at(clients,-1,0));
+    assert(!policy::client_at<mock_client>(nullptr,4,0));
     const std::vector<std::pair<int, std::string>> roster{{0,"Owner"},{2,"^2Unknown ^7Soldier"},{3,"Unknown Friend"}};
     assert(policy::target_slot("#3",roster)==2);
     assert(policy::target_slot("3",roster)==2);

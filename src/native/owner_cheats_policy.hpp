@@ -7,6 +7,11 @@
 
 namespace owner_cheats::policy
 {
+    template <typename T> T* client_at(T* clients, int count, unsigned slot)
+    {
+        if (!clients || count <= 0 || slot >= 4 || slot >= static_cast<unsigned>(count)) return nullptr;
+        return &clients[slot];
+    }
     inline std::string name_key(std::string_view name)
     {
         std::string result;

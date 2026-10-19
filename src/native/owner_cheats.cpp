@@ -97,7 +97,7 @@ namespace owner_cheats
             if (!game::environment::is_dedi() || !game::SV_Loaded() ||
                 game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP || !*game::svs_clients ||
                 slot >= 4 || slot >= *game::svs_numclients) return nullptr;
-            auto* c = game::svs_clients.get()[slot];
+            auto* c = policy::client_at(*game::svs_clients, *game::svs_numclients, slot);
             return c && c->header.state == game::CS_ACTIVE && c->gentity == &game::g_entities[slot] &&
                 c->gentity->client ? c : nullptr;
         }
