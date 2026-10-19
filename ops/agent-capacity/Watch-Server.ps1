@@ -232,9 +232,10 @@ finally{
                 }
                 if(!$pageReaderClosed){throw 'Writer page reader closure unknown; retain reservation and original state.'}
             }
-            Send-IW7CapacityRcon $session 'paris_capacity_stop'
-            # Actual vacant UDP is mandatory before quit/owned-stop fallback.
-            $stopResult=Stop-IW7CapacityOwnedServer $session
+            # Normal closure still requires actual vacant UDP. A late dump may
+            # separately qualify the exact fatal process while UDP is absent.
+            $stopResult=Stop-IW7CapacityServerWithDiagnosis $session $crashBefore $case $crashCache
+            if($session.PSObject.Properties['DiagnosedCrash']){$crash=$session.DiagnosedCrash}
         }
         if($server -and !$server.HasExited){throw 'Owned dedicated exit absent; retain lease and snapshots.'}
         $ownedExited=($null -ne $server -and $server.HasExited)

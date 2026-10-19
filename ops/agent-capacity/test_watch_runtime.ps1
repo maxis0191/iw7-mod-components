@@ -82,6 +82,13 @@ $handle|Add-Member -Force ScriptMethod WaitForExit {$true}
 $handle|Add-Member ScriptMethod get_ExitCode {3758096385}
 $fatalResult=Stop-IW7CapacityConfirmedFatal $session $fatal
 if(!$script:terminated -or $fatalResult.Kind -cne 'confirmed-fatal-recovery'){throw 'Confirmed owned fatal recovery failed.'}
+$handle|Add-Member NoteProperty HasExited $false
+$script:diagnosticReads=0
+function Send-IW7CapacityRcon($Session,[string]$Command){throw 'Injected absent UDP'}
+function Get-IW7AgentNewCrash {param($CandidateRoot,$Identity,$Before,$OutputRoot,$Cache);$script:diagnosticReads++;if($script:diagnosticReads -ge 2){$fatal}}
+$script:terminated=$false
+$late=Stop-IW7CapacityServerWithDiagnosis $session @() $env:TEMP @{}
+if(!$script:terminated -or $script:diagnosticReads -ne 2 -or $late.Kind -cne 'confirmed-fatal-recovery' -or !$session.DiagnosedCrash.ConfirmedFatal){throw 'Late exact fatal did not recover after preserving absent-UDP refusal.'}
 Remove-Item -LiteralPath $artifact
 # Exact cleanup status model: file restoration does not imply lease release.
 $lease=[pscustomobject]@{Token='synthetic'};$restored=$true;$leaseReleased=$false

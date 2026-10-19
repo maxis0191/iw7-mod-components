@@ -196,3 +196,24 @@ function Stop-IW7CapacityConfirmedFatal($Session,$Crash) {
     if(!$Session.Handle.WaitForExit(5000)){throw 'Exact fatal process exit not confirmed; preserve reservation.'}
     [pscustomobject]@{Code=$Session.Handle.get_ExitCode();Kind='confirmed-fatal-recovery';RequestError=$null}
 }
+function Stop-IW7CapacityServerWithDiagnosis($Session,[string[]]$CrashBefore,[string]$OutputRoot,[hashtable]$CrashCache) {
+    try{
+        Send-IW7CapacityRcon $Session 'paris_capacity_stop'
+        return Stop-IW7CapacityOwnedServer $Session
+    }catch{
+        $original=$_
+        # The fatal dialog is published only after writing/compressing its dump.
+        # Missing UDP alone still never grants termination authority.
+        $deadline=[datetime]::UtcNow.AddSeconds(45)
+        do{
+            if($Session.Handle.HasExited){return [pscustomobject]@{Code=$Session.Handle.get_ExitCode();Kind='exited-during-diagnosis';RequestError=$original.Exception.Message}}
+            $found=Get-IW7AgentNewCrash -CandidateRoot $Session.CandidateRoot -Identity $Session.Identity -Before $CrashBefore -OutputRoot $OutputRoot -Cache $CrashCache
+            if($found){
+                $Session|Add-Member -Force NoteProperty DiagnosedCrash $found
+                if($found.ConfirmedFatal){return Stop-IW7CapacityConfirmedFatal $Session $found}
+            }
+            Start-Sleep -Milliseconds 250
+        }while([datetime]::UtcNow -lt $deadline)
+        throw $original
+    }
+}
