@@ -87,7 +87,7 @@ Supply separate CandidateRoot, ProtectedGameRoot and a fresh Output directory;
 use Effects for the real positive/negative command. It never operates on Main.
 Public promotion/startup and natural owner gameplay are separate evidence.
 
-Inventory qualification uses the original owned wincon stdin pipe, with two fixed client teleport lines and five allowlisted dedicated map lines, bounded to20 writes per process and fresh native safety. CONIN keyboard injection is not a witness for children whose stdin is redirected. Windows transport tests verify actual reader consumption separately from gameplay.
+Earlier inventory qualification attempted the owned wincon stdin pipe and CONIN keyboard injection. Neither produced an engine effect; they are failed transport diagnostics, not teleport acceptance.
 
 The inventory stdin and delimiter candidates still produced no engine effect. They remain in commit history as failed diagnostics; the unused inventory-specific pipe API is removed. Two fixed, protected loopback-only fixture actions now enter the actual native client console parser with tphere #2 and tp #2. They retain client and server owner authentication. A transport acknowledgement alone is never gameplay proof.
 
@@ -96,3 +96,11 @@ The first parser-backed witness reached the authenticated handler and exposed a 
 Multi-slot review also found a pre-existing pointer-level error: svs_clients is a client_t pointer stored at an engine symbol; symbol.get()[slot] indexes pointer storage rather than the client array. The corrected bounded helper indexes the dereferenced array. Tests cover all four client addresses, sparse counts, null and negative bounds; runtime qualification must include a target in slot1.
 
 The protected map-mailbox qualification initially refused rotation because retail CP allocates16 client records even though the game allows four players (verified by a bounded read of the original private process). The fixture now scans that bounded16-record allocation, refusing any connected occupant without protection. This changes only the private test transport, not the four-player limit.
+
+The final parser-backed private witness executes both authenticated teleports
+against a protected real engine target in slot1, using public ID #2. Actual
+origin changes pass on Beast, Spaceland and Rave, including two occupied map
+transitions. The same opaque connection token and physical-visit count survive
+both transitions. Rave's separate exact-inventory assertion failed; that run
+does not qualify the combined server gameplay suite. Full natural owner/peer
+acceptance remains separate from these protected native witnesses.
