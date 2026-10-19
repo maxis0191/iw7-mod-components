@@ -48,7 +48,7 @@ namespace owner_cheats
         void teleport(int owner, const command::params_sv& args, bool here)
         {
             const auto reply = [owner](const char* text)
-            { game::SV_GameSendServerCommand(owner, game::SV_CMD_RELIABLE, text); };
+            { console::info("[Owner teleport] slot=%d result=%s\n", owner, text); game::SV_GameSendServerCommand(owner, game::SV_CMD_RELIABLE, text); };
             if (!server_allowed(owner)) { reply("f \"Owner authentication required.\""); return; }
             const auto query = args.join(1);
             if (!policy::safe_target(query)) { reply("f \"Usage: tp <name|#ID> or tphere <name|#ID>. IDs: .players\""); return; }
@@ -274,6 +274,7 @@ namespace owner_cheats
                     command::add(name, [name](const command::params& args)
                     {
                         const auto target = args.join(1);
+                        console::info("[Owner teleport] client command=%s allowed=%d\n", name, client_allowed());
                         if (!client_allowed() || !policy::safe_target(target))
                         { console::info("Owner access required. Usage: %s <name|#ID>; IDs: .players\n", name); return; }
                         command::execute(std::string("cmd ") + name + " \"" + target + "\"");

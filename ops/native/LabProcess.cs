@@ -58,7 +58,6 @@ public static class IW7LabProcess
         readonly System.Collections.Generic.HashSet<string> collisionSent = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
         string consoleNonce;
         readonly object consoleLock = new object();
-        int inventoryWrites;
         readonly System.Collections.Generic.HashSet<string> consoleSent = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
         public int Id { get; private set; }
         internal OwnedProcess(IntPtr value, int id) { handle=value; Id=id; }
@@ -129,33 +128,6 @@ public static class IW7LabProcess
             if (!WriteFile(consoleInput,bytes,(uint)bytes.Length,out written,IntPtr.Zero) || written!=bytes.Length)
                 throw new Win32Exception(Marshal.GetLastWin32Error(),"Owned rig stdin write failed or was incomplete.");
             return (int)written;
-            }
-        }
-        // Finite inventory witness: official wincon reads this private stdin
-        // pipe, not CONIN$ keyboard records. A write still needs engine proof.
-        public int WriteInventoryAuditCommand(string command, string expectedImage, long expectedCreation, string nonce, long safetyPublicationTick)
-        {
-            lock(consoleLock) {
-                CheckOpen();
-                bool teleport=command=="tphere #2" || command=="tp #2";
-                bool map=command=="map cp_zmb" || command=="map cp_rave" || command=="map cp_disco" || command=="map cp_town" || command=="map cp_final";
-                if ((!teleport && !map) || teleport==consoleDedicated || !OriginalRigConsoleEnabled || inventoryWrites>=20)
-                    throw new ArgumentException("Bounded owned inventory console role required.");
-                if (!System.Text.RegularExpressions.Regex.IsMatch(nonce ?? "", "\\A[a-f0-9]{32}\\z"))
-                    throw new ArgumentException("Current native client nonce required.");
-                var identity=ReadIdentity();
-                if(identity.CreationFileTime!=expectedCreation || !String.Equals(identity.Image,expectedImage,StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("Original inventory process identity differs.");
-                long now=Environment.TickCount64;
-                if(safetyPublicationTick<=0 || now<safetyPublicationTick || now-safetyPublicationTick>250)
-                    throw new InvalidOperationException("Current native safety publication expired before inventory write.");
-                if(consoleNonce!=null && !String.Equals(consoleNonce,nonce,StringComparison.Ordinal))
-                    throw new InvalidOperationException("Native client nonce changed.");
-                byte[] bytes=Encoding.ASCII.GetBytes(command+";\n"); uint written;
-                consoleNonce=nonce; inventoryWrites++;
-                if(!WriteFile(consoleInput,bytes,(uint)bytes.Length,out written,IntPtr.Zero) || written!=bytes.Length)
-                    throw new Win32Exception(Marshal.GetLastWin32Error(),"Owned inventory stdin write failed or incomplete.");
-                return (int)written;
             }
         }
         // A separate dedicated-only role. Never accepts a caller PID, a rig

@@ -88,3 +88,5 @@ use Effects for the real positive/negative command. It never operates on Main.
 Public promotion/startup and natural owner gameplay are separate evidence.
 
 Inventory qualification uses the original owned wincon stdin pipe, with two fixed client teleport lines and five allowlisted dedicated map lines, bounded to20 writes per process and fresh native safety. CONIN keyboard injection is not a witness for children whose stdin is redirected. Windows transport tests verify actual reader consumption separately from gameplay.
+
+The inventory stdin and delimiter candidates still produced no engine effect. They remain in commit history as failed diagnostics; the unused inventory-specific pipe API is removed. Two fixed, protected loopback-only fixture actions now enter the actual native client console parser with tphere #2 and tp #2. They retain client and server owner authentication. A transport acknowledgement alone is never gameplay proof.
