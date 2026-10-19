@@ -63,6 +63,10 @@ unsigned client_epoch() {
     const auto* setting=game::Dvar_FindVar("paris_cutscene_epoch");
     return setting && setting->type==game::DVAR_TYPE_INT && setting->current.integer>0 ? static_cast<unsigned>(setting->current.integer):0;
 }
+void send_keys(unsigned current) {
+    unsigned mask{};for(unsigned i=0;i<keys.size();++i)if(keys[i])mask|=1u<<i;
+    command::execute("cmd paris_cutscene_hold "+std::to_string(current)+" "+std::to_string(mask));
+}
 int clock() { return scripting::call<int>("gettime"); }
 unsigned thread() { return game::scr_function_stack->localId; }
 game::client_t* player(unsigned slot) {
@@ -163,12 +167,18 @@ bool key_event(int key,bool down) {
     if(index==3)return false;
     const auto current=client_epoch();
     if(current!=key_epoch){keys={};key_epoch=current;}
-    if(!down){keys[index]=false;return false;} // Always let retail release pre-video input.
+    if(!down){
+        const bool held=keys[index];keys[index]=false;
+        if(held && current)send_keys(current);
+        return false; // Always let retail release pre-video input.
+    }
     if(!current || game::environment::is_dedi() || (*game::keyCatchers & 1) ||
         game::Com_GameMode_GetActiveGameMode()!=game::GAME_MODE_CP ||
         game::clientUIActives[0].connectionState!=game::CA_ACTIVE || game::Com_IsAnyLocalServerRunning())return false;
-    if(!keys[index])console::info("[Paris cutscene input] epoch=%u key=%u down=1\n",current,index);
+    const bool changed=!keys[index];
+    if(changed)console::info("[Paris cutscene input] epoch=%u key=%u down=1\n",current,index);
     keys[index]=true;
+    if(changed)send_keys(current);
     return true; // Enter cannot open chat while casting a cinematic vote.
 }
 
@@ -258,7 +268,11 @@ void post_unpack() override {
                 const std::string a=args[1],b=args[2];
                 if(a.empty() || a.size()>10 || a.find_first_not_of("0123456789")!=std::string::npos || b.size()!=1 || b[0]<'0' || b[0]>'7')return;
                 if(std::strtoull(a.c_str(),nullptr,10)!=epoch)return;
-                inputs[slot]={static_cast<unsigned>(b[0]-'0'),GetTickCount64(),epoch};
+                const auto now=GetTickCount64();const auto mask=static_cast<unsigned>(b[0]-'0');
+                inputs[slot]={mask,now,epoch};
+                // Preserve a release edge even if down/up/down commands arrive
+                // together between two server ticks.
+                ballot.input(slot,mask,now);
             });
             scheduler::loop([]{try{tick();}catch(const std::exception& e){console::warn("[Paris cutscene] Input state unavailable: %s\n",e.what());}},scheduler::pipeline::server,50ms);
         }else {
