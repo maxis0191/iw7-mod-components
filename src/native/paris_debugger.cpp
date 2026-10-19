@@ -182,11 +182,13 @@ namespace paris_debugger
         {
             if (!stats.begin(2)) return;
             state.wall_open = true;
-            state.wall_start = now_ns();
             if (scope2_cpu_enabled.load(std::memory_order_relaxed) && scope2_cpu.begin(state.cpu))
                 scope2_cpu.attach_start(state.cpu, iw7::debugger::capture_current_thread_cpu());
         }
         catch (...) { ++scope2_cpu_internal_errors; }
+        // Engine wall excludes the start CPU acquisition/attach, including its
+        // failure path; the end wall timestamp precedes the end CPU acquisition.
+        if (state.wall_open) state.wall_start = now_ns();
     }
     void end_scope2(scope2_state& state) noexcept
     {

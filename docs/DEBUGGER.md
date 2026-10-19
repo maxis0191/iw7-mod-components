@@ -654,8 +654,12 @@ preserves active gauges, identity bindings and sticky saturation, not finished
 window totals. Starts and completions can cross flushes; do not equate them or
 sum active gauges.
 
-Read-bracket cost covers the acquisition envelopes, not all collector/locking
-overhead; a controlled off/on comparison is still necessary.
+The legacy ID2 wall clock starts after the first CPU acquisition/attach, even on
+its failure path, and ends before the second CPU acquisition. CPU deltas span
+the actual read instants and can include acquisition/collector work; they are
+not exclusive engine CPU. Read-bracket cost covers only acquisition envelopes.
+Residual instrumentation/locking overhead still needs an off/on control; the
+off mode does not establish identical overhead to a historical build.
 
 Both CPU and wall sums in a new cohort row describe the **same completed calls**.
 They must not be combined with the separately snapshotted legacy `timing` row.
@@ -676,13 +680,15 @@ invented event p95 or clock correspondence. Any future controlled comparison
 must retain workload/options/quality and observer-overhead evidence; this Source
 change establishes no performance gain or cause for the historical 32.617ms mean.
 
-Validation at authoring: the existing `debugger_stats_test.cpp` fixture now
-contains the portable collector cases and its Windows-only
-same-helper acquisition case are written but **not compiled or executed**. They
+The existing `debugger_stats_test.cpp` fixture contains portable collector cases
+and a Windows-only same-helper acquisition case. All new cases are written but
+**not compiled or executed**. They
 cover matched cohorts, cross-window active gauges, duplicate/foreign tickets,
 API/identity/clock/CPU failures, valid zero CPU, fixed capacity, histogram edges/
 overflow, saturation and concurrent snapshots. The standalone fixture would
 qualify these helpers only, not compilation of the complete game component TU.
+The component's enable-toggle integration has Source review only; the fixture
+exercises collector ticket finalization, not an executed game component toggle.
 No native build, SDK inspection, provider, process/game run, lease or deployment
 is authorized by this Source checkpoint.
 
