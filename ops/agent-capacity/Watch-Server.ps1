@@ -3,6 +3,8 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [ValidateSet(24,64)][int]$AgentCapacity=24,[switch]$PopulateAgents,
       [string]$ClientGameRoot,[ValidateRange(1,120)][int]$ClientObserveSeconds=30,
       [switch]$SkipReload,
+      [ValidateSet('cp_zmb','cp_rave','cp_disco','cp_town','cp_final')][string]$Map='cp_zmb',
+      [string]$CatalogRoot,[switch]$RotateBeast,
       [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
       [ValidateSet(24,48)][int]$HordeOrdinary=48,[ValidateRange(0,2)][int]$HordeSpecials=2,
       [string]$RetailCpPatchPath,[string]$RetailCpPatchSHA256,
@@ -28,6 +30,16 @@ if($SkipReload -and (!$ClientGameRoot -or $CaptureWriterPages -or $CaptureNative
 if($ClientGameRoot -and ($CaptureWriterPages -or $CaptureNativeText -or
    ($AgentCapacity -eq 64 -and !$PopulateAgents) -or ($AgentCapacity -eq 24 -and (!$SkipReload -or $PopulateAgents)))){throw 'Client probe requires private 64-agent construction or explicit unchanged 24-agent startup baseline.'}
 $ops=Split-Path $PSScriptRoot -Parent;$repo=Split-Path $ops -Parent
+if(($Map -cne 'cp_zmb' -or $CatalogRoot -or $RotateBeast) -and !$SkipReload){throw 'Map/catalog probes require fresh protected startup.'}
+if($RotateBeast -and (!$ClientGameRoot -or !$CatalogRoot -or $Map -ceq 'cp_final')){throw 'Occupied Beast rotation requires the complete catalog and owned client.'}
+$catalog=@()
+if($CatalogRoot){
+    $CatalogRoot=(Resolve-Path -LiteralPath $CatalogRoot).Path
+    $catalogManifest=Get-Content (Join-Path $CatalogRoot 'source-workspace.json') -Raw|ConvertFrom-Json
+    $catalog=@($catalogManifest.files|Where-Object path -Match '^src/custom_scripts/cp/[^/]+\.gsc$')
+    if($catalog.Count -lt 18){throw 'Complete composed production catalog required.'}
+    foreach($f in $catalog){if((Get-FileHash (Join-Path $CatalogRoot $f.path)).Hash -ine $f.sha256){throw 'Catalog source differs.'}}
+}
 . "$ops/Base-Client.Core.ps1"
 . "$ops/Resource-Scheduler.Core.ps1"
 . "$ops/Lab-Lifecycle.ps1"
@@ -61,7 +73,7 @@ if($ClientGameRoot){
 $budget=Get-IW7LabRunPlan -PlannedClients $plannedClients -Debugger
 $image=Resolve-IW7BasePath $CandidateRoot 'iw7-paris-agent-lab.exe'
 $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$CandidateRoot;ServerImage=$image;ServerPort=$ServerPort;
-    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;HordeOrdinary=$HordeOrdinary;HordeSpecials=$HordeSpecials;RetailCpPatchSHA256=$RetailCpPatchSHA256;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
+    Map=$Map;Catalog=@($catalog);RotateBeast=[bool]$RotateBeast;PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;HordeOrdinary=$HordeOrdinary;HordeSpecials=$HordeSpecials;RetailCpPatchSHA256=$RetailCpPatchSHA256;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -78,7 +90,7 @@ try{
     $lease=Enter-IW7ResourceLease -Scope $CandidateRoot -Kind Runtime -PhysicalBytes $budget.PhysicalBytes -CommitBytes $budget.CommitBytes -Owner 'Private capacity construction and optional matching client' -RequireNewLease @leaseOptions
     # Recheck scope/ports under the reservation, before the first staged byte.
     Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
-    $stage=[pscustomobject]@{GameRoot=$CandidateRoot;MutableFiles=@('iw7-paris-agent-lab.exe','iw7-mod/server_capacity_watch.cfg');
+    $stage=[pscustomobject]@{GameRoot=$CandidateRoot;MutableFiles=@('iw7-paris-agent-lab.exe','iw7-mod/server_capacity_watch.cfg','iw7-mod/paris-server-client.request','iw7-mod/paris-server-client.response');
         ProfileDirectory='iw7-mod/players2';ProfileDirectories=@('iw7-mod/custom_scripts/cp','iw7-mod/lab-appdata','mods/paris_beta/bank','iw7-mod/players2')}
     $transaction=Save-IW7BaseTransaction $stage (Join-Path $case 'dedicated-backup')
     # Keep the reusable stock. Retire only saved custom script files, not directories.
@@ -87,6 +99,11 @@ try{
         if((Get-FileHash $path).Hash -cne $entry.SHA256){throw 'Script changed after snapshot.'}
     }
     foreach($entry in $transaction.Files|Where-Object {$_.Path.StartsWith('iw7-mod/custom_scripts/cp/') -and $_.Path -match '\.(gsc|gscbin)$'}){Remove-Item -LiteralPath (Resolve-IW7BasePath $CandidateRoot $entry.Path)}
+    foreach($f in $catalog){
+        $target=Resolve-IW7BasePath $CandidateRoot ('iw7-mod/custom_scripts/cp/'+[IO.Path]::GetFileName($f.path))
+        Copy-Item -LiteralPath (Join-Path $CatalogRoot $f.path) -Destination $target
+        if((Get-FileHash $target).Hash -ine $f.sha256){throw 'Staged catalog differs.'}
+    }
     if($RetailCpPatchPath){
         $retailTarget=Resolve-IW7BasePath $CandidateRoot 'iw7-mod/lab-appdata/cdata/custom_scripts/cp/patches.gsc'
         [IO.Directory]::CreateDirectory((Split-Path $retailTarget -Parent))|Out-Null
@@ -116,6 +133,7 @@ set paris_capacity_pool_validate 0
 set paris_capacity_client_probe $plannedClients
 set paris_capacity_horde_target $(if($HordeFixturePath){$HordeOrdinary}else{0})
 set paris_capacity_horde_specials $HordeSpecials
+set paris_enemy_capacity $(if($CatalogRoot){48}else{0})
 set net_ip 127.0.0.1
 set sv_lanOnly 1
 set g_password "$password"
@@ -134,7 +152,7 @@ set paris_mod_doom 0
 set paris_mod_rush 0
 set paris_mod_loadout 0
 set paris_join_loadout_test 0
-set sv_mapRotation "gametype zombie map cp_zmb"
+set sv_mapRotation "gametype zombie map $Map"
 set sv_mapRotationCurrent ""
 "@
     [IO.File]::WriteAllText((Resolve-IW7BasePath $CandidateRoot 'iw7-mod/server_capacity_watch.cfg'),$config,[Text.UTF8Encoding]::new($false))
@@ -142,7 +160,7 @@ set sv_mapRotationCurrent ""
     $desktop='IW7ParisLab_'+[guid]::NewGuid().ToString('N')
     $capacityFlag=if($AgentCapacity -eq 64){' -paris-capacity-64'}else{''}
     $crashBefore=@(Get-ChildItem -LiteralPath (Join-Path $CandidateRoot 'minidumps') -Filter '*.zip' -File -ErrorAction SilentlyContinue|ForEach-Object FullName)
-    $arguments="-dedicated -allow_root_io -noupdate -nosteam -cpMode -stdout -paris-server-test -paris-isolated-lab -paris-debugger -paris-capacity-watch$capacityFlag +set net_ip 127.0.0.1 +set sv_lanOnly 1 +set net_port $ServerPort +exec server_capacity_watch.cfg +map_rotate"
+    $arguments="-dedicated -allow_root_io -noupdate -nosteam -cpMode -stdout -paris-server-test -paris-isolated-lab -paris-debugger -paris-capacity-watch -paris-voice-base-test$capacityFlag +set net_ip 127.0.0.1 +set sv_lanOnly 1 +set net_port $ServerPort +exec server_capacity_watch.cfg +map_rotate"
     $server=[IW7LabProcess]::StartOwned($image,$arguments,$CandidateRoot,(Join-Path $case 'server.stdout.log'),(Join-Path $case 'server.stderr.log'),$desktop)
     $p=Get-Process -Id $server.Id
     try{$identity=[pscustomobject]@{PID=$server.Id;Image=$image;CreatedUtc=$p.StartTime.ToUniversalTime().ToString('o');SHA256=$manifest.SHA256;Stdout=(Join-Path $case 'server.stdout.log');DesktopName=$desktop}}finally{$p.Dispose()}
@@ -158,10 +176,16 @@ set sv_mapRotationCurrent ""
         $observedCrash=Get-IW7AgentNewCrash -CandidateRoot $CandidateRoot -Identity $identity -Before $crashBefore -OutputRoot $case -Cache $crashCache
         if($observedCrash){$crash=$observedCrash;if($crash.ConfirmedFatal){throw 'Correlated native fatal during private startup; dump preserved.'}}
         try{$info=& "$ops/Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $ServerPort}catch{$info=$null}
-        if($info -and $info.sv_running -ceq '1' -and $info.mapname -ceq 'cp_zmb' -and $info.clients -ceq '0'){break}
+        if($info -and $info.sv_running -ceq '1' -and $info.mapname -ceq $Map -and $info.clients -ceq '0'){break}
         Start-Sleep -Milliseconds 500
     }while([datetime]::UtcNow -lt $deadline)
-    if(!$info -or $info.clients -cne '0' -or $info.mapname -cne 'cp_zmb'){throw 'Startup not proven; preserve loading dedicated for diagnosis.'}
+    if(!$info -or $info.clients -cne '0' -or $info.mapname -cne $Map){throw 'Startup not proven; preserve loading dedicated for diagnosis.'}
+    if($CatalogRoot){
+        if(!('IW7DoomDiagnostics' -as [type])){Add-Type -Path "$ops/native/DoomDiagnostics.cs"}
+        $pool=[IW7DoomDiagnostics]::Canonical($identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc())
+        $canonical=@([pscustomobject]@{Map=$Map;Phase='Cold';Used=$pool[0];Free=(4095-$pool[0]);NameBytes=$pool[1]})
+        if($canonical[0].Free -lt 64){throw 'Cold canonical floor failed.'}
+    }
     if($SkipReload){$result=[pscustomobject]@{Schema='iw7.capacity-watch-runtime/1';ReloadCommand='none';ProbeSkipped=$true;NativeCleanupConfirmed=$false}}
     else{$result=Invoke-IW7CapacityWatch $session}
     if($ClientGameRoot){
@@ -197,6 +221,35 @@ set sv_mapRotationCurrent ""
             $result|Add-Member NoteProperty HordePopulationConfirmed $true
             $result|Add-Member NoteProperty Horde48PlusSpecialsConfirmed ($HordeOrdinary -eq 48 -and $HordeSpecials -eq 2)
         }
+        if($CatalogRoot){
+            $pool=[IW7DoomDiagnostics]::Canonical($identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc())
+            $canonical+=@([pscustomobject]@{Map=$Map;Phase='Occupied';Used=$pool[0];Free=(4095-$pool[0]);NameBytes=$pool[1]})
+            if($canonical[-1].Free -lt 64){throw 'Occupied canonical floor failed.'}
+        }
+        if($RotateBeast){
+            $null=Update-IW7BaseClient $client
+            $offset=(Read-IW7BaseLog $identity.Stdout).Length
+            $request="$($identity.PID) $([guid]::NewGuid().ToString('N')) map_cp_final"
+            [IO.File]::WriteAllText((Resolve-IW7BasePath $CandidateRoot 'iw7-mod/paris-server-client.request'),$request,[Text.Encoding]::ASCII)
+            $deadline=[datetime]::UtcNow.AddSeconds(180);$arrived=$false
+            do{
+                Assert-IW7CapacitySession $session
+                if(!(Test-IW7BaseClientActive $client)){throw 'Owned client exited during occupied rotation.'}
+                $fresh=(Read-IW7BaseLog $identity.Stdout).Substring($offset)
+                if($fresh -match 'MAX_CANONICAL_STRING|failed to compile|script compile error|\[Paris test protection failure\]'){throw 'Occupied rotation compile/protection failure.'}
+                try{$info=& "$ops/Get-ServerInfo.ps1" -Port $ServerPort}catch{$info=$null}
+                $safe=[regex]::Matches($fresh,'\[Paris capacity heartbeat\] slot=0; tick_ms=(\d+); protected=1; bound=1; godmode=1; inactivity=0; cheats=0; failed=0')
+                if($info -and $info.mapname -ceq 'cp_final' -and $info.clients -ceq '1' -and $safe.Count -and
+                   [Environment]::TickCount64-[long]$safe[-1].Groups[1].Value -lt 10000){$arrived=$true;break}
+                Start-Sleep -Milliseconds 500
+            }while([datetime]::UtcNow -lt $deadline)
+            if(!$arrived){throw 'Fresh protected occupied Beast arrival not witnessed.'}
+            $session.Plan.Map='cp_final'
+            $pool=[IW7DoomDiagnostics]::Canonical($identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc())
+            $canonical+=@([pscustomobject]@{Map='cp_final';Phase='OccupiedRotation';Used=$pool[0];Free=(4095-$pool[0]);NameBytes=$pool[1]})
+            if($canonical[-1].Free -lt 64){throw 'Occupied Beast canonical floor failed.'}
+            $result|Add-Member NoteProperty OccupiedBeastRotation $true
+        }
     }
     if($PopulateAgents){
         $phase=if($client){'PLAYABLE'}else{'READY'}
@@ -206,6 +259,7 @@ set sv_mapRotationCurrent ""
         $result|Add-Member NoteProperty PoolConstructionConfirmed $true
         $result|Add-Member NoteProperty PoolConstructionPhase $phase
     }
+    if($CatalogRoot){$result|Add-Member NoteProperty Canonical $canonical}
 }catch{
     $failure=$_.Exception.Message
     if($session -and $server -and !$server.HasExited){

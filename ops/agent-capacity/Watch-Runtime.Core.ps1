@@ -1,5 +1,12 @@
 # No launch, staging, socket or reservation on import.
 . "$PSScriptRoot/../Agent-Scenario.Core.ps1"
+function Get-IW7CapacitySessionMap($Session) {
+    if($Session.Plan.PSObject.Properties['Map']){
+        if($Session.Plan.Map -cnotin @('cp_zmb','cp_rave','cp_disco','cp_town','cp_final')){throw 'Unknown fixed capacity map.'}
+        return $Session.Plan.Map
+    }
+    'cp_zmb'
+}
 function Get-IW7CapacityLeaseRetained($Lease,[bool]$LeaseReleased) {
     [bool]$Lease -and !$LeaseReleased
 }
@@ -38,7 +45,7 @@ function Send-IW7CapacityRcon($Session,[string]$Command) {
         if(!$Session.VacancyProof -or $Session.VacancyProof.Seconds -lt 30 -or
            ([datetime]::UtcNow- $Session.VacancyProof.ObservedUtc).TotalSeconds -gt 3){throw 'Fresh continuous 30-second vacancy proof required.'}
         $info=& "$PSScriptRoot/../Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $Session.ServerPort
-        if($info.clients -cne '0' -or $info.sv_running -cne '1' -or $info.mapname -cne 'cp_zmb'){throw 'Current vacancy differs; command refused.'}
+        if($info.clients -cne '0' -or $info.sv_running -cne '1' -or $info.mapname -cne (Get-IW7CapacitySessionMap $Session)){throw 'Current vacancy differs; command refused.'}
     }
     $udp=[Net.Sockets.UdpClient]::new()
     try{$udp.Connect('127.0.0.1',$Session.ServerPort);$null=$udp.Send($packet,$packet.Length)}finally{$udp.Dispose()}
@@ -55,7 +62,7 @@ function Wait-IW7CapacityClientDeparture($Session) {
     do {
         Assert-IW7CapacitySession $Session
         $info=Read-IW7CapacityServerInfo $Session
-        if($info.sv_running -cne '1' -or $info.mapname -cne 'cp_zmb' -or $info.clients -cnotin @('0','1')){throw 'Private post-fatal roster differs; preserve it.'}
+        if($info.sv_running -cne '1' -or $info.mapname -cne (Get-IW7CapacitySessionMap $Session) -or $info.clients -cnotin @('0','1')){throw 'Private post-fatal roster differs; preserve it.'}
         if($info.clients -ceq '0'){return}
         Start-Sleep -Milliseconds 1000
     }while([datetime]::UtcNow -lt $deadline)
@@ -66,7 +73,7 @@ function Wait-IW7CapacityVacant($Session,[int]$Seconds=30,[int]$TimeoutSeconds=9
     do {
         Assert-IW7CapacitySession $Session
         $info=& "$PSScriptRoot/../Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $Session.ServerPort
-        if($info.clients -cne '0' -or $info.sv_running -cne '1' -or $info.mapname -cne 'cp_zmb'){throw 'Candidate occupied or wrong map; preserve it.'}
+        if($info.clients -cne '0' -or $info.sv_running -cne '1' -or $info.mapname -cne (Get-IW7CapacitySessionMap $Session)){throw 'Candidate occupied or wrong map; preserve it.'}
         if(!$since){$since=[datetime]::UtcNow}
         if(([datetime]::UtcNow-$since).TotalSeconds -ge $Seconds){
             $prior=$Session.PSObject.Properties['VacancyProof']
