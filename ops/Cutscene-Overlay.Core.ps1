@@ -1,9 +1,10 @@
 $ErrorActionPreference='Stop'
 function ConvertTo-IW7CutsceneSource([string]$Path,[string]$Source) {
     $pch='#include <std_include.hpp>'
-    if($Source.Contains('#include "../cutscene.hpp"')){throw 'Cutscene overlay already present.'}
+    if($Source.Contains('cutscene.hpp')){throw 'Cutscene overlay already present.'}
     if($Source.Split([string[]]@($pch),[StringSplitOptions]::None).Count -ne 2){throw 'Pinned cutscene include marker changed.'}
-    $Source=$Source.Replace($pch,$pch+"`n"+'#include "../cutscene.hpp"')
+    $include=if($Path.StartsWith('gsc/')){'#include "../cutscene.hpp"'}else{'#include "cutscene.hpp"'}
+    $Source=$Source.Replace($pch,$pch+"`n"+$include)
     switch($Path){
         'gsc/script_extension.cpp' {
             $marker="`tnamespace function`n`t{"
@@ -16,6 +17,13 @@ function ConvertTo-IW7CutsceneSource([string]$Path,[string]$Source) {
             if($Source.Split([string[]]@($marker),[StringSplitOptions]::None).Count -ne 2){throw 'Pinned unlinked ScriptFile observation marker changed.'}
             return $Source.Replace($marker,'auto* original = game::DB_FindXAssetHeader(type, name, allow_create_default).scriptfile;'+"`n`t`t"+'cutscene::observe_script(real_name, original);'+"`n`t`treturn original;")
         }
+        'input.cpp' {
+            $marker='void cl_key_event_stub(const int local_client_num, const int key, const int down)'
+            $Source=$Source.Replace("`r`n","`n")
+            $anchor=$marker+"`n`t`t{"
+            if($Source.Split([string[]]@($anchor),[StringSplitOptions]::None).Count -ne 2){throw 'Pinned native key-event marker changed.'}
+            return $Source.Replace($anchor,$anchor+"`n`t`t`tif (local_client_num == 0 && cutscene::key_event(key, down != 0)) return;")
+        }
         default{throw 'Unowned cutscene overlay path.'}
     }
 }
@@ -23,7 +31,7 @@ function Remove-IW7CutsceneOverlay([string]$NativeRoot){
     $receiptPath=Join-Path $NativeRoot 'cutscene-overlay.local.json'
     if(!(Test-Path -LiteralPath $receiptPath)){return}
     $r=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
-    $allowed=@('gsc/script_extension.cpp','gsc/script_loading.cpp','cutscene.cpp','cutscene.hpp','cutscene_policy.hpp')
+    $allowed=@('gsc/script_extension.cpp','gsc/script_loading.cpp','input.cpp','cutscene.cpp','cutscene.hpp','cutscene_policy.hpp')
     if($r.Schema -cne 'iw7.cutscene-overlay/1' -or $r.Root -cne [IO.Path]::GetFullPath($NativeRoot) -or @($r.Files).Count -ne $allowed.Count){throw 'Invalid cutscene overlay receipt.'}
     $seen=@{}
     foreach($f in $r.Files){
@@ -31,7 +39,7 @@ function Remove-IW7CutsceneOverlay([string]$NativeRoot){
         $seen[$f.Name]=$true
         $p=Join-Path $NativeRoot ('src/client/component/'+$f.Name)
         if(!(Test-Path -LiteralPath $p) -or (Get-FileHash -LiteralPath $p).Hash -cne $f.AfterSHA256){throw 'Changed cutscene overlay; preserve source and receipt.'}
-        if($f.Name.StartsWith('gsc/') -and !$f.Before){throw 'Missing original cutscene overlay bytes.'}
+        if(($f.Name.StartsWith('gsc/') -or $f.Name -ceq 'input.cpp') -and !$f.Before){throw 'Missing original cutscene overlay bytes.'}
     }
     foreach($f in $r.Files){
         $p=Join-Path $NativeRoot ('src/client/component/'+$f.Name)
@@ -44,7 +52,7 @@ function Add-IW7CutsceneOverlay([string]$NativeRoot,[string]$SourceRoot){
     $receiptPath=Join-Path $root 'cutscene-overlay.local.json'
     if(Test-Path -LiteralPath $receiptPath){throw 'Remove qualified cutscene overlay before reapplying.'}
     $files=@()
-    foreach($name in @('gsc/script_extension.cpp','gsc/script_loading.cpp')){
+    foreach($name in @('gsc/script_extension.cpp','gsc/script_loading.cpp','input.cpp')){
         $p=Join-Path $root ('src/client/component/'+$name)
         $before=[IO.File]::ReadAllBytes($p)
         $after=ConvertTo-IW7CutsceneSource $name ([Text.Encoding]::UTF8.GetString($before))

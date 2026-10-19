@@ -9,10 +9,11 @@ $scratch=Join-Path $repo ('runtime/cutscene-test-'+[guid]::NewGuid().ToString('N
 $source=@{
  'gsc/script_extension.cpp'="#include <std_include.hpp>`nnamespace gsc {`n`tnamespace function`n`t{ } }"
  'gsc/script_loading.cpp'="#include <std_include.hpp>`nreturn game::DB_FindXAssetHeader(type, name, allow_create_default).scriptfile;"
+ 'input.cpp'="#include <std_include.hpp>`nvoid cl_key_event_stub(const int local_client_num, const int key, const int down)`n`t`t{ }"
 }
 foreach($name in $source.Keys){[IO.File]::WriteAllText((Join-Path $scratch ('src/client/component/'+$name)),$source[$name])}
 $r=Add-IW7CutsceneOverlay $scratch $repo
-Check ($r.Files.Count -eq 5) 'Incomplete overlay.'
+Check ($r.Files.Count -eq 6) 'Incomplete overlay.'
 Refuses {Add-IW7CutsceneOverlay $scratch $repo}
 $target=Join-Path $scratch 'src/client/component/cutscene.cpp'
 [IO.File]::AppendAllText($target,'// foreign')

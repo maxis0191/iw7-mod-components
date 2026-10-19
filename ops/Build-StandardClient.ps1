@@ -67,7 +67,7 @@ Remove-IW7OwnerCheatsOverlay $root
     } finally {Pop-Location}
     if($OwnerCheats){
         $changed=@(& git -C $root diff --name-only HEAD)
-        if(@($changed|Where-Object{$_ -cnotin @('src/client/component/auth.cpp','src/client/component/command.cpp','src/client/component/dvar_cheats.cpp','src/client/component/gsc/script_extension.cpp','src/client/component/gsc/script_loading.cpp')}).Count){throw 'Build modified unowned tracked client source.'}
+        if(@($changed|Where-Object{$_ -cnotin @('src/client/component/auth.cpp','src/client/component/command.cpp','src/client/component/dvar_cheats.cpp','src/client/component/gsc/script_extension.cpp','src/client/component/gsc/script_loading.cpp','src/client/component/input.cpp')}).Count){throw 'Build modified unowned tracked client source.'}
         foreach($row in $ownerCheatsOverlay.Files){
             if((Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$row.Name))).Hash -cne $row.AfterSHA256){throw 'Build modified owner-cheats input.'}
         }

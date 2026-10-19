@@ -12,6 +12,12 @@
 #include "cutscene.hpp"
 #include "cutscene_policy.hpp"
 #include <utils/compression.hpp>
+#include <utils/hook.hpp>
+#include <utils/flags.hpp>
+#if __has_include("paris_test_safety.hpp")
+#include "paris_test_safety.hpp"
+#define IW7_CUTSCENE_PRIVATE_TEST 1
+#endif
 
 namespace cutscene {
 namespace {
@@ -48,6 +54,15 @@ struct remote_input { unsigned mask{}; std::uint64_t received{}; unsigned epoch{
 std::array<remote_input,4> inputs{};
 std::array<unsigned,4> published_epoch{};
 std::uint16_t begin_id{}, pending_id{};
+std::array<bool,3> keys{};
+unsigned key_epoch{};
+#ifdef IW7_CUTSCENE_PRIVATE_TEST
+bool test_keys{};
+#endif
+unsigned client_epoch() {
+    const auto* setting=game::Dvar_FindVar("paris_cutscene_epoch");
+    return setting && setting->type==game::DVAR_TYPE_INT && setting->current.integer>0 ? static_cast<unsigned>(setting->current.integer):0;
+}
 int clock() { return scripting::call<int>("gettime"); }
 unsigned thread() { return game::scr_function_stack->localId; }
 game::client_t* player(unsigned slot) {
@@ -122,23 +137,39 @@ void end() {
 void client_tick() {
     static unsigned previous{};
     static std::uint64_t sent{};
-    const auto* setting=game::Dvar_FindVar("paris_cutscene_epoch");
-    const auto current=setting && setting->type==game::DVAR_TYPE_INT ? static_cast<unsigned>(setting->current.integer) : 0;
+    const auto current=client_epoch();
     if(!current || game::Com_GameMode_GetActiveGameMode()!=game::GAME_MODE_CP ||
-        game::clientUIActives[0].connectionState!=game::CA_ACTIVE || game::Com_IsAnyLocalServerRunning()) {previous=0;return;}
+        game::clientUIActives[0].connectionState!=game::CA_ACTIVE || game::Com_IsAnyLocalServerRunning()) {previous=0;keys={};key_epoch=0;return;}
+    if(current!=key_epoch){keys={};key_epoch=current;}
     unsigned mask{};
     const auto foreground=GetForegroundWindow(); DWORD owner{};GetWindowThreadProcessId(foreground,&owner);
-    if(owner==GetCurrentProcessId() && !(*game::keyCatchers & 1)) {
-        if(GetAsyncKeyState(VK_SPACE)&0x8000)mask|=1;
-        if(GetAsyncKeyState(VK_RETURN)&0x8000)mask|=2;
-        if(GetAsyncKeyState(VK_LBUTTON)&0x8000)mask|=4;
-    }
+    bool focused=owner==GetCurrentProcessId();
+#ifdef IW7_CUTSCENE_PRIVATE_TEST
+    if(test_keys) focused=paris_test_fixture::client_protection_current(paris_test_fixture::client_protection(nullptr),GetTickCount64());
+#endif
+    if(focused && !(*game::keyCatchers & 1)) {
+        for(unsigned i=0;i<keys.size();++i)if(keys[i])mask|=1u<<i;
+    }else keys={};
     const auto now=GetTickCount64();
     if(current!=previous || now-sent>=100) {
         command::execute("cmd paris_cutscene_hold "+std::to_string(current)+" "+std::to_string(mask));
         previous=current;sent=now;
     }
 }
+}
+
+bool key_event(int key,bool down) {
+    const unsigned index=key==game::K_SPACE ? 0:key==game::K_ENTER ? 1:key==game::K_MOUSE1 ? 2:3;
+    if(index==3)return false;
+    const auto current=client_epoch();
+    if(current!=key_epoch){keys={};key_epoch=current;}
+    if(!down){keys[index]=false;return false;} // Always let retail release pre-video input.
+    if(!current || game::environment::is_dedi() || (*game::keyCatchers & 1) ||
+        game::Com_GameMode_GetActiveGameMode()!=game::GAME_MODE_CP ||
+        game::clientUIActives[0].connectionState!=game::CA_ACTIVE || game::Com_IsAnyLocalServerRunning())return false;
+    if(!keys[index])console::info("[Paris cutscene input] epoch=%u key=%u down=1\n",current,index);
+    keys[index]=true;
+    return true; // Enter cannot open chat while casting a cinematic vote.
 }
 
 void observe_script(const std::string& file,game::ScriptFile* script) {
@@ -209,6 +240,14 @@ void post_unpack() override {
     });
     gsc::function::add("paris_cutscene_end",[](const gsc::function_args&)->scripting::script_value{end();return {};});
     scripting::on_shutdown([](bool,bool){active=false;waits.clear();sites.clear();observed.clear();captured={};inputs={};});
+#ifdef IW7_CUTSCENE_PRIVATE_TEST
+    gsc::method::add("paris_cutscene_test_hold",[](game::scr_entref_t ent,const gsc::function_args& args)->scripting::script_value{
+        if(ent.classnum || ent.entnum>=4 || !active || !enabled || !utils::flags::has_flag("paris-isolated-lab") ||
+            !paris_test_fixture::is_protected_player(ent.entnum))return 0;
+        const auto mask=args[0].as<int>();if(mask<0 || mask>7)return 0;
+        inputs[ent.entnum]={static_cast<unsigned>(mask),GetTickCount64(),epoch};return 1;
+    });
+#endif
     scheduler::once([] {
         if(game::environment::is_dedi()) {
             command::add("paris_cutscene_install",install);
@@ -223,6 +262,19 @@ void post_unpack() override {
         }else {
             game::Dvar_RegisterInt("paris_cutscene_epoch",0,0,INT_MAX,game::DVAR_FLAG_NONE,"Server cutscene input epoch");
             scheduler::loop(client_tick,scheduler::pipeline::main,25ms);
+#ifdef IW7_CUTSCENE_PRIVATE_TEST
+            command::add("paris_cutscene_test_key",[](const command::params& args){
+                if(args.size()!=2 || !active && !client_epoch() || !utils::flags::has_flag("paris-isolated-lab") ||
+                    !paris_test_fixture::client_protection_current(paris_test_fixture::client_protection(nullptr),GetTickCount64()))return;
+                const std::string action=args[1];
+                const int key=action=="space" ? game::K_SPACE:action=="enter" ? game::K_ENTER:action=="mouse" ? game::K_MOUSE1:0;
+                if(!key && action!="release")return;
+                test_keys=true;
+                for(const auto value:{game::K_SPACE,game::K_ENTER,game::K_MOUSE1})
+                    utils::hook::invoke<void>(0x1409A7980,0,value,0);
+                if(key)utils::hook::invoke<void>(0x1409A7980,0,key,1);
+            });
+#endif
         }
     },scheduler::pipeline::main);
 }
