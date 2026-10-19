@@ -6,6 +6,7 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [ValidateSet('cp_zmb','cp_rave','cp_disco','cp_town','cp_final')][string]$Map='cp_zmb',
       [string]$CatalogRoot,[switch]$RotateBeast,
       [string]$StandardClientPackageRoot,
+      [switch]$CaptureClientCrashMemory,
       [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
       [ValidateSet(24,48)][int]$HordeOrdinary=48,[ValidateRange(0,2)][int]$HordeSpecials=2,
       [string]$RetailCpPatchPath,[string]$RetailCpPatchSHA256,
@@ -91,6 +92,10 @@ if($ClientGameRoot){
     $clientImage=Resolve-IW7BasePath $ClientGameRoot 'iw7-capacity-test-client.exe'
 }
 $budget=Get-IW7LabRunPlan -PlannedClients $plannedClients -Debugger
+if($CaptureClientCrashMemory){
+    if(!$ClientGameRoot){throw 'Client crash capture requires the owned protected client scenario.'}
+    $budget.PhysicalBytes+=512MB;$budget.CommitBytes+=1GB
+}
 $image=Resolve-IW7BasePath $CandidateRoot 'iw7-paris-agent-lab.exe'
 $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$CandidateRoot;ServerImage=$image;ServerPort=$ServerPort;
     Map=$Map;Catalog=@($catalog);RotateBeast=[bool]$RotateBeast;PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;HordeOrdinary=$HordeOrdinary;HordeSpecials=$HordeSpecials;RetailCpPatchSHA256=$RetailCpPatchSHA256;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
@@ -291,6 +296,29 @@ set sv_mapRotationCurrent ""
     if($CatalogRoot){$result|Add-Member NoteProperty Canonical $canonical}
 }catch{
     $failure=$_.Exception.Message
+    if($CaptureClientCrashMemory -and $clientCrash -and $clientCrash.ConfirmedFatal -and $client -and !$client.Handle.HasExited){
+        # The native fatal handler has already suspended its own threads. Retain
+        # their memory through a read-only, nonsuspending attachment before the
+        # normal exact-owned recovery closes the dialog. Never attach to Main.
+        $reader=$null
+        try{
+            Assert-IW7BaseIdentity $client.Identity $client.Handle
+            $cdb=(Get-AppxPackage Microsoft.WinDbg).InstallLocation+'/amd64/cdb.exe'
+            if((Get-FileHash $cdb).Hash -cne '5F54ABAFCA3AE5638BBF807D402FABB350A64575C1DFA9FBFC7F5732DF5BEE67'){throw 'Reviewed CDB identity differs.'}
+            $dump=Join-Path $case 'client-fatal-memory.local.dmp'
+            if($dump.Contains('"') -or (Test-Path $dump)){throw 'Fresh literal crash capture required.'}
+            $arguments='-pvr -p '+$client.Identity.PID+' -c ".dump /ma \"'+$dump+'\"; qd"'
+            $reader=[IW7LabProcess]::StartOwned($cdb,$arguments,(Split-Path $cdb),"$case/crash-memory.stdout.log","$case/crash-memory.stderr.log",'', $false,$false,$false,0)
+            $readerIdentity=$reader.ReadIdentity()
+            Add-IW7ResourceProcess -Token $lease.Token -ProcessId $readerIdentity.PID
+            if(!$reader.WaitForExit(60000)){$reader.Terminate(3758096386);if(!$reader.WaitForExit(5000)){throw 'Crash reader closure unconfirmed.'};throw 'Crash memory capture timed out.'}
+            if($reader.ExitCode -ne 0 -or !(Test-Path $dump)){throw 'Crash memory capture incomplete.'}
+            Assert-IW7BaseIdentity $client.Identity $client.Handle
+            @{Schema='iw7.capacity-client-fatal-memory/1';Client=$client.Identity;DebuggerSHA256=(Get-FileHash $cdb).Hash;DumpSHA256=(Get-FileHash $dump).Hash;Noninvasive=$true;Nonsuspending=$true;Utc=[datetime]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 4|Set-Content "$case/crash-memory.receipt.local.json"
+        }catch{
+            $_.Exception.Message|Set-Content "$case/crash-memory.error.local.txt"
+        }finally{if($reader){if(!$reader.HasExited){$reader.Terminate(3758096386);$null=$reader.WaitForExit(5000)};if($reader.HasExited){$reader.Dispose()}}}
+    }
     if($session -and $server -and !$server.HasExited){
         try{$lateCrash=Get-IW7AgentNewCrash -CandidateRoot $CandidateRoot -Identity $identity -Before $crashBefore -OutputRoot $case -Cache $crashCache;if($lateCrash){$crash=$lateCrash}}catch{}
     }
