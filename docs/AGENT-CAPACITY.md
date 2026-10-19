@@ -2,6 +2,16 @@
 
 ## Client standard et rotation privée — 19 octobre 2026
 
+La tentative suivante AB échoue avant rotation : le serveur termine son plateau
+48+2/110 relevés/24 remplacements, puis le client standard B7C1AD0E fatale à
+1406D6F65, lecture98 après un pointeur de table d'animation nul. Ce contexte
+n'établit pas la cause de la corruption ou du mauvais indice. L'observation
+client complète et la rotation ne sont donc pas qualifiées par AB. Dédié/client
+ferment et restaurent, bail libéré. Les contrôles standard AC48/0 et AD24/2
+passent chacun le plateau et l'observation protégée120 secondes. AE48/2 reprend
+avec capture mémoire optionnelle après fatal confirmé. Main reste24 ; aucune
+livraison stable n'est déduite du seul plateau serveur.
+
 Le client standard B7C1AD0E, construit sur a99c049, rejoint réellement le dédié
 et tient48 ordinaires +2 Brutes,110 relevés et24 morts/remplacements dans AA.
 Le catalogue serveur23a14634 confirme cette fois le hook GSC48 : un démarrage
