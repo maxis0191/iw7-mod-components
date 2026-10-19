@@ -67,7 +67,7 @@ namespace owner_cheats
                 {
                     if (!scripting::call<int>("isalive", {entity}) || entity.get<std::string>("sessionstate") != "playing" ||
                         entity.call("islinked").as<int>() ||
-                        scripting::call_script_function(entity, "scripts/cp/cp_laststand", "player_in_laststand", {}).as<int>())
+                        scripting::call_script_function(entity, "scripts/cp/cp_laststand", "player_in_laststand", {entity}).as<int>())
                     { reply("f \"Both players must be alive, standing and unlinked.\""); return; }
                 }
                 const auto origin = destination.get<scripting::vector>("origin");
@@ -78,8 +78,8 @@ namespace owner_cheats
                 reply("f \"Teleport complete.\"");
                 console::info("[Owner teleport] actor=%d target=%d here=%d\n", owner, target, here);
             }
-            catch (const std::exception&)
-            { reply("f \"Teleport refused; player state unavailable.\""); }
+            catch (const std::exception& error)
+            { console::info("[Owner teleport] state error=%s\n", error.what()); reply("f \"Teleport refused; player state unavailable.\""); }
         }
 
         std::string nonce()
