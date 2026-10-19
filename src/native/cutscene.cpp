@@ -53,6 +53,7 @@ iw7::cutscene::ballot ballot;
 struct remote_input { unsigned mask{}; std::uint64_t received{}; unsigned epoch{}; };
 std::array<remote_input,4> inputs{};
 std::array<unsigned,4> published_epoch{};
+std::array<unsigned,4> published_ballot{};
 std::uint16_t begin_id{}, pending_id{};
 std::array<bool,3> keys{};
 unsigned key_epoch{};
@@ -82,7 +83,7 @@ void roster() {
         if(c) identity=std::string(c->playerGuid,strnlen(c->playerGuid,sizeof(c->playerGuid)))+":"+
             std::to_string(c->remoteAddress.port)+":"+std::to_string(c->remoteAddress.ip[0])+":"+
             std::to_string(c->remoteAddress.ip[1])+":"+std::to_string(c->remoteAddress.ip[2])+":"+std::to_string(c->remoteAddress.ip[3]);
-        if(ballot.players[slot].identity!=identity) {inputs[slot]={};published_epoch[slot]=0;}
+        if(ballot.players[slot].identity!=identity) {inputs[slot]={};published_epoch[slot]=0;published_ballot[slot]=UINT_MAX;}
         ballot.roster(slot,identity);
     }
 }
@@ -127,6 +128,11 @@ void tick() {
             p.call("setclientdvar", {"paris_cutscene_epoch",static_cast<int>(epoch)});
             published_epoch[slot]=epoch;
         }
+        const auto state=ballot.votes()*8+ballot.total();
+        if(published_ballot[slot]!=state){
+            p.call("setclientdvar",{"paris_cutscene_ballot",static_cast<int>(state)});
+            published_ballot[slot]=state;
+        }
     }
 }
 void end() {
@@ -142,8 +148,12 @@ void client_tick() {
     static unsigned previous{};
     static std::uint64_t sent{};
     const auto current=client_epoch();
-    if(!current || game::Com_GameMode_GetActiveGameMode()!=game::GAME_MODE_CP ||
-        game::clientUIActives[0].connectionState!=game::CA_ACTIVE || game::Com_IsAnyLocalServerRunning()) {previous=0;keys={};key_epoch=0;return;}
+    if(game::Com_GameMode_GetActiveGameMode()!=game::GAME_MODE_CP ||
+        game::clientUIActives[0].connectionState!=game::CA_ACTIVE || game::Com_IsAnyLocalServerRunning()) {
+        if(current)game::Dvar_SetInt(game::Dvar_FindVar("paris_cutscene_epoch"),0);
+        previous=0;keys={};key_epoch=0;return;
+    }
+    if(!current){previous=0;keys={};key_epoch=0;return;}
     if(current!=key_epoch){keys={};key_epoch=current;}
     unsigned mask{};
     const auto foreground=GetForegroundWindow(); DWORD owner{};GetWindowThreadProcessId(foreground,&owner);
@@ -159,6 +169,26 @@ void client_tick() {
         command::execute("cmd paris_cutscene_hold "+std::to_string(current)+" "+std::to_string(mask));
         previous=current;sent=now;
     }
+}
+void draw() {
+    if(!client_epoch() || game::clientUIActives[0].connectionState!=game::CA_ACTIVE ||
+        game::Com_GameMode_GetActiveGameMode()!=game::GAME_MODE_CP || game::Com_IsAnyLocalServerRunning())return;
+    const auto* placement=game::ScrPlace_GetViewPlacement();
+    if(!placement || placement->realViewportSize[0]<320 || placement->realViewportSize[1]<240)return;
+    auto* font=game::UI_GetFontHandle(placement,game::FONT_TYPE_HUD_BIG_FONT,1.0f);
+    if(!font)return;
+    const auto* state=game::Dvar_FindVar("paris_cutscene_ballot");
+    const auto packed=state && state->type==game::DVAR_TYPE_INT ? state->current.integer:0;
+    const auto total=packed&7,votes=packed>>3;
+    const float scale=placement->realViewportSize[1]/720.0f;
+    static float white[4]={1,1,1,1};
+    const auto line=[&](const std::string& text,float y){
+        const auto x=(placement->realViewportSize[0]-game::R_TextWidth(text.c_str(),INT_MAX,font)*scale)*.5f;
+        game::R_AddCmdDrawText(text.c_str(),INT_MAX,font,x,y,scale,scale,0.0f,white,game::FONT_STYLE_SHADOW);
+    };
+    line("Hold SPACE (2s) to skip",placement->realViewportSize[1]-(total>1?78.0f:48.0f)*scale);
+    if(total>1 && total<=4 && votes>=0 && votes<=total)
+        line(std::to_string(votes)+"/"+std::to_string(total)+" Voted to skip the cutscene",placement->realViewportSize[1]-48.0f*scale);
 }
 }
 
@@ -235,7 +265,7 @@ void post_unpack() override {
         movie=args[0].as<std::string>();const auto raw=args[1].get_raw();
         const auto duration=raw.type==game::VAR_INTEGER ? static_cast<float>(raw.u.intValue):args[1].as<float>();
         const auto now=clock();if(++epoch==0)++epoch;active=true;enabled=ready(movie);
-        finish_time=now+static_cast<int>(duration*1000);ballot={};inputs={};published_epoch={};roster();
+        finish_time=now+static_cast<int>(duration*1000);ballot={};inputs={};published_epoch={};published_ballot.fill(UINT_MAX);roster();
         for(auto& [id,w]:waits)if(!w.epoch && movie==rules[w.rule].movie && now-w.started>=0 && now-w.started<=2500)w.epoch=epoch;
         console::info("[Paris cutscene] Begin movie=%s epoch=%u enabled=%d seconds=%.2f\n",movie.c_str(),epoch,enabled,duration);
         return enabled ? 1:0;
@@ -277,7 +307,9 @@ void post_unpack() override {
             scheduler::loop([]{try{tick();}catch(const std::exception& e){console::warn("[Paris cutscene] Input state unavailable: %s\n",e.what());}},scheduler::pipeline::server,50ms);
         }else {
             game::Dvar_RegisterInt("paris_cutscene_epoch",0,0,INT_MAX,game::DVAR_FLAG_NONE,"Server cutscene input epoch");
+            game::Dvar_RegisterInt("paris_cutscene_ballot",0,0,36,game::DVAR_FLAG_NONE,"Server cutscene ballot");
             scheduler::loop(client_tick,scheduler::pipeline::main,25ms);
+            scheduler::loop(draw,scheduler::pipeline::renderer);
 #ifdef IW7_CUTSCENE_PRIVATE_TEST
             command::add("paris_cutscene_test_key",[](const command::params& args){
                 if(args.size()!=2 || !client_epoch() || !utils::flags::has_flag("paris-isolated-lab") ||
