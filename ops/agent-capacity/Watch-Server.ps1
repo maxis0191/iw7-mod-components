@@ -127,20 +127,6 @@ set sv_mapRotationCurrent ""
     }while([datetime]::UtcNow -lt $deadline)
     if(!$info -or $info.clients -cne '0' -or $info.mapname -cne 'cp_zmb'){throw 'Startup not proven; preserve loading dedicated for diagnosis.'}
     $result=Invoke-IW7CapacityWatch $session
-    if($PopulateAgents){
-        Send-IW7CapacityRcon $session 'set paris_capacity_pool_validate 1'
-        $poolDeadline=[datetime]::UtcNow.AddSeconds(5)
-        do{
-            Assert-IW7CapacitySession $session
-            $freshLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
-            if($freshLog.Contains('[Paris capacity pool] POST_RESTART native=64 initialized=64 unique=64 bounded=82; combat=0')){break}
-            Start-Sleep -Milliseconds 50
-        }while([datetime]::UtcNow -lt $poolDeadline)
-        if($freshLog.Contains('[Paris capacity pool] FAIL') -or
-           !$freshLog.Contains('[Paris capacity pool] READY native=64 initialized=64 unique=64 bounded=82; combat=0') -or
-           !$freshLog.Contains('[Paris capacity pool] POST_RESTART native=64 initialized=64 unique=64 bounded=82; combat=0')){throw '64-agent construction not proven at startup and after restart.'}
-        $result|Add-Member NoteProperty PoolConstructionConfirmed $true
-    }
     if($ClientGameRoot){
         Assert-IW7BaseVacant $ClientGameRoot
         $clientStage=[pscustomobject]@{GameRoot=$ClientGameRoot;MutableFiles=@('iw7-capacity-test-client.exe');ProfileDirectory='iw7-mod/players2';ProfileDirectories=@()}
@@ -162,6 +148,24 @@ set sv_mapRotationCurrent ""
             Start-Sleep -Milliseconds 250
         }while([datetime]::UtcNow -lt $observeUntil)
         $result|Add-Member NoteProperty MatchingClientProtected $true
+    }
+    if($PopulateAgents){
+        # Empty CP maps may stop advancing script frames after a full reload.
+        # A declared protected client resumes the retail scheduler before this
+        # fresh check; do not confuse a sent dvar command with script execution.
+        Send-IW7CapacityRcon $session 'set paris_capacity_pool_validate 1'
+        $poolDeadline=[datetime]::UtcNow.AddSeconds(5)
+        do{
+            Assert-IW7CapacitySession $session
+            if($client){Update-IW7BaseClient $client|Out-Null}
+            $freshLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
+            if($freshLog.Contains('[Paris capacity pool] POST_RESTART native=64 initialized=64 unique=64 bounded=82; combat=0')){break}
+            Start-Sleep -Milliseconds 50
+        }while([datetime]::UtcNow -lt $poolDeadline)
+        if($freshLog.Contains('[Paris capacity pool] FAIL') -or
+           !$freshLog.Contains('[Paris capacity pool] READY native=64 initialized=64 unique=64 bounded=82; combat=0') -or
+           !$freshLog.Contains('[Paris capacity pool] POST_RESTART native=64 initialized=64 unique=64 bounded=82; combat=0')){throw '64-agent construction not proven at startup and after restart.'}
+        $result|Add-Member NoteProperty PoolConstructionConfirmed $true
     }
 }catch{$failure=$_.Exception.Message}
 finally{
