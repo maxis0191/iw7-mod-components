@@ -36,11 +36,13 @@ $repo = Split-Path $PSScriptRoot -Parent
 $root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
 if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current ServerModules native profile.' }
 . "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
+. "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 # Reserve the complete operation before compiling tests, sanitizer binaries or
 # native sources. TestsOnly uses the same admission and final release path.
 Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
+Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
 if ($RhinoExperiment -or $EnemyExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
@@ -517,9 +519,12 @@ $experimentFastfiles = $experimentFastfiles.Replace($flagMarker, 'info.allocFlag
 $currentFastfiles = [IO.File]::ReadAllText($fastfiles).Replace("`r`n", "`n").TrimEnd() + "`n"
 if ($currentFastfiles -ne $baseFastfiles -and $currentFastfiles -ne $experimentFastfiles) { throw 'Unowned fastfiles.cpp changes in build checkout; use an isolated checkout.' }
 [IO.File]::WriteAllText($fastfiles, $(if ($RhinoExperiment -or $EnemyExperiment) { $experimentFastfiles } else { $baseFastfiles }), [Text.UTF8Encoding]::new($false))
+$cutsceneOverlay = $null
 $ownerCheatsOverlay = $null
 if ($OwnerCheats) {
     $ownerCheatsOverlay = Add-IW7OwnerCheatsOverlay $root $repo
+    $cutsceneOverlay = Add-IW7CutsceneOverlay $root $repo
+    $nativeSources += @('cutscene.cpp','cutscene.hpp','cutscene_policy.hpp')
     $nativeSources += @('owner_cheats.cpp','owner_cheats.hpp','owner_cheats_policy.hpp','owner_cheats_crypto.hpp')
 }
 Push-Location $root
@@ -576,6 +581,7 @@ if ((Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')
 $manifest.ServerModules = [bool]$ServerModules
 $manifest.OwnerCheatsEnabled = [bool]$OwnerCheats
 $manifest.OwnerCheatsOverlay = $ownerCheatsOverlay
+$manifest.CutsceneOverlay = $cutsceneOverlay
 $manifest.RigAssetsProbeCapability = [bool]($ServerModules -and $IsolatedLab)
 $manifest.RigSceneProbeCapability = [bool]($ServerModules -and $IsolatedLab)
 $manifest.RigSceneStockWitnessCapability = [bool]($ServerModules -and $IsolatedLab)
