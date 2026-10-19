@@ -1,5 +1,14 @@
 # Persistent owner-only native console access
 
+Console `tp <name|#ID>` moves the authenticated owner to another active player;
+`tphere <name|#ID>` brings that player to the owner. `cmd tp` and `cmd tphere`
+also work. IDs match the public chat `.players` list (engine slot plus one).
+Exact names win over unique case-insensitive fragments; colors are ignored and
+ambiguous names are refused. Both players must be alive, standing and unlinked.
+Movement uses the engine's GSC SetOrigin, retaining its teleport bookkeeping.
+The client shorthand requires the matching OwnerCheats client build. Access is
+checked again on the dedicated; global cheats and trust files stay unchanged.
+
 Owner request, 19 October 2026: allow cheats only for the owner's client on the
 public dedicated. This supersedes the earlier absence of native console access;
 it does not restore the cancelled chat administration commands.
@@ -77,3 +86,21 @@ inputs with the isolated OwnerCheats build prepared under runtime/voice-package.
 Supply separate CandidateRoot, ProtectedGameRoot and a fresh Output directory;
 use Effects for the real positive/negative command. It never operates on Main.
 Public promotion/startup and natural owner gameplay are separate evidence.
+
+Earlier inventory qualification attempted the owned wincon stdin pipe and CONIN keyboard injection. Neither produced an engine effect; they are failed transport diagnostics, not teleport acceptance.
+
+The inventory stdin and delimiter candidates still produced no engine effect. They remain in commit history as failed diagnostics; the unused inventory-specific pipe API is removed. Two fixed, protected loopback-only fixture actions now enter the actual native client console parser with tphere #2 and tp #2. They retain client and server owner authentication. A transport acknowledgement alone is never gameplay proof.
+
+The first parser-backed witness reached the authenticated handler and exposed a native adapter mistake: cp_laststand::player_in_laststand is a global function whose explicit first argument is the player, even when an entity supplies self. The corrected call passes that player; missing-state exceptions now retain a diagnostic reason. This failure is preserved separately from prior input-transport failures.
+
+Multi-slot review also found a pre-existing pointer-level error: svs_clients is a client_t pointer stored at an engine symbol; symbol.get()[slot] indexes pointer storage rather than the client array. The corrected bounded helper indexes the dereferenced array. Tests cover all four client addresses, sparse counts, null and negative bounds; runtime qualification must include a target in slot1.
+
+The protected map-mailbox qualification initially refused rotation because retail CP allocates16 client records even though the game allows four players (verified by a bounded read of the original private process). The fixture now scans that bounded16-record allocation, refusing any connected occupant without protection. This changes only the private test transport, not the four-player limit.
+
+The final parser-backed private witness executes both authenticated teleports
+against a protected real engine target in slot1, using public ID #2. Actual
+origin changes pass on Beast, Spaceland and Rave, including two occupied map
+transitions. The same opaque connection token and physical-visit count survive
+both transitions. Rave's separate exact-inventory assertion failed; that run
+does not qualify the combined server gameplay suite. Full natural owner/peer
+acceptance remains separate from these protected native witnesses.
