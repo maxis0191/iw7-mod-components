@@ -1,5 +1,46 @@
 # Capacité native : préparer un port cohérent vers 48 agents
 
+## Diagnostic actuel qualifié, capacité inchangée — 19 octobre 2026
+
+Le second essai utilise le source `8ef8f1e` et le binaire
+`87A9717D2C817369E59BF689B35EB6F98717CA6ABE09E657EEBFA9188B808024`,
+compilé le 19 octobre à 14:15:22 UTC. Les deux rôles scheduler valident leurs
+canaries ; un unique restart vide produit 18 écritures et l'accusé natif final
+confirme zéro erreur, DR/handler fermés. Le reader conserve huit pages stables,
+32 KiB de payload, avec 16 lectures/64 KiB et ferme son handle. Le dédié quitte
+normalement (code 0), la transaction est restaurée et la réservation libérée.
+Ni Main, ni le client habituel ne sont modifiés. Aucun joueur ni scénario de
+combat n'est lancé ; ce résultat n'est pas une mesure de performance à 48.
+
+Le journal original SHA256 est
+`307CBAC33E6644B9F36DE034085243643C7DD01BBB1898E78E86922E9038FE85` ;
+le résultat `A067434052EEF03B63E9A9182B1548576C4A09571ACFCFCB58DFB615750ED4C8` ;
+le manifeste des pages `9853FF03AE3D7D00A0FA2750D8DABA6CB5FA0DE25F5565034C762F53045B5409`.
+Les bytes et contextes restent locaux, ignorés. Le premier essai échoué reste
+conservé séparément ; son succès de restauration ne devient pas un succès natif.
+
+La lecture bornée des nouvelles pages retrouve les deux sites candidats de
+publication et ferme le backedge statique d'initialisation : la taille de
+remplissage est `0x78180`, le pas `0x5010`, et la comparaison de boucle est
+`0x78180`, soit 24 records. `14B5383F9` recharge le pointeur B8 et reconduit le
+chemin vers `140B20B01`. Le callee de sortie `140AC6AA0..140AC6B40` initialise
+aussi deux tables fixes de 336 et 4 200 octets (42 × 8 et 210 × 20). Leur sens,
+leurs consommateurs et leur redimensionnement restent à établir. Ce callee
+n'est pas identifié comme un allocateur. Le chemin après `140B20B29` atteint
+`14B3C5D01`, hors des pages actuelles.
+
+Les instructions sont lues après le restart : aucune exécution complète de la
+boucle, attribution globale des writers ou sémantique d'allocateur n'est inventée.
+Cinq pages déjà connues correspondent aux hashes 9F ; la page `141238000` diffère
+de l'ancien hash et sa nouvelle identité est conservée. Les corps effectivement
+lus restent distincts d'une image retail intacte ou d'un contrat de protocole.
+
+**48 reste non livré.** La suite utile est le port cohérent des pools,
+initialisations, réservations, tables/références et données client, puis les
+mesures en combat et multijoueur. Garder l'allocation à 24 jusqu'à qualification
+de ce candidat complet. Le besoin exact est 48 zombies ordinaires **plus** les
+places des spéciaux, suivi dans [Server #324](https://github.com/maxis0191/iw7-paris-server/issues/324).
+
 ## Reprise demandée le 19 octobre 2026
 
 L'objectif humain est désormais **48 zombies ordinaires plus des places pour
