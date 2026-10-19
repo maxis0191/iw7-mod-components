@@ -695,6 +695,25 @@ Both offsets must lie within `--seconds`, after the selected warmup. For example
 30 seconds of warmup followed by 120 measured seconds uses collection 150,
 start 30 and end 150; the window is not extended when samples are missing.
 
+`Debug-Session.ps1` forwards the same optional declarations to the watcher. For a
+future separately authorized observation of an existing debugger lab:
+
+```powershell
+./ops/Debug-Session.ps1 -Action Observe -Seconds 150 -SkipPresentMon `
+    -ComparisonContext ./runtime/debugger/context.local.json `
+    -MeasurementStartSeconds 30 -MeasurementEndSeconds 150
+```
+
+Supply all three comparison options together. The offsets are whole seconds and
+must satisfy `30 <= start < end <= Seconds`, using the watcher's default 30-second
+warmup. Invalid combinations are refused before operational paths are used. The
+helper forwards the context path without copying its schema/parser; the watcher
+validates that context. Calls without comparison options keep their existing
+behavior. This forwarding does not synchronize CPU acquisition or native flush
+boundaries: an unsupported edge or gap leaves the fixed window descriptive or
+incomparable. Context declarations do not attest actual phase, actors, pending
+work, camera or settings, and this example grants no game or observation approval.
+
 The context is a closed object with these required declarations:
 
 ```json
