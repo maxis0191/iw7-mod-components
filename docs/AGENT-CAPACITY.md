@@ -1,5 +1,24 @@
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
+## Décodage des personnages après les cadavres — 19 octobre 2026
+
+Le candidat privé à95 champs (`0ac66b1`, image
+`673D8DE0096D7285086793E09B7929778D60DAF88FD9E8366A1338CCE07DA80C`)
+aligne douze consommateurs de cadavres sur82/90. Le cas K atteint24 ennemis
+actifs, puis le journal Com_Error privé retient la cause de sa déconnexion :
+`Received entnum 42: must index MAX_CHARACTERS_MP`. Ce contrôle appartient au
+décodeur `14084A530`, distinct de l'allocation des personnages. Aucun nouveau
+dump : quit0 et restauration client/profils/dédié/libération réussis. Hash du
+résultat échoué : `B66835177CF1CCAE5260F9EBBC92D9834013E8BEDEB9F71FE5FA86C5355346A4`.
+
+Le candidat suivant aligne onze bornes de décodage, lookup, interpolation et
+nettoyage sur82. Ses106 champs attendus correspondent aux octets stables retenus,
+sans chevauchement ni usage des quatre pages instables. La compilation et le
+plateau actif48+2 restent à qualifier. Le cas de stress possède son admission,
+utilise les vrais spawns retail et mesure sa coroutine indépendamment du journal
+de population ; il ne prouve pas encore les quotas naturels ni la compatibilité
+d'un client resté à42 personnages. Aucun déploiement Main.
+
 ## Port direct en cours — 19 octobre 2026
 
 La reprise humaine demande de réaliser directement le port. Le suivi du chemin

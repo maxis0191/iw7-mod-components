@@ -26,6 +26,26 @@ struct buffer { std::uintptr_t data{}; void* reservation{}; std::size_t bytes{};
 buffer agent_pool, sentient_pool, table8, table20;
 bool active{};
 utils::hook::detour engine_error_hook;
+utils::hook::detour character_render_hook;
+std::uint64_t observed_characters[characters]{};
+void character_render(int local_client,void* entity) {
+    auto state=static_cast<const unsigned char*>(entity)+0x700;
+    std::uint16_t number{},animation{}; unsigned type{},client_number{};
+    std::memcpy(&number,state,sizeof(number));
+    std::memcpy(&type,state+4,sizeof(type));
+    std::memcpy(&client_number,state+0x9C,sizeof(client_number));
+    std::memcpy(&animation,state+0xE6,sizeof(animation));
+    if(local_client==0 && number>=players && number<characters) {
+        const auto signature=(static_cast<std::uint64_t>(type)<<48) |
+            (static_cast<std::uint64_t>(client_number)<<16) | (animation&15) | 0x8000;
+        if(observed_characters[number]!=signature) {
+            observed_characters[number]=signature;
+            console::info("[Paris capacity character] entity=%u type=%u client_num=%u animation_class=%u\n",
+                static_cast<unsigned>(number),type,client_number,static_cast<unsigned>(animation&15));
+        }
+    }
+    character_render_hook.invoke<void>(local_client,entity);
+}
 void engine_error(game::errorParm code,const char* format,...) {
     char message[4096]{};
     std::va_list arguments;
@@ -207,6 +227,10 @@ class component final : public component_interface {
         // while retaining its reason before the client returns to frontend.
         readable_code(0x140B8D830,1);
         engine_error_hook.create(0x140B8D830,engine_error);
+        if(!dedicated) {
+            readable_code(0x1408260D0,1);
+            character_render_hook.create(0x1408260D0,character_render);
+        }
         scheduler::once([] {
             game::Dvar_RegisterInt("paris_native_agent_capacity",agents,agents,agents,game::DVAR_FLAG_NONE,"Private native capacity candidate");
             console::info("[Paris capacity candidate] installed agents=64 ordinary=48 special_headroom=16 characters=82 map_start=98 patches=%zu; gameplay_unqualified=1\n",plan.size());
