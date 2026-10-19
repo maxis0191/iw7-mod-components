@@ -2,6 +2,7 @@
   "schema": "iw7.product/1",
   "id": "iw7-mod-components",
   "exports": [
+    "tests/fixtures/capacity_pool.gsc",
     "src/native/paris_agent_capacity.cpp",
     "src/native/paris_agent_capacity.hpp",
     "ops/Test-OwnerCheats.ps1",
