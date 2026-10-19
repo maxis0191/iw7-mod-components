@@ -6,6 +6,39 @@ init()
         getdvarint("paris_capacity_pool_probe") != 1 ||
         getdvarint("paris_native_agent_capacity") != 64) return;
     level thread begin();
+    if (getdvarint("paris_capacity_client_probe") == 1) level thread connections();
+}
+
+connections()
+{
+    level endon("game_ended");
+    for (;;)
+    {
+        level waittill("connected", player);
+        if (!isdefined(player) || !player paris_test_protect())
+        {
+            print("[Paris capacity client] FAIL protection_lost;");
+            continue;
+        }
+        player thread heartbeat();
+    }
+}
+
+heartbeat()
+{
+    self endon("disconnect");
+    level endon("game_ended");
+    self waittill("spawned_player");
+    for (;;)
+    {
+        if (level.players.size != 1 || !self paris_test_protect())
+        {
+            print("[Paris capacity client] FAIL protection_lost;");
+            return;
+        }
+        print("[Paris capacity heartbeat] " + self paris_test_safety_snapshot());
+        wait 1;
+    }
 }
 
 begin()

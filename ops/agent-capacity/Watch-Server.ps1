@@ -1,9 +1,11 @@
 param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [ValidateRange(27100,27999)][int]$ServerPort=27116,[switch]$DryRun,[switch]$CaptureWriterPages,[switch]$CaptureNativeText,
       [ValidateSet(24,64)][int]$AgentCapacity=24,[switch]$PopulateAgents,
+      [string]$ClientGameRoot,[ValidateRange(1,120)][int]$ClientObserveSeconds=30,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
 if($PopulateAgents -and $AgentCapacity -ne 64){throw 'Pool construction probe requires explicit 64-agent candidate.'}
+if($ClientGameRoot -and ($AgentCapacity -ne 64 -or !$PopulateAgents -or $CaptureWriterPages -or $CaptureNativeText)){throw 'Client probe requires populated private 64-agent mode without executable capture.'}
 $ops=Split-Path $PSScriptRoot -Parent;$repo=Split-Path $ops -Parent
 . "$ops/Base-Client.Core.ps1"
 . "$ops/Resource-Scheduler.Core.ps1"
@@ -28,10 +30,17 @@ foreach($name in @('paris_capacity_watch.cpp','paris_capacity_watch.hpp')){
     if(@($manifest.SourceHashes|Where-Object File -CEQ $name).Count -ne 1){throw 'Watcher source pin absent/duplicated.'}
 }
 if($AgentCapacity -eq 64 -and @($manifest.SourceHashes|Where-Object File -CEQ 'paris_agent_capacity.cpp').Count -ne 1){throw 'Capacity prototype source absent from native build.'}
-$budget=Get-IW7LabRunPlan -PlannedClients 0 -Debugger
+$plannedClients=[int][bool]$ClientGameRoot
+$clientImage=$null
+if($ClientGameRoot){
+    $ClientGameRoot=(Resolve-Path -LiteralPath $ClientGameRoot).Path.TrimEnd('\','/')
+    Assert-IW7BaseVacant $ClientGameRoot
+    $clientImage=Resolve-IW7BasePath $ClientGameRoot 'iw7-capacity-test-client.exe'
+}
+$budget=Get-IW7LabRunPlan -PlannedClients $plannedClients -Debugger
 $image=Resolve-IW7BasePath $CandidateRoot 'iw7-paris-agent-lab.exe'
 $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$CandidateRoot;ServerImage=$image;ServerPort=$ServerPort;
-    PlannedClients=0;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
+    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -40,8 +49,11 @@ $plan|ConvertTo-Json|Set-Content (Join-Path $case 'plan.local.json')
 $lease=$null;$transaction=$null;$journalTransaction=$null;$server=$null;$session=$null;$result=$null;$failure=$null;$cleanupError=$null;$restored=$false;$stopResult=$null;$ownedExited=$false;$leaseReleased=$false
 $pageReader=$null;$pageReaderClosed=$true;$pageCapture=$null;$pageCaptureError=$null;$textCapture=$null
 $crash=$null;$crashCache=@{}
+$client=$null;$clientImageTransaction=$null
 try{
-    $lease=Enter-IW7ResourceLease -Scope $CandidateRoot -Kind Runtime -PhysicalBytes $budget.PhysicalBytes -CommitBytes $budget.CommitBytes -Owner 'Capacity watch server only; no client' -RequireNewLease
+    $leaseOptions=@{}
+    if($clientImage){$leaseOptions.BaseClientImage=$clientImage}
+    $lease=Enter-IW7ResourceLease -Scope $CandidateRoot -Kind Runtime -PhysicalBytes $budget.PhysicalBytes -CommitBytes $budget.CommitBytes -Owner 'Private capacity construction and optional matching client' -RequireNewLease @leaseOptions
     # Recheck scope/ports under the reservation, before the first staged byte.
     Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
     $stage=[pscustomobject]@{GameRoot=$CandidateRoot;MutableFiles=@('iw7-paris-agent-lab.exe','iw7-mod/server_capacity_watch.cfg');
@@ -67,6 +79,7 @@ set g_gametype "zombie"
 set scr_zombie_maxagents $AgentCapacity
 set paris_capacity_pool_probe $([int][bool]$PopulateAgents)
 set paris_capacity_pool_validate 0
+set paris_capacity_client_probe $plannedClients
 set net_ip 127.0.0.1
 set sv_lanOnly 1
 set g_password "$password"
@@ -128,9 +141,36 @@ set sv_mapRotationCurrent ""
            !$freshLog.Contains('[Paris capacity pool] POST_RESTART native=64 initialized=64 unique=64 bounded=82; combat=0')){throw '64-agent construction not proven at startup and after restart.'}
         $result|Add-Member NoteProperty PoolConstructionConfirmed $true
     }
+    if($ClientGameRoot){
+        Assert-IW7BaseVacant $ClientGameRoot
+        $clientStage=[pscustomobject]@{GameRoot=$ClientGameRoot;MutableFiles=@('iw7-capacity-test-client.exe');ProfileDirectory='iw7-mod/players2';ProfileDirectories=@()}
+        $clientImageTransaction=Save-IW7BaseTransaction $clientStage (Join-Path $case 'client-image-backup')
+        Copy-Item -LiteralPath $exe -Destination $clientImage
+        $clientPlan=New-IW7BaseClientPlan -GameRoot $ClientGameRoot -ClientImage $clientImage -ServerPort $ServerPort -ClientPort ($ServerPort+1) -Debugger -GraphicsProfile Reduced -Capacity64
+        try{$client=Start-IW7BaseClient -Plan $clientPlan -ServerIdentity $identity -LeaseToken $lease.Token -Password $password -OutputRoot (Join-Path $case 'client')}
+        catch{if($_.Exception.Data.Contains('BaseClientContext')){$client=$_.Exception.Data['BaseClientContext']};throw}
+        $clientDeadline=[datetime]::UtcNow.AddSeconds(180)
+        do{
+            $sample=Update-IW7BaseClient $client
+            if($client.Protected){break}
+            Start-Sleep -Milliseconds 250
+        }while([datetime]::UtcNow -lt $clientDeadline)
+        if(!$client.Protected){throw 'Matching capacity client lacks fresh protected playable witness.'}
+        $observeUntil=[datetime]::UtcNow.AddSeconds($ClientObserveSeconds)
+        do{
+            Update-IW7BaseClient $client|ConvertTo-Json -Compress|Add-Content (Join-Path $case 'client/protection.jsonl')
+            Start-Sleep -Milliseconds 250
+        }while([datetime]::UtcNow -lt $observeUntil)
+        $result|Add-Member NoteProperty MatchingClientProtected $true
+    }
 }catch{$failure=$_.Exception.Message}
 finally{
     try{
+        if($client){Stop-IW7BaseClient $client}
+        if($clientImageTransaction){
+            Assert-IW7BaseVacant $ClientGameRoot
+            Restore-IW7BaseTransaction $clientImageTransaction
+        }
         if($session -and !$server.HasExited -and $crash -and $crash.ConfirmedFatal){
             $stopResult=Stop-IW7CapacityConfirmedFatal $session $crash
         }elseif($session -and !$server.HasExited){
@@ -189,7 +229,7 @@ finally{
         ExactOwnedProcessExited=$ownedExited;Stop=$stopResult;LeaseReleased=$leaseReleased;LeaseRetained=(Get-IW7CapacityLeaseRetained $lease $leaseReleased);OutputRoot=$case;
         WriterPages=$pageCapture;WriterPageError=$pageCaptureError;WriterReaderClosed=$pageReaderClosed;
         NativeText=$textCapture;RequestedAgentCapacity=$AgentCapacity;Crash=$crash;
-        StockCopied=$false;BaseClientTouched=$false;WriterProven=$false;PatchReady=$false}|ConvertTo-Json -Depth 9|Set-Content (Join-Path $case 'result.local.json')
+        StockCopied=$false;BaseClientTouched=[bool]$ClientGameRoot;ClientRestored=$(if($client){$client.Transaction.Restored}else{$null});WriterProven=$false;PatchReady=$false}|ConvertTo-Json -Depth 9|Set-Content (Join-Path $case 'result.local.json')
 }
 if($failure){throw "$failure ; evidence=$case"};if($cleanupError){throw "Cleanup pending: $cleanupError ; evidence=$case"};if($pageCaptureError){throw "Writer pages failed: $pageCaptureError ; evidence=$case"}
 Write-Output "Capacity server probe restored=$restored evidence=$case"
