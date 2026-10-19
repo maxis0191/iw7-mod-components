@@ -273,11 +273,6 @@ void post_unpack() override {
     gsc::function::add("paris_cutscene_pending",[](const gsc::function_args&)->scripting::script_value {
         return active && clock()<finish_time && !(enabled && ballot.unanimous()) ? 1:0;
     });
-    gsc::function::add("paris_cutscene_text",[](const gsc::function_args&)->scripting::script_value {
-        std::string text="Hold SPACE (2s) to skip";
-        if(ballot.total()>1)text+="\n"+std::to_string(ballot.votes())+"/"+std::to_string(ballot.total())+" Voted to skip the cutscene";
-        return text;
-    });
     gsc::function::add("paris_cutscene_end",[](const gsc::function_args&)->scripting::script_value{end();return {};});
     scripting::on_shutdown([](bool,bool){active=false;waits.clear();sites.clear();observed.clear();captured={};inputs={};});
 #ifdef IW7_CUTSCENE_PRIVATE_TEST
