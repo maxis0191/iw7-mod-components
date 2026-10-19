@@ -303,8 +303,13 @@ set sv_mapRotationCurrent ""
         $reader=$null
         try{
             Assert-IW7BaseIdentity $client.Identity $client.Handle
-            $cdb=(Get-AppxPackage Microsoft.WinDbg).InstallLocation+'/amd64/cdb.exe'
-            if((Get-FileHash $cdb).Hash -cne '5F54ABAFCA3AE5638BBF807D402FABB350A64575C1DFA9FBFC7F5732DF5BEE67'){throw 'Reviewed CDB identity differs.'}
+            $originalTools=(Get-AppxPackage Microsoft.WinDbg).InstallLocation+'/amd64'
+            $cdb=Resolve-IW7BasePath $CandidateRoot 'iw7-mod/capacity-tools/cdb.exe'
+            if((Get-FileHash $cdb).Hash -cne '5F54ABAFCA3AE5638BBF807D402FABB350A64575C1DFA9FBFC7F5732DF5BEE67'){throw 'Reviewed scoped CDB identity differs.'}
+            foreach($name in @('cdb.exe','dbgeng.dll','dbghelp.dll','dbgcore.dll')){
+                $scoped=Join-Path (Split-Path $cdb) $name
+                if((Get-FileHash $scoped).Hash -cne (Get-FileHash (Join-Path $originalTools $name)).Hash){throw 'Scoped debugger runtime differs from the retained Microsoft package.'}
+            }
             $dump=Join-Path $case 'client-fatal-memory.local.dmp'
             if($dump.Contains('"') -or (Test-Path $dump)){throw 'Fresh literal crash capture required.'}
             $arguments='-pvr -p '+$client.Identity.PID+' -c ".dump /ma \"'+$dump+'\"; qd"'
