@@ -49,3 +49,31 @@ clients, including reconnect/slot reuse and map transition. Preserve an occupied
 owner client. Public promotion requires the existing thirty-second empty guard,
 backup, exact process identity, protected file/bank hashes and ordinary startup.
 No global `sv_cheats 1` is required for testing or deployment.
+
+## Qualification - 19 October 2026
+
+The initial source run passed67/68 groups; Java was absent from that command's
+PATH. The retained portable JDK21 passed the remaining resolver group. All68
+groups are therefore locally qualified, with the initial failure retained.
+The subsequently merged diagnostics changes pass their51 focused Python tests.
+Windows CNG/overlay behavior tests and the standard CB/Aurora, normal dedicated
+and isolated dedicated native builds pass. The exact engine source is unchanged
+between the built candidate and final integration except for operational test
+helpers and documentation. [Sanitized evidence](evidence/2026-10-19-owner-cheats.json).
+
+The protected private native client proves owner authorization, refusal with a
+different private key while retaining the same client identity, then owner
+reconnection. A second run executes the real `cmd setviewang` handler: the owner
+changes the three native values to23/34/45 and restores them; the other-key
+client's same command leaves all three values unchanged. Every phase reports
+fresh engine godmode, inactivity0 and sv_cheats0. Both runs close and restore
+their candidate/profile/bank transactions. A concrete simultaneous-owner-client
+requirement justified one bounded observer using retained private stock; no
+game assets were copied. The first setup attempt failed before game launch
+because of a transaction-helper name, then the corrected run passed.
+
+The reproducible private procedure is `ops/Test-OwnerCheats.ps1`, from qualified
+inputs with the isolated OwnerCheats build prepared under runtime/voice-package.
+Supply separate CandidateRoot, ProtectedGameRoot and a fresh Output directory;
+use Effects for the real positive/negative command. It never operates on Main.
+Public promotion/startup and natural owner gameplay are separate evidence.
