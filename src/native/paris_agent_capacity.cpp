@@ -117,6 +117,13 @@ void build_plan() {
     // allocators must follow the expanded character range instead of42/50.
     add(0x140B67402,42,player_corpse_start,1);
     add(0x140C1BB22,50,agent_corpse_start,1);
+    // The two corpse pools retain eight fixed 0x2CA0 client records each.
+    // Move their entity-to-record indices together with the allocators; an old
+    // subtraction indexes beyond that fixed pool as soon as an agent dies.
+    for (const auto field : {0x1407AE403ull,0x140823B61ull,0x140826385ull,0x14086D122ull,0x140872E65ull}) add(field,42,player_corpse_start,1);
+    for (const auto field : {0x1407AF52Full,0x140823B80ull,0x140865EB9ull,0x14086F509ull,0x140872EECull}) add(field,50,agent_corpse_start,1);
+    add(0x1408213F4,0xCE,0xA6,1); // lea ebx,[entity-50] -> [entity-90].
+    add(0x140B2F536,42,player_corpse_start,1); // Server owner lookup uses the combined 16-slot corpse index.
     add(0x140007781,24,agents); // Character-reference reset across the real pool.
     for (const auto address : {0x140406F77ull,0x141238588ull,0x140C14B28ull,0x140C14BF3ull,0x140C14C96ull}) add(address,0x78180,agent_bytes);
     rip(0x14C1ED662,0x145C9E590,agent_pool.data);
