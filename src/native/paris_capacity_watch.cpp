@@ -269,7 +269,7 @@ void thread_tick(unsigned role) {
     }
     // Callback collects gates/identity only. It never waits or suspends.
     std::lock_guard<std::mutex> registry_lock(registry_mutex);
-    if(!requested.load() || handler_removed.load())return;
+    if(!requested.load() || handler_removed.load() || helper_stop.load())return;
     if(elapsed(now,start_ms.load(),duration_ms) || !private_flags())stopping.store(true);
     auto* t=current_record(role);if(!t)return;local_record=t;
     if(t->state.load()==phase::empty && (!valid_fields() || !read_pair(t->history.b8,t->history.c0))) {
@@ -284,7 +284,7 @@ void checkpoint_unlocked(unsigned role) noexcept {
         t=local_record;
         if(!requested.load() || handler_removed.load() || !t || t->tid.load()!=GetCurrentThreadId() || !(t->roles.load()&role))return;
         const auto state=t->state.load();
-        operation=stopping.load() ? 2u : (state==phase::empty ? 1u : 0u);
+        operation=checkpoint_operation(state,stopping.load(),helper_stop.load());
         if(!operation || !t->checkpoint_done || !helper_signal || !helper_handle)return;
         ResetEvent(t->checkpoint_done);t->operation.store(operation);t->checkpoint_expires.store(GetTickCount64()+200);
         t->ticket.store(1,std::memory_order_release);SetEvent(helper_signal);
@@ -331,7 +331,10 @@ void flush() {
     bool all_closed=true;unsigned covered=0;
     for(auto& t:records) {
         if(!t.tid.load())continue;
-        if(t.state.load()!=phase::closed && t.handle.load() && WaitForSingleObject(t.handle.load(),0)==WAIT_OBJECT_0)t.state.store(phase::closed);
+        if(t.handle.load() && WaitForSingleObject(t.handle.load(),0)==WAIT_OBJECT_0) {
+            t.state.store(phase::closed);
+            acknowledge_exited_target_ticket(t.ticket,helper_inflight);
+        }
         if(t.state.load()!=phase::closed || t.ticket.load()!=0)all_closed=false;
         if(t.canary_pass.load())covered|=t.roles.load();
     }

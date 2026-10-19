@@ -18,7 +18,16 @@ public sealed class IW7CapacityPages : IDisposable {
         0x140B20000, 0x14BA00000, 0x14B7E7000, 0x14BA8E000
     };
     static readonly long[] resetEntryPages = { 0x14B8E6000, 0x14B4B2000 };
+    // Exact pages selected from the 2026-10-19 hardware writer journal.
+    static readonly long[] writerPages = { 0x1412BF000, 0x14C1ED000, 0x14BFE5000 };
+    // Two observed writers and the exact continuation/fill/initialization
+    // targets retained in the historical 9F follow-up report. No address input.
+    static readonly long[] writerPathPages = {
+        0x14C1ED000, 0x14BFE5000, 0x140406000, 0x140B20000,
+        0x1412BF000, 0x141238000, 0x14B538000, 0x140AC6000
+    };
     readonly long[] instancePages;
+    readonly string instancePlan;
     [StructLayout(LayoutKind.Sequential)] struct MBI {
         public IntPtr BaseAddress, AllocationBase;
         public uint AllocationProtect; public ushort PartitionId;
@@ -42,6 +51,7 @@ public sealed class IW7CapacityPages : IDisposable {
     public IW7CapacityPages(int pid, string expectedImage, long expectedCreation) : this(pid, expectedImage, expectedCreation, "reset-callers") {}
     public IW7CapacityPages(int pid, string expectedImage, long expectedCreation, string pagePlan) {
         instancePages = GetPlanPages(pagePlan);
+        instancePlan = pagePlan;
         if (pid <= 0 || Marshal.SizeOf(typeof(MBI)) != 48) throw new ArgumentException("Win64 exact identity required.");
         // QUERY_INFORMATION, VM_READ and SYNCHRONIZE only. VirtualQueryEx needs
         // QUERY_INFORMATION; QUERY_LIMITED_INFORMATION is insufficient.
@@ -61,6 +71,8 @@ public sealed class IW7CapacityPages : IDisposable {
     public static long[] GetPlanPages(string plan) {
         if (plan == "reset-callers") return (long[])allowedPages.Clone();
         if (plan == "reset-entry-targets") return (long[])resetEntryPages.Clone();
+        if (plan == "writer-sites-20261019") return (long[])writerPages.Clone();
+        if (plan == "writer-path-20261019") return (long[])writerPathPages.Clone();
         throw new ArgumentException("Unknown fixed page plan.");
     }
     public static void ValidatePlanAddress(string plan, long address) {
@@ -101,7 +113,7 @@ public sealed class IW7CapacityPages : IDisposable {
         var path = new StringBuilder(32768);
         uint n = GetMappedFileNameW(handle, new IntPtr(address), path, (uint)path.Capacity);
         var result = new IW7CapacityRegion { BaseAddress=(ulong)info.BaseAddress.ToInt64(), AllocationBase=(ulong)info.AllocationBase.ToInt64(), RegionSize=info.RegionSize.ToUInt64(), State=info.State, Protect=info.Protect, AllocationProtect=info.AllocationProtect, Type=info.Type, MappedDevicePath=n == 0 ? null : path.ToString() };
-        ValidateRegionForPlan(result, address, Array.IndexOf(resetEntryPages, address) >= 0 ? "reset-entry-targets" : "reset-callers");
+        ValidateRegionForPlan(result, address, instancePlan);
         if (n == 0 && result.Type != 0x20000) throw new InvalidOperationException("Image/mapped page lacks mapping provenance.");
         return result;
     }
