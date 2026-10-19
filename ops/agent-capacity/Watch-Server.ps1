@@ -39,6 +39,8 @@ if($CatalogRoot){
     $catalog=@($catalogManifest.files|Where-Object path -Match '^src/custom_scripts/cp/[^/]+\.gsc$')
     if($catalog.Count -lt 18){throw 'Complete composed production catalog required.'}
     foreach($f in $catalog){if((Get-FileHash (Join-Path $CatalogRoot $f.path)).Hash -ine $f.sha256){throw 'Catalog source differs.'}}
+    $reader=@($catalogManifest.files|Where-Object path -CEQ 'ops/native/DoomDiagnostics.cs')
+    if($reader.Count -ne 1 -or (Get-FileHash (Join-Path $CatalogRoot $reader[0].path)).Hash -ine $reader[0].sha256){throw 'Pinned catalog capacity reader required.'}
 }
 . "$ops/Base-Client.Core.ps1"
 . "$ops/Resource-Scheduler.Core.ps1"
@@ -181,7 +183,7 @@ set sv_mapRotationCurrent ""
     }while([datetime]::UtcNow -lt $deadline)
     if(!$info -or $info.clients -cne '0' -or $info.mapname -cne $Map){throw 'Startup not proven; preserve loading dedicated for diagnosis.'}
     if($CatalogRoot){
-        if(!('IW7DoomDiagnostics' -as [type])){Add-Type -Path "$ops/native/DoomDiagnostics.cs"}
+        if(!('IW7DoomDiagnostics' -as [type])){Add-Type -Path (Join-Path $CatalogRoot 'ops/native/DoomDiagnostics.cs')}
         $pool=[IW7DoomDiagnostics]::Canonical($identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc())
         $canonical=@([pscustomobject]@{Map=$Map;Phase='Cold';Used=$pool[0];Free=(4095-$pool[0]);NameBytes=$pool[1]})
         if($canonical[0].Free -lt 64){throw 'Cold canonical floor failed.'}
