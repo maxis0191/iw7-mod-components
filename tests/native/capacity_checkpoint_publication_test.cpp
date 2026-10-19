@@ -15,6 +15,9 @@ int main() {
     assert(checkpoint_operation(phase::data,true)==2);
     assert(checkpoint_operation(phase::disarming,true)==2);
     assert(checkpoint_operation(phase::failed,true)==2);
+    assert(checkpoint_operation(phase::empty,false,true)==0);
+    assert(checkpoint_operation(phase::data,true,true)==0);
+    assert(checkpoint_operation(phase::failed,true,true)==0);
     // A completed target must not continuously queue new close tickets and
     // starve the async helper/VEH cleanup after a real map restart.
     for(unsigned tick=0;tick<1000;++tick) {

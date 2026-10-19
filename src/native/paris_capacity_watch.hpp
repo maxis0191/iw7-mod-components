@@ -11,8 +11,8 @@ constexpr std::uint64_t canary_dr7 = 0x90001, data_dr7 = 0x990005;
 constexpr unsigned max_events = 64;
 constexpr std::uint64_t duration_ms = 10000;
 enum class phase : unsigned { empty, canary, data, failed, disarming, closed };
-inline unsigned checkpoint_operation(phase current, bool stopping) noexcept {
-    if (current == phase::closed) return 0;
+inline unsigned checkpoint_operation(phase current, bool stopping, bool helper_stopping=false) noexcept {
+    if (helper_stopping || current == phase::closed) return 0;
     return stopping ? 2u : (current == phase::empty ? 1u : 0u);
 }
 // A terminated original target cannot acknowledge a published ticket. Never

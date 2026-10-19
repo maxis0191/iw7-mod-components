@@ -41,6 +41,16 @@ ensuite uniquement les trois pages explicitement sélectionnées depuis ce journ
 avec six lectures (24 KiB), double comparaison et fermeture du handle de lecture.
 Une autre adresse observée exige une nouvelle sélection ; aucun scan n'est ajouté.
 
+La recherche dans les archives locales a aussi retrouvé un état plus avancé
+que les notes intégrées : le commit historique `e75abe4f` fermait déjà les
+checkpoints avant l'arrêt du helper. Son garde `helper_stop` est repris ici dans
+la registration et la décision de ticket. Le reçu local 9F du 7 octobre décrit
+18 écritures et une fermeture complète en 1 281 ms, puis des lectures bornées
+des continuations. Il conserve explicitement `Capacity48Ready=false` et
+`AllocatorIdentified=false`. Ces preuves historiques ne qualifient pas un nouveau
+binaire ; elles servent à poursuivre l'analyse plutôt qu'à rejouer les anciennes
+commandes ou à restaurer leur laboratoire retiré.
+
 The complete isolated native build from1bcb19c now compiles and links, executable
 A29488DF and matching PDB verified with all32 source hashes. This includes the
 reviewed actual-context checkpoint TU and scheduler overlay. The next vacant
