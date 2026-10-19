@@ -908,7 +908,9 @@ namespace paris_test_fixture
             // Only the owned, protected loopback party can change the test map.
             // This fixture is absent from ordinary server operation.
             const auto* clients = *game::svs_clients;
-            if (!clients || *game::svs_numclients > 4) return;
+            // Retail CP allocates16 client records despite a four-player game.
+            // Inspect every allocated record; any unprotected occupant refuses.
+            if (!clients || *game::svs_numclients > 16) return;
             std::lock_guard lock(safety_mutex);
             for (unsigned slot = 0; slot < *game::svs_numclients; ++slot)
                 if (clients[slot].header.state >= game::CS_CONNECTED &&
