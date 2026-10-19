@@ -32,8 +32,14 @@ maximaux50,7308 puis51,0131ms. La mémoire privée client observée passe de8810
 la différence avec une allocation native stock24, les deux pools restant64. Ces tests
 utilisent un seul client privé en1280×720 réduit sous limite30 ; ils ne constituent
 pas une acceptation propriétaire, WAN, quatre joueurs ou une garantie sans lag.
-Le build de livraison doit aussi reprendre le correctif vocal PR94 fusionné
-pendant ces essais. Main reste24 ; les PR95/328 et la promotion restent à terminer.
+Le build de livraison reprend le correctif vocal PR94 fusionné pendant ces essais.
+Il compile (dédié privé2010484C, normal1EC9BB6D, client39AA01F1), passe le smoke
+normal et un nouveau48+2/110 relevés/24 remplacements/120s suivi de Beast occupé.
+Les358 sources natives du client, son projet généré et son wrapper sont identiques
+à ceux du client E867 testé sur les cinq cartes ; les deux ports/recettes peer
+correspondent aussi. L'archive finale D74459FE contient ce client39AA et son reçu.
+Ces essais n'activent pas Main ; les PR95/328, leurs contrôles de sources et la
+promotion gardée restent à terminer côté serveur.
 
 ## Delta indépendant des agents — contrat64-v2 en qualification
 

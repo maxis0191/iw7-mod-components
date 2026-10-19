@@ -292,8 +292,59 @@
     ],
     "Meaning": "Living24/0 versus48/2 pressure in the same v2 port. Finite single-client callback/simulation/memory observation; not a stock24-allocation, displayed-FPS, WAN or four-player benchmark."
   },
-  "FinalDeliveryRebuildPending": true,
+  "FinalDeliveryRebuildPending": false,
   "MainActivated": false,
   "OwnerAccepted": false,
-  "MultiplayerWANMeasured": false
+  "MultiplayerWANMeasured": false,
+  "DeliveryBuilds": {
+    "SourceCommit": "2f43d619371e95cf0babf8c8d424fd4ecc4968db",
+    "PrivateSHA256": "2010484C334A7E540C3C5321751841F2D5138D00C0DE3C03F3CD70AA489250C2",
+    "NormalSHA256": "1EC9BB6DC7020BB6B7A9125C1E7C879E1AC6476CB7FEC2FA08F8D8E44281BB08",
+    "StandardSHA256": "39AA01F1231B359BF1BD9D8E2E34389372BD87129DC482A9598556F99BE674B6",
+    "SharedVoiceFix": "PR94",
+    "StandardSourceFilesCompared": 358,
+    "StandardSourceFilesChanged": 0,
+    "GeneratedProjectUnchanged": true,
+    "BuildWrapperUnchanged": true,
+    "ArchiveSHA256": "D74459FEAE818F0FCA05D64E13BC78211789D977384FC94B8AACFEB4828407D3",
+    "PairedCheck": {
+      "Map": "cp_zmb",
+      "ObservedSeconds": 120,
+      "Ordinary": 48,
+      "OccupiedBeastRotation": true,
+      "Schema": "iw7.capacity-delivery-check/1",
+      "Passed": true,
+      "Case": "watch-server-20261019-215656-130-01c41e00f04140219cced0ae79e9c4a1",
+      "Specials": 2,
+      "SparseWire": true,
+      "NormalSmoke": true,
+      "MainDeployed": false
+    },
+    "Canonical": [
+      {
+        "Map": "cp_zmb",
+        "Phase": "Cold",
+        "Used": 1647,
+        "Free": 2448,
+        "NameBytes": 36572
+      },
+      {
+        "Map": "cp_zmb",
+        "Phase": "Occupied",
+        "Used": 1647,
+        "Free": 2448,
+        "NameBytes": 36572
+      },
+      {
+        "Map": "cp_final",
+        "Phase": "OccupiedRotation",
+        "Used": 4020,
+        "Free": 75,
+        "NameBytes": 83826
+      }
+    ],
+    "Restored": true,
+    "ClientRestored": true,
+    "LeaseReleased": true
+  }
 }
