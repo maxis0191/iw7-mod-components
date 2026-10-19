@@ -3,8 +3,18 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [ValidateSet(24,64)][int]$AgentCapacity=24,[switch]$PopulateAgents,
       [string]$ClientGameRoot,[ValidateRange(1,120)][int]$ClientObserveSeconds=30,
       [switch]$SkipReload,
+      [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
+if($HordeFixturePath -or $HordeFixtureSHA256){
+    if(!$SkipReload -or !$ClientGameRoot -or !$PopulateAgents -or $AgentCapacity -ne 64 -or
+       $ClientObserveSeconds -lt 60 -or ![IO.Path]::IsPathFullyQualified($HordeFixturePath) -or
+       $HordeFixtureSHA256 -cnotmatch '^[A-Fa-f0-9]{64}$'){throw 'Horde fixture requires a pinned source and complete protected startup64 observation.'}
+    $hordeItem=Get-Item -LiteralPath $HordeFixturePath
+    if($hordeItem.Length -lt 1 -or $hordeItem.Length -gt 64KB -or $hordeItem.Extension -cne '.gsc' -or
+       ($hordeItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+       (Get-FileHash -LiteralPath $HordeFixturePath).Hash -ine $HordeFixtureSHA256){throw 'Pinned bounded horde source differs.'}
+}
 if($PopulateAgents -and $AgentCapacity -ne 64){throw 'Pool construction probe requires explicit 64-agent candidate.'}
 if($SkipReload -and (!$ClientGameRoot -or $CaptureWriterPages -or $CaptureNativeText)){throw 'Startup-only client mode cannot capture executable pages.'}
 if($ClientGameRoot -and ($CaptureWriterPages -or $CaptureNativeText -or
@@ -43,7 +53,7 @@ if($ClientGameRoot){
 $budget=Get-IW7LabRunPlan -PlannedClients $plannedClients -Debugger
 $image=Resolve-IW7BasePath $CandidateRoot 'iw7-paris-agent-lab.exe'
 $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$CandidateRoot;ServerImage=$image;ServerPort=$ServerPort;
-    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
+    PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -53,6 +63,7 @@ $lease=$null;$transaction=$null;$journalTransaction=$null;$server=$null;$session
 $pageReader=$null;$pageReaderClosed=$true;$pageCapture=$null;$pageCaptureError=$null;$textCapture=$null
 $crash=$null;$crashCache=@{}
 $client=$null;$clientImageTransaction=$null
+$clientCrash=$null;$clientCrashCache=@{}
 try{
     $leaseOptions=@{}
     if($clientImage){$leaseOptions.BaseClientImage=$clientImage}
@@ -69,6 +80,11 @@ try{
     }
     foreach($entry in $transaction.Files|Where-Object {$_.Path.StartsWith('iw7-mod/custom_scripts/cp/') -and $_.Path -match '\.(gsc|gscbin)$'}){Remove-Item -LiteralPath (Resolve-IW7BasePath $CandidateRoot $entry.Path)}
     if($PopulateAgents -or $ClientGameRoot){Copy-Item -LiteralPath (Join-Path $repo 'tests/fixtures/capacity_pool.gsc') -Destination (Resolve-IW7BasePath $CandidateRoot 'iw7-mod/custom_scripts/cp/capacity_pool.gsc')}
+    if($HordeFixturePath){
+        $target=Resolve-IW7BasePath $CandidateRoot 'iw7-mod/custom_scripts/cp/capacity_horde.gsc'
+        Copy-Item -LiteralPath $HordeFixturePath -Destination $target
+        if((Get-FileHash $target).Hash -ine $HordeFixtureSHA256 -or (Get-FileHash $HordeFixturePath).Hash -ine $HordeFixtureSHA256){throw 'Horde source changed during staging.'}
+    }
     # This native allocation probe needs retail CP only. The split Native
     # product intentionally does not vendor the Server gameplay script set.
     Copy-Item -LiteralPath $exe -Destination $image
@@ -83,6 +99,7 @@ set scr_zombie_maxagents $AgentCapacity
 set paris_capacity_pool_probe $([int][bool]$PopulateAgents)
 set paris_capacity_pool_validate 0
 set paris_capacity_client_probe $plannedClients
+set paris_capacity_horde_target $(if($HordeFixturePath){48}else{0})
 set net_ip 127.0.0.1
 set sv_lanOnly 1
 set g_password "$password"
@@ -141,6 +158,8 @@ set sv_mapRotationCurrent ""
         catch{if($_.Exception.Data.Contains('BaseClientContext')){$client=$_.Exception.Data['BaseClientContext']};throw}
         $clientDeadline=[datetime]::UtcNow.AddSeconds(180)
         do{
+            $newClientCrash=Get-IW7AgentNewCrash -CandidateRoot $ClientGameRoot -Identity $client.Identity -Before @() -OutputRoot $case -Cache $clientCrashCache
+            if($newClientCrash){$clientCrash=$newClientCrash;throw 'Correlated native client exception; artifact retained.'}
             $sample=Update-IW7BaseClient $client
             if($client.Protected){break}
             Start-Sleep -Milliseconds 250
@@ -148,10 +167,17 @@ set sv_mapRotationCurrent ""
         if(!$client.Protected){throw 'Matching capacity client lacks fresh protected playable witness.'}
         $observeUntil=[datetime]::UtcNow.AddSeconds($ClientObserveSeconds)
         do{
+            $newClientCrash=Get-IW7AgentNewCrash -CandidateRoot $ClientGameRoot -Identity $client.Identity -Before @() -OutputRoot $case -Cache $clientCrashCache
+            if($newClientCrash){$clientCrash=$newClientCrash;throw 'Correlated native client exception; artifact retained.'}
             Update-IW7BaseClient $client|ConvertTo-Json -Compress|Add-Content (Join-Path $case 'client/protection.jsonl')
             Start-Sleep -Milliseconds 250
         }while([datetime]::UtcNow -lt $observeUntil)
         $result|Add-Member NoteProperty MatchingClientProtected $true
+        if($HordeFixturePath){
+            $hordeLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
+            if($hordeLog.Contains('[Paris capacity horde] FAIL') -or !$hordeLog.Contains('[Paris capacity horde] PASS ordinary=48 special=2 total=50;')){throw 'Active ordinary48 plus specials plateau not proven.'}
+            $result|Add-Member NoteProperty Horde48PlusSpecialsConfirmed $true
+        }
     }
     if($PopulateAgents){
         $phase=if($client){'PLAYABLE'}else{'READY'}
@@ -161,7 +187,12 @@ set sv_mapRotationCurrent ""
         $result|Add-Member NoteProperty PoolConstructionConfirmed $true
         $result|Add-Member NoteProperty PoolConstructionPhase $phase
     }
-}catch{$failure=$_.Exception.Message}
+}catch{
+    $failure=$_.Exception.Message
+    if($session -and $server -and !$server.HasExited){
+        try{$lateCrash=Get-IW7AgentNewCrash -CandidateRoot $CandidateRoot -Identity $identity -Before $crashBefore -OutputRoot $case -Cache $crashCache;if($lateCrash){$crash=$lateCrash}}catch{}
+    }
+}
 finally{
     try{
         if($client){Stop-IW7BaseClient $client}
@@ -226,7 +257,7 @@ finally{
     [pscustomobject]@{Schema='iw7.capacity-watch-server/1';Result=$result;Failure=$failure;CleanupError=$cleanupError;Restored=$restored;
         ExactOwnedProcessExited=$ownedExited;Stop=$stopResult;LeaseReleased=$leaseReleased;LeaseRetained=(Get-IW7CapacityLeaseRetained $lease $leaseReleased);OutputRoot=$case;
         WriterPages=$pageCapture;WriterPageError=$pageCaptureError;WriterReaderClosed=$pageReaderClosed;
-        NativeText=$textCapture;RequestedAgentCapacity=$AgentCapacity;Crash=$crash;
+        NativeText=$textCapture;RequestedAgentCapacity=$AgentCapacity;Crash=$crash;ClientCrash=$clientCrash;
         StockCopied=$false;BaseClientTouched=[bool]$ClientGameRoot;ClientRestored=$(if($client){$client.Transaction.Restored}else{$null});WriterProven=$false;PatchReady=$false}|ConvertTo-Json -Depth 9|Set-Content (Join-Path $case 'result.local.json')
 }
 if($failure){throw "$failure ; evidence=$case"};if($cleanupError){throw "Cleanup pending: $cleanupError ; evidence=$case"};if($pageCaptureError){throw "Writer pages failed: $pageCaptureError ; evidence=$case"}
