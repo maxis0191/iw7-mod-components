@@ -254,8 +254,9 @@ int main() {
         for (unsigned slot=0;slot<characters;++slot) assert((slot & ((1u<<character_bits)-1))==slot);
         assert((64u & ((1u<<6)-1))==0); // Reproduce the observed legacy alias.
         assert(compatible_wire(false,"") && compatible_wire(false,"24"));
-        assert(!compatible_wire(false,"64-v2") && !compatible_wire(false,"unknown"));
-        assert(compatible_wire(true,"64-v2"));
+        assert(!compatible_wire(false,"64-v3") && !compatible_wire(false,"unknown"));
+        assert(compatible_wire(true,"64-v3"));
+        assert(!compatible_wire(true,"64-v2")); // Regressed client must not be admitted.
         assert(!compatible_wire(true,"64-v1")); // Refuse the earlier incomplete codec.
         assert(!compatible_wire(true,"") && !compatible_wire(true,"24") && !compatible_wire(true,"unknown"));
         std::int32_t delta{};

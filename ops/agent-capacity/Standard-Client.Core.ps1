@@ -22,7 +22,7 @@ function Start-IW7CapacityStandardClient($Plan,$ServerIdentity,[string]$LeaseTok
     if($lease.Count -ne 1){throw 'Unique complete runtime reservation required.'}
     Assert-IW7BaseLease $lease[0] $Plan $ServerIdentity
     $info=& "$ops/Get-ServerInfo.ps1" -Port $Plan.ServerPort
-    if($info.clients -cne '0' -or $info.paris_capacity -cne '64-v2' -or $info.isPrivate -cne '1'){throw 'Vacant private expanded server required.'}
+    if($info.clients -cne '0' -or $info.paris_capacity -cne '64-v3' -or $info.isPrivate -cne '1'){throw 'Vacant private expanded server required.'}
     if(Test-Path $OutputRoot){throw 'Fresh client evidence required.'}
     [IO.Directory]::CreateDirectory($OutputRoot)|Out-Null
     $context=New-IW7BaseClientContext $Plan $ServerIdentity $LeaseToken $OutputRoot (Read-IW7BaseLog $ServerIdentity.Stdout).Length

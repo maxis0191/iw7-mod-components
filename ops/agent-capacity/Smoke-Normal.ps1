@@ -12,7 +12,7 @@ if(!(Test-Path $marker) -or [IO.File]::ReadAllText($marker) -cne 'iw7-paris-isol
 $m=Get-Content (Join-Path $PackageRoot 'build-manifest.json') -Raw|ConvertFrom-Json
 $binary=Join-Path $PackageRoot 'iw7-paris-voice.exe'
 if($m.BuildProfile -cne 'server-only' -or $m.ServerModules -ne $true -or $m.IsolatedLab -ne $false -or
-   $m.Debugger -ne $false -or $m.Capacity64Production -ne $true -or $m.CapacityWireContract -cne '64-v2' -or
+   $m.Debugger -ne $false -or $m.Capacity64Production -ne $true -or $m.CapacityWireContract -cne '64-v3' -or
    $m.CapacityPeerOverlay.Schema -cne 'iw7.capacity-peer-overlay/1' -or
    (Get-FileHash -LiteralPath $binary).Hash -cne $m.SHA256){throw 'Normal capacity package provenance differs.'}
 foreach($f in @('paris_agent_capacity.cpp','paris_agent_capacity.hpp')){
@@ -40,7 +40,7 @@ function Read-NormalInfo {
     Assert-NormalOwned
     $info=& "$ops/Get-ServerInfo.ps1" -Address 127.0.0.1 -Port $ServerPort
     if($info.clients -cne '0' -or $info.dedicated -cne '1' -or $info.sv_running -cne '1' -or
-       $info.mapname -cne 'cp_zmb' -or $info.paris_capacity -cne '64-v2'){throw 'Private vacant normal capacity identity differs.'}
+       $info.mapname -cne 'cp_zmb' -or $info.paris_capacity -cne '64-v3'){throw 'Private vacant normal capacity identity differs.'}
     $info
 }
 try{

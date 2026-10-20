@@ -2,6 +2,13 @@
 
 ## Correctif d'archive CP en qualification privée — 20 octobre 2026
 
+Le profil réparé porte désormais le contrat `64-v3`. Le format des identités
+reste sur7 bits ; cette nouvelle révision refuse les clients64-v2 connus pour
+tronquer les modèles et déborder leurs buffers. Le natif24 et le protocole
+vocal sont inchangés. Les manifestes, le paquet client et les observateurs
+exigent la même révision. Les essais64-v2 ci-dessous sont des étapes privées
+historiques ; ils n'autorisent pas l'admission de l'ancien client en production.
+
 Le candidat `b93b506` tient ensuite 240 secondes à48, avec16 morts/remplacements,
 52 identités graphiques distinctes observées jusqu'à69, toutes avec characterInfo
 valide et DObj. Aucun crash natif ; sortie des deux processus, restauration et

@@ -76,7 +76,7 @@ if($StandardClientPackageRoot){
     if(!$ClientGameRoot -or !$SkipReload -or $AgentCapacity -ne 64){throw 'Standard client needs protected expanded startup.'}
     $standardManifest=Get-Content (Join-Path $StandardClientPackageRoot 'build-manifest.json') -Raw|ConvertFrom-Json
     if($standardManifest.Schema -cne 'iw7.standard-client-build/1' -or $standardManifest.Capacity64Capability -ne $true -or
-       $standardManifest.CapacityWireContract -cne '64-v2' -or
+       $standardManifest.CapacityWireContract -cne '64-v3' -or
        (Get-FileHash (Join-Path $StandardClientPackageRoot 'iw7-mod.exe')).Hash -cne $standardManifest.SHA256){throw 'Pinned expanded standard client required.'}
     foreach($name in @('paris_agent_capacity.cpp','paris_agent_capacity.hpp')){
         $row=@($standardManifest.NativeSourceHashes|Where-Object File -CEQ ('src/client/component/'+$name))

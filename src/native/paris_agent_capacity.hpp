@@ -147,9 +147,9 @@ inline bool relative32(std::uintptr_t target, std::uintptr_t next, std::int32_t&
     return true;
 }
 bool installed() noexcept;
-inline const char* wire_contract(bool expanded) noexcept { return expanded ? "64-v2" : "24"; }
+inline const char* wire_contract(bool expanded) noexcept { return expanded ? "64-v3" : "24"; }
 inline bool compatible_wire(bool expanded,std::string_view peer) noexcept {
-    return expanded ? peer=="64-v2" : peer.empty() || peer=="24";
+    return expanded ? peer=="64-v3" : peer.empty() || peer=="24";
 }
 inline bool compatible_peer(std::string_view peer) noexcept { return compatible_wire(installed(),peer); }
 }
