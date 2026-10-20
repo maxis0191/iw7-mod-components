@@ -25,7 +25,18 @@ try{$payloadInput.CopyTo($gzip)}finally{$gzip.Dispose();$payloadTarget.Dispose()
 Invoke-IW7ResourceJob -Scope $repo -Owner 'Single-file automatic client onboarding build' -PhysicalBytes 1GB -CommitBytes 1GB -Body {
     $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     $result=Join-Path $Output 'IW7-Paris.exe'
-    & $compiler /nologo /target:winexe /platform:x64 /optimize+ /warnaserror+ /r:System.Windows.Forms.dll /r:System.IO.Compression.dll /r:System.Web.Extensions.dll /r:System.Management.dll "/resource:$repo/config/auto-client-data.json,community-data.json" "/resource:$payload,client.gz" "/resource:$Output/client.sha256,client.sha256" "/out:$result" "$repo/src/bootstrap/AutoClient.cs"
+    # Framework csc misresolves mixed slash paths, even when they are absolute.
+    # Use normalized Windows paths and a response file for all embedded inputs.
+    $response=Join-Path $Output 'compile.rsp'
+    $lines=@('/nologo','/target:winexe','/platform:x64','/optimize+','/warnaserror+',
+        '/r:System.Windows.Forms.dll','/r:System.IO.Compression.dll','/r:System.Web.Extensions.dll','/r:System.Management.dll',
+        ('/resource:"'+[IO.Path]::GetFullPath((Join-Path $repo 'config/auto-client-data.json'))+'",community-data.json'),
+        ('/resource:"'+[IO.Path]::GetFullPath($payload)+'",client.gz'),
+        ('/resource:"'+[IO.Path]::GetFullPath((Join-Path $Output 'client.sha256'))+'",client.sha256'),
+        ('/out:"'+[IO.Path]::GetFullPath($result)+'"'),
+        ('"'+[IO.Path]::GetFullPath((Join-Path $repo 'src/bootstrap/AutoClient.cs'))+'"'))
+    [IO.File]::WriteAllLines($response,$lines,[Text.UTF8Encoding]::new($true))
+    & $compiler ('@'+$response)
     if($LASTEXITCODE){throw 'Automatic client onboarding compilation failed.'}
     @{Schema='iw7.auto-client-delivery/1';File='IW7-Paris.exe';SHA256=(Get-FileHash $result).Hash;ClientSHA256=$manifest.SHA256;BuildReceiptSHA256=(Get-FileHash (Join-Path $PackageRoot 'build-manifest.json')).Hash;BootstrapSourceSHA256=(Get-FileHash "$repo/src/bootstrap/AutoClient.cs").Hash;CommunityDataManifestSHA256=(Get-FileHash "$repo/config/auto-client-data.json").Hash;Bytes=(Get-Item $result).Length;DistributionBoundary='First execution or community distributor update required; no manual archive extraction.'}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $Output 'delivery.json')
     Write-Output "One-file automatic onboarding: $result"

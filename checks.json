@@ -2,6 +2,25 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "auto_client_managed_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/auto_client_managed_test.ps1"
+      ]
+    },
+    {
+      "id": "existing_client_audit_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/existing_client_audit_test.py"
+      ]
+    },
+    {
       "id": "auto_client_data_test",
       "command": [
         "python",

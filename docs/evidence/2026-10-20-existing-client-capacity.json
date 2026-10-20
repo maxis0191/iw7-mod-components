@@ -1,0 +1,388 @@
+{
+  "Schema": "iw7.existing-client-capacity-evidence/1",
+  "ObservedUtc": "2026-10-20T06:11:01.146362+02:00",
+  "SourceAudit": {
+    "schema": "iw7.existing-client-capacity-audit/1",
+    "utc": "2026-10-20T06:11:01.146362+02:00",
+    "sources": {
+      "Aurora": {
+        "revision": "37abcb260408ce7cdef0dde831bbfcad594510e3",
+        "blobs_sha256": {
+          "party.cpp": "c5d3e6353d87fdb023f3aa41ee662ad4db1dd0a3bbc8c3209b3cc66594811c55",
+          "download.cpp": "97e0442b7249dd94f602ba73fb0b5624e453c47d73083e8d6ae0285f9befe6f6",
+          "ui_scripting.cpp": "a2dde4ab5a59ef990830aae011eaf0b8295f944ce2a50a2a9c67d43cc263e00c",
+          "fastfiles.cpp": "280bd8718dcafa84bd23d56310224d9059be89d5bb030a7791b27cd6307f02f1",
+          "command.cpp": "7bc389dd91e8507a94ae0fea437bee396107b5a11b51715aad101d7ead402424",
+          "io.cpp": "3537fb81a8d12dfb66e78302f0dd777a4c48cb3469a5d0f5ee4c0d699b62477c",
+          "gsc/script_extension.cpp": "51ea537d286707ae3dfcfdb28060cec027252c5eb85c6be6e9b6b3b49b6d5b37",
+          "updater.cpp": "fd2226e931ea26ed8da0986ddfe48b921fb3090f5411addb053e59ee0a0ac1c1"
+        },
+        "mod_files": [
+          {
+            "extension": ".ff",
+            "key": "mod_hash",
+            "optional": false,
+            "localized": false
+          },
+          {
+            "extension": ".sabl",
+            "key": "sabl_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".sabs",
+            "key": "sabs_hash",
+            "optional": true,
+            "localized": false
+          }
+        ],
+        "usermap_files": [
+          {
+            "extension": ".ff",
+            "key": "usermap_hash",
+            "optional": false,
+            "localized": false
+          },
+          {
+            "extension": "_load.ff",
+            "key": "usermap_load_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": "_art.ff",
+            "key": "usermap_art_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".arena",
+            "key": "usermap_arena_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".pak",
+            "key": "usermap_pak_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".sabl",
+            "key": "usermap_sabl_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".sabs",
+            "key": "usermap_sabs_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".ff",
+            "key": "usermap_loc_hash",
+            "optional": true,
+            "localized": true
+          }
+        ],
+        "embedded_lua_entrypoint": true,
+        "lua_io_bindings": [
+          "directoryexists",
+          "fileexists",
+          "listfiles",
+          "readfile",
+          "zoneexists"
+        ],
+        "gsc_extensions": [
+          "assert",
+          "assertex",
+          "executecommand",
+          "getfunction",
+          "logprint",
+          "print",
+          "println",
+          "replacefunc",
+          "say",
+          "strstartswith",
+          "toupper",
+          "type",
+          "typeof",
+          "va"
+        ],
+        "lua_named_native_bridge_registered": false,
+        "capacity_contract_recognized": false,
+        "updater_origins": [
+          "https://iw7-mod.auroramod.dev/"
+        ],
+        "asset_loader_is_DB_LoadXAssets": true,
+        "note": "Named-binding and entrypoint inventory only; absence is not a proof about every retail builtin."
+      },
+      "CB": {
+        "revision": "d9c5dea1092b5ac493d2346043b26b2e2322d09c",
+        "blobs_sha256": {
+          "party.cpp": "4fea10621b0d3172c41c9cd3359e010ad9151d352ada6f82fee84b8806744ea2",
+          "download.cpp": "97e0442b7249dd94f602ba73fb0b5624e453c47d73083e8d6ae0285f9befe6f6",
+          "ui_scripting.cpp": "82f8eccdce06dafbe1c9805b4f8f5408863fe4ca1a133e6106453022ca03333d",
+          "fastfiles.cpp": "efc4ba0baf15ef07be867189fc9b3071cf4261dff72f7a30533fc8452093e238",
+          "command.cpp": "7bc389dd91e8507a94ae0fea437bee396107b5a11b51715aad101d7ead402424",
+          "io.cpp": "3537fb81a8d12dfb66e78302f0dd777a4c48cb3469a5d0f5ee4c0d699b62477c",
+          "gsc/script_extension.cpp": "a1b8bee9be0738bae1b324842b9d68b8b98a7c32cae8fc5d9f41bf3b8a3ff9e2",
+          "updater.cpp": "620f51cdbbf5e162d6ff113a107973ca08c3f29caf17d146a0cedd34c00d8afe"
+        },
+        "mod_files": [
+          {
+            "extension": ".ff",
+            "key": "mod_hash",
+            "optional": false,
+            "localized": false
+          },
+          {
+            "extension": ".sabl",
+            "key": "sabl_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".sabs",
+            "key": "sabs_hash",
+            "optional": true,
+            "localized": false
+          }
+        ],
+        "usermap_files": null,
+        "embedded_lua_entrypoint": false,
+        "lua_io_bindings": [
+          "createdirectory",
+          "directoryexists",
+          "directoryisempty",
+          "fileexists",
+          "filesize",
+          "listfiles",
+          "movefile",
+          "readfile",
+          "removefile",
+          "writefile",
+          "zoneexists"
+        ],
+        "gsc_extensions": [
+          "assert",
+          "assertex",
+          "executecommand",
+          "getfunction",
+          "logprint",
+          "print",
+          "println",
+          "replacefunc",
+          "say",
+          "strstartswith",
+          "toupper",
+          "type",
+          "typeof",
+          "va"
+        ],
+        "lua_named_native_bridge_registered": false,
+        "capacity_contract_recognized": false,
+        "updater_origins": [
+          "https://github.com/CBServers/updater/raw/main/updater/iw7-mod/",
+          "https://iw7-mod.auroramod.dev/"
+        ],
+        "asset_loader_is_DB_LoadXAssets": true,
+        "note": "Named-binding and entrypoint inventory only; absence is not a proof about every retail builtin."
+      },
+      "RetainedMergedBase": {
+        "revision": "a99c04937513530648573fd4ca2a05321a90b4a5",
+        "blobs_sha256": {
+          "party.cpp": "9aa81d64dbb7fc3706b3deea1cf7e1e0bae307d7dcf52dd96b1c9c8ffe824864",
+          "download.cpp": "97e0442b7249dd94f602ba73fb0b5624e453c47d73083e8d6ae0285f9befe6f6",
+          "ui_scripting.cpp": "a2dde4ab5a59ef990830aae011eaf0b8295f944ce2a50a2a9c67d43cc263e00c",
+          "fastfiles.cpp": "280bd8718dcafa84bd23d56310224d9059be89d5bb030a7791b27cd6307f02f1",
+          "command.cpp": "7bc389dd91e8507a94ae0fea437bee396107b5a11b51715aad101d7ead402424",
+          "io.cpp": "3537fb81a8d12dfb66e78302f0dd777a4c48cb3469a5d0f5ee4c0d699b62477c",
+          "gsc/script_extension.cpp": "51ea537d286707ae3dfcfdb28060cec027252c5eb85c6be6e9b6b3b49b6d5b37",
+          "updater.cpp": "620f51cdbbf5e162d6ff113a107973ca08c3f29caf17d146a0cedd34c00d8afe"
+        },
+        "mod_files": [
+          {
+            "extension": ".ff",
+            "key": "mod_hash",
+            "optional": false,
+            "localized": false
+          },
+          {
+            "extension": ".sabl",
+            "key": "sabl_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".sabs",
+            "key": "sabs_hash",
+            "optional": true,
+            "localized": false
+          }
+        ],
+        "usermap_files": [
+          {
+            "extension": ".ff",
+            "key": "usermap_hash",
+            "optional": false,
+            "localized": false
+          },
+          {
+            "extension": "_load.ff",
+            "key": "usermap_load_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": "_art.ff",
+            "key": "usermap_art_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".arena",
+            "key": "usermap_arena_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".pak",
+            "key": "usermap_pak_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".sabl",
+            "key": "usermap_sabl_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".sabs",
+            "key": "usermap_sabs_hash",
+            "optional": true,
+            "localized": false
+          },
+          {
+            "extension": ".ff",
+            "key": "usermap_loc_hash",
+            "optional": true,
+            "localized": true
+          }
+        ],
+        "embedded_lua_entrypoint": true,
+        "lua_io_bindings": [
+          "directoryexists",
+          "fileexists",
+          "listfiles",
+          "readfile",
+          "zoneexists"
+        ],
+        "gsc_extensions": [
+          "assert",
+          "assertex",
+          "executecommand",
+          "getfunction",
+          "logprint",
+          "print",
+          "println",
+          "replacefunc",
+          "say",
+          "strstartswith",
+          "toupper",
+          "type",
+          "typeof",
+          "va"
+        ],
+        "lua_named_native_bridge_registered": false,
+        "capacity_contract_recognized": false,
+        "updater_origins": [
+          "https://github.com/CBServers/updater/raw/main/updater/iw7-mod/",
+          "https://iw7-mod.auroramod.dev/"
+        ],
+        "asset_loader_is_DB_LoadXAssets": true,
+        "note": "Named-binding and entrypoint inventory only; absence is not a proof about every retail builtin."
+      }
+    },
+    "wire_arithmetic": {
+      "stock_reserved_players": 18,
+      "ordinary": 48,
+      "reserve": 16,
+      "characters": 82,
+      "required_bits": 7,
+      "stock_explicit_agent_bits": 6,
+      "evidence": "Arithmetic against reviewed native capacity implementation, not an executed codec"
+    },
+    "engine_launched": false,
+    "unchanged_client_gameplay_qualified": false,
+    "capacity_header_sha256": "d3306c5234078903236de141ba4eb8a9075030ef3ce048d256a1039f6133d783",
+    "server": {
+      "nonce_verified": true,
+      "fields": {
+        "gamename": "IW7",
+        "protocol": "2",
+        "playmode": "3",
+        "mapname": "cp_zmb",
+        "clients": "0",
+        "sv_maxclients": "4",
+        "fs_game": "",
+        "mod_hash": null,
+        "paris_capacity": "64-v2",
+        "sv_wwwBaseUrl": "",
+        "usermap_hash": null
+      },
+      "retail_map_must_be_installed": true,
+      "mod_download_advertised": false,
+      "native_profile_download_advertised": false,
+      "evidence": "Live getinfo only; no game client or join was executed"
+    }
+  },
+  "SourceReportSHA256": "B4FCF89806E47E23C3814C20CBBF46327A410B6E689D07906CF70954311146F0",
+  "PublisherDownload": {
+    "Passed": true,
+    "Files": 47,
+    "Bytes": 371063469,
+    "Seconds": 33.453,
+    "RetryFiles": 0,
+    "ManifestSHA256": "1ce8c64cd315285fd5f24185c08e4fe76e3fd9c652d25e8489285eb7bad32c09",
+    "ReportSHA256": "CEB105FB83A9D3CDC46F3D7F2B708E95B1C8F34496BFFF7F92EA07260E237E89",
+    "BootstrapExecuted": false,
+    "GameLaunched": false,
+    "RetailRootModified": false
+  },
+  "NativeBuild": {
+    "Admission": "Refused before Body: existing live build reservation",
+    "CompilerStarted": false,
+    "ClientCheckoutCreated": false,
+    "ExistingLeasePreserved": true
+  },
+  "UnchangedClientGameplayQualified": false,
+  "AutomaticProfileGameplayQualified": false,
+  "MainDeploymentChanged": false,
+  "ManagedDataProbe": {
+    "Result": {
+      "Passed": true,
+      "SourceCompiled": true,
+      "Files": 47,
+      "Bytes": 371063469,
+      "ColdDownloaded": 47,
+      "WarmDownloaded": 0,
+      "RepairDownloaded": 1,
+      "CorruptionPreserved": true,
+      "DataId": "1CE8C64CD315285FD5F24185C08E4FE76E3FD9C652D25E8489285EB7BAD32C09",
+      "Network": true,
+      "GameLaunched": false,
+      "OnboardingMainExecuted": false
+    },
+    "ResultSHA256": "6F1881C0AE507140FE0E2DD6D0C85D3200DBB282F5A2B44BB7DD8DC449A71469",
+    "BootstrapSourceSHA256": "A73C21C565AAC77A3C3AEECEE915F7DE27FF828BECF927B9242AE4743C1FF4A8",
+    "HarnessSourceSHA256": "14F7E0D6FFE80BBF7EDB5198FFBF1DC1D5E2FE488EC3FF870432A98DD24494C6",
+    "InitialMixedPathCompilerExit": 1,
+    "NormalizedPathCompilerExit": 0,
+    "NativeCompilerStarted": false,
+    "OwnerClosureMessageAuthorized": true
+  }
+}

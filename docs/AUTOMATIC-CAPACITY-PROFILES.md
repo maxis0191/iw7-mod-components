@@ -1,5 +1,12 @@
 # Automatic standard / Paris48 client profiles
 
+Owner clarification,20 October2026: first investigate unchanged community
+clients through their existing download/content interfaces. The
+[native-first audit](EXISTING-CLIENT-CAPACITY.md) records the inspected paths,
+source pins, protocol observation and unexecuted real-engine checks. This
+automatic-client implementation remains the fallback; initial execution of its
+onboarding program does not meet an unchanged-official-client requirement.
+
 Owner GO, 20 October 2026: joining a compatible server must not require players
 to extract or install feature packages. The required real-engine qualification
 starts with an empty feature cache, follows a normal connection to a private
@@ -97,10 +104,17 @@ restoration, hook ordering and engine-settings/shader-path checks pass. PowerShe
 parse checks pass. These do not qualify C++ compilation or real joining.
 Actual pinned a99 source overlays compose and restore byte-exactly, including
 the isolated data-root and registry/updater guards. The closed 47-file metadata
-contract passes. Three small files were retrieved from their pinned URLs with
-matching lengths/SHA1; the 149345492-byte map FF HEAD follows to the GitHub media
-CDN and reports the expected length. Its body and the whole 47-file download have
-not been exercised here. None of this is a fresh-player runtime PASS.
+contract passes. The native-first follow-up retrieved all47 publisher bodies
+from an empty cache in33.453seconds, with exact lengths/SHA1 and no retry.
+The actual C# bootstrap source then compiled in a light managed data-only test:
+its own PrepareData downloaded47 files, downloaded0 on a warm rerun, and repaired
+exactly1 deliberately altered file while preserving the bad copy in quarantine.
+No IW7 client or onboarding Main entrypoint was executed by those tests.
+The first managed compilation exposed Framework csc's mixed-slash source-path
+failure CS1504; a minimal reproduction failed with mixed paths and passed with
+normalized paths. The package compiler now uses normalized inputs and a response
+file. The full native client and one-file delivery build are still unqualified.
+See the [structured evidence](evidence/2026-10-20-existing-client-capacity.json).
 
 The first native policy compile attempt was refused by the shared scheduler:
 another standard-client build owns the account-wide reservation. Its scope is

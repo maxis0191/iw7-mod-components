@@ -1,5 +1,10 @@
 # IW7-Mod components
 
+The [existing-client investigation](docs/EXISTING-CLIENT-CAPACITY.md) checks the
+community download/content interfaces first and records why asset downloads
+alone do not install the native48-zombie capability. Its source/protocol audit
+does not qualify an unchanged-client gameplay session.
+
 The [automatic capacity profile candidate](docs/AUTOMATIC-CAPACITY-PROFILES.md)
 removes per-server manual archive extraction through one-file onboarding and
 automatic standard/64-v2 restarts. Native compilation and guarded fresh-cache
