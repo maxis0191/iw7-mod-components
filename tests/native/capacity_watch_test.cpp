@@ -5,6 +5,91 @@
 #include <string>
 #include <vector>
 #include <random>
+#include <cstring>
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
+static void archive_ranges() {
+    using namespace paris_agent_capacity;
+    using namespace animation_archive;
+    std::array<unsigned char,0x400> legacy{},corrected{};
+    for(unsigned slot=0;slot<characters;++slot) {
+        legacy[flags+slot]=1;
+        corrected[flags+slot]=1;
+    }
+    std::uint64_t damaged{},intact{};
+    std::memcpy(&damaged,legacy.data()+0x40,8);
+    std::memcpy(&intact,corrected.data()+pointers,8);
+    assert(damaged==0x0101010101010101ull && intact==0);
+    // Reproduce the exact two-byte corruption seen in the owner's pointer.
+    legacy.fill(0);legacy[flags+48]=legacy[flags+49]=1;
+    std::memcpy(&damaged,legacy.data()+0x40,8);
+    assert(damaged==0x10100000000ull);
+    for(unsigned slot=0;slot<characters;++slot) {
+        assert(slot*2+2<=controller_records);
+        assert(controller_records+slot*0x48+0x48<=controller_size);
+        assert(slot*4+4<=xanim_counts);
+        assert(xanim_counts+slot*4+4<=xanim_counter);
+        assert(flags+slot<pointers);
+        assert(pointers+slot*8+8<=active);
+    }
+    assert(xanim_base==controller_base+controller_size);
+    assert(restore==frame_base+frames*frame_size);
+    assert(rewind>=restore+0x12010 && rewind+active<object_size);
+}
+
+#ifdef _WIN32
+// Execute the actual replacement instructions with guarded synthetic buffers.
+// No engine process or retail executable is loaded by this regression test.
+static void archive_instructions() {
+    using namespace paris_agent_capacity;
+    using namespace animation_archive;
+    const auto run=[](const std::vector<unsigned char>& code,const void* id,const void* frame,void* output) {
+        void* memory=VirtualAlloc(nullptr,code.size(),MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+        assert(memory);std::memcpy(memory,code.data(),code.size());
+        DWORD previous{};assert(VirtualProtect(memory,code.size(),PAGE_EXECUTE_READ,&previous));
+        assert(FlushInstructionCache(GetCurrentProcess(),memory,code.size()));
+        reinterpret_cast<void(*)(const void*,const void*,void*)>(memory)(id,frame,output);
+        assert(VirtualFree(memory,0,MEM_RELEASE));
+    };
+    const auto copy_code=[](const auto& body,bool next) {
+        std::vector<unsigned char> code={0x53,0x57,0x41,0x56,0x48,0x81,0xec,0x80,0,0,0,
+            0x49,0x89,0xce,0x48,0x89,0xd7,0x48,0x89,0xd3,0x4c,0x89,0x44,0x24,0x70};
+        code.insert(code.end(),body.begin(),body.end()-(next?5:0));
+        const unsigned char tail[]={0xf2,0x0f,0x11,0x40,0x40,0x48,0x81,0xc4,0x80,0,0,0,0x41,0x5e,0x5f,0x5b,0xc3};
+        code.insert(code.end(),std::begin(tail),std::end(tail));return code;
+    };
+    std::vector<unsigned char> frame(controller_size+16);
+    for(std::size_t i=0;i<frame.size();++i)frame[i]=static_cast<unsigned char>((i*29)^(i>>8));
+    const auto previous=copy_code(previous_after,false),next=copy_code(next_after,true);
+    const auto old_previous=copy_code(previous_before,false),old_next=copy_code(next_before,true);
+    for(int slot=0;slot<static_cast<int>(characters);++slot) {
+        for(const auto* code:{&previous,&next,&old_previous,&old_next}) {
+            std::array<unsigned char,0x58> output{};output.fill(0xA7);
+            run(*code,&slot,frame.data(),output.data()+8);
+            for(unsigned i=0;i<8;++i)assert(output[i]==0xA7 && output[0x50+i]==0xA7);
+            const bool correct=std::memcmp(output.data()+8,frame.data()+controller_records+slot*0x48,0x48)==0;
+            assert(correct==(code==&previous || code==&next));
+        }
+    }
+    // The two-frame branch computes both bases, retaining its existing output
+    // and interpolation arguments. Test the real bytes without its engine call.
+    std::vector<unsigned char> blend={0x53,0x55,0x57,0x41,0x56,0x48,0x81,0xec,0x80,0,0,0,
+        0x49,0x89,0xce,0x48,0x89,0xd7,0x48,0x89,0xd3,0x4c,0x89,0x44,0x24,0x70,
+        0x4c,0x89,0xc5,0x49,0x63,0x06};
+    blend.insert(blend.end(),blend_after.begin(),blend_after.end());
+    const unsigned char tail[]={0x49,0x89,0x09,0x49,0x89,0x51,0x08,0xf3,0x41,0x0f,0x11,0x51,0x10,
+        0x48,0x81,0xc4,0x80,0,0,0,0x41,0x5e,0x5f,0x5d,0x5b,0xc3};
+    blend.insert(blend.end(),std::begin(tail),std::end(tail));
+    for(int slot=0;slot<static_cast<int>(characters);++slot) {
+        std::array<std::uintptr_t,3> output{};output[2]=0x12345678;
+        run(blend,&slot,frame.data(),output.data());
+        assert(output[0]==reinterpret_cast<std::uintptr_t>(frame.data()+controller_records+slot*0x48));
+        assert(output[1]==output[0] && output[2]==0x12345678);
+    }
+}
+#endif
 
 // Independent regression model of the engine's agent-state record framing.
 // The actual runtime keeps the engine codec and changes its five index widths.
@@ -42,6 +127,10 @@ static std::vector<agent_record> agent_wire_roundtrip(const std::vector<agent_re
     assert(cursor==bits.size());return output;
 }
 int main() {
+    archive_ranges();
+#ifdef _WIN32
+    archive_instructions();
+#endif
     {
         using namespace paris_agent_capacity;
         static_assert(ordinary == 48 && special_reserve == 16 && agents == 64);

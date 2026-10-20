@@ -153,6 +153,15 @@ void add(std::uintptr_t address, std::uint32_t before, std::uint32_t after, unsi
     if (actual != before) throw std::runtime_error("Capacity candidate signature mismatch at " + std::to_string(address));
     plan.push_back({address,width,before,after});
 }
+template<std::size_t N> void sequence(std::uintptr_t address,
+    const std::array<std::uint8_t,N>& before,const std::array<std::uint8_t,N>& after) {
+    // Validate the entire block, including unchanged opcodes, before the
+    // installation transaction writes anything. No relocated branch/call.
+    readable_code(address,static_cast<unsigned>(N));
+    if(std::memcmp(reinterpret_cast<void*>(address),before.data(),N))
+        throw std::runtime_error("Capacity animation instruction block differs");
+    for(std::size_t i=0;i<N;++i)add(address+i,before[i],after[i],1);
+}
 void rip(std::uintptr_t field, std::uintptr_t before, std::uintptr_t after) {
     std::int32_t original{}, replacement{};
     if (!relative32(before,field+4,original) || !relative32(after,field+4,replacement))
@@ -235,7 +244,7 @@ void build_plan() {
     add(0x140B1F4FE,0x7A0D8,server_size); add(0x140449EE9,0x7A0D8,server_size);
     add(0x140449EAB,0x7A0D0,server_size-8);
     add(0x14044A0CA,0x798F8,0x798F8+character_growth);
-    add(0x140B205B4,0x2B7130,0x2B7130+character_growth+(characters-42)*0x40);
+    add(0x140B205B4,0x2B7130,0x2B7130+character_growth+(characters-42)*0x40+animation_archive::growth);
     for (const auto address : {0x140B1F5ADull,0x140B1F5C3ull,0x140486F35ull,0x140486F4Bull,0x140486F63ull}) add(address,0xA88,reference_bytes);
     for (const auto address : {0x140434FD4ull,0x14044928Eull,0x14044936Cull,0x14048C1EEull,0x14048C2CCull}) add(address,42,characters);
     // Matching private client: character array, object strides, tail and all
@@ -255,6 +264,47 @@ void build_plan() {
     rva(0x140AC6CCE,0x5C516E0,table20.data+16); rva(0x140AC6CEB,0x5C516D0,table20.data);
     add(0x140AC67C1,42,characters,1); add(0x140AC686E,42,characters,1);
     add(0x140AC6933,210,characters*5); add(0x140AC6AC2,336,table8_bytes); add(0x140AC6B0E,4200,table20_bytes);
+    // CP lag compensation has its own fixed42 controller/XAnim archives.
+    // In particular flags48/49 previously overlapped saved pointer0. Port
+    // allocation, history stride, capture, readers, saved trees and cleanup
+    // together; keep the generic entity history and restore context intact.
+    using namespace animation_archive;
+    add(0x140B1F55A,0x2077F0,object_size);
+    add(0x14B431B51,0x2077F0,object_size); // Protected CP teardown memset.
+    add(0x140445927,0xC7A8,frame_size);
+    add(0x14044592D,0xC7A8,frame_size);
+    add(0x140445A67,0xC7A8,frame_size);
+    add(0x140445A73,0x1F5648,restore);
+    add(0x14044608F,0x3C58,frame_size-controller_base);
+    add(0x140445C33,0x9774,xanim_base);
+    // The existing disp32-zero LEA feeds every controller-record write.
+    // Moving its scaled result by10 adds80 bytes without a signed disp8.
+    add(0x140445D2A,0,(controller_records-0x54)/8);
+    add(0x140445DAB,0x150,xanim_counter);
+    add(0x140445DBE,0x55,xanim_data/4);
+    add(0x140445DDA,0xA8,xanim_counts);
+    add(0x140445DE0,0x150,xanim_counter);
+    for(const auto address:{0x140445AB8ull,0x140445B5Full,0x140445B96ull,0x140445ED2ull})
+        add(address,0x2077E8,rewind+active);
+    add(0x140445ACE,0x207698,rewind+pointers);
+    add(0x140445ADF,0x20766C,rewind+flags);
+    add(0x140445B7B,0x207668,rewind+0x10);
+    for(const auto address:{0x140445B82ull,0x140445EDCull})add(address,0x207658,rewind);
+    add(0x140445B90,0x207660,rewind+8);
+    add(0x140445B45,42,characters,1);
+    add(0x140445F0C,42,characters);
+    add(0x1400A8585,42,characters);
+    add(0x140415C28,0x40,pointers,1);
+    for(const auto address:{0x140414E42ull,0x140414E78ull,
+        0x1404151BCull,0x1404151E7ull,0x140415264ull,0x1404152EAull})
+        add(address,0xCCC,controller_size+xanim_counts);
+    for(const auto address:{0x1404151A7ull,0x1404151DAull,0x140415254ull,0x1404152DAull})
+        add(address,0xC24,controller_size);
+    for(const auto address:{0x1404151C3ull,0x1404151EEull,0x14041526Bull,0x1404152F1ull})
+        add(address,0x1AF,(controller_size+xanim_data)/8);
+    sequence(0x140415205,blend_before,blend_after);
+    sequence(0x14041527F,next_before,next_after);
+    sequence(0x140415305,previous_before,previous_after);
     std::sort(plan.begin(),plan.end(),[](const patch& a,const patch& b){return a.address<b.address;});
     for (std::size_t i=1;i<plan.size();++i) if (plan[i-1].address+plan[i-1].width>plan[i].address)
         throw std::runtime_error("Overlapping capacity candidate patches");
