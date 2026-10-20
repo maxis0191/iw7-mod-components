@@ -24,6 +24,16 @@ static_assert(characters > (1u << 6) && characters <= (1u << character_bits));
 static_assert(player_corpse_start == 82 && agent_corpse_start == 90 && agent_corpse_start + 8 == map_start);
 static_assert(client_tail + (0xFDEA8 - 0xFD7F8) == client_flags);
 static_assert(client_flags + characters <= client_size);
+// CG's two current/next snapshots separately clamp agent metadata to24.
+// Keep their original fields and tail offsets intact; append a64-row agent
+// array and move every producer/consumer of the old inline array together.
+namespace client_snapshot {
+constexpr std::uint32_t legacy_size=0x3DC78, legacy_agents=0x38D48;
+constexpr std::uint32_t agent_stride=0xC0, agent_base=legacy_size;
+constexpr std::uint32_t size=agent_base+agents*agent_stride, pair_bytes=2*size;
+static_assert(legacy_agents+24*agent_stride==0x39F48);
+static_assert(size==0x40C78 && pair_bytes==0x818F0);
+}
 // CP keeps forty history frames, then an unchanged generic restoration
 // context, followed by character-indexed rewind flags and saved XAnim trees.
 // These are independent of the live character-info/agent allocations.

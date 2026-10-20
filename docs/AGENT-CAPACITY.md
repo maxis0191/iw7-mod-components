@@ -2,6 +2,25 @@
 
 ## Correctif d'archive CP en qualification privée — 20 octobre 2026
 
+Le candidat `e1e1af2` a ensuite tenu 240 secondes à 48 ordinaires avec le
+fournisseur retail, sans construction forcée ni codec forcé. Les 16 morts et
+remplacements d'indices élevés passent ; protection moteur, cheats0 et inactivity0
+restent frais. Les deux processus sortent et les fichiers/baux sont restaurés.
+Deux erreurs GSC retail connues restent dans le diagnostic. Le tir envoyé n'a
+pas diminué le chargeur et aucune capture fraîche n'a été produite : ces deux
+preuves restent absentes. L'invisibilité est confirmée par le client : indices
+18–41 avec characterInfo valide et DObj ; indices42–69 invalides et sans DObj.
+
+La recherche identifie un second plafond indépendant dans CL_GetSnapshot :
+`min(numAgents,24)` copie uniquement les 24 premières métadonnées agentState,
+alors que les entités suivantes arrivent bien. Le nouveau candidat conserve
+tous les champs originaux du snapshot et ajoute à sa fin un tableau de64
+agentState de `0xC0` octets. Allocation/initialisation/reset des deux snapshots,
+sélection par stride et quatre producteurs/consommateurs passent ensemble de
+`0x3DC78` à `0x40C78` par snapshot. Le test exécute la vraie séquence x64 de
+plafonnement avec les deux limites et vérifie les64 lignes, les queues intactes
+et les gardes des deux objets. Ce correctif graphique reste à qualifier en jeu.
+
 Le layout de compensation des tirs conservait 42 entrées alors que les pools
 vivants en exposaient 82. Dans son groupe de restauration, les drapeaux à
 `+0x14` des indices 48 et 49 écrivaient les octets 4 et 5 du pointeur 0 à
