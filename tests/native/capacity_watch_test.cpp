@@ -144,6 +144,43 @@ static void archive_instructions() {
 }
 #endif
 
+static void snapshot_metadata() {
+    using namespace paris_agent_capacity;
+    namespace snap=client_snapshot;
+    std::vector<unsigned char> pair(snap::pair_bytes+32,0xA7);
+    // Mirror the engine's independent current/next allocation and record copy;
+    // an expanded copy into the old array would corrupt the untouched tail.
+    for(unsigned index=0;index<2;++index) {
+        auto* object=pair.data()+16+index*snap::size;
+        for(unsigned slot=0;slot<agents;++slot) {
+            auto* record=object+snap::agent_base+slot*snap::agent_stride;
+            std::memset(record,static_cast<int>(slot),snap::agent_stride);
+        }
+        for(unsigned i=snap::legacy_agents;i<snap::legacy_size;++i)assert(object[i]==0xA7);
+        for(unsigned slot=0;slot<agents;++slot)
+            for(unsigned byte=0;byte<snap::agent_stride;++byte)
+                assert(object[snap::agent_base+slot*snap::agent_stride+byte]==slot);
+        assert(snap::legacy_agents+48*snap::agent_stride>snap::legacy_size);
+    }
+    for(unsigned i=0;i<16;++i)assert(pair[i]==0xA7 && pair[snap::pair_bytes+16+i]==0xA7);
+#ifdef _WIN32
+    // Actual CL_GetSnapshot min-count instruction sequence, with its immediate
+    // widened. The legacy sequence must reproduce the exact24 cutoff.
+    unsigned char code[]={0x8b,0xc1,0xb9,0x18,0,0,0,0x3b,0xc1,0x0f,0x4f,0xc1,0xc3};
+    auto* memory=static_cast<unsigned char*>(VirtualAlloc(nullptr,sizeof(code),MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE));
+    assert(memory);
+    for(const auto limit:{24u,agents}) {
+        code[3]=static_cast<unsigned char>(limit);std::memcpy(memory,code,sizeof(code));
+        DWORD previous{};assert(VirtualProtect(memory,sizeof(code),PAGE_EXECUTE_READ,&previous));
+        assert(FlushInstructionCache(GetCurrentProcess(),memory,sizeof(code)));
+        for(const auto count:{0u,1u,24u,25u,48u,64u,65u})
+            assert(reinterpret_cast<unsigned(*)(unsigned)>(memory)(count)==(count<limit?count:limit));
+        assert(VirtualProtect(memory,sizeof(code),PAGE_READWRITE,&previous));
+    }
+    assert(VirtualFree(memory,0,MEM_RELEASE));
+#endif
+}
+
 // Independent regression model of the engine's agent-state record framing.
 // The actual runtime keeps the engine codec and changes its five index widths.
 struct agent_record {
@@ -181,6 +218,7 @@ static std::vector<agent_record> agent_wire_roundtrip(const std::vector<agent_re
 }
 int main() {
     archive_ranges();
+    snapshot_metadata();
 #ifdef _WIN32
     archive_instructions();
     archive_query_unwind();

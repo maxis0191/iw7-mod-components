@@ -280,6 +280,18 @@ void build_plan() {
     for (const auto address : {0x140240AA0ull,0x140241B15ull,0x140242C13ull}) add(address,0xFD7F8,client_tail);
     for (const auto address : {0x140180172ull,0x1401833EBull,0x14018340Bull,0x140183435ull,0x140D2BE4Aull}) add(address,0x86B17,client_flags);
     add(0x140242E22,41,characters-1,1); add(0x140242E3C,41,characters-1,1);
+    // CL_GetSnapshot preserved entity states but silently truncated the
+    // separate agentState list to24, leaving higher characterInfos invalid
+    // and their DObjs absent. Grow both snapshot objects and initialization/
+    // reset/selection strides before widening the metadata copy. Appending
+    // avoids moving unrelated camera, FX and weapon fields after39F48.
+    for(const auto address:{0x1408646D1ull,0x1408646EAull,0x140864726ull,0x1408648BDull})
+        add(address,2*client_snapshot::legacy_size,client_snapshot::pair_bytes);
+    for(const auto address:{0x14086470Dull,0x14086471Full,0x1408648E9ull,0x1408648FBull,0x14086C728ull})
+        add(address,client_snapshot::legacy_size,client_snapshot::size);
+    for(const auto address:{0x1408706ABull,0x140873602ull,0x1408738B3ull,0x1409934BFull})
+        add(address,client_snapshot::legacy_agents,client_snapshot::agent_base);
+    add(0x1409934A4,24,agents);
     // Fixed character work tables: preserve their record formats and counters.
     for (const auto field : {0x14049084Aull,0x140491BFBull,0x140AC6795ull,0x140AC683Aull,0x140AC6A76ull,0x140AC6AB4ull,0x140AC6C06ull,0x140AC6E74ull,0x140AC6EB1ull,0x140AC6F3Aull}) rip(field,0x145C51580,table8.data);
     rip(0x140AC6AD4,0x145C51582,table8.data+2);
