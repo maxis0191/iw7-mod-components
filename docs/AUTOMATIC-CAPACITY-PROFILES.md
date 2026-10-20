@@ -152,6 +152,17 @@ The retail base client/assets are reused; this is not a client/game clone.
 
 PR98 is private/Draft. The initial0c27e8b head's primary CI annotation confirms an
 account billing/spending-limit refusal, with runner_id0 and steps[]; it is not a
-hosted test PASS. A request to the owner to authorize messaging the separate
-orchestrator for normal closure/controlled abandonment of its retained blocked
-build is pending. No message was sent and its original lease was not altered.
+hosted test PASS. The owner subsequently authorized contacting the orchestrator.
+After that new GO, its original jobs were closed in their original context and
+the ordinary scheduler release was verified. The old resource block is resolved.
+
+The owner's production report invalidates the earlier visibility qualification:
+ordinary actors above24 were invisible and the dedicated crashed with C0000005.
+Main has been restored to24 and Server PR333 suspends48 deployment. The first
+private natural-supplier observation admitted no client: its GSC used an
+unsupported getmodel call, and a second session guard rejected the new mode,
+also retaining cleanup. Preserve that failed receipt. The correction reads the
+script model field (not a rendered-DObj witness), explicitly validates the pinned
+startup-only natural plan throughout the session, forbids its reload/watch arm,
+and refuses fresh engine script errors before client admission. Qualification
+still requires an actual protected client, rendered evidence and native repair.

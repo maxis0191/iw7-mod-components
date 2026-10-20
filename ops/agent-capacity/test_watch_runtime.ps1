@@ -1,6 +1,23 @@
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/Watch-Runtime.Core.ps1"
 function Reject([scriptblock]$Action){$rejected=$false;try{&$Action|Out-Null}catch{$rejected=$true};if(!$rejected){throw 'Adversarial fixture was accepted.'}}
+$naturalPlan=[pscustomobject]@{PlannedClients=1;ClientImage='C:\\fixture\\client.exe';AgentCapacity=64;PopulateAgents=$false;SkipReload=$true;Catalog=@(1..18);NaturalFixtureSHA256=('A'*64)}
+Assert-IW7CapacityClientPlan $naturalPlan
+$naturalPlan.NaturalFixtureSHA256=$null
+Reject {Assert-IW7CapacityClientPlan $naturalPlan}
+$naturalPlan.NaturalFixtureSHA256='invalid'
+Reject {Assert-IW7CapacityClientPlan $naturalPlan}
+$naturalPlan.NaturalFixtureSHA256='A'*64
+$naturalPlan.SkipReload=$false
+Reject {Assert-IW7CapacityClientPlan $naturalPlan}
+$naturalPlan.SkipReload=$true;$naturalPlan.Catalog=@()
+Reject {Assert-IW7CapacityClientPlan $naturalPlan}
+$naturalPlan.Catalog=@(1..18);$naturalPlan.PopulateAgents=$true
+Reject {Assert-IW7CapacityClientPlan $naturalPlan}
+Assert-IW7CapacityScriptLog '[Paris natural capacity] OBSERVE native=64;'
+Reject {Assert-IW7CapacityScriptLog '*********** script compile error *************'}
+Reject {Assert-IW7CapacityScriptLog '*********** script runtime error *************'}
+Reject {Assert-IW7CapacityScriptLog '[ERROR]:compiler:custom_scripts/cp/capacity_natural:52:31: unavailable call'}
 $identity=[pscustomobject]@{PID=123;CreatedUtc='2026-10-07T01:00:00.1234567Z'};$nonce='0123456789abcdef'
 $header=@{type='header';schema='iw7.capacity-watch/1';pid=123;creation_filetime=([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc();nonce=$nonce;qpc_frequency=10000000;b8_address=0x143C986B8;c0_address=0x143C986C0;max_events=64;duration_ms=10000;native_hash_requires_parent_manifest=$true;pristine=$false}
 $event=@{type='event';seq=0;kind=0;tid=77;roles=3;tick_ms=100;qpc=1000;rip_after_write=0;slots=1;b8=0;c0=0;previous_b8=0;previous_c0=0;zero_seen=0;first_nonzero=0;context_hex=('00'*1232)}

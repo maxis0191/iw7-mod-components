@@ -114,6 +114,7 @@ $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$Cand
 $plan|Add-Member NoteProperty NaturalFixtureSHA256 $NaturalFixtureSHA256
 $plan|Add-Member NoteProperty RequireSparseAgentWire ([bool]$RequireSparseAgentWire)
 $plan|Add-Member NoteProperty ClientGraphicsProfile $ClientGraphicsProfile
+Assert-IW7CapacityClientPlan $plan
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -227,6 +228,7 @@ set sv_mapRotationCurrent ""
         Assert-IW7CapacitySession $session
         $observedCrash=Get-IW7AgentNewCrash -CandidateRoot $CandidateRoot -Identity $identity -Before $crashBefore -OutputRoot $case -Cache $crashCache
         if($observedCrash){$crash=$observedCrash;if($crash.ConfirmedFatal){throw 'Correlated native fatal during private startup; dump preserved.'}}
+        Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log'))
         try{$info=& "$ops/Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $ServerPort}catch{$info=$null}
         if($info -and $info.sv_running -ceq '1' -and $info.mapname -ceq $Map -and $info.clients -ceq '0'){break}
         Start-Sleep -Milliseconds 500
@@ -241,6 +243,7 @@ set sv_mapRotationCurrent ""
     if($SkipReload){$result=[pscustomobject]@{Schema='iw7.capacity-watch-runtime/1';ReloadCommand='none';ProbeSkipped=$true;NativeCleanupConfirmed=$false}}
     else{$result=Invoke-IW7CapacityWatch $session}
     if($ClientGameRoot){
+        Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log'))
         Assert-IW7BaseVacant $ClientGameRoot
         $clientStage=[pscustomobject]@{GameRoot=$ClientGameRoot;MutableFiles=@('iw7-capacity-test-client.exe');ProfileDirectory='iw7-mod/players2';ProfileDirectories=@()}
         $clientImageTransaction=Save-IW7BaseTransaction $clientStage (Join-Path $case 'client-image-backup')
@@ -263,6 +266,7 @@ set sv_mapRotationCurrent ""
         if(!$client.Protected){throw 'Matching capacity client lacks fresh protected playable witness.'}
         $observeUntil=[datetime]::UtcNow.AddSeconds($ClientObserveSeconds)
         do{
+            Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log'))
             $newClientCrash=Get-IW7AgentNewCrash -CandidateRoot $ClientGameRoot -Identity $client.Identity -Before @() -OutputRoot $case -Cache $clientCrashCache
             if($newClientCrash){$clientCrash=$newClientCrash;throw 'Correlated native client exception; artifact retained.'}
             Update-IW7BaseClient $client|ConvertTo-Json -Compress|Add-Content (Join-Path $case 'client/protection.jsonl')
