@@ -2,6 +2,16 @@
 
 ## Correctif d'archive CP en qualification privée — 20 octobre 2026
 
+Le candidat `2d82792` corrige les modèles observés des indices42–63, puis le
+client plante à `140870775`. Son dump montre R13=`26D9D7E01`, au lieu du pointeur
+aligné `26D9D7E00`. CG_SetNextSnap utilisait encore un masque de deux words à
+`rsp+40` : l'indice64 écrit son bit dans le pointeur CG sauvegardé à`rsp+48`.
+Le nouveau candidat déplace son local sauvegardé60 vers58, place le masque de
+trois words à60–6B et inclut son troisième word dans le clear initial68–16F.
+Le frame et ses métadonnées unwind/GS restent inchangés. L'essai échoué a fermé
+les deux processus, restauré les fichiers et libéré le bail. Aucun déploiement
+de production ne découle de l'apparition partielle des modèles.
+
 Le candidat `e1e1af2` a ensuite tenu 240 secondes à 48 ordinaires avec le
 fournisseur retail, sans construction forcée ni codec forcé. Les 16 morts et
 remplacements d'indices élevés passent ; protection moteur, cheats0 et inactivity0

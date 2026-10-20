@@ -292,6 +292,14 @@ void build_plan() {
     for(const auto address:{0x1408706ABull,0x140873602ull,0x1408738B3ull,0x1409934BFull})
         add(address,client_snapshot::legacy_agents,client_snapshot::agent_base);
     add(0x1409934A4,24,agents);
+    // Keep the caller's three-word change mask off its saved cg pointer.
+    // Clear its third word with the existing entity-bitset initialization;
+    // that widened clear still ends at170, before the original GS cookie.
+    add(0x14086FBE0,0x70,0x68,1);add(0x14086FBE3,0x100,0x108);
+    add(0x14086FDAF,0x60,client_snapshot::saved_state,1);
+    add(0x140870705,0x60,client_snapshot::saved_state,1);
+    for(const auto address:{0x14086FE70ull,0x14086FE78ull,0x14086FE87ull,0x140870670ull,0x1408706D0ull})
+        add(address,0x40,client_snapshot::change_mask,1);
     // Fixed character work tables: preserve their record formats and counters.
     for (const auto field : {0x14049084Aull,0x140491BFBull,0x140AC6795ull,0x140AC683Aull,0x140AC6A76ull,0x140AC6AB4ull,0x140AC6C06ull,0x140AC6E74ull,0x140AC6EB1ull,0x140AC6F3Aull}) rip(field,0x145C51580,table8.data);
     rip(0x140AC6AD4,0x145C51582,table8.data+2);

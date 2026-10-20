@@ -163,6 +163,29 @@ static void snapshot_metadata() {
         assert(snap::legacy_agents+48*snap::agent_stride>0x39F48);
     }
     for(unsigned i=0;i<16;++i)assert(pair[i]==0xA7 && pair[snap::pair_bytes+16+i]==0xA7);
+    std::array<unsigned char,0x180> stack{};stack.fill(0xA7);
+    // Reproduce the observed cg-pointer low byte01, then exercise the new
+    // mask's producers/consumers at all82 indices without touching live locals.
+    std::uint64_t cg=0x26D9D7E00ull;
+    std::memcpy(stack.data()+0x48,&cg,8);
+    stack[0x48]|=1;std::uint64_t broken{};std::memcpy(&broken,stack.data()+0x48,8);
+    assert(broken==0x26D9D7E01ull);
+    stack.fill(0xA7);
+    std::memset(stack.data()+0x68,0,0x108);
+    std::memset(stack.data()+snap::change_mask,0,8);
+    std::memcpy(stack.data()+0x48,&cg,8);std::memcpy(stack.data()+snap::saved_state,&cg,8);
+    for(unsigned slot=0;slot<characters;++slot) {
+        std::uint32_t word{};auto* field=stack.data()+snap::change_mask+(slot>>5)*4;
+        std::memcpy(&word,field,4);word|=1u<<(slot&31);std::memcpy(field,&word,4);
+    }
+    for(unsigned slot=0;slot<characters;++slot) {
+        std::uint32_t word{};std::memcpy(&word,stack.data()+snap::change_mask+(slot>>5)*4,4);
+        assert(word&(1u<<(slot&31)));
+    }
+    std::uint64_t retained{};std::memcpy(&retained,stack.data()+0x48,8);assert(retained==cg);
+    std::memcpy(&retained,stack.data()+snap::saved_state,8);assert(retained==cg);
+    for(unsigned i=0x70;i<0x170;++i)assert(stack[i]==0);
+    for(unsigned i=0x170;i<stack.size();++i)assert(stack[i]==0xA7);
 #ifdef _WIN32
     // Actual CL_GetSnapshot min-count instruction sequence, with its immediate
     // widened. The legacy sequence must reproduce the exact24 cutoff.

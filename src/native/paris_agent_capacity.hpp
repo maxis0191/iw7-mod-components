@@ -31,6 +31,12 @@ namespace client_snapshot {
 constexpr std::uint32_t legacy_size=0x3DC78, legacy_agents=0x38D48;
 constexpr std::uint32_t agent_stride=0xC0, agent_base=legacy_size;
 constexpr std::uint32_t size=agent_base+agents*agent_stride, pair_bytes=2*size;
+// CG_SetNextSnap's former two-word character-change mask at rsp+40 ran
+// into its saved cg pointer at48. Its60 local can move to an unused58
+// slot; the new three-word mask then fits60..6B, before entity bits at70.
+constexpr std::uint32_t change_mask=0x60, saved_state=0x58;
+constexpr std::uint32_t change_words=(characters+31)/32;
+static_assert(saved_state+8==change_mask && change_mask+change_words*4<=0x70);
 static_assert(legacy_agents+24*agent_stride==0x39F48);
 static_assert(size==0x40C78 && pair_bytes==0x818F0);
 }
