@@ -1,5 +1,11 @@
 # IW7-Mod components
 
+The [automatic capacity profile candidate](docs/AUTOMATIC-CAPACITY-PROFILES.md)
+removes per-server manual archive extraction through one-file onboarding and
+automatic standard/64-v2 restarts. Native compilation and guarded fresh-cache
+gameplay qualification remain pending; unchanged community clients still require
+an initial distribution update. It is not deployed.
+
 Optional [owner-only native console access](docs/OWNER-CHEATS.md) keeps public
 `sv_cheats=0`, authenticates the owner and server with pinned keys, and retains
 the standard console commands. Source/build/runtime qualification is separate.

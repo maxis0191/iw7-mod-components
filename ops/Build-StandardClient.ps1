@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$OwnerCheats,[switch]$Capacity64)
+param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$OwnerCheats,[switch]$Capacity64,[switch]$AutomaticProfiles)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw | ConvertFrom-Json).Standard
@@ -7,6 +7,8 @@ $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw
 . "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
 . "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
 . "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1"
+. "$PSScriptRoot/auto-capacity/Overlay.Core.ps1"
+if($AutomaticProfiles -and (!$Capacity64 -or $OwnerCheats)){throw 'Automatic profiles require the ordinary capacity-capable client, without owner-only console additions.'}
 $root=[IO.Path]::GetFullPath($NativeRoot).TrimEnd('\','/')
 if(![IO.Path]::IsPathFullyQualified($NativeRoot) -or $NativeRoot -match '[\x00-\x1f"%!]'){throw 'Absolute literal NativeRoot required.'}
 $cursor=$root
@@ -16,6 +18,7 @@ while($cursor){
 }
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
+    Set-IW7AutoCapacityOverlay $root $repo $false
     Remove-IW7CapacityPeerOverlay $root
     Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
@@ -57,11 +60,13 @@ Remove-IW7OwnerCheatsOverlay $root
     $ownerCheatsOverlay=$null
     $capacityPeerOverlay=$null
     $capacityBuild=$null
+    $autoProfileOverlay=$null
     if($OwnerCheats){$ownerCheatsOverlay=Add-IW7OwnerCheatsOverlay $root $repo;$cutsceneOverlay=Add-IW7CutsceneOverlay $root $repo}
     if($Capacity64){
         $capacityBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled $true -PortOnly $true
         $capacityPeerOverlay=Add-IW7CapacityPeerOverlay $root
     }
+    if($AutomaticProfiles){$autoProfileOverlay=Set-IW7AutoCapacityOverlay $root $repo $true}
     Push-Location $root
     try {
         & ./tools/premake5.exe --file=paris-build-only.lua vs2022
@@ -80,13 +85,20 @@ Remove-IW7OwnerCheatsOverlay $root
         $allowed=@()
         if($OwnerCheats){$allowed+=@('src/client/component/auth.cpp','src/client/component/command.cpp','src/client/component/dvar_cheats.cpp','src/client/component/gsc/script_extension.cpp','src/client/component/gsc/script_loading.cpp','src/client/component/input.cpp')}
         if($Capacity64){$allowed+=@('src/client/component/auth.cpp','src/client/component/party.cpp')}
+        if($AutomaticProfiles){$allowed+=@($autoProfileOverlay.Files.Path)}
         if(@($changed|Where-Object{$_ -cnotin $allowed}).Count){throw 'Build modified unowned tracked client source.'}
         foreach($row in $ownerCheatsOverlay.Files){
             $peer=@($capacityPeerOverlay.Files|Where-Object Name -CEQ $row.Name)
             $expected=if($peer.Count){$peer[0].AfterSHA256}else{$row.AfterSHA256}
             if((Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$row.Name))).Hash -cne $expected){throw 'Build modified owner-cheats input.'}
         }
-        foreach($row in $capacityPeerOverlay.Files){if((Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$row.Name))).Hash -cne $row.AfterSHA256){throw 'Build modified capacity peer input.'}}
+        foreach($row in $capacityPeerOverlay.Files){
+            $owned=@($autoProfileOverlay.Files|Where-Object Path -CEQ ('src/client/component/'+$row.Name))
+            $expected=if($owned.Count){$owned[0].AfterSHA256}else{$row.AfterSHA256}
+            if((Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$row.Name))).Hash -cne $expected){throw 'Build modified capacity peer input.'}
+        }
+        foreach($row in $autoProfileOverlay.Files){if((Get-FileHash -LiteralPath (Join-Path $root $row.Path)).Hash -cne $row.AfterSHA256){throw 'Build modified automatic profile input.'}}
+        foreach($row in $autoProfileOverlay.Added){if((Get-FileHash -LiteralPath (Join-Path $root $row.Path)).Hash -cne $row.SHA256){throw 'Build modified automatic profile component.'}}
     }else{
         git -C $root diff --quiet HEAD
         if($LASTEXITCODE){throw 'Build unexpectedly modified tracked standard client source.'}
@@ -111,6 +123,9 @@ Remove-IW7OwnerCheatsOverlay $root
     $manifest.CapacityPeerOverlay=$capacityPeerOverlay
     $manifest.CapacityPeerHelperSHA256=if($capacityPeerOverlay){(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1").Hash}else{$null}
     $manifest.CapacityLauncherSHA256=if($Capacity64){(Get-FileHash -LiteralPath (Join-Path $output 'Launch-IW7-Paris48.bat')).Hash}else{$null}
+    $manifest.AutomaticProfiles=[bool]$AutomaticProfiles
+    $manifest.AutoProfileOverlay=$autoProfileOverlay
+    $manifest.AutoProfileRecipeSHA256=if($AutomaticProfiles){(Get-FileHash -LiteralPath "$PSScriptRoot/auto-capacity/Overlay.Core.ps1").Hash}else{$null}
     $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $output 'build-manifest.json')
     Write-Output "Prepared standard client: $output"
 }

@@ -2,8 +2,27 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "auto_capacity_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/auto_capacity_test.ps1",
+        "-Compile"
+      ]
+    },
+    {
       "id": "capacity_peer_overlay",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/capacity_peer_overlay_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/capacity_peer_overlay_test.ps1"
+      ]
     },
     {
       "id": "cutscene_test",
