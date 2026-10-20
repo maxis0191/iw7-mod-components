@@ -172,7 +172,7 @@ template<std::size_t N> void sequence(std::uintptr_t address,
     for(std::size_t i=0;i<N;++i)add(address+i,before[i],after[i],1);
 }
 void unwind_field(const animation_archive::query_patch& item) {
-    // These exact non-executable .rdata fields describe the three changed
+    // These exact static .rdata fields describe the three changed
     // stack frames, chained register saves and GS cookie locations.
     MEMORY_BASIC_INFORMATION info{};
     if(item.address<0x1416CCF0C || item.address+item.width>0x1416E29C4 ||
@@ -182,7 +182,8 @@ void unwind_field(const animation_archive::query_patch& item) {
     const auto start=reinterpret_cast<std::uintptr_t>(info.BaseAddress);
     const auto protection=info.Protect&0xff;
     if(item.address<start || item.address-start+item.width>info.RegionSize ||
-       (protection!=PAGE_READONLY && protection!=PAGE_READWRITE && protection!=PAGE_WRITECOPY))
+       (protection!=PAGE_READONLY && protection!=PAGE_READWRITE && protection!=PAGE_WRITECOPY &&
+        protection!=PAGE_EXECUTE_READ && protection!=PAGE_EXECUTE_READWRITE && protection!=PAGE_EXECUTE_WRITECOPY))
         throw std::runtime_error("Capacity query requires static readable unwind data");
     std::uint32_t actual{};std::memcpy(&actual,reinterpret_cast<void*>(item.address),item.width);
     if(actual!=item.before)throw std::runtime_error("Capacity query unwind signature differs");
