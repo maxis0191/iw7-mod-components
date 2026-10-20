@@ -733,10 +733,12 @@ runtime flags; a scheduler-only overlay does not prove runtime zero-GSC,
 privacy, protection or observer overhead.
 
 The Standard native build has not been performed for this integration. The
-existing builder releases its resource job automatically; its full-build
-NoExit/original-job containment, artifact inventory and Root review before
-release still need a separately reviewed execution path. No previous standalone
-packet qualifies that lifecycle. `EnabledCfcaMustRemainRefused=true` and the
+ordinary builder path releases its resource job automatically; the controlled
+path uses the retained-release hook. A reviewed physical NoExit caller and
+parent were supplied for attempt A, which reached only the pre-build guard.
+Native child containment, compiled artifact inventory and full-build review
+before release remain unqualified. No previous standalone packet qualifies that
+lifecycle. `EnabledCfcaMustRemainRefused=true` and the
 other stopped routes remain unchanged. The existing loading-hook Source test
 previously passed its bounded `-MainEngineDebuggerSourceOnly` selection with 57 assertions
 and exit zero, before its legacy imports. It exercised real guards and overlay
@@ -758,14 +760,31 @@ and `WorkingDirectory` arguments for Premake then MSBuild. It must return
 exactly one `Int32` exit code; nonzero or another output type fails the stage.
 Controlled calls retain the original argv and inherited environment and do not
 consult a previous `LASTEXITCODE`. This connection is not an H1 direct-compiler
-policy for MSBuild. The external full-build owner, durable NoExit caller, job
-containment, artifact inventory and review-before-release remain to be supplied
-and qualified separately. The extended `-MainEngineDebuggerSourceOnly`
+policy for MSBuild. The supplied external owner and durable NoExit caller do not
+qualify native job containment, compiled artifacts or a completed full-build
+review-before-release. The prior extended `-MainEngineDebuggerSourceOnly`
 selection passed with 102 assertions and exit zero, exercising real controlled
 guards, forwarding and stage branches with fake callbacks. It did not invoke
 the whole builder, resource Core, native tools, SDK, registry or lease. This
 Source result extends the earlier 57-assertion selection; neither result
 qualifies a full native build or the external NoExit lifecycle.
+
+The first controlled full-build attempt stopped at Stage0, before Premake or
+MSBuild: the overlay incorrectly appended LF to the pinned a99 scheduler blob,
+whose final line has no newline. Its source guard therefore refused the clean
+checkout. That failed attempt completed normal canonical release and physical
+exit one with its retained guards closed; no C++ build stage ran. The correction
+preserves this exact EOF and still refuses added LF or trailing whitespace.
+The revised `-MainEngineDebuggerSourceOnly` selection passed with 107 assertions
+and exit zero, including the real overlay's no-newline and added-LF cases with
+fake Git and owned synthetic Source files. It supplied no NativeRoot and did
+not invoke the whole builder, providers, SDK, native tools or a resource lease.
+The earlier 102- and 57-assertion results remain historical Source evidence.
+Attempt A's parent launched with `-NoExit -File` remained at a prompt after its
+child returned one; the authenticated parent was then closed with
+`Environment.Exit(1)` using its retained original code. That narrow closure does
+not prove a universal normal terminal command. These results establish no
+full-TU, game, deployment or performance acceptance; cfca remains refused.
 
 For a specific script suspect, bracket a region only in a separate lab candidate:
 

@@ -149,8 +149,10 @@ void* main_frame_stub() {
 void other() { untouched(); }
 }
 '@
-    $baseline=$baseline.Replace("`r`n","`n")+"`n"
+    # Like the exact a99 blob, this Source fixture has no final newline.
+    $baseline=$baseline.Replace("`r`n","`n")
     $converted=Convert-IW7MainEngineDebuggerScheduler $baseline
+    Check (!$baseline.EndsWith("`n",[StringComparison]::Ordinal) -and !$converted.EndsWith("`n",[StringComparison]::Ordinal)) 'The fixed a99 no-newline EOF must survive conversion.'
     Check ($converted.Split([string[]]@('paris_debugger::scope2 paris_main_scope;'),[StringSplitOptions]::None).Count -eq 2) 'Exactly one real scope2 insertion required.'
     Check ($converted.Contains('void other() { untouched(); }') -and $converted.IndexOf('gsl::finally') -lt $converted.IndexOf('paris_debugger::scope2') -and $converted.IndexOf('paris_debugger::scope2') -lt $converted.IndexOf('return utils::hook::invoke')) 'Scope2 must end before the existing finally callbacks; unrelated Source is preserved.'
     Check (!$converted.Contains('paris_server_scope') -and !$converted.Contains('frame_capture') -and !$converted.Contains('paris_function_scope')) 'Only main-engine instrumentation is allowed.'
@@ -171,7 +173,7 @@ void other() { untouched(); }
         Check ($args.Count -eq 4 -and $args[0]-ceq'-C' -and $args[1]-ceq$native -and $args[2]-ceq'show' -and $args[3]-ceq'a99c04937513530648573fd4ca2a05321a90b4a5:src/client/component/scheduler.cpp') 'Only the fake fixed Source show is allowed.'
         Set-Variable LASTEXITCODE -Scope 1 -Value 0
         Set-Variable gitCalls -Scope 1 -Value ($gitCalls+1)
-        $baseline.Substring(0,$baseline.Length-1) -split "`n"
+        $baseline -split "`n"
     }
     try {
         $null=[IO.Directory]::CreateDirectory($component);$null=[IO.Directory]::CreateDirectory($ownerSources)
@@ -180,6 +182,10 @@ void other() { untouched(); }
         foreach($name in $names){[IO.File]::WriteAllText((Join-Path $ownerSources $name),('// SYNTHETIC Source '+$name),[Text.UTF8Encoding]::new($false))}
         Refuse {Add-IW7MainEngineDebuggerOverlay $native 'cfca45b11ee14641945b9a264a95638387f48a4a' $owner}
         Check ($gitCalls -eq 0) 'Refused fork must perform no Source I/O callback.'
+        $foreignFinalLF=$baseline+"`n"
+        [IO.File]::WriteAllText($schedulerPath,$foreignFinalLF,[Text.UTF8Encoding]::new($false))
+        Refuse {Add-IW7MainEngineDebuggerOverlay $native 'a99c04937513530648573fd4ca2a05321a90b4a5' $owner}
+        Check ([IO.File]::ReadAllText($schedulerPath) -ceq $foreignFinalLF -and @($names|Where-Object{[IO.File]::Exists((Join-Path $component $_))}).Count -eq 0) 'An added final LF must remain untouched with zero Source copies written.'
         $foreignTail=$baseline+" `t`n`n"
         [IO.File]::WriteAllText($schedulerPath,$foreignTail,[Text.UTF8Encoding]::new($false))
         Refuse {Add-IW7MainEngineDebuggerOverlay $native 'a99c04937513530648573fd4ca2a05321a90b4a5' $owner}
@@ -214,6 +220,7 @@ void other() { untouched(); }
         [IO.File]::Delete((Join-Path $component $names[0]))
         $receipt=Add-IW7MainEngineDebuggerOverlay $native 'a99c04937513530648573fd4ca2a05321a90b4a5' $owner
         Check ([IO.File]::ReadAllText($schedulerPath) -ceq $converted) 'The real overlay must write the exact pure seam result.'
+        Check (![IO.File]::ReadAllText($schedulerPath).EndsWith("`n",[StringComparison]::Ordinal)) 'The real accepted overlay must preserve the a99 no-newline EOF.'
         Check ($receipt.Files.Count -eq 4 -and !$receipt.GSCOverlay -and !$receipt.GUIOverlay -and !$receipt.CapacityOverlay) 'Receipt must expose the bounded actual Source scope.'
         $changed=@('src/client/component/scheduler.cpp')
         $untracked=@($names|ForEach-Object{'src/client/component/'+$_})

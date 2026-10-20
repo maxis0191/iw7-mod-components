@@ -37,9 +37,9 @@ function Add-IW7MainEngineDebuggerOverlay([string]$NativeRoot,[string]$Commit,[s
         $guardPath=Join-Path $NativeRoot $guardRelative
         Assert-IW7MainEngineDebuggerPathAttributes ([IO.File]::GetAttributes($guardPath))
     }
-    # The fixed a99 scheduler blob is LF-terminated. Preserve every native
-    # output line, including final empty lines; normalize CRLF only below.
-    $base=((git -C $NativeRoot show ($Commit+':'+$relative)) -join "`n")+"`n"
+    # The fixed a99 scheduler blob has no final newline. Rejoin its native
+    # output lines without inventing one; normalize CRLF only below.
+    $base=(git -C $NativeRoot show ($Commit+':'+$relative)) -join "`n"
     if($LASTEXITCODE){throw 'Pinned Standard scheduler could not be read.'}
     $overlay=Convert-IW7MainEngineDebuggerScheduler $base
     $raw=[Text.UTF8Encoding]::new($false,$true).GetBytes($overlay)
