@@ -20,6 +20,14 @@ try {
     Assert-Test ($plan.RunPlan.PhysicalBytes -eq 12GB -and $plan.RunPlan.CommitBytes -eq 12GB) 'Full server/client budget absent.'
     $debug=New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -Debugger
     Assert-Test ($debug.RunPlan.PhysicalBytes -eq 18GB -and $debug.RunPlan.CommitBytes -eq 19GB) 'Debugger overhead omitted.'
+    Assert-Refused { New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -Capacity64 } 'Capacity client accepted without debugger.'
+    $capacity=New-IW7BaseClientPlan -GameRoot $game -ClientImage "$game/test-client.exe" -ServerPort 27116 -ClientPort 27117 -Debugger -Capacity64
+    $capacityArgs=Get-IW7BaseClientArguments $capacity 'fixture'
+    Assert-Test ($capacityArgs -ceq ((Get-IW7BaseClientArguments $debug 'fixture')+' -paris-capacity-64 +set paris_capacity_peer_port 27116')) 'Capacity client peer identity differs.'
+    foreach($badCapacity in @('true',1,$null)){
+        $invalidCapacity=$capacity.PSObject.Copy();$invalidCapacity.Capacity64=$badCapacity
+        Assert-Refused { Get-IW7BaseClientArguments $invalidCapacity 'fixture' } 'Nonboolean capacity accepted.'
+    }
     # A cfg on disk cannot prove startup applies authentication or latched
     # graphics. Verify the actual launch boundary uses one explicit value per
     # setting, independently of any existing owner config or exec search path.

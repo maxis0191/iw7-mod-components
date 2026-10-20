@@ -14,8 +14,50 @@ function Assert-IW7CapacityPageAdmission($Plan,$Identity,$Lease,$Process) {
     }
 }
 
+function Save-IW7CapacityNativeText($Reader,[string]$Output,$Identity,$ParentProof) {
+    if(Test-Path -LiteralPath $Output){throw 'Fresh executable-text output required.'}
+    $cursor=Split-Path $Output -Parent
+    while($cursor){
+        if((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Redirected text output refused.'}
+        $cursor=Split-Path $cursor -Parent
+    }
+    $null=[IO.Directory]::CreateDirectory($Output)
+    $record=[ordered]@{schema='iw7.capacity-native-text/1';identity=$Identity;parent_proof=$ParentProof;
+        complete=$false;all_pages_stable=$true;sections=@();target_written=$false;target_suspended=$false;global_snapshot_coherent=$false;
+        data_sections_captured=$false;pristine=$false;read_calls_before=$Reader.ReadCalls;read_bytes_before=$Reader.ReadBytes}
+    try{
+        foreach($index in @(0,1)){
+            $Reader.AssertAlive()
+            $first=$Reader.ReadTextSection($index);$second=$Reader.ReadTextSection($index)
+            $changed=@([IW7CapacityPages]::ChangedTextPages($index,$first,$second))
+            if($changed.Count -gt 128){throw 'More than 128 changed executable pages; refuse unbounded second-page retention.'}
+            if($changed.Count){$record.all_pages_stable=$false}
+            $name='native-text-'+$index+'.bin'
+            $stream=[IO.File]::Open((Join-Path $Output $name),'CreateNew','Write','None')
+            try{$stream.Write($first,0,$first.Length)}finally{$stream.Dispose()}
+            $changedRows=@(foreach($offset in $changed){
+                $secondName='native-text-'+$index+'-changed-'+$offset.ToString('X')+'.bin'
+                $size=[math]::Min(4096,$second.Length-$offset)
+                $stream=[IO.File]::Open((Join-Path $Output $secondName),'CreateNew','Write','None')
+                try{$stream.Write($second,$offset,$size)}finally{$stream.Dispose()}
+                [ordered]@{offset=$offset;bytes=$size;second_path=$secondName;address=('0x'+([IW7CapacityPages]::TextSectionAddress($index)+$offset).ToString('X'))}
+            })
+            $record.sections+=@([ordered]@{index=$index;address=('0x'+[IW7CapacityPages]::TextSectionAddress($index).ToString('X'));
+                bytes=$first.Length;path=$name;stable_double_read=($changed.Count -eq 0);changed_pages=$changedRows;
+                second_sha256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([byte[]]$second));
+                sha256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([byte[]]$first))})
+        }
+        $Reader.AssertAlive();$record.complete=$true
+    }catch{$record.failure=$_.Exception.Message;throw}
+    finally{
+        $record.read_calls=$Reader.ReadCalls-$record.read_calls_before;$record.read_bytes=$Reader.ReadBytes-$record.read_bytes_before
+        $stream=[IO.File]::Open((Join-Path $Output 'manifest.local.json'),'CreateNew','Write','None')
+        try{$bytes=[Text.Encoding]::UTF8.GetBytes(($record|ConvertTo-Json -Depth 9));$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}
+    }
+}
+
 function Save-IW7CapacityCodePages($Reader,[string]$Output,$Identity,
-    [ValidateSet("reset-callers","reset-entry-targets","writer-sites-20261019","writer-path-20261019")][string]$PagePlan="reset-callers",$ParentProof=$null) {
+    [ValidateSet("reset-callers","reset-entry-targets","writer-sites-20261019","writer-path-20261019","binding-continuation-20261019")][string]$PagePlan="reset-callers",$ParentProof=$null) {
     if (Test-Path -LiteralPath $Output) { throw 'Fresh page output required.' }
     $cursor=Split-Path $Output -Parent
     while ($cursor) {
@@ -36,6 +78,7 @@ function Save-IW7CapacityCodePages($Reader,[string]$Output,$Identity,
             if ($first.Length -ne 4096 -or $second.Length -ne 4096) { throw 'Partial page read.' }
             $owner=if ($PagePlan -eq 'writer-sites-20261019') { 'observed-writer-site' }
                 elseif ($PagePlan -eq 'writer-path-20261019') { 'selected-writer-path' }
+                elseif ($PagePlan -eq 'binding-continuation-20261019') { 'selected-binding-continuation' }
                 elseif (($PagePlan -eq 'reset-callers' -and $index -lt 4) -or ($PagePlan -eq 'reset-entry-targets' -and $index -eq 0)) { '140488520' } else { '140B20760' }
             $name=$owner+'-'+$address.ToString('X16')+'.bin'
             $stream=[IO.File]::Open((Join-Path $Output $name),'CreateNew','Write','None')

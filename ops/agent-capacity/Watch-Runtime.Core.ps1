@@ -1,17 +1,27 @@
 # No launch, staging, socket or reservation on import.
 . "$PSScriptRoot/../Agent-Scenario.Core.ps1"
+function Get-IW7CapacitySessionMap($Session) {
+    if($Session.Plan.PSObject.Properties['Map']){
+        if($Session.Plan.Map -cnotin @('cp_zmb','cp_rave','cp_disco','cp_town','cp_final')){throw 'Unknown fixed capacity map.'}
+        return $Session.Plan.Map
+    }
+    'cp_zmb'
+}
 function Get-IW7CapacityLeaseRetained($Lease,[bool]$LeaseReleased) {
     [bool]$Lease -and !$LeaseReleased
 }
 function New-IW7CapacityRconPacket([string]$Secret,[string]$Command) {
     if($Secret -cnotmatch '^[A-Za-z0-9_-]{32,64}$' -or
-       ($Command -cnotmatch '^paris_capacity_arm [A-Za-z0-9_]{16,64}$' -and $Command -cnotin @('paris_capacity_stop','map_restart','quit'))) { throw 'Fixed capacity command/secret contract required.' }
+       ($Command -cnotmatch '^paris_capacity_arm [A-Za-z0-9_]{16,64}$' -and $Command -cnotin @('paris_capacity_stop','map_restart','map cp_zmb','quit','set paris_capacity_pool_validate 1'))) { throw 'Fixed capacity command/secret contract required.' }
     # Pin77 network::send defaults to space separator; rcon callback splits secret.
     ,[byte[]]([byte[]](255,255,255,255)+[Text.Encoding]::ASCII.GetBytes('rcon '+$Secret+' '+$Command))
 }
 function Assert-IW7CapacitySession($Session) {
     if(!$Session -or $Session.ServerPort -lt 27100 -or $Session.ServerPort -gt 27999 -or
-       !$Session.Plan.Debugger -or $Session.Plan.PlannedClients -ne 0 -or $Session.Plan.StockCopied -or $Session.Plan.MainDeployed) { throw 'Owned server-only debugger plan required.' }
+       !$Session.Plan.Debugger -or $Session.Plan.PlannedClients -notin @(0,1) -or $Session.Plan.StockCopied -or $Session.Plan.MainDeployed) { throw 'Owned private debugger plan required.' }
+    if($Session.Plan.PlannedClients -eq 1 -and (!$Session.Plan.ClientImage -or
+       ($Session.Plan.AgentCapacity -eq 64 -and !$Session.Plan.PopulateAgents) -or
+       ($Session.Plan.AgentCapacity -eq 24 -and (!$Session.Plan.SkipReload -or $Session.Plan.PopulateAgents)))){throw 'Declared matching construction client or unchanged startup baseline required.'}
     Assert-IW7BaseIdentity $Session.Identity
     if($Session.Handle.HasExited){throw 'Owned dedicated exited.'}
     $leases=@((Get-IW7ResourceStatus).Leases|Where-Object Token -CEQ $Session.LeaseToken)
@@ -31,22 +41,39 @@ function Assert-IW7CapacitySession($Session) {
 function Send-IW7CapacityRcon($Session,[string]$Command) {
     Assert-IW7CapacitySession $Session
     $packet=New-IW7CapacityRconPacket $Session.Secret $Command
-    if($Command -ceq 'quit' -or $Command -ceq 'map_restart' -or $Command.StartsWith('paris_capacity_arm ',[StringComparison]::Ordinal)) {
+    if($Command -in @('quit','map_restart','map cp_zmb') -or $Command.StartsWith('paris_capacity_arm ',[StringComparison]::Ordinal)) {
         if(!$Session.VacancyProof -or $Session.VacancyProof.Seconds -lt 30 -or
            ([datetime]::UtcNow- $Session.VacancyProof.ObservedUtc).TotalSeconds -gt 3){throw 'Fresh continuous 30-second vacancy proof required.'}
         $info=& "$PSScriptRoot/../Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $Session.ServerPort
-        if($info.clients -cne '0' -or $info.sv_running -cne '1' -or $info.mapname -cne 'cp_zmb'){throw 'Current vacancy differs; command refused.'}
+        if($info.clients -cne '0' -or $info.sv_running -cne '1' -or $info.mapname -cne (Get-IW7CapacitySessionMap $Session)){throw 'Current vacancy differs; command refused.'}
     }
     $udp=[Net.Sockets.UdpClient]::new()
     try{$udp.Connect('127.0.0.1',$Session.ServerPort);$null=$udp.Send($packet,$packet.Length)}finally{$udp.Dispose()}
     # Transmission is not command acknowledgement. Never return/log the secret.
+}
+function Read-IW7CapacityServerInfo($Session) {
+    & "$PSScriptRoot/../Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $Session.ServerPort
+}
+function Wait-IW7CapacityClientDeparture($Session) {
+    # Called only after exact fatal-client closure and successful restoration.
+    # A residual connection grants no mutation: wait for actual zero, then the
+    # ordinary stop still requires its own fresh continuous 30-second proof.
+    $deadline=[datetime]::UtcNow.AddSeconds(180)
+    do {
+        Assert-IW7CapacitySession $Session
+        $info=Read-IW7CapacityServerInfo $Session
+        if($info.sv_running -cne '1' -or $info.mapname -cne (Get-IW7CapacitySessionMap $Session) -or $info.clients -cnotin @('0','1')){throw 'Private post-fatal roster differs; preserve it.'}
+        if($info.clients -ceq '0'){return}
+        Start-Sleep -Milliseconds 1000
+    }while([datetime]::UtcNow -lt $deadline)
+    throw 'Fatal client departure not witnessed; preserve server and reservation.'
 }
 function Wait-IW7CapacityVacant($Session,[int]$Seconds=30,[int]$TimeoutSeconds=90) {
     $since=$null;$deadline=[datetime]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
         Assert-IW7CapacitySession $Session
         $info=& "$PSScriptRoot/../Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $Session.ServerPort
-        if($info.clients -cne '0' -or $info.sv_running -cne '1' -or $info.mapname -cne 'cp_zmb'){throw 'Candidate occupied or wrong map; preserve it.'}
+        if($info.clients -cne '0' -or $info.sv_running -cne '1' -or $info.mapname -cne (Get-IW7CapacitySessionMap $Session)){throw 'Candidate occupied or wrong map; preserve it.'}
         if(!$since){$since=[datetime]::UtcNow}
         if(([datetime]::UtcNow-$since).TotalSeconds -ge $Seconds){
             $prior=$Session.PSObject.Properties['VacancyProof']
@@ -155,12 +182,13 @@ function Invoke-IW7CapacityWatch($Session) {
     if(!$journal -or !$journal.Armed){throw 'No actual canary/armed acknowledgement; no restart authorized.'}
     # Recheck current UDP just before this ONE restart; 30s vacancy was established.
     Wait-IW7CapacityVacant $Session -Seconds 0 -TimeoutSeconds 3
-    Send-IW7CapacityRcon $Session 'map_restart'
+    $reload=if($Session.PSObject.Properties['Plan'] -and $Session.Plan.PopulateAgents){'map cp_zmb'}else{'map_restart'}
+    Send-IW7CapacityRcon $Session $reload
     $restartSent=[datetime]::UtcNow.ToString('o');$deadline=[datetime]::UtcNow.AddSeconds(12)
     do{$journal=Read-IW7CapacityOwnedJournal $Session;if($journal -and $journal.Complete){break};Start-Sleep -Milliseconds 50}while([datetime]::UtcNow -lt $deadline)
     Send-IW7CapacityRcon $Session 'paris_capacity_stop'
     if(!$journal -or !$journal.Complete){throw 'Disarm/removal acknowledgement absent; retain lease until exact owned exit.'}
-    [pscustomobject]@{Schema='iw7.capacity-watch-runtime/1';RestartSentUtc=$restartSent;CanaryPassed=$true;NativeCleanupConfirmed=$true;
+    [pscustomobject]@{Schema='iw7.capacity-watch-runtime/1';RestartSentUtc=$restartSent;ReloadCommand=$reload;CanaryPassed=$true;NativeCleanupConfirmed=$true;
         WriteEvents=@($journal.Events|Where-Object kind -EQ 1).Count;CanaryOnly=(@($journal.Events|Where-Object kind -EQ 1).Count -eq 0);
         Events=$journal.Events;Failures=$journal.Complete.failures;CoveredRoles=$journal.Complete.covered_roles;
         WriterProven=$false;GlobalInitCoverage=$false;PatchReady=$false;JournalRelative=$Session.JournalRelative}
@@ -178,4 +206,38 @@ function Stop-IW7CapacityOwnedServer($Session) {
     }
     if(!$Session.Handle.WaitForExit(5000)){throw 'Owned exit unconfirmed; preserve lease and snapshots.'}
     [pscustomobject]@{Code=$Session.Handle.get_ExitCode();Kind=$(if($forced){'forced'}else{'quit'});RequestError=$null}
+}
+function Stop-IW7CapacityConfirmedFatal($Session,$Crash) {
+    Assert-IW7CapacitySession $Session
+    if(!$Crash -or !$Crash.ConfirmedFatal -or !$Crash.Report.correlated -or
+       $Crash.Report.expected_pid -ne $Session.Identity.PID -or
+       $Crash.Report.image.sha256 -ine $Session.Identity.SHA256 -or
+       (Get-FileHash -LiteralPath $Crash.Artifact).Hash -ine $Crash.Report.dump.sha256){throw 'Same retained fatal artifact/image required.'}
+    $dialog=Read-IW7AgentFatalDialog $Session.Identity
+    if(!(Test-IW7AgentFatalEvidence $Crash.Report $dialog $Crash.OriginalDumpName)){throw 'Current exact fatal dialog absent; preserve process.'}
+    Assert-IW7CapacitySession $Session
+    $Session.Handle.Terminate(3758096385)
+    if(!$Session.Handle.WaitForExit(5000)){throw 'Exact fatal process exit not confirmed; preserve reservation.'}
+    [pscustomobject]@{Code=$Session.Handle.get_ExitCode();Kind='confirmed-fatal-recovery';RequestError=$null}
+}
+function Stop-IW7CapacityServerWithDiagnosis($Session,[string[]]$CrashBefore,[string]$OutputRoot,[hashtable]$CrashCache) {
+    try{
+        Send-IW7CapacityRcon $Session 'paris_capacity_stop'
+        return Stop-IW7CapacityOwnedServer $Session
+    }catch{
+        $original=$_
+        # The fatal dialog is published only after writing/compressing its dump.
+        # Missing UDP alone still never grants termination authority.
+        $deadline=[datetime]::UtcNow.AddSeconds(45)
+        do{
+            if($Session.Handle.HasExited){return [pscustomobject]@{Code=$Session.Handle.get_ExitCode();Kind='exited-during-diagnosis';RequestError=$original.Exception.Message}}
+            $found=Get-IW7AgentNewCrash -CandidateRoot $Session.CandidateRoot -Identity $Session.Identity -Before $CrashBefore -OutputRoot $OutputRoot -Cache $CrashCache
+            if($found){
+                $Session|Add-Member -Force NoteProperty DiagnosedCrash $found
+                if($found.ConfirmedFatal){return Stop-IW7CapacityConfirmedFatal $Session $found}
+            }
+            Start-Sleep -Milliseconds 250
+        }while([datetime]::UtcNow -lt $deadline)
+        throw $original
+    }
 }

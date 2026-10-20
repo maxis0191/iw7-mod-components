@@ -1,4 +1,307 @@
-# Capacité native : préparer un port cohérent vers 48 agents
+# Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
+
+## Qualification64-v2 avec le client standard — 19 octobre2026
+
+La série réelle sur les cinq cartes passe48 ordinaires +2 spéciaux et24 morts/
+remplacements par carte : Spaceland108 relevés/300s, Beast112/120s, Rave105/300s,
+Shaolin110/120s et Attack109/120s. Chaque cas exige le hook GSC48, la protection
+moteur fraîche avec cheats0/inactivity0, les64 constructions natives et de vrais
+indices64+ explicitement écrits sur7 bits. Les processus sortent, les fichiers
+gérés/profils restaurent et les baux sont libérés. Spaceland rejoint ensuite Beast
+avec le même client et75 noms libres ; Beast à froid conserve78 noms libres.
+
+Deux préparations Attack ont échoué avant remplissage : le boss géant précréé
+occupait déjà un agent et sa réservation. Le journal identifie crab_boss/axis ;
+la fixture conserve maintenant ce rôle, ainsi que les alliés, et ne les compte
+pas parmi ses50 hostiles. La politique de production continue de compter toutes
+les places réellement occupées/réservées. Aucun état de quête n'est forcé.
+
+L'audit strict Spaceland reste faux à cause d'un changement bancaire observé sur
+Main. Les audits distincts prouvent la restauration de nos fichiers gérés et
+l'absence de modification du Main statique ; les nouveaux octets bancaires sont
+préservés et leur auteur n'est pas attribué. Ce résultat n'est pas renommé en
+succès d'audit strict. Les quatre autres cas ont aussi l'audit strict vrai.
+
+Les reçus et SHA256 complets sont conservés dans
+[le bilan structuré](agent-capacity-qualification-20261019.json). Le serveur
+Spaceland donne20Hz médians, minimum19,685 sur269 fenêtres pendant l'occupation
+maintenue. La comparaison instrumentée24/0 contre48/2 passe :20Hz serveur médians dans
+les deux cas,30,2991 puis30,3101 rappels de présentation/s médians et intervalles
+maximaux50,7308 puis51,0131ms. La mémoire privée client observée passe de8810,9
+à8863,3MiB ; celle du dédié de1212,3 à1212,4MiB. Ces observations ne mesurent pas
+la différence avec une allocation native stock24, les deux pools restant64. Ces tests
+utilisent un seul client privé en1280×720 réduit sous limite30 ; ils ne constituent
+pas une acceptation propriétaire, WAN, quatre joueurs ou une garantie sans lag.
+Le build de livraison reprend le correctif vocal PR94 fusionné pendant ces essais.
+Il compile (dédié privé2010484C, normal1EC9BB6D, client39AA01F1), passe le smoke
+normal et un nouveau48+2/110 relevés/24 remplacements/120s suivi de Beast occupé.
+Les358 sources natives du client, son projet généré et son wrapper sont identiques
+à ceux du client E867 testé sur les cinq cartes ; les deux ports/recettes peer
+correspondent aussi. L'archive finale D74459FE contient ce client39AA et son reçu.
+Ces essais n'activent pas Main ; les PR95/328, leurs contrôles de sources et la
+promotion gardée restent à terminer côté serveur.
+
+## Delta indépendant des agents — contrat64-v2 en qualification
+
+Les30 listes entityState actives sont bien à7 bits (21 descripteurs distincts),
+mais ce n'est pas le seul transport de l'identité. MSG_WriteDeltaAgentState
+conserve deux largeurs6 : l'enregistrement complet et la suppression. Ses trois
+lecteurs live/demo utilisent aussi6. Le prédicteur transmet les identifiants
+consécutifs sans champ explicite et masque donc ce défaut pendant le remplissage.
+Un changement isolé de l'agent64 utilise le champ court et peut devenir l'agent0.
+
+Le candidat corrige uniquement ces cinq largeurs, sans modifier les décalages6
+qui représentent le pas192 des structures. La présence et la suppression des
+enregistrements restent inchangées. Le modèle de régression reproduit le succès
+trompeur d'une suite consécutive à6 bits, l'alias d'une suite clairsemée, puis les
+identités et suppressions correctes à7 bits sur20000 suites. Le contrat devient
+64-v2 : les anciens prototypes64-v1 doivent être refusés avant admission.
+
+Le témoin serveur privé observe les enregistrements réellement écrits avec indice
+explicite64+, référence finale cohérente et nombre de bits croissant. Le flag privé
+paris-capacity-sparse-wire-probe choisit la représentation explicite valide du
+codec pour ces indices, sans changer les octets d'état ou les factions. Si le
+codec n'écrit aucun enregistrement, le prédicteur précédent est restauré. Ce flag
+est refusé en production et côté client ; les garde-fous privés restent requis.
+La nouvelle exécution jumelée
+reste nécessaire ; le code établit la troncature possible, sans transformer les
+anciens contextes de crash en preuve de causalité complète.
+
+AF passe Spaceland et Beast, puis le client standard fatale sur Rave à1412B4CF0.
+AG Rave passe ensuite120 secondes ; AH Rave et AI Spaceland passent chacun300
+secondes avec la horde maintenue. Ces succès intermittents ne qualifient pas le
+contrat incomplet. Les outils Microsoft nécessaires au dump privé sont conservés
+dans le périmètre du dédié et liés octet pour octet au package WinDbg retenu ;
+l'admission du scheduler reste inchangée. Main reste24 et les archives64-v1 sont
+marquées non qualifiées.
+
+## Client standard et rotation privée — 19 octobre 2026
+
+La tentative suivante AB échoue avant rotation : le serveur termine son plateau
+48+2/110 relevés/24 remplacements, puis le client standard B7C1AD0E fatale à
+1406D6F65, lecture98 après un pointeur de table d'animation nul. Ce contexte
+n'établit pas la cause de la corruption ou du mauvais indice. L'observation
+client complète et la rotation ne sont donc pas qualifiées par AB. Dédié/client
+ferment et restaurent, bail libéré. Les contrôles standard AC48/0 et AD24/2
+passent chacun le plateau et l'observation protégée120 secondes. AE48/2 reprend
+avec capture mémoire optionnelle après fatal confirmé. Main reste24 ; aucune
+livraison stable n'est déduite du seul plateau serveur.
+
+Le client standard B7C1AD0E, construit sur a99c049, rejoint réellement le dédié
+et tient48 ordinaires +2 Brutes,110 relevés et24 morts/remplacements dans AA.
+Le catalogue serveur23a14634 confirme cette fois le hook GSC48 : un démarrage
+dédié frais doit accepter g_gametype=zombie sans exiger un ui_gametype retenu.
+L'ancien échec de connexion venait du mode CP jamais activé côté client normal ;
+le port attend désormais son entrée CP et la disponibilité des données en ligne.
+
+La rotation privée AA bloque ensuite sans fatal : le thread principal conserve
+safety_mutex en appelant Dvar_SetInt, pendant que le thread serveur attend ce
+mutex dans is_protected_player. Les piles non suspendues et le dump concordent.
+Le garde de la requête de carte utilise maintenant la lecture de protection
+existante, sans rafraîchir les dvars ni conserver le verrou à travers la commande.
+La récupération liée au PID/création/image restaure client et dédié, libère le
+bail et préserve Main ainsi que ses écritures bancaires concurrentes. Le résultat
+échoué reste conservé ; une nouvelle rotation est nécessaire.
+
+Package-CapacityClient.ps1 prépare une archive sans assets à partir du build
+standard vérifié, conserve son reçu original et lie les sources port/peer et le
+lanceur courant par SHA256. Le même exécutable est distribué sous iw7-paris48.exe,
+avec Launch-IW7-Paris48.bat ; les exécutables ordinaires restent disponibles.
+Cette étape d'emballage ne revendique aucune nouvelle compilation ni validation.
+
+## Qualification privée mesurée — 19 octobre 2026
+
+Le cas R tient48 zombies ordinaires et2 Brutes,116 relevés de population et
+trois cycles de8 morts/remplacements. Le client reste protégé120 secondes ;
+client et dédié quittent/restaurent, bail libéré, aucun nouveau fatal. Sur le
+plateau,59 fenêtres serveur donnent une médiane20 Hz (minimum19,685) ;58 fenêtres
+client donnent30,306 rappels de présentation/s sous sa limite30, intervalle
+maximal49,123 ms. Ce sont des cadences instrumentées en1280×720 réduit, sans
+preuve de FPS affichés, latence WAN ou absence universelle de saccades.
+
+Les builds normal serveur017243B6 et client standardFB16381D compilent avec le
+port seul. Le smoke normal construit64 agents sans les flags privés et refuse
+les clients sans contrat,24 et inconnu avant toute admission ; compteur0 avant
+et après chaque essai, fermeture normale/restauration confirmées. Un petit
+lanceur Paris48 active le format64-v1 ; le lancement standard reste au format24.
+
+Le premier stress Beast complet (AL) atteint48+2 puis fatale côté client à
+1412B4CF0 (lecture nulle, arbre d'animation du joueur0). L'origine n'est pas
+établie par ce seul contexte. Le scénario utilisait la création générique des
+cryptides. Les callbacks retail corrigés ne reproduisent pas ce fatal ; V échoue
+sur un renouvellement trop court, puis X passe90 relevés et24 remplacements.
+Conserver ces échecs, les sources et leurs dumps privés. Aucun patch de lecture
+nulle ou désactivation d'assertion ne masque le symptôme.
+
+Le contrôle24 ordinaire/0 spécial avec le catalogue complet passe113 relevés.
+La qualification finale doit vérifier explicitement le hook GSC48, les cinq
+cartes, le client distribuable et Beast après rotation occupée. Le profil privé
+initial omettait ui_gametype : son simple chargement du catalogue ne prouve pas
+que Rush avait installé les hooks. Le scénario final exige cette preuve avant
+de prendre séparément possession de son fournisseur de stress. Main reste24 ;
+pas de garantie « zéro lag » ni d'acceptation propriétaire déduite de ces essais.
+
+## Livraison et admission des clients en préparation — 19 octobre 2026
+
+Le cas O à127 champs (image57C24605) conserve les numéros64 à67 reçus par le
+client et tient son observation protégée75 secondes sans nouveau fatal. Son
+plateau strict échoue car les morts naturelles ne sont pas remplacées ; un
+placement forcé de Brutes déclenche aussi leur secours de navigation. Client,
+profils et dédié quittent/restaurent normalement, bail libéré. Le scénario
+corrigé doit employer les spawners natifs, remplir les places et recycler24 morts.
+
+Le profil optionnel Capacity64 prépare désormais le composant sans observateur
+privé dans les builds serveur/client normaux. Son activation de production reste
+explicite et refuse les identités de qualification. Les deux pairs annoncent
+paris_capacity=64-v1 ; leur admission vérifie le contrat avant DirectConnect et
+avant chargement côté client. Le lancement standard accepte encore un pair
+historique sans cette clé. Un pair incompatible doit recevoir un message de
+relancement, avant les paquets au format différent. Les recettes conservent les
+contrôles de protocole et les sources owner/cinématique ; refus préflight,
+édition étrangère, reprise partielle et restauration octet pour octet passent
+en tests purs. La compilation et les essais de cette admission restent à faire.
+Le défaut ne compile ni n'active la capacité, et Main reste24.
+
+## Champ réseau à sept bits — 19 octobre 2026
+
+Le cas M, sans Brutes, reproduit le fatal. Le capteur client reçoit l'entité64
+avec client_num0. Une lecture native limitée à800 octets, liée à l'image/PID/
+création du même dédié, confirme côté serveur client_num64 et65 pour les entités
+64 et65. Ce témoin établit la troncature pendant le transport ; la réserve seule
+ne suffit donc pas. Le fatal client et le résultat initial restent conservés.
+La récupération indépendante attend ensuite zéro client UDP pendant30 secondes,
+quitte normalement et restaure/libère ; elle ne transforme pas le test en succès.
+
+Deux sondes dédiées seules à24 quittent/restaurent normalement. La lecture des
+métadonnées CP retrouve les30 listes d'entityState, chacune à62 descripteurs.
+Le champ clientNum à l'offset0x9C utilise21 enregistrements distincts à6 bits,
+dont ET_AGENT18 à141BB4790 et ET_AGENT_CORPSE19 à141BB4D64. Le candidat les passe
+à7 bits sur les deux pairs privés, avec contrôle préalable offset/bits/hint,
+écriture de données sans permission exécutable et transaction commune aux106
+champs de code. Les autres champs et formats restent inchangés. Un client ancien
+ne peut pas partager ce format opt-in ; admission et livraison sont encore à faire.
+La nouvelle exécution48+2 et le recyclage restent obligatoires.
+
+## Décodage des personnages après les cadavres — 19 octobre 2026
+
+Le candidat privé à95 champs (`0ac66b1`, image
+`673D8DE0096D7285086793E09B7929778D60DAF88FD9E8366A1338CCE07DA80C`)
+aligne douze consommateurs de cadavres sur82/90. Le cas K atteint24 ennemis
+actifs, puis le journal Com_Error privé retient la cause de sa déconnexion :
+`Received entnum 42: must index MAX_CHARACTERS_MP`. Ce contrôle appartient au
+décodeur `14084A530`, distinct de l'allocation des personnages. Aucun nouveau
+dump : quit0 et restauration client/profils/dédié/libération réussis. Hash du
+résultat échoué : `B66835177CF1CCAE5260F9EBBC92D9834013E8BEDEB9F71FE5FA86C5355346A4`.
+
+Le candidat suivant aligne onze bornes de décodage, lookup, interpolation et
+nettoyage sur82. Ses106 champs attendus correspondent aux octets stables retenus,
+sans chevauchement ni usage des quatre pages instables. La compilation et le
+plateau actif48+2 restent à qualifier. Le cas de stress possède son admission,
+utilise les vrais spawns retail et mesure sa coroutine indépendamment du journal
+de population ; il ne prouve pas encore les quotas naturels ni la compatibilité
+d'un client resté à42 personnages. Aucun déploiement Main.
+
+## Port direct en cours — 19 octobre 2026
+
+La reprise humaine demande de réaliser directement le port. Le suivi du chemin
+après l'initialisation conserve maintenant la page `14B3C5000` sur un dédié
+privé restauré : `14B3C5D01` prépare EDX=24 et ECX=66 avant `140AF6310`.
+La référence retenue de ce callee publie un autre stockage à `143C986A0`,
+avec comptes A8/AC et pas `0xA0`. Son buffer fixe et son remplissage distinct
+doivent aussi être dimensionnés ; cette dépendance ne se confond pas avec B8.
+
+Pour relier les consommateurs et poursuivre le port sans un lancement par
+fragment, le lecteur prépare une capture opt-in des deux seuls spans exécutables
+fixes du PE actuel : `140001000/1427E00` et `14B2B4000/104D400`, soit
+38 228 480 octets initiaux et exactement quatre lectures/76 456 960 octets au
+maximum. Le handle conserve l'identité image/création et les régions doivent être
+engagées/exécutables/lisibles. Chaque page différente est explicitement exclue
+des preuves stables ; sa deuxième version est conservée (128 pages maximum par
+span) pour reconstruire et contrôler le second hash complet.
+Aucune section de données, suspension, écriture cible ou cohérence globale n'est
+revendiquée. Les captures restent locales et ignorées. Cinq groupes de tests
+passent, dont refus de section arbitraire, données tronquées et sortie existante,
+avec qualification séparée des pages modifiées. La première acquisition réelle
+a refusé une section non identique ; le capteur natif ferme et le dédié quitte
+normalement, restauré/réservation libérée. Ce cas reste échoué. La nouvelle
+acquisition a conservé les deux spans et exclu quatre pages différentes :
+`14121D000`, `141280000`, `14B770000`, `14C0B0000`. Le manifeste local a le hash
+`958AD7FA2EAD7E931CD87656DF40C429995C71DF42D92B15B39DA684C8FD917E`.
+La fermeture UDP de ce cas a échoué ; à l'investigation le processus exact était
+absent, sans code de sortie connu. La récupération indépendante a préservé le
+résultat échoué et le journal, vérifié l'absence du candidat, restauré les deux
+transactions et libéré sa réservation. Cela ne prouve pas une sortie normale.
+
+Le candidat privé `paris_agent_capacity` implémente maintenant K=64 : 48 ordinaires
+et une réserve provisoire de 16, 82 personnages et début des entités carte à 98.
+Il reloge les agents, sentients et tables de travail, agrandit les objets de
+personnages serveur/client et les références associées. Les formats et compteurs
+existants sont conservés. Les accès à RVA absolue sont distincts des accès RIP.
+Les longueurs de sauvegarde des tables 8/20 octets utilisent déjà leurs comptes
+dynamiques. Le stockage voisin `145D16710` appartient à un autre objet et reste
+intact ; sa proximité n'en fait pas la fin logique de notre nouveau pool.
+
+Le port n'est compilé que dans le profil privé debugger. Il est désactivé sans
+`-paris-capacity-64` et exige une identité CP isolée et un port privé explicites.
+Les emplacements attendus sont vérifiés avant une transaction d'écriture ; les
+buffers restent vivants jusqu'à la fermeture du processus, avec gardes suivies.
+La compilation, la création de 64 agents avec client correspondant, les cinq
+cartes et les mesures de charge restent à établir. Aucun passage à 48 ni absence
+de lag/crash n'est encore validé ou livré sur Main. La règle GSC de 48 ordinaires
+doit être qualifiée séparément des 64 places natives.
+
+Premier port compilé : source `dc5f001`, image `BF19C5DCA0391630F8F300EE1BA7DB8AB0879BF8AB1044670C87C0A8C43B00D3`.
+Les tests natifs et l'installation des 76 patches passent, puis l'initialisation
+privée plante avant toute preuve de construction. Le dump et le dialogue fatal
+sont corrélés à la même image/PID/création : lecture de `0x4D10` avec RAX nul à
+`14044949A`, RDI=40 et RSI=`143D30C40`, soit l'entité 58. Ce n'est pas un essai
+de combat. Le dump ZIP a le hash
+`A07E4EEFABE57798CC46521338BDEBC44E2243249ACCE501F14C71C5D5B793F2`.
+La récupération du fatal confirmé ferme uniquement ce dédié, vérifie son absence,
+restaure les transactions et libère sa réservation ; le résultat échoué subsiste.
+
+Le chemin courant révèle une réservation indépendante dans G_InitGame :
+`14B54FA71` prépare EDX=58 et `14B54FA76` stocke 58 à `143C98680`.
+Le prochain candidat passe ces deux champs à 98 et la frontière de recyclage
+`140B6686F` de `58*0x3F8` à `98*0x3F8`. Deux autres boucles de sérialisation
+du tableau de références (`14048C1EE`, `14048C2CC`) passent de 42 à 82.
+Cela ne contourne pas la lecture nulle ; les emplacements réservés doivent rester
+distincts des entités carte. La nouvelle exécution reste à qualifier.
+
+## Client jouable puis collision des cadavres — 19 octobre 2026
+
+L'image corrigée `2F1FB14961A00EA25FA74F771ED1E6DFE8099F5F7312E181AE8BFDC5BE360BC4`
+(source `9ecb4cf`, 15:59:33 UTC) construit64 agents distincts. Le cas H confirme
+à nouveau64 dans le callback du client jouable, maintient sa protection30 secondes,
+quitte normalement et restaure client/profils/dédié avec libération. Résultat local
+`C337D363A13CBF23EA9EB6B60B97318C46403F3F29B2B5F984191514F3685DE8`.
+Le témoin24 correspondant passe aussi. Les essais à rechargement préalable à vide
+n'ont pas obtenu de client jouable ; leur acceptation reste ouverte, distincte
+du démarrage direct. Un contrôle ancien de lecture de journal et une attente
+GSC post-restart ont échoué et sont conservés ; le témoin PLAYABLE les remplace.
+
+Le cas I de horde s'arrête avant son plateau48+2 : un nouveau fatal au même RIP
+`14044949A` lit `0x4D10`, avec RDI=32 et l'entité50. Le client est restauré ; le
+dédié fatal est corrélé au dump/dialogue, fermé par son handle exact, puis restauré.
+Le ZIP a le hash `55CB3EA671189E3471ECFA570D70C0A7EACDC9D073EA8F5CE8EA1DA2CAF70844`.
+Le résultat échoué et la récupération indépendante restent distincts.
+
+Le callee courant de `cloneagent` (`140C1A650` -> `140C1BB10`) réserve huit
+entités par `index + 50`. Le callee de `cloneplayer` (`140B0B270` -> `140B673F0`)
+en réserve huit par `index + 42`. Ce sont les deux partitions de cadavres ; les
+records de métadonnées `0x2CC0` et leurs comptes8 restent inchangés. Le candidat
+suivant déplace leurs débuts à90 et82, après les82 personnages et avant la carte98.
+Aucun contournement de pointeur nul ni remplacement aveugle des autres constantes
+50 (souvent des durées en millisecondes) n'est appliqué. Leurs consommateurs et
+le recyclage/client doivent être validés par le prochain essai de horde.
+
+L'image à83 champs `DC8C7641E2F634DFD3B24D0824D78533C1BF30B048CC0E2DF140C4E00A10DF98`
+se construit le19 octobre à16:44:54 UTC. Le cas J perd sa connexion client avant
+le plateau, mais ne produit aucun nouveau dump ni fatal confirmé ; le dédié quitte
+normalement avec code0, puis client/profils/dédié sont restaurés et le bail libéré.
+Ne pas décrire cette sortie comme le crash précédent. Le candidat suivant journalise
+le message et le caller de Com_Error dans ce seul profil privé, puis transmet
+l'erreur à son implémentation d'origine ; aucune déconnexion n'est supprimée.
 
 ## Diagnostic actuel qualifié, capacité inchangée — 19 octobre 2026
 

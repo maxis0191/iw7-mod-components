@@ -55,14 +55,15 @@ public static class IW7LabProcess
         SafeFileHandle consoleInput;
         readonly bool consoleDedicated;
         readonly bool collisionProbeConsole;
+        readonly int capacityPeerPort;
         readonly System.Collections.Generic.HashSet<string> collisionSent = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
         string consoleNonce;
         readonly object consoleLock = new object();
         readonly System.Collections.Generic.HashSet<string> consoleSent = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
         public int Id { get; private set; }
         internal OwnedProcess(IntPtr value, int id) { handle=value; Id=id; }
-        internal OwnedProcess(IntPtr value, int id, SafeFileHandle input, bool dedicated, bool collision=false) : this(value,id) { consoleInput=input; consoleDedicated=dedicated; collisionProbeConsole=collision; }
-        public bool OriginalRigConsoleEnabled { get { CheckOpen(); return !collisionProbeConsole && consoleInput!=null && !consoleInput.IsClosed; } }
+        internal OwnedProcess(IntPtr value, int id, SafeFileHandle input, bool dedicated, bool collision=false, int capacityPort=0) : this(value,id) { consoleInput=input; consoleDedicated=dedicated; collisionProbeConsole=collision; capacityPeerPort=capacityPort; }
+        public bool OriginalRigConsoleEnabled { get { CheckOpen(); return !collisionProbeConsole && capacityPeerPort==0 && consoleInput!=null && !consoleInput.IsClosed; } }
         public bool CollisionProbeConsoleEnabled { get { CheckOpen(); return collisionProbeConsole && consoleDedicated && consoleInput!=null && !consoleInput.IsClosed; } }
         void CheckOpen() { if (handle==IntPtr.Zero) throw new ObjectDisposedException("OwnedProcess"); }
         public bool WaitForExit(int milliseconds) {
@@ -99,6 +100,21 @@ public static class IW7LabProcess
             if (!HasExited && !TerminateProcess(handle,code)) {
                 int error=Marshal.GetLastWin32Error();
                 if (!HasExited) throw new Win32Exception(error,"Owned process termination failed");
+            }
+        }
+        public void WriteCapacityLifecycle(string action,string expectedImage,long expectedCreation) {
+            lock(consoleLock) {
+                CheckOpen();
+                if(capacityPeerPort<27100 || capacityPeerPort>27999 || consoleInput==null || consoleInput.IsClosed ||
+                   (action!="connect" && action!="stop") || consoleSent.Contains(action)) throw new InvalidOperationException("Fixed owned capacity lifecycle required");
+                var identity=ReadIdentity();
+                if(identity.CreationFileTime!=expectedCreation || !String.Equals(identity.Image,expectedImage,StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Capacity client identity differs");
+                string command=action=="connect" ? "connect 127.0.0.1:"+capacityPeerPort : "quit";
+                // wincon uses getline and passes the line to Cbuf_AddText
+                // without its newline. Keep a fixed engine command delimiter.
+                byte[] bytes=Encoding.ASCII.GetBytes(command+";\n");uint written;
+                consoleSent.Add(action);
+                if(!WriteFile(consoleInput,bytes,(uint)bytes.Length,out written,IntPtr.Zero) || written!=bytes.Length) throw new Win32Exception(Marshal.GetLastWin32Error(),"Capacity lifecycle write incomplete");
             }
         }
         // The pipe is private to the creating owner. A byte-write receipt is
@@ -243,9 +259,22 @@ public static class IW7LabProcess
     }
     public static OwnedProcess StartOwned(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName, bool waitForInputIdle, bool originalRigConsole, bool collisionProbeConsole)
     {
+        return StartOwned(exe,arguments,cwd,stdout,stderr,desktopName,waitForInputIdle,originalRigConsole,collisionProbeConsole,0);
+    }
+    public static OwnedProcess StartOwned(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName, bool waitForInputIdle, bool originalRigConsole, bool collisionProbeConsole,int capacityPeerPort)
+    {
         if (exe.Contains("\"") || !System.Text.RegularExpressions.Regex.IsMatch(desktopName, "^IW7ParisLab_[a-f0-9]{32}$"))
             throw new ArgumentException("Invalid executable/desktop name.");
         bool consoleDedicated=false;
+        if(capacityPeerPort!=0) {
+            if(originalRigConsole || collisionProbeConsole || capacityPeerPort<27100 || capacityPeerPort>27999 ||
+               !System.Text.RegularExpressions.Regex.IsMatch(arguments,@"(?:^|\s)-wincon(?:\s|$)") ||
+               !System.Text.RegularExpressions.Regex.IsMatch(arguments,@"(?:^|\s)-paris-capacity-client-probe(?:\s|$)") ||
+               !System.Text.RegularExpressions.Regex.IsMatch(arguments,@"(?:^|\s)-paris-capacity-production(?:\s|$)") ||
+               !System.Text.RegularExpressions.Regex.IsMatch(arguments,@"(?:^|\s)-paris-capacity-64(?:\s|$)") ||
+               !System.Text.RegularExpressions.Regex.IsMatch(arguments,@"(?:^|\s)\+set\s+net_ip\s+127\.0\.0\.1(?:\s|$)") ||
+               System.Text.RegularExpressions.Regex.IsMatch(arguments,@"(?:^|\s)-(?:dedicated|paris-isolated-lab|paris-debugger|paris-server-test|paris-server-client-test|noconsole|syscon|terminal)(?:\s|$)")) throw new ArgumentException("Normal capacity lifecycle requires its loopback-only client wincon role");
+        }
         if (collisionProbeConsole) {
             if (originalRigConsole || !IsCollisionProbeLaunch(arguments)) throw new ArgumentException("Collision stdin requires its exclusive private dedicated wincon profile.");
             consoleDedicated=true;
@@ -270,7 +299,7 @@ public static class IW7LabProcess
             {
                 SafeFileHandle input=null,writer=null;
                 try {
-                if (originalRigConsole || collisionProbeConsole) {
+                if (originalRigConsole || collisionProbeConsole || capacityPeerPort!=0) {
                     if (!CreatePipe(out input,out writer,ref security,4096)) throw new Win32Exception(Marshal.GetLastWin32Error(),"Rig stdin pipe creation failed.");
                     if (!SetHandleInformation(writer.DangerousGetHandle(),1,0)) throw new Win32Exception(Marshal.GetLastWin32Error(),"Rig stdin writer inheritance refusal failed.");
                 } else input=CreateFileW("NUL",0x80000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
@@ -291,7 +320,7 @@ public static class IW7LabProcess
                         if (WaitForSingleObject(process.process, 0) == 0 && GetExitCodeProcess(process.process, out code))
                             throw new InvalidOperationException("Child exited with code 0x" + code.ToString("X8"));
                     }
-                    var owned=new OwnedProcess(process.process,(int)process.pid,writer,consoleDedicated,collisionProbeConsole);
+                    var owned=new OwnedProcess(process.process,(int)process.pid,writer,consoleDedicated,collisionProbeConsole,capacityPeerPort);
                     writer=null;
                     process.process=IntPtr.Zero;
                     return owned;

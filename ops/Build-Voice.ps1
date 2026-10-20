@@ -1,4 +1,4 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
@@ -26,6 +26,7 @@ function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
     $full
 }
 if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requires ServerModules and IsolatedLab.' }
+if ($Capacity64 -and !$ServerModules) { throw 'Capacity64 requires the current ServerModules profile.' }
 if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
 if ($CollisionProvider -and (!$ServerModules -or !$IsolatedLab)) { throw 'CollisionProvider requires ServerModules and IsolatedLab.' }
 if ($WordProvenance -and (!$ServerModules -or !$IsolatedLab -or !$Debugger)) { throw 'WordProvenance requires ServerModules, IsolatedLab and Debugger.' }
@@ -37,11 +38,13 @@ $root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
 if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current ServerModules native profile.' }
 . "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
 . "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
+. "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 # Reserve the complete operation before compiling tests, sanitizer binaries or
 # native sources. TestsOnly uses the same admission and final release path.
 Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
+Remove-IW7CapacityPeerOverlay $root
 Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
 $commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
@@ -301,7 +304,7 @@ else {
 . "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1"
 # Debugger already requires IsolatedLab+ServerModules (pinned CP SDK).
 # Main/nondebugger profiles contain no capacity watcher translation unit.
-$capacityWatchBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]($IsolatedLab -and $Debugger))
+$capacityWatchBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]($Capacity64 -or ($IsolatedLab -and $Debugger))) -PortOnly:([bool]($Capacity64 -and !$Debugger))
 if ($capacityWatchBuild.Compiled) { $nativeSources += $capacityWatchBuild.Files }
 . "$PSScriptRoot/voice-agent/Fake-BuildCopy.Core.ps1"
 $fakeCaptureBuild=Set-IW7FakeCaptureBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]$IsolatedLab)
@@ -521,12 +524,14 @@ if ($currentFastfiles -ne $baseFastfiles -and $currentFastfiles -ne $experimentF
 [IO.File]::WriteAllText($fastfiles, $(if ($RhinoExperiment -or $EnemyExperiment) { $experimentFastfiles } else { $baseFastfiles }), [Text.UTF8Encoding]::new($false))
 $cutsceneOverlay = $null
 $ownerCheatsOverlay = $null
+$capacityPeerOverlay = $null
 if ($OwnerCheats) {
     $ownerCheatsOverlay = Add-IW7OwnerCheatsOverlay $root $repo
     $cutsceneOverlay = Add-IW7CutsceneOverlay $root $repo
     $nativeSources += @('cutscene.cpp','cutscene.hpp','cutscene_policy.hpp')
     $nativeSources += @('owner_cheats.cpp','owner_cheats.hpp','owner_cheats_policy.hpp','owner_cheats_crypto.hpp')
 }
+if($capacityWatchBuild.Compiled){$capacityPeerOverlay=Add-IW7CapacityPeerOverlay $root}
 Push-Location $root
 try {
     & ./tools/premake5.exe vs2022
@@ -568,6 +573,11 @@ $manifest.FakeCaptureTransformedSourceHashes=@(@('paris_voice.cpp','voice_relay.
     @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$_))).Hash}
 })
 $manifest.CapacityWatchBuild = $capacityWatchBuild
+$manifest.Capacity64Capability=[bool]$capacityWatchBuild.Compiled
+$manifest.Capacity64Production=[bool]($Capacity64 -and !$IsolatedLab -and !$Debugger)
+$manifest.CapacityWireContract=if($capacityWatchBuild.Compiled){'64-v2'}else{$null}
+$manifest.CapacityPeerOverlay=$capacityPeerOverlay
+$manifest.CapacityPeerHelperSHA256=if($capacityPeerOverlay){(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1").Hash}else{$null}
 $manifest.CapacityCheckpointBuild = $capacityCheckpointBuild
 $manifest.CapacityCheckpointOverlayHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1").Hash
 $manifest.CapacityCheckpointOverlayCoreSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Checkpoint-Overlay.Core.ps1").Hash

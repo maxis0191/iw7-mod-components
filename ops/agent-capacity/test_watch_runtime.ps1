@@ -46,6 +46,11 @@ function Read-IW7CapacityOwnedJournal($Session){$script:reads++;if($script:reads
 $session=[pscustomobject]@{CandidateRoot=$env:TEMP;JournalRelative=('absent-'+[guid]::NewGuid()+'.jsonl');Nonce=$nonce}
 $result=Invoke-IW7CapacityWatch $session
 if(($script:commands -join '|') -cne ('vacant:30|paris_capacity_arm '+$nonce+'|vacant:0|map_restart|paris_capacity_stop') -or !$result.CanaryOnly -or $result.WriterProven){throw 'Lifecycle order/partial evidence differs.'}
+$session|Add-Member NoteProperty Plan ([pscustomobject]@{PopulateAgents=$true})
+$script:commands=@();$script:reads=0
+$full=Invoke-IW7CapacityWatch $session
+if($full.ReloadCommand -cne 'map cp_zmb' -or ($script:commands -join '|') -cne ('vacant:30|paris_capacity_arm '+$nonce+'|vacant:0|map cp_zmb|paris_capacity_stop')){throw 'Pool qualification did not select a full guarded map load.'}
+Reject {New-IW7CapacityRconPacket $secret 'map cp_town'}
 $script:terminated=$false
 $handle=[pscustomobject]@{}
 $handle|Add-Member ScriptMethod WaitForExit {$false}
@@ -58,6 +63,41 @@ function Wait-IW7CapacityVacant($Session,[int]$Seconds=30,[int]$TimeoutSeconds=9
 function Send-IW7CapacityRcon($Session,[string]$Command){throw 'Current occupied fixture'}
 Reject {Stop-IW7CapacityOwnedServer $session}
 if($script:terminated){throw 'Refused command triggered termination.'}
+# Fatal recovery requires a retained matching artifact AND a fresh exact dialog.
+$artifact=Join-Path $env:TEMP ('capacity-fatal-pure-'+[guid]::NewGuid()+'.bin')
+[IO.File]::WriteAllText($artifact,'synthetic fatal artifact')
+$hash=(Get-FileHash $artifact).Hash
+$session|Add-Member NoteProperty Identity ([pscustomobject]@{PID=123;SHA256=$hash})
+$fatal=[pscustomobject]@{ConfirmedFatal=$true;Artifact=$artifact;OriginalDumpName='synthetic.zip';Report=[pscustomobject]@{correlated=$true;expected_pid=123;image=[pscustomobject]@{sha256=$hash};dump=[pscustomobject]@{sha256=$hash}}}
+function Read-IW7AgentFatalDialog($Identity){'synthetic dialog'}
+function Test-IW7AgentFatalEvidence($Report,$Dialog,$OriginalDumpName){$false}
+Reject {Stop-IW7CapacityConfirmedFatal $session $fatal}
+if($script:terminated){throw 'Missing fresh fatal dialog allowed termination.'}
+function Test-IW7AgentFatalEvidence($Report,$Dialog,$OriginalDumpName){$true}
+$fatal.Report.expected_pid=124
+Reject {Stop-IW7CapacityConfirmedFatal $session $fatal}
+if($script:terminated){throw 'Foreign fatal PID allowed termination.'}
+$fatal.Report.expected_pid=123
+$handle|Add-Member -Force ScriptMethod WaitForExit {$true}
+$handle|Add-Member ScriptMethod get_ExitCode {3758096385}
+$fatalResult=Stop-IW7CapacityConfirmedFatal $session $fatal
+if(!$script:terminated -or $fatalResult.Kind -cne 'confirmed-fatal-recovery'){throw 'Confirmed owned fatal recovery failed.'}
+$handle|Add-Member NoteProperty HasExited $false
+$script:diagnosticReads=0
+function Send-IW7CapacityRcon($Session,[string]$Command){throw 'Injected absent UDP'}
+function Get-IW7AgentNewCrash {param($CandidateRoot,$Identity,$Before,$OutputRoot,$Cache);$script:diagnosticReads++;if($script:diagnosticReads -ge 2){$fatal}}
+$script:terminated=$false
+$late=Stop-IW7CapacityServerWithDiagnosis $session @() $env:TEMP @{}
+if(!$script:terminated -or $script:diagnosticReads -ne 2 -or $late.Kind -cne 'confirmed-fatal-recovery' -or !$session.DiagnosedCrash.ConfirmedFatal){throw 'Late exact fatal did not recover after preserving absent-UDP refusal.'}
+Remove-Item -LiteralPath $artifact
+$script:departureReads=0
+function Read-IW7CapacityServerInfo($Session){$script:departureReads++;[pscustomobject]@{clients=$(if($script:departureReads -lt 3){'1'}else{'0'});sv_running='1';mapname='cp_zmb'}}
+Wait-IW7CapacityClientDeparture $session
+if($script:departureReads -ne 3){throw 'Fatal client residual connection was not observed until actual zero.'}
+function Read-IW7CapacityServerInfo($Session){[pscustomobject]@{clients='2';sv_running='1';mapname='cp_zmb'}}
+Reject {Wait-IW7CapacityClientDeparture $session}
+function Read-IW7CapacityServerInfo($Session){[pscustomobject]@{clients='0';sv_running='1';mapname='cp_town'}}
+Reject {Wait-IW7CapacityClientDeparture $session}
 # Exact cleanup status model: file restoration does not imply lease release.
 $lease=[pscustomobject]@{Token='synthetic'};$restored=$true;$leaseReleased=$false
 function Exit-IW7ResourceLease {param($Token);throw 'Injected release failure'}

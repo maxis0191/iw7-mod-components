@@ -137,3 +137,21 @@ Machine paths, process identities and generated project files remain local.
 Primary sources: [PyGhidra](https://github.com/NationalSecurityAgency/ghidra/tree/master/Ghidra/Features/PyGhidra),
 [pinned MCP source](https://github.com/clearbluejar/pyghidra-mcp/tree/42d8f80551a765441b1a723f6f1ff45aa3914d5e),
 [BSim](https://github.com/NationalSecurityAgency/ghidra/tree/master/GhidraDocs/GhidraClass/BSim).
+# Scoped capacity crash reader — 2026-10-19
+
+The optional capacity harness reuses the installed Microsoft WinDbg
+1.2606.22001.0 package. Its CDB SHA256 is
+`5F54ABAFCA3AE5638BBF807D402FABB350A64575C1DFA9FBFC7F5732DF5BEE67`.
+For registration within the original candidate Runtime lease, retain only
+`cdb.exe`, `dbgeng.dll`, `dbghelp.dll`, `dbgcore.dll` and `dbgmodel.dll` under
+the candidate's `iw7-mod/capacity-tools`. Recheck all five against that installed
+package before use; retain their sizes/hashes in the local toolchain receipt.
+The existing server installer already pins this WinDbg release with IncludeWinDbg.
+
+This does not relax scheduler scope or process admission. The harness may invoke
+the reader only after a confirmed fatal of its own exact client, through the
+original owned desktop and lease. Noninvasive/nonsuspending `-pvr` capture and
+confirmed reader closure precede the normal client/profile restoration. Main
+and unrelated clients are never capture targets. The initial out-of-scope AppX
+reader was refused and closed; the later scoped offline smoke is tool evidence,
+not a successful full live-fatal capture or a gameplay result.
