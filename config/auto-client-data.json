@@ -1,0 +1,290 @@
+{
+  "Schema": "iw7.auto-client-data/1",
+  "CBRevision": "0a8903a70adbd30824a1d7b3dbaccd72f1bcff51",
+  "OfficialDeltaRevision": "37abcb260408ce7cdef0dde831bbfcad594510e3",
+  "UpstreamManifestSHA256": "9052C66218E09B73BF0E636BFC1050DFAA8C99F81C51E947CE0ACD9CB64044D2",
+  "Files": [
+    {
+      "Path": "cdata/custom_scripts/cp/patches.gsc",
+      "Bytes": 3243,
+      "SHA1": "A48C103E0D8F0DCD769F9C429EA427B19AE0E610",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/custom_scripts/cp/patches.gsc"
+    },
+    {
+      "Path": "cdata/custom_scripts/cp_mp/inspect.gsc",
+      "Bytes": 838,
+      "SHA1": "90F83CB020F1ADEF58885144A7C734DB7E235B1D",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/custom_scripts/cp_mp/inspect.gsc"
+    },
+    {
+      "Path": "cdata/custom_scripts/mp/bots.gsc",
+      "Bytes": 14976,
+      "SHA1": "0A59D7AB8C6CB564460587ABD46FF176B7C0D973",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/custom_scripts/mp/bots.gsc"
+    },
+    {
+      "Path": "cdata/custom_scripts/mp/bots_loadout.gsc",
+      "Bytes": 11068,
+      "SHA1": "F3E8A4B6E36C8E0F2ABD2D3CECAAC52FF7C86CFE",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/custom_scripts/mp/bots_loadout.gsc"
+    },
+    {
+      "Path": "cdata/custom_scripts/mp/ranked.gsc",
+      "Bytes": 6482,
+      "SHA1": "166C5261E54732AB2F1AFAE9FE61A86D8A359E74",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/custom_scripts/mp/ranked.gsc"
+    },
+    {
+      "Path": "cdata/mp/basemaps.arena",
+      "Bytes": 10691,
+      "SHA1": "DD365D4D944B930B25527EADDE34AC83DE4F2989",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/mp/basemaps.arena"
+    },
+    {
+      "Path": "cdata/ui_scripts/CBToast/__init__.lua",
+      "Bytes": 2587,
+      "SHA1": "4D550A1B3D433C16E555B32AF0937A1E19A429AD",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/CBToast/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/ClanTags/__init__.lua",
+      "Bytes": 8045,
+      "SHA1": "3CFD289AD9A066A10880B19428CC374A9F0CF7DB",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/ClanTags/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Conditions/InFrontend.lua",
+      "Bytes": 515,
+      "SHA1": "290EAD304A11DEBE6343E47D76CDE995D673DF68",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Conditions/InFrontend.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Conditions/InGame.lua",
+      "Bytes": 568,
+      "SHA1": "906D1C5BDB70570EC9F346BC5995915ABFD9F24A",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Conditions/InGame.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Conditions/__init__.lua",
+      "Bytes": 174,
+      "SHA1": "23F76006F64D7D83F643B6D34B8FD0A789A574EC",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Conditions/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/debug/__init__.lua",
+      "Bytes": 3802,
+      "SHA1": "1A1D2A9756AA51CD23ADD8D24A05F42CAAD5A605",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/debug/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/EndGame/__init__.lua",
+      "Bytes": 9725,
+      "SHA1": "F55251F34259EF5BF036443B530FDB5AAA150623",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/EndGame/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Lobby/GameSetupButtonsBots.lua",
+      "Bytes": 12702,
+      "SHA1": "C97317809F59F5CBC9855720823F24553DC3DBE7",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Lobby/GameSetupButtonsBots.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Lobby/GameSetupOptions.lua",
+      "Bytes": 10008,
+      "SHA1": "D0EE5631237669BE9E8622CB4A8CB89913220BA7",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Lobby/GameSetupOptions.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Lobby/LobbyMissionButtons.lua",
+      "Bytes": 4318,
+      "SHA1": "50BB278D251DFD0D7748229AAFE9355B9A3D0D8A",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Lobby/LobbyMissionButtons.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Lobby/__init__.lua",
+      "Bytes": 1391,
+      "SHA1": "4B0141D535A280AA31EFF5F906D64034567B4E77",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Lobby/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/MainMenu/CampaignMenuButtons.lua",
+      "Bytes": 7636,
+      "SHA1": "15B8ED60EAC706F8CAE9C093094F736BB99D7658",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/MainMenu/CampaignMenuButtons.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/MainMenu/CPMainMenu.lua",
+      "Bytes": 287,
+      "SHA1": "299181671FB0B45BA9516711A7C25A55CBA9F3A2",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/MainMenu/CPMainMenu.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/MainMenu/CPMainMenuButtons.lua",
+      "Bytes": 8193,
+      "SHA1": "395499029FFD1A4278166ADB15B17F05F138E775",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/MainMenu/CPMainMenuButtons.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/MainMenu/MissionButtons.lua",
+      "Bytes": 2259,
+      "SHA1": "61DCA57F8F3B79483D742A7D146ECBC53D93B505",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/MainMenu/MissionButtons.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/MainMenu/MPMainMenu.lua",
+      "Bytes": 18907,
+      "SHA1": "0392A4E462D1E251E8F334D0980F50FE82E4402A",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/MainMenu/MPMainMenu.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/MainMenu/MPMainMenuButtons.lua",
+      "Bytes": 8441,
+      "SHA1": "36CB754B273DD72D4A69A22CD39F5C1184D99A6D",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/MainMenu/MPMainMenuButtons.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/MainMenu/__init__.lua",
+      "Bytes": 205,
+      "SHA1": "FCF12AF8AF708FFCBC0A96353ED58B8ADC081F2D",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/MainMenu/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/MatchSettings/__init__.lua",
+      "Bytes": 5524,
+      "SHA1": "5F278613FDC912215CA5BDFBA22F486A36955113",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/MatchSettings/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/MissionTeams/__init__.lua",
+      "Bytes": 3753,
+      "SHA1": "7AA6CB13942ABC6119AE96B6E62F536AEA8E05D2",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/MissionTeams/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Mods/ModDownload.lua",
+      "Bytes": 1274,
+      "SHA1": "F335CC5E9EE09697F37454AC5B4585013A7E9AA7",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Mods/ModDownload.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Mods/ModSelectButton.lua",
+      "Bytes": 7406,
+      "SHA1": "DCCE90B6C5B992A51CD74AEA829BD47273896880",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Mods/ModSelectButton.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Mods/ModSelectMenu.lua",
+      "Bytes": 12310,
+      "SHA1": "22E2AF231E94645BD1D0CDEBF2FB64DEB1F12EAD",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Mods/ModSelectMenu.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Mods/__init__.lua",
+      "Bytes": 123,
+      "SHA1": "ADE157FF5AD6687C1ED78F567B9872D27B602C72",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Mods/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Patches/__init__.lua",
+      "Bytes": 562,
+      "SHA1": "FA879EAB64F454019EA9D2E24029AC9B37C6595F",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Patches/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/Stats/__init__.lua",
+      "Bytes": 12149,
+      "SHA1": "4AD8E0E0EE06896799D416C88D2E0DA9F2733D0B",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/Stats/__init__.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/SystemLinkMenu/ServerBrowser.lua",
+      "Bytes": 4506,
+      "SHA1": "016028F8CA0B51255D837C7D6A7FA38FE189C1A8",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/SystemLinkMenu/ServerBrowser.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/SystemLinkMenu/SystemLinkJoinMenuRow.lua",
+      "Bytes": 12093,
+      "SHA1": "F2E088AF7281079681450EFCD9EBE3676ABA9B66",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/SystemLinkMenu/SystemLinkJoinMenuRow.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/SystemLinkMenu/SystemLinkJoinMenuTitleRow.lua",
+      "Bytes": 5156,
+      "SHA1": "8C03F81316F26394F3ED9D8F43D8F4FB754FC156",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/SystemLinkMenu/SystemLinkJoinMenuTitleRow.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/SystemLinkMenu/SystemLinkMenu.lua",
+      "Bytes": 12822,
+      "SHA1": "CC3B21CCF5E475E9064DE6BC1FBAE9560AB2BBE5",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/SystemLinkMenu/SystemLinkMenu.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/SystemLinkMenu/SystemLinkMenuButtons.lua",
+      "Bytes": 2561,
+      "SHA1": "5B26A20F70722F3063FEC338177106577BFBE1BE",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/SystemLinkMenu/SystemLinkMenuButtons.lua"
+    },
+    {
+      "Path": "cdata/ui_scripts/SystemLinkMenu/__init__.lua",
+      "Bytes": 203,
+      "SHA1": "9C0AC5DC6331EDBEC3CBCD59F527AF8A5A951D7E",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/ui_scripts/SystemLinkMenu/__init__.lua"
+    },
+    {
+      "Path": "cdata/zone/iw7mod_code_post_gfx.ff",
+      "Bytes": 488,
+      "SHA1": "5333F3ED27B95A976B9AFEE14D62961DE754BCF9",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/zone/iw7mod_code_post_gfx.ff"
+    },
+    {
+      "Path": "cdata/zone/iw7mod_ui_mp.ff",
+      "Bytes": 61177948,
+      "SHA1": "2D122DB8CFC48096EFFC4E4515C94CEC4448194B",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/zone/iw7mod_ui_mp.ff"
+    },
+    {
+      "Path": "cdata/zone/mp_dome_dusk.ff",
+      "Bytes": 149345492,
+      "SHA1": "B3C5AE9716EE911616D04A74DE551D867849B2AD",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/zone/mp_dome_dusk.ff"
+    },
+    {
+      "Path": "cdata/zone/mp_dome_dusk.pak",
+      "Bytes": 42752168,
+      "SHA1": "A1AE5E5F43DDE9DAFE6F0BA0B280ED6C42B0AF7E",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/zone/mp_dome_dusk.pak"
+    },
+    {
+      "Path": "cdata/zone/mp_dome_dusk.sabl",
+      "Bytes": 85465728,
+      "SHA1": "ECECF556FD2D7B9E5D177B5A2925EC9710A2098E",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/zone/mp_dome_dusk.sabl"
+    },
+    {
+      "Path": "cdata/zone/mp_dome_dusk.sabs",
+      "Bytes": 30454528,
+      "SHA1": "79FFB6CD16D8751C4662194C2ADD14AEBFEBAC75",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/zone/mp_dome_dusk.sabs"
+    },
+    {
+      "Path": "cdata/zone/mp_dome_dusk_load.ff",
+      "Bytes": 1631920,
+      "SHA1": "26C3EAFA66215B1BB34A4FED38E13EC92CCA8B70",
+      "Url": "https://github.com/CBServers/updater/raw/0a8903a70adbd30824a1d7b3dbaccd72f1bcff51/updater/iw7-mod/data/cdata/zone/mp_dome_dusk_load.ff"
+    },
+    {
+      "Path": "cdata/custom_scripts/frontend/usermaps.gsc",
+      "Bytes": 981,
+      "SHA1": "CF76F1773BF8464CE9BD3A07561C9675B0AC3FBC",
+      "Url": "https://github.com/auroramod/iw7-mod/raw/37abcb260408ce7cdef0dde831bbfcad594510e3/data/cdata/custom_scripts/frontend/usermaps.gsc"
+    },
+    {
+      "Path": "cdata/ui_scripts/Usermaps/__init__.lua",
+      "Bytes": 6713,
+      "SHA1": "DDE298F4952F9AB0A590B9AFBF3AB8EB0F6EEA4F",
+      "Url": "https://github.com/auroramod/iw7-mod/raw/37abcb260408ce7cdef0dde831bbfcad594510e3/data/cdata/ui_scripts/Usermaps/__init__.lua"
+    }
+  ]
+}

@@ -6,6 +6,22 @@ function ConvertTo-IW7AutoCapacitySource([string]$Path,[string]$Source) {
         if($Text.Split([string[]]@($Before),[StringSplitOptions]::None).Count -ne 2){throw "Automatic profile marker changed: $Path"}
         $Text.Replace($Before,$After)
     }
+    if($Path -ceq 'src/common/utils/properties.cpp') {
+        if($Source.Contains('paris-auto-managed-data')){throw 'Managed data override already present.'}
+        $Source=& $replace $Source '#include "properties.hpp"' ('#include "properties.hpp"'+"`n"+'#include "flags.hpp"')
+        $guard=@'
+std::filesystem::path get_appdata_path()
+	{
+        if (utils::flags::has_flag("paris-auto-managed-data")) {
+            wchar_t id[65]{};
+            if (GetEnvironmentVariableW(L"IW7_AUTO_DATA_ID",id,65)!=64) throw std::runtime_error("Managed client data identity missing");
+            for (unsigned i=0;i<64;++i) if (!((id[i]>=L'0' && id[i]<=L'9') || (id[i]>=L'A' && id[i]<=L'F'))) throw std::runtime_error("Invalid managed client data identity");
+            static const auto managed=std::filesystem::current_path()/"iw7-mod"/"server-profiles"/"community-data"/std::wstring(id,32);
+            return managed;
+        }
+'@
+        return & $replace $Source "std::filesystem::path get_appdata_path()`n`t{" $guard
+    }
     $include=if($Path.StartsWith('src/client/component/')){'#include "auto_capacity.hpp"'}else{'#include "component/auto_capacity.hpp"'}
     $Source=& $replace $Source '#include <std_include.hpp>' ('#include <std_include.hpp>'+"`n"+$include)
     switch($Path) {
@@ -17,14 +33,17 @@ function ConvertTo-IW7AutoCapacitySource([string]$Path,[string]$Source) {
             return & $replace $Source 'std::filesystem::path(fs_basepath->current.string) / "iw7-mod" / "players2"' 'std::filesystem::path(fs_basepath->current.string) / auto_capacity::player_directory()'
         }
         'src/client/component/updater.cpp' {
-            return & $replace $Source 'if (utils::flags::has_flag("noupdate"))' 'if (auto_capacity::managed_client() || utils::flags::has_flag("noupdate"))'
+            return & $replace $Source 'delete_old_file();' ('if (auto_capacity::managed_client()) return;'+"`n`t`t`t"+'delete_old_file();')
+        }
+        'src/client/main.cpp' {
+            return & $replace $Source 'limit_parallel_dll_loading();' 'if (!auto_capacity::managed_client()) limit_parallel_dll_loading();'
         }
         default {throw 'Unowned automatic profile overlay path.'}
     }
 }
 function Set-IW7AutoCapacityOverlay([string]$NativeRoot,[string]$RepoRoot,[bool]$Enabled) {
     $root=[IO.Path]::GetFullPath($NativeRoot)
-    $paths=@('src/client/component/party.cpp','src/client/component/filesystem.cpp','src/client/component/updater.cpp')
+    $paths=@('src/client/component/party.cpp','src/client/component/filesystem.cpp','src/client/component/updater.cpp','src/common/utils/properties.cpp','src/client/main.cpp')
     $names=@('auto_capacity.cpp','auto_capacity.hpp','auto_capacity_policy.hpp')
     $cursor=$root
     while($cursor){
@@ -34,7 +53,7 @@ function Set-IW7AutoCapacityOverlay([string]$NativeRoot,[string]$RepoRoot,[bool]
     $receipt=Join-Path $root 'auto-capacity-overlay.local.json'
     if(Test-Path -LiteralPath $receipt) {
         $r=Get-Content -LiteralPath $receipt -Raw|ConvertFrom-Json
-        if($r.Schema -cne 'iw7.auto-capacity-overlay/1' -or $r.Root -cne $root -or @($r.Files).Count -ne 3 -or @($r.Added).Count -ne 3){throw 'Invalid automatic profile overlay receipt.'}
+        if($r.Schema -cne 'iw7.auto-capacity-overlay/1' -or $r.Root -cne $root -or @($r.Files).Count -ne 5 -or @($r.Added).Count -ne 3){throw 'Invalid automatic profile overlay receipt.'}
         $seen=@{}
         foreach($f in $r.Files){
             if($f.Path -cnotin $paths -or $seen.ContainsKey($f.Path)){throw 'Unowned or duplicate automatic profile path.'};$seen[$f.Path]=$true

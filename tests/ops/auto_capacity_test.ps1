@@ -16,7 +16,10 @@ try {
     $party='#include <std_include.hpp>'+"`n"+'if (!paris_agent_capacity::compatible_peer(info.get("paris_capacity"))) {}'
     [IO.File]::WriteAllText("$component/party.cpp",$party)
     [IO.File]::WriteAllText("$component/filesystem.cpp",$before)
-    [IO.File]::WriteAllText("$component/updater.cpp",'#include <std_include.hpp>'+"`n"+'if (utils::flags::has_flag("noupdate")) {}')
+    [IO.File]::WriteAllText("$component/updater.cpp",'#include <std_include.hpp>'+"`n"+'delete_old_file(); if (utils::flags::has_flag("noupdate")) {}')
+    $utilities=Join-Path $base 'src/common/utils';[IO.Directory]::CreateDirectory($utilities)|Out-Null
+    [IO.File]::WriteAllText("$utilities/properties.cpp",'#include "properties.hpp"'+"`nstd::filesystem::path get_appdata_path()`n`t{ return normal; }")
+    [IO.File]::WriteAllText((Join-Path $base 'src/client/main.cpp'),'#include <std_include.hpp>'+"`n"+'limit_parallel_dll_loading();')
     $receipt=Set-IW7AutoCapacityOverlay $base $root $true
     $filesystemHash=(Get-FileHash "$component/filesystem.cpp").Hash
     [IO.File]::AppendAllText("$component/party.cpp",'foreign edit')

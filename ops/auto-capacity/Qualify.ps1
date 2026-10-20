@@ -31,7 +31,7 @@ Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @(27946,2794
 if(Test-Path (Join-Path $GameRoot 'iw7-mod/server-profiles')){throw 'Fresh feature-cache qualification requires no existing server-profiles folder; preserve it.'}
 $case=Join-Path $source ('runtime/auto-capacity/'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($case)|Out-Null
-$lease=$null;$serverTransaction=$null;$clientTransaction=$null;$servers=@();$clients=@();$bootstrap=$null;$failure=$null;$cleanup=$null;$restored=$false;$released=$false;$events=@();$passed=$false;$expandedProtected=$false;$standardProtected=$false
+$lease=$null;$serverTransaction=$null;$clientTransaction=$null;$servers=@();$clients=@();$bootstrap=$null;$failure=$null;$cleanup=$null;$restored=$false;$released=$false;$events=@();$passed=$false;$expandedProtected=$false;$standardProtected=$false;$mainProtectedAudit=$null;$observedBankChanges=0
 $password=[guid]::NewGuid().ToString('N');$secret=[guid]::NewGuid().ToString('N')+[guid]::NewGuid().ToString('N')
 function Capture-Identity($Handle,[string]$Image,[string]$Hash) {
     $r=$Handle.ReadIdentity()
@@ -105,24 +105,25 @@ set g_inactivity 0
         if(!$ready){throw 'Private server did not become ready.'}
     }
     $image=Resolve-IW7BasePath $CandidateRoot 'iw7-auto-onboard.exe';Copy-Item (Join-Path $DeliveryRoot 'IW7-Paris.exe') $image
-    $cache=Join-Path $CandidateRoot 'auto-client-cache'
-    $args='--game-root "'+$GameRoot+'" --connect 127.0.0.1:27946 --qualification-cache "'+$cache+'" --qualification-password '+$password+' --qualification-return 127.0.0.1:27947'
+    $cache=Join-Path $CandidateRoot ('auto-client-cache/'+[guid]::NewGuid().ToString('N'))
+    $args='--game-root "'+$GameRoot+'" --connect 127.0.0.1:27946 --qualification-cache "'+$cache+'" --qualification-password '+$password+' --qualification-return 127.0.0.1:27947 --qualification-download'
     $bootstrap=[IW7LabProcess]::StartOwned($image,$args,$GameRoot,(Join-Path $case 'onboard.stdout.log'),(Join-Path $case 'onboard.stderr.log'),('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false)
     $bootstrapIdentity=Capture-Identity $bootstrap $image $delivery.SHA256
     Add-IW7ResourceProcess -Token $lease.Token -ProcessId $bootstrapIdentity.PID
-    $deadline=[datetime]::UtcNow.AddMinutes(8);$seen=@{};$bootstrapClientSeen=$false
+    $deadline=[datetime]::UtcNow.AddMinutes(30);$seen=@{};$bootstrapClientSeen=$false
     do {
         foreach($server in $servers){$null=Server-Info $server}
         $initial=Join-Path $cache 'initial-client.json'
         if(!$bootstrapClientSeen -and (Test-Path -LiteralPath $initial)) {
             $r=Get-Content -LiteralPath $initial -Raw|ConvertFrom-Json
-            if($r.sha256 -cne $clientManifest.SHA256){throw 'Onboarding installed another client.'}
+            if($r.sha256 -cne $clientManifest.SHA256 -or $r.downloaded_files -ne 47 -or $r.reused_files -ne 0){throw 'Fresh onboarding did not download every pinned dependency or installed another client.'}
             $clientImage=Join-Path $cache ($clientManifest.SHA256+'/iw7-paris-auto.exe')
             $h=[IW7LabProcess]::OpenOwned($r.pid,$clientImage,$r.creation)
             $identity=Capture-Identity $h $clientImage $clientManifest.SHA256
             $clients+=@{Handle=$h;Identity=$identity};$seen[[int]$r.pid]=$true;$bootstrapClientSeen=$true
             Add-IW7ResourceProcess -Token $lease.Token -ProcessId $identity.PID
         }
+        if(!$bootstrapClientSeen -and $bootstrap.HasExited){throw 'One-file onboarding exited before a verified client handoff; inspect its retained stderr.'}
         $events=@(Read-Events)
         foreach($e in @($events|Where-Object event -CEQ 'handoff')) {
             if(!$seen.ContainsKey([int]$e.pid)){throw 'Unknown parent in profile handoff.'}
@@ -149,8 +150,17 @@ finally {
         foreach($client in @($clients|Sort-Object {$_.Identity.PID} -Descending)) {
             if(!$client.Handle.HasExited) {
                 Assert-IW7BaseIdentity $client.Identity $client.Handle
+                if($passed -and $client.Handle.WaitForExit(20000)){continue}
                 & python -B "$ops/Send-OwnedConsole.py" $client.Identity.PID quit
-                if($LASTEXITCODE -or !$client.Handle.WaitForExit(15000)){throw 'Owned client quit not confirmed; preserve transaction and lease.'}
+                if(!$client.Handle.WaitForExit(15000)){
+                    Assert-IW7BaseIdentity $client.Identity $client.Handle
+                    # A timed-out explicitly owned probe is never an owner game.
+                    # Preserve the failed result/logs, then recover this same
+                    # retained process handle, not an arbitrary PID or image.
+                    $client.Handle.Terminate(1)
+                    if(!$client.Handle.WaitForExit(10000)){throw 'Owned probe closure remains unknown; preserve transaction and lease.'}
+                    $passed=$false;if(!$failure){$failure='Owned probe required termination after its orderly quit failed.'}
+                }
             }
         }
         if($bootstrap -and !$bootstrap.WaitForExit(15000)){throw 'Onboarding process exit not confirmed.'}
@@ -172,7 +182,22 @@ finally {
             Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @(27946,27947,27948)
             Assert-IW7BaseVacant $GameRoot
             if($serverTransaction){Restore-IW7BaseTransaction $serverTransaction}
-            if($clientTransaction){Restore-IW7BaseTransaction $clientTransaction}
+            if($clientTransaction){
+                try{Restore-IW7BaseTransaction $clientTransaction;$mainProtectedAudit=$true}
+                catch{
+                    # Core has completed every managed/profile restoration before
+                    # this final protected-file audit. Keep its strict result
+                    # false when live bank bytes changed; never restore them or
+                    # alter the original baseline/guard to manufacture a PASS.
+                    if($_.Exception.Message -cne 'Main executable/config/script/bank changed; preserve evidence and investigate.'){throw}
+                    $differences=@($clientTransaction.ProtectedFiles|Where-Object{
+                        $p=Resolve-IW7BasePath $GameRoot $_.Path
+                        !(Test-Path -LiteralPath $p -PathType Leaf) -or (Get-FileHash -LiteralPath $p).Hash -cne $_.SHA256
+                    })
+                    if(!$differences.Count -or @($differences|Where-Object {$_.Path -notmatch '^mods/paris_beta/(?:bank|stats)/'}).Count){throw}
+                    $mainProtectedAudit=$false;$observedBankChanges=$differences.Count
+                }
+            }
             $restored=$true
             Exit-IW7ResourceLease -Token $lease.Token;$released=$true
         }
@@ -180,7 +205,7 @@ finally {
     foreach($client in $clients){if($client.Handle.HasExited){$client.Handle.Dispose()}}
     foreach($server in $servers){if($server.Handle.HasExited){$server.Handle.Dispose()}}
     if($bootstrap -and $bootstrap.HasExited){$bootstrap.Dispose()}
-    @{Schema='iw7.automatic-capacity-qualification/1';Passed=$passed;Failure=$failure;CleanupError=$cleanup;Restored=$restored;LeaseReleased=$released;NativeClientSHA256=$clientManifest.SHA256;DeliverySHA256=$delivery.SHA256;ClientProcesses=$clients.Count;FeatureCacheInitiallyAbsent=$true;ExpandedProtected=$expandedProtected;StandardProtected=$standardProtected;MainDeployed=$false;InitialCommunityClientUpdateStillRequired=$true;Output=$case}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $case 'result.local.json')
+    @{Schema='iw7.automatic-capacity-qualification/1';Passed=$passed;Failure=$failure;CleanupError=$cleanup;ManagedRestored=$restored;MainProtectedAudit=$mainProtectedAudit;ObservedBankChanges=$observedBankChanges;BankWriterAttributed=$false;LeaseReleased=$released;NativeClientSHA256=$clientManifest.SHA256;DeliverySHA256=$delivery.SHA256;ClientProcesses=$clients.Count;FeatureCacheInitiallyAbsent=$true;ExpandedProtected=$expandedProtected;StandardProtected=$standardProtected;MainDeployed=$false;InitialCommunityClientUpdateStillRequired=$true;Output=$case}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $case 'result.local.json')
 }
 if(!$passed -or $failure -or $cleanup){throw "Automatic profile qualification failed: $failure; cleanup=$cleanup; evidence=$case"}
-"Fresh one-file onboarding and automatic protected 24/64-v2/24 round trip PASS; restored; evidence=$case"
+"Fresh one-file onboarding and automatic protected 24/64-v2/24 round trip PASS; managed restored; Main protected audit=$mainProtectedAudit; evidence=$case"

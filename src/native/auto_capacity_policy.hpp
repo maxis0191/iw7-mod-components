@@ -45,7 +45,7 @@ inline std::wstring quote(std::wstring_view value) {
 inline bool controlled(std::wstring_view s) {
     std::wstring lower(s);
     for(auto& c:lower)if(c>=L'A' && c<=L'Z')c=static_cast<wchar_t>(c+L'a'-L'A');
-    return lower==L"-cpmode" || lower==L"-zombies" || lower==L"-paris-capacity-64" ||
+    return lower==L"-noupdate" || lower==L"-cpmode" || lower==L"-zombies" || lower==L"-paris-capacity-64" ||
         lower==L"-paris-capacity-production" || lower==L"-paris-capacity-client-probe" ||
         lower.substr(0,12)==L"-paris-auto-";
 }

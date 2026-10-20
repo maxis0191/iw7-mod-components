@@ -145,6 +145,7 @@ void relaunch(const game::netadr_s& target,int mode,bool expanded) {
     const std::wstring endpoint_wide(endpoint_text.begin(),endpoint_text.end());
     const auto parent=std::to_wstring(GetCurrentProcessId())+L":"+std::to_wstring(creation(GetCurrentProcess()));
     auto args=arguments(original,endpoint_wide,mode,expanded,parent);
+    if(utils::flags::has_flag("paris-auto-managed-data"))args.emplace_back(L"-paris-auto-managed-data");
     if(const auto password=game::Dvar_FindVar("password");password && password->type==game::DVAR_TYPE_STRING && password->current.string) {
         // Preserve a password entered through the normal UI as well as argv.
         args.emplace_back(L"+set");args.emplace_back(L"password");
@@ -231,7 +232,14 @@ class component final:public component_interface {
             if(requested && game::clientUIActives[0].connectionState==game::CA_ACTIVE && !game::clientUIActives[0].frontEndSceneState[0]) {
                 reconnect_pending=false;
                 event("active",paris_agent_capacity::installed()?"64-v2":"24");
-                console::info("[Automatic profile] reconnect ACTIVE; layout=%s\n",paris_agent_capacity::installed()?"64-v2":"24");return;
+                console::info("[Automatic profile] reconnect ACTIVE; layout=%s\n",paris_agent_capacity::installed()?"64-v2":"24");
+                wchar_t qualify[2]{};
+                if(!paris_agent_capacity::installed() && required==L"24" &&
+                    GetEnvironmentVariableW(L"IW7_AUTO_QUALIFY",qualify,2)==1 && qualify[0]==L'1' &&
+                    resume_target.substr(0,10)==L"127.0.0.1:" &&
+                    std::stoul(resume_target.substr(10))>=27100 && std::stoul(resume_target.substr(10))<=27999)
+                    scheduler::once([] {event("qualification_exit","24");command::execute("quit",false);},scheduler::main,15s);
+                return;
             }
             if(GetTickCount64()>=deadline) {reconnect_pending=false;console::warn("[Automatic profile] reconnect timed out; use the server browser to retry\n");return;}
             if(requested)return;

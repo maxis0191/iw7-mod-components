@@ -2,6 +2,14 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "auto_client_data_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/auto_client_data_test.py"
+      ]
+    },
+    {
       "id": "auto_capacity_test",
       "command": [
         "pwsh",

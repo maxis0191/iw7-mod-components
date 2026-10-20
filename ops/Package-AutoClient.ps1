@@ -7,7 +7,13 @@ if($manifest.Schema -cne 'iw7.standard-client-build/1' -or $manifest.AutomaticPr
    $manifest.Capacity64Capability -ne $true -or $manifest.OwnerCheatsEnabled -ne $false -or
    (Get-FileHash -LiteralPath $image).Hash -cne $manifest.SHA256 -or
    (Get-FileHash -LiteralPath "$PSScriptRoot/auto-capacity/Overlay.Core.ps1").Hash -cne $manifest.AutoProfileRecipeSHA256){throw 'Reviewed automatic client build provenance required.'}
-foreach($row in $manifest.AutoProfileOverlay.Added){if((Get-FileHash -LiteralPath (Join-Path $repo ('src/native/'+[IO.Path]::GetFileName($row.Path)))).Hash -cne $row.SHA256){throw 'Compiled automatic client component differs.'}}
+if($manifest.AutoProfileOverlay.Schema -cne 'iw7.auto-capacity-overlay/1' -or @($manifest.AutoProfileOverlay.Added).Count -ne 3 -or @($manifest.AutoProfileOverlay.Files).Count -ne 5){throw 'Complete automatic profile composition required.'}
+foreach($name in @('auto_capacity.cpp','auto_capacity.hpp','auto_capacity_policy.hpp','paris_agent_capacity.cpp','paris_agent_capacity.hpp')){
+    $rows=@($manifest.NativeSourceHashes|Where-Object File -CEQ ('src/client/component/'+$name))
+    if($rows.Count -ne 1 -or (Get-FileHash -LiteralPath (Join-Path $repo ('src/native/'+$name))).Hash -cne $rows[0].SHA256){throw 'Compiled automatic client component differs.'}
+}
+& python -B "$repo/tests/ops/auto_client_data_test.py"
+if($LASTEXITCODE){throw 'Bundled community-data metadata is not qualified.'}
 $Output=[IO.Path]::GetFullPath($Output)
 if(Test-Path -LiteralPath $Output){throw 'Fresh one-file player delivery output required.'}
 [IO.Directory]::CreateDirectory($Output)|Out-Null
@@ -19,8 +25,8 @@ try{$input.CopyTo($gzip)}finally{$gzip.Dispose();$target.Dispose();$input.Dispos
 Invoke-IW7ResourceJob -Scope $repo -Owner 'Single-file automatic client onboarding build' -PhysicalBytes 1GB -CommitBytes 1GB -Body {
     $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     $result=Join-Path $Output 'IW7-Paris.exe'
-    & $compiler /nologo /target:winexe /platform:x64 /optimize+ /warnaserror+ /r:System.Windows.Forms.dll /r:System.IO.Compression.dll "/resource:$payload,client.gz" "/resource:$Output/client.sha256,client.sha256" "/out:$result" "$repo/src/bootstrap/AutoClient.cs"
+    & $compiler /nologo /target:winexe /platform:x64 /optimize+ /warnaserror+ /r:System.Windows.Forms.dll /r:System.IO.Compression.dll /r:System.Web.Extensions.dll /r:System.Management.dll "/resource:$repo/config/auto-client-data.json,community-data.json" "/resource:$payload,client.gz" "/resource:$Output/client.sha256,client.sha256" "/out:$result" "$repo/src/bootstrap/AutoClient.cs"
     if($LASTEXITCODE){throw 'Automatic client onboarding compilation failed.'}
-    @{Schema='iw7.auto-client-delivery/1';File='IW7-Paris.exe';SHA256=(Get-FileHash $result).Hash;ClientSHA256=$manifest.SHA256;BuildReceiptSHA256=(Get-FileHash (Join-Path $PackageRoot 'build-manifest.json')).Hash;BootstrapSourceSHA256=(Get-FileHash "$repo/src/bootstrap/AutoClient.cs").Hash;Bytes=(Get-Item $result).Length;DistributionBoundary='First execution or community distributor update required; no manual archive extraction.'}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $Output 'delivery.json')
+    @{Schema='iw7.auto-client-delivery/1';File='IW7-Paris.exe';SHA256=(Get-FileHash $result).Hash;ClientSHA256=$manifest.SHA256;BuildReceiptSHA256=(Get-FileHash (Join-Path $PackageRoot 'build-manifest.json')).Hash;BootstrapSourceSHA256=(Get-FileHash "$repo/src/bootstrap/AutoClient.cs").Hash;CommunityDataManifestSHA256=(Get-FileHash "$repo/config/auto-client-data.json").Hash;Bytes=(Get-Item $result).Length;DistributionBoundary='First execution or community distributor update required; no manual archive extraction.'}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $Output 'delivery.json')
     Write-Output "One-file automatic onboarding: $result"
 }
