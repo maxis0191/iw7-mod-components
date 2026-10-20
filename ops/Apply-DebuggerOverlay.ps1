@@ -1,7 +1,79 @@
 # Called only by the guarded builder after its source commit check.
-param([Parameter(Mandatory)][string]$NativeRoot,[Parameter(Mandatory)][string]$Commit,[switch]$Enabled)
+param([Parameter(Mandatory)][string]$NativeRoot,[Parameter(Mandatory)][string]$Commit,[switch]$Enabled,[switch]$MainEngineOnly)
 $ErrorActionPreference='Stop'
+function Convert-IW7MainEngineDebuggerScheduler([string]$Source) {
+    $base=$Source.Replace("`r`n","`n")
+    $pch='#include <std_include.hpp>'
+    $call='return utils::hook::invoke<void*>(0x140B8E2D0);'
+    foreach($marker in @($pch,$call)) {
+        if($base.Split([string[]]@($marker),[StringSplitOptions]::None).Count -ne 2){throw 'Standard main-engine scheduler marker must occur exactly once.'}
+    }
+    if($base.Contains('paris_debugger')){throw 'Existing debugger scheduler source refused; preserve it.'}
+    $base.Replace($pch,$pch+"`n"+'#include "paris_debugger.hpp"').Replace($call,'paris_debugger::scope2 paris_main_scope;'+"`n`t`t`t"+$call)
+}
+function Assert-IW7MainEngineDebuggerPathAttributes([IO.FileAttributes]$Attributes) {
+    if($Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Reparse Standard debugger source path refused; preserve it.'}
+}
+function Assert-IW7MainEngineDebuggerSourceState([string[]]$Changed,[string[]]$Untracked,$Receipt,[object[]]$Measured) {
+    $scheduler='src/client/component/scheduler.cpp'
+    $names=@('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp','debugger_thread_cpu.hpp')
+    $copies=@($names|ForEach-Object{'src/client/component/'+$_})
+    if(@($Changed).Count -ne 1 -or $Changed[0] -cne $scheduler){throw 'Main-engine build changed foreign tracked source.'}
+    if(@($Untracked).Count -ne 4 -or @($Untracked|Select-Object -Unique).Count -ne 4 -or @($Untracked|Where-Object{$_ -cnotin $copies}).Count){throw 'Main-engine build has foreign or missing untracked source.'}
+    if($Receipt.Commit -cne 'a99c04937513530648573fd4ca2a05321a90b4a5' -or @($Receipt.Files).Count -ne 4){throw 'Original Standard debugger receipt required.'}
+    $expected=@([pscustomobject]@{Relative=$scheduler;SHA256=$Receipt.SchedulerSHA256})+@($Receipt.Files)
+    if(@($expected.Relative|Select-Object -Unique).Count -ne 5 -or @($expected|Where-Object{$_.Relative -cne $scheduler -and $_.Relative -cnotin $copies}).Count){throw 'Debugger receipt paths differ.'}
+    if(@($Measured).Count -ne 5 -or @($Measured.Relative|Select-Object -Unique).Count -ne 5){throw 'Every original debugger source must be remeasured.'}
+    foreach($pin in $expected) {
+        $actual=@($Measured|Where-Object Relative -CEQ $pin.Relative)
+        if($pin.SHA256 -isnot [string] -or $pin.SHA256 -cnotmatch '\A[0-9a-fA-F]{64}\z' -or $actual.Count -ne 1 -or
+           $actual[0].SHA256 -isnot [string] -or ![string]::Equals($pin.SHA256,$actual[0].SHA256,[StringComparison]::OrdinalIgnoreCase)){throw 'Build modified an original debugger source.'}
+    }
+}
+function Add-IW7MainEngineDebuggerOverlay([string]$NativeRoot,[string]$Commit,[string]$RepoRoot) {
+    if($Commit -cne 'a99c04937513530648573fd4ca2a05321a90b4a5'){throw 'Main-engine debugger requires the exact Standard source pin; cfca is not a fallback.'}
+    $relative='src/client/component/scheduler.cpp'
+    foreach($guardRelative in @('src','src/client','src/client/component',$relative)) {
+        $guardPath=Join-Path $NativeRoot $guardRelative
+        Assert-IW7MainEngineDebuggerPathAttributes ([IO.File]::GetAttributes($guardPath))
+    }
+    # The fixed a99 scheduler blob is LF-terminated. Preserve every native
+    # output line, including final empty lines; normalize CRLF only below.
+    $base=((git -C $NativeRoot show ($Commit+':'+$relative)) -join "`n")+"`n"
+    if($LASTEXITCODE){throw 'Pinned Standard scheduler could not be read.'}
+    $overlay=Convert-IW7MainEngineDebuggerScheduler $base
+    $raw=[Text.UTF8Encoding]::new($false,$true).GetBytes($overlay)
+    $files=foreach($name in @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp','debugger_thread_cpu.hpp')) {
+        $target=Join-Path $NativeRoot ('src/client/component/'+$name)
+        $attributes=$null
+        try {$attributes=[IO.File]::GetAttributes($target)} catch [IO.FileNotFoundException] {}
+        if($null -ne $attributes){Assert-IW7MainEngineDebuggerPathAttributes $attributes;throw "Existing debugger target refused; preserve $name."}
+        $bytes=[IO.File]::ReadAllBytes((Join-Path $RepoRoot ('src/native/'+$name)))
+        if(!$bytes.Length -or $bytes.Length -gt 1MB){throw 'Bounded debugger Source required.'}
+        [pscustomobject]@{Relative='src/client/component/'+$name;Target=$target;Raw=$bytes;SHA256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))}
+    }
+    $stream=$null
+    try {
+        $stream=[IO.FileStream]::new((Join-Path $NativeRoot $relative),'Open','ReadWrite','None')
+        if(!$stream.Length -or $stream.Length -gt 1MB){throw 'Bounded Standard scheduler required.'}
+        $before=[byte[]]::new([int]$stream.Length);$used=0
+        while($used -lt $before.Length){$n=$stream.Read($before,$used,$before.Length-$used);if(!$n){throw 'Standard scheduler early EOF.'};$used+=$n}
+        if($stream.ReadByte() -ne -1 -or [Text.UTF8Encoding]::new($false,$true).GetString($before).Replace("`r`n","`n") -cne $base){throw 'Unowned Standard scheduler source; preserve it.'}
+        foreach($file in $files) {
+            $copy=$null
+            try {$copy=[IO.FileStream]::new($file.Target,'CreateNew','Write','None');$copy.Write($file.Raw,0,$file.Raw.Length);$copy.Flush($true)}
+            finally {if($copy){$copy.Dispose()}}
+        }
+        $stream.Position=0;$stream.Write($raw,0,$raw.Length);$stream.SetLength($raw.Length);$stream.Flush($true)
+    } finally {if($stream){$stream.Dispose()}}
+    [pscustomobject]@{Commit=$Commit;Mode='main-engine-only';SchedulerSHA256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($raw));Files=@($files|Select-Object Relative,SHA256);GSCOverlay=$false;GUIOverlay=$false;CapacityOverlay=$false}
+}
 $repo=Split-Path $PSScriptRoot -Parent
+if($MainEngineOnly) {
+    if(!$Enabled){throw 'MainEngineOnly requires explicit Enabled; it does not retire another profile.'}
+    Add-IW7MainEngineDebuggerOverlay $NativeRoot $Commit $repo
+    return
+}
 if (!$Enabled -and !(Test-Path -LiteralPath (Join-Path $NativeRoot 'src/client/component/paris_debugger.cpp'))) {
     # Legacy non-debugger forks predate frame_capture. An ordinary build must
     # not require any diagnostic marker or touch its source files.

@@ -246,7 +246,8 @@ function Invoke-IW7ResourceJob {
     param([Parameter(Mandatory)][scriptblock]$Body,[Parameter(Mandatory)][string]$Scope,
         [ValidateSet('Build','Extract','Analysis')][string]$Kind='Build',
         [long]$PhysicalBytes=4GB,[long]$CommitBytes=6GB,[string]$Owner='native build',
-        [scriptblock]$BeforeReleaseCheck=$null,[object]$OriginalContext=$null,[object]$RetentionRoot=$null)
+        [scriptblock]$BeforeReleaseCheck=$null,[object]$OriginalContext=$null,[object]$RetentionRoot=$null,
+        [switch]$RequireNewLease)
     if ($PSBoundParameters.ContainsKey('BeforeReleaseCheck') -or $PSBoundParameters.ContainsKey('OriginalContext') -or
         $PSBoundParameters.ContainsKey('RetentionRoot')) {
         foreach ($private:jobArgument in @('BeforeReleaseCheck','OriginalContext','RetentionRoot')) {
@@ -411,7 +412,11 @@ function Invoke-IW7ResourceJob {
         $private:jobProcess=$null;$private:jobPriority=$null
         $private:jobPriorityCaptured=$false;$private:jobPriorityRestored=$false;$private:jobHookApproved=$false
         try {
-            $private:jobStore['Lease']=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+            if ($RequireNewLease) {
+                $private:jobStore['Lease']=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner -RequireNewLease
+            } else {
+                $private:jobStore['Lease']=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+            }
             # The caller's root already owns this actual lease, before mirrors/getters.
             $private:jobLease=$private:jobStore['Lease']
             if ($null-eq$private:jobLease) { throw 'Actual returned lease required.' }
@@ -463,7 +468,11 @@ function Invoke-IW7ResourceJob {
         if ($null-ne$private:jobStore['FirstErrorRecord']) { throw $private:jobStore['FirstErrorRecord'] }
         return
     }
-    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+    if ($RequireNewLease) {
+        $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner -RequireNewLease
+    } else {
+        $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+    }
     $process=Get-Process -Id $PID
     $priority=$process.PriorityClass
     try {

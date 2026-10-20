@@ -177,13 +177,14 @@ if ($RetainedReleaseSourceOnly) {
         $c=[pscustomobject]@{
             View=$View;Events=[Collections.Generic.List[string]]::new();PrivateVisible=[Collections.Generic.List[string]]::new()
             Lease=[pscustomobject]@{Token='0123456789abcdef0123456789abcdef'}
-            Mode='True';Mutation='';MutationStage='';TokenStage='';TokenValue=$null
+            Mode='True';RequireNewLeaseMode='Omitted';Mutation='';MutationStage='';TokenStage='';TokenValue=$null
             OmitHook=$false;OmitView=$false;OmitRoot=$false;NullHook=$false;NullView=$false;NullRoot=$false;Legacy=$false
             WrongWitness=$false;ReadonlyRoot=$false;UsedRoot=$false;WrongRoot=$false;AttributedRoot=$false;ProbePrivate=$false;Reenter=$false
             EnterFails=$false;ProcessFails=$false;ReadFails=$false;UnknownPriority=$false;LowerFails=$false
             RestoreFails=$false;RestoreSilent=$false;BodyFails=$false;ExitFails=$false
-            EnterCount=0;ExitCount=0;BodyCount=0;HookCount=0
+            EnterCount=0;ExitCount=0;BodyCount=0;HookCount=0;EnterRequireNewLeaseBound=$false;EnterRequireNewLease=$false
             RootVariable=$null;RootKey=$null;Owner=$null;OriginalSlots=$null;Caught=$null;Output=$null;ReenterCaught=$null;ReenterOwner=$null
+            EnterException=[InvalidOperationException]::new('authored enter failure')
             BodyException=[InvalidOperationException]::new('authored body failure')
             HookException=[InvalidOperationException]::new('authored hook failure')
             ExitException=[InvalidOperationException]::new('authored exit failure')
@@ -205,9 +206,10 @@ if ($RetainedReleaseSourceOnly) {
             $c.OriginalSlots=@($c.View.PSObject.Properties)
             if($c.TokenStage-ceq'Initial'){$c.Lease.Token=$c.TokenValue}
             function Enter-IW7ResourceLease {
-                param($Scope,$Kind,$PhysicalBytes,$CommitBytes,$Owner)
+                param($Scope,$Kind,$PhysicalBytes,$CommitBytes,$Owner,[switch]$RequireNewLease)
                 $c.Events.Add('enter');$c.EnterCount++;$c.Args=@($Scope,$Kind,$PhysicalBytes,$CommitBytes,$Owner)
-                if($c.EnterFails){throw 'authored enter failure'}
+                $c.EnterRequireNewLeaseBound=$PSBoundParameters.ContainsKey('RequireNewLease');$c.EnterRequireNewLease=[bool]$RequireNewLease
+                if($c.EnterFails){throw $c.EnterException}
                 return $c.Lease
             }
             function Exit-IW7ResourceLease {
@@ -279,6 +281,12 @@ if ($RetainedReleaseSourceOnly) {
                 }
             }
             $args=@{Scope='owned-source';Kind='Analysis';PhysicalBytes=17;CommitBytes=23;Owner='authored';Body=$body}
+            switch -CaseSensitive($c.RequireNewLeaseMode){
+                'Omitted' {}
+                'False' {$args.RequireNewLease=$false}
+                'True' {$args.RequireNewLease=$true}
+                default {throw 'Unknown Source admission-switch mode.'}
+            }
             if(!$c.Legacy){
                 if(!$c.OmitHook){$args.BeforeReleaseCheck=if($c.NullHook){$null}else{$hook}}
                 if(!$c.OmitView){$args.OriginalContext=if($c.NullView){$null}else{$c.View}}
@@ -296,12 +304,45 @@ if ($RetainedReleaseSourceOnly) {
     }
     try {
         $legacy=@(
-            '    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner',
+            '    if ($RequireNewLease) {',
+            '        $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner -RequireNewLease',
+            '    } else {',
+            '        $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner',
+            '    }',
             '    $process=Get-Process -Id $PID','    $priority=$process.PriorityClass','    try {',
             '        $process.PriorityClass=''BelowNormal''','        & $Body','    } finally {',
             '        $process.PriorityClass=$priority','        Exit-IW7ResourceLease -Token $lease.Token','    }','}'
         )-join[string][char]10
         Assert-Source ($source.Replace([string][char]13,'').EndsWith($legacy,[StringComparison]::Ordinal)) 'Legacy literal tail changed.'
+        foreach($legacyMode in @($false,$true)){
+            foreach($admissionMode in @('Omitted','False','True')){
+                $setup={param($c)$c.Legacy=$legacyMode;$c.RequireNewLeaseMode=$admissionMode}.GetNewClosure()
+                $forwarded=Invoke-SourceCase -Configure $setup
+                $requireNew=$admissionMode-ceq'True'
+                Assert-Source (!$forwarded.Caught-and$forwarded.EnterCount-eq1-and$forwarded.BodyCount-eq1-and$forwarded.ExitCount-eq1) ('Wrapper forwarding failed: '+$legacyMode+'/'+$admissionMode)
+                Assert-Source ($forwarded.EnterRequireNewLeaseBound-eq$requireNew-and$forwarded.EnterRequireNewLease-eq$requireNew) ('Enter switch presence/value differs: '+$legacyMode+'/'+$admissionMode)
+                Assert-Source (($forwarded.Args-join'|')-ceq'owned-source|Analysis|17|23|authored') 'Forwarding changed existing admission arguments.'
+                if($legacyMode){
+                    Assert-Source ($forwarded.HookCount-eq0-and$null-eq$forwarded.Owner-and$forwarded.ExitToken-ceq$forwarded.Lease.Token) 'Legacy forwarding activated retention or changed release.'
+                }else{
+                    Assert-Source ([object]::ReferenceEquals($forwarded.Owner['Lease'],$forwarded.Lease)-and[object]::ReferenceEquals($forwarded.View.ResourceJobLease,$forwarded.Lease)) 'Forwarding copied the actual retained lease.'
+                    Assert-Source ([object]::ReferenceEquals($forwarded.RootVariable.Value,$forwarded.Owner)-and[object]::ReferenceEquals([AppDomain]::CurrentDomain.GetData($forwarded.RootKey),$forwarded.RootVariable)) 'Forwarding replaced the original retained root.'
+                }
+                $refusalSetup={param($c)$c.Legacy=$legacyMode;$c.RequireNewLeaseMode=$admissionMode;$c.EnterFails=$true}.GetNewClosure()
+                $refused=Invoke-SourceCase -Configure $refusalSetup
+                Assert-Source ($refused.Caught-and$refused.EnterCount-eq1-and$refused.BodyCount-eq0-and$refused.HookCount-eq0-and$refused.ExitCount-eq0-and($refused.Events-join',')-ceq'enter') 'Admission refusal reached Body, priority or release.'
+                Assert-Source ($refused.EnterRequireNewLeaseBound-eq$requireNew-and$refused.EnterRequireNewLease-eq$requireNew) 'Refused Enter switch presence/value differs.'
+                Assert-Source ([object]::ReferenceEquals($refused.Caught.Exception,$refused.EnterException)) 'Admission refusal replaced the original Exception.'
+                if($legacyMode){
+                    Assert-Source ($null-eq$refused.Owner) 'Legacy refusal fabricated retained ownership.'
+                }else{
+                    Assert-Source ($null-eq$refused.Owner['Lease']-and!$refused.Owner['ReleaseAttempted']-and!$refused.Owner['ReleaseReturned']) 'Admission refusal fabricated a lease or release.'
+                    Assert-Source ([object]::ReferenceEquals($refused.RootVariable.Value,$refused.Owner)-and[object]::ReferenceEquals([AppDomain]::CurrentDomain.GetData($refused.RootKey),$refused.RootVariable)) 'Admission refusal lost the original retained root.'
+                    Assert-Source ([object]::ReferenceEquals($refused.Owner['FirstException'],$refused.EnterException)-and[object]::ReferenceEquals($refused.Owner['FirstErrorRecord'],$refused.Owner['Journal'][0]['ErrorRecord'])) 'Admission refusal lost its retained original error.'
+                    Assert-Source ([object]::ReferenceEquals($refused.View.ResourceJobFirstErrorRecord,$refused.Owner['FirstErrorRecord'])-and[object]::ReferenceEquals($refused.View.ResourceJobFirstException,$refused.EnterException)) 'Admission refusal copied the error view.'
+                }
+            }
+        }
         $old=Invoke-SourceCase -Configure {param($c)$c.Legacy=$true}
         Assert-Source (!$old.Caught-and$old.EnterCount-eq1-and$old.ExitCount-eq1-and$old.HookCount-eq0-and$null-eq$old.Owner) 'Legacy semantics/root changed.'
         $ok=Invoke-SourceCase -Configure {param($c)$c.ProbePrivate=$true}
@@ -341,8 +382,9 @@ if ($RetainedReleaseSourceOnly) {
                 Assert-Source ([object]::ReferenceEquals($x.Owner['FirstErrorRecord'],$x.Owner['Journal'][0]['ErrorRecord'])-and[object]::ReferenceEquals($x.Caught.Exception,$x.Owner['FirstException'])) 'First record/Exception not durable after mutation.'
             }
         }
-        $body=Invoke-SourceCase -Configure {param($c)$c.BodyFails=$true}
+        $body=Invoke-SourceCase -Configure {param($c)$c.BodyFails=$true;$c.RequireNewLeaseMode='True'}
         Assert-Source ($body.ExitCount-eq1-and$body.Owner['ReleaseReturned']) 'Known failed Body could not release.'
+        Assert-Source ($body.EnterRequireNewLeaseBound-and$body.EnterRequireNewLease-and[object]::ReferenceEquals($body.Owner['Lease'],$body.Lease)) 'Initial admission lost the original lease on Body failure.'
         Assert-Source ([object]::ReferenceEquals($body.Owner['FirstException'],$body.BodyException)-and[object]::ReferenceEquals($body.Caught.Exception,$body.BodyException)) 'Body primary was replaced.'
         Assert-Source ([object]::ReferenceEquals($body.HookFirst,$body.Owner['FirstErrorRecord'])-and[object]::ReferenceEquals($body.HookExceptionRef,$body.BodyException)) 'Hook observed copied first error.'
         foreach($mutation in @('ClearSecondary','ReplaceSecondary','NullFirst','WriteOwner','WriteJournal')){

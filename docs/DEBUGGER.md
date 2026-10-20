@@ -708,6 +708,43 @@ CPU API reads do not establish clock resolution or whether the engine computes
 or waits: `indeterminate_cpu_resolution_unmeasured` remains unchanged. A future
 engine observation still requires the controlled off/on comparison above.
 
+### Optional Standard build integration (Source only)
+
+`Build-StandardClient.ps1 -MainEngineDebugger` is an explicit build-only profile
+for the Standard fork pin `a99c04937513530648573fd4ca2a05321a90b4a5`. It is
+exclusive with `OwnerCheats` and `Capacity64`, refuses an absent checkout, and
+keeps the original HEAD, clean-source, foreign-untracked, ancestry and loading
+hook guards before applying an overlay. Omission or explicit false keeps the
+existing Standard path, including its existing capacity cleanup calls.
+Before writes, the new overlay also refuses reparse points in the fixed
+`src/client/component` ancestry and Source leaves. Its scheduler comparison
+normalizes CRLF only, preserving trailing whitespace and final lines; these
+checks do not constitute a universal protection against concurrent path changes.
+
+The new mode does not import or remove OwnerCheats, Cutscene or capacity
+overlays. It adds only the scope2 seam to `scheduler.cpp` and copies the four
+real debugger Sources. It does not patch GSC, GUI/frame capture or an existing
+capacity/WatchCheckpoint route. Postbuild checks require the exact scheduler
+change and four matching copies, with no other changed or untracked Source.
+The package is separately named `standard-client-main-engine-debugger-package`;
+its manifest records the profile and its lack of runtime qualification. The
+unchanged TU still contains three GSC native registrations under its explicit
+runtime flags; a scheduler-only overlay does not prove runtime zero-GSC,
+privacy, protection or observer overhead.
+
+The Standard native build has not been performed for this integration. The
+existing builder releases its resource job automatically; its full-build
+NoExit/original-job containment, artifact inventory and Root review before
+release still need a separately reviewed execution path. No previous standalone
+packet qualifies that lifecycle. `EnabledCfcaMustRemainRefused=true` and the
+other stopped routes remain unchanged. The existing loading-hook Source test
+passed its bounded `-MainEngineDebuggerSourceOnly` selection with 57 assertions
+and exit zero, before its legacy imports. It exercised real guards and overlay
+functions with fake Git, synthetic reparse attributes and owned temporary Source
+copies. It did not invoke the native builder, PCH, SDK, registry or resource
+lease. This result does not qualify the full TU, NoExit build lifecycle, game
+behavior or performance.
+
 For a specific script suspect, bracket a region only in a separate lab candidate:
 
 ```c

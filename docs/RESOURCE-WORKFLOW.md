@@ -92,6 +92,13 @@ unflagged retry, adopt or release another lease, or delete registry state. This
 optional API does not activate a consumer: advance its explicit Native pin and
 prepare fresh verified source inputs before adoption.
 
+`Invoke-IW7ResourceJob -RequireNewLease` forwards that opt-in to the canonical
+admission call in both its legacy and retained-release branches. When omitted
+or explicitly false, the wrapper leaves the switch absent from the existing
+Enter call. It does not activate retained release or change its ownership,
+error or release contract. This forwarding alone does not qualify physical
+NoExit retention, child jobs, artifacts or an actual build/runtime lifecycle.
+
 The dedicated `resource_scheduler_initial_admission_source_test` check selects
 `-InitialAdmissionSourceOnly` before the legacy suite imports Core or starts
 contenders. It exercises the actual admission and registry-reader AST with
@@ -283,16 +290,22 @@ The narrow `tests/ops/resource_scheduler_test.ps1
 extracted by AST with fake admission/release/process/priority/check dependencies
 and owned managed root witnesses. It checks actual lease/error references after
 unwind, private-writer visibility, read-only journal mutations, token frontiers,
-strict check results and literal legacy parity. It returns before the Core
-import, real registry and historical cross-process contenders. Those Source
-causals do not establish a real lease, NoExit host, descendant closure,
-compiler/build/game result or full legacy-suite pass. Subsequent child coverage
+strict check results and literal legacy parity. It also checks omitted/false/true
+forwarding in both wrapper branches, refusal before Body and the retained original
+lease/error roots with the same actual wrapper and managed fakes. It returns
+before the Core import, real registry and historical cross-process contenders.
+Those Source causals do not establish a real lease, NoExit host, descendant
+closure, compiler/build/game result or full legacy-suite pass. Subsequent child coverage
 and postbuild evidence remain separate work.
+
+On 2026-10-20, one invocation exited zero with 242 Source assertions passing.
+It exercised the actual wrapper AST with fakes and managed root witnesses,
+without importing Core or using a real lease, process/registry operation or build.
 
 Build-Voice and Build-RhinoZoneTool acquire a heavy-job lease around compilation,
 default to one MSBuild node, disable compiler multiprocess expansion, disable
 node reuse and run at BelowNormal priority. The caller's priority is restored in
-`finally`. `TestsOnly` remains lightweight and does not reserve a whole game slot.
+`finally`. Test-only compilations, including `TestsOnly`, remain under canonical admission.
 Do not nest a lease wrapper around an already guarded builder.
 Build-RhinoAutoDownload now also reserves its synchronous ZoneTool invocation,
 with the same 6 GiB physical/8 GiB commit estimates as the other Rhino pack builder.

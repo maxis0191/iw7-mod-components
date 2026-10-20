@@ -1,12 +1,18 @@
-param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$OwnerCheats,[switch]$Capacity64)
+param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$OwnerCheats,[switch]$Capacity64,[switch]$MainEngineDebugger)
 $ErrorActionPreference='Stop'
+function Assert-IW7StandardDebuggerOptions([bool]$Enabled,[bool]$OwnerCheats,[bool]$Capacity64) {
+    if($Enabled -and ($OwnerCheats -or $Capacity64)){throw 'MainEngineDebugger is exclusive with OwnerCheats and Capacity64.'}
+}
+Assert-IW7StandardDebuggerOptions ([bool]$MainEngineDebugger) ([bool]$OwnerCheats) ([bool]$Capacity64)
 $repo=Split-Path $PSScriptRoot -Parent
 $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw | ConvertFrom-Json).Standard
 . "$PSScriptRoot/standard-client/Loading-NewMap.Core.ps1"
-. "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
-. "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
-. "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
-. "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1"
+if(!$MainEngineDebugger){
+    . "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
+    . "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
+    . "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
+    . "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1"
+}
 $root=[IO.Path]::GetFullPath($NativeRoot).TrimEnd('\','/')
 if(![IO.Path]::IsPathFullyQualified($NativeRoot) -or $NativeRoot -match '[\x00-\x1f"%!]'){throw 'Absolute literal NativeRoot required.'}
 $cursor=$root
@@ -15,11 +21,16 @@ while($cursor){
     $parent=Split-Path $cursor -Parent;if($parent -eq $cursor){break};$cursor=$parent
 }
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
-Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
-    Remove-IW7CapacityPeerOverlay $root
-    Remove-IW7CutsceneOverlay $root
-Remove-IW7OwnerCheatsOverlay $root
+$admissionOptions=@{}
+if($MainEngineDebugger){$admissionOptions.RequireNewLease=$true}
+Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) @admissionOptions -Body {
+    if(!$MainEngineDebugger){
+        Remove-IW7CapacityPeerOverlay $root
+        Remove-IW7CutsceneOverlay $root
+        Remove-IW7OwnerCheatsOverlay $root
+    }
     if(!(Test-Path -LiteralPath (Join-Path $root '.git'))){
+        if($MainEngineDebugger){throw 'Main-engine debugger requires an existing clean Standard checkout; no implicit clone.'}
         git clone --no-checkout $profile.Repository $root
         if($LASTEXITCODE){throw 'Standard client source clone failed.'}
         $previous=$env:GIT_LFS_SKIP_SMUDGE
@@ -27,7 +38,7 @@ Remove-IW7OwnerCheatsOverlay $root
         finally {if($null -eq $previous){Remove-Item Env:GIT_LFS_SKIP_SMUDGE -ErrorAction SilentlyContinue}else{$env:GIT_LFS_SKIP_SMUDGE=$previous}}
     }
     if((& git -C $root rev-parse HEAD).Trim() -cne $profile.Revision){throw 'Exact standard client pin required; preserve other checkouts.'}
-    $null=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled $false -PortOnly $true
+    if(!$MainEngineDebugger){$null=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled $false -PortOnly $true}
     git -C $root diff --quiet HEAD
     if($LASTEXITCODE){throw 'Modified tracked standard client source refused.'}
     $untracked=@(& git -C $root ls-files --others --exclude-standard src)
@@ -57,10 +68,15 @@ Remove-IW7OwnerCheatsOverlay $root
     $ownerCheatsOverlay=$null
     $capacityPeerOverlay=$null
     $capacityBuild=$null
+    $mainEngineOverlay=$null
     if($OwnerCheats){$ownerCheatsOverlay=Add-IW7OwnerCheatsOverlay $root $repo;$cutsceneOverlay=Add-IW7CutsceneOverlay $root $repo}
     if($Capacity64){
         $capacityBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled $true -PortOnly $true
         $capacityPeerOverlay=Add-IW7CapacityPeerOverlay $root
+    }
+    if($MainEngineDebugger){
+        # Load only this explicit Standard mode after HEAD/dirty/untracked guards.
+        $mainEngineOverlay=. "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $profile.Revision -Enabled -MainEngineOnly
     }
     Push-Location $root
     try {
@@ -75,7 +91,13 @@ Remove-IW7OwnerCheatsOverlay $root
         & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false /p:PostBuildEventUseInBuild=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"
         if($LASTEXITCODE){throw 'Standard client native build failed.'}
     } finally {Pop-Location}
-    if($OwnerCheats -or $Capacity64){
+    if($MainEngineDebugger){
+        $changed=@(& git -C $root diff --name-only HEAD);if($LASTEXITCODE){throw 'Debugger tracked source inventory failed.'}
+        $untracked=@(& git -C $root ls-files --others --exclude-standard src);if($LASTEXITCODE){throw 'Debugger untracked source inventory failed.'}
+        $expected=@([pscustomobject]@{Relative='src/client/component/scheduler.cpp';SHA256=$mainEngineOverlay.SchedulerSHA256})+@($mainEngineOverlay.Files)
+        $measured=@($expected|ForEach-Object{[pscustomobject]@{Relative=$_.Relative;SHA256=(Get-FileHash -LiteralPath (Join-Path $root $_.Relative)).Hash}})
+        Assert-IW7MainEngineDebuggerSourceState $changed $untracked $mainEngineOverlay $measured
+    }elseif($OwnerCheats -or $Capacity64){
         $changed=@(& git -C $root diff --name-only HEAD)
         $allowed=@()
         if($OwnerCheats){$allowed+=@('src/client/component/auth.cpp','src/client/component/command.cpp','src/client/component/dvar_cheats.cpp','src/client/component/gsc/script_extension.cpp','src/client/component/gsc/script_loading.cpp','src/client/component/input.cpp')}
@@ -91,7 +113,7 @@ Remove-IW7OwnerCheatsOverlay $root
         git -C $root diff --quiet HEAD
         if($LASTEXITCODE){throw 'Build unexpectedly modified tracked standard client source.'}
     }
-    $output=Join-Path $runtime 'standard-client-package'
+    $output=if($MainEngineDebugger){Join-Path $runtime 'standard-client-main-engine-debugger-package'}else{Join-Path $runtime 'standard-client-package'}
     if(Test-Path -LiteralPath $output){throw 'Fresh standard client package output required.'}
     [IO.Directory]::CreateDirectory($output)|Out-Null
     foreach($file in @('iw7-mod.exe','iw7-mod.pdb')){Copy-Item -LiteralPath (Join-Path $root ('build/bin/x64/Release/'+$file)) -Destination (Join-Path $output $file)}
@@ -111,6 +133,12 @@ Remove-IW7OwnerCheatsOverlay $root
     $manifest.CapacityPeerOverlay=$capacityPeerOverlay
     $manifest.CapacityPeerHelperSHA256=if($capacityPeerOverlay){(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1").Hash}else{$null}
     $manifest.CapacityLauncherSHA256=if($Capacity64){(Get-FileHash -LiteralPath (Join-Path $output 'Launch-IW7-Paris48.bat')).Hash}else{$null}
+    if($MainEngineDebugger){
+        $manifest.MainEngineDebugger=$true
+        $manifest.MainEngineDebuggerOverlay=$mainEngineOverlay
+        $manifest.Instrumentation='Standard main-engine scope2 only; no GUI/GSC/capacity overlays. The unchanged TU can register three GSC natives under its explicit runtime flags.'
+        $manifest.RuntimeQualification='None: build-only; no privacy, protection, lifecycle or performance acceptance.'
+    }
     $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $output 'build-manifest.json')
     Write-Output "Prepared standard client: $output"
 }
