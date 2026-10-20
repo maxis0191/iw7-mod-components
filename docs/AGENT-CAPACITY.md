@@ -10,7 +10,7 @@ restent non prouvés dans ce cas. Une tentative de capture par console est refus
 car la console contient un troisième processus : aucun caractère n'y est envoyé.
 
 Le diagnostic suivant utilise les vrais bindings retail `+attack/-attack`,
-avec relâchement borné, et lit le back buffer D3D11 dans le callback de rendu
+avec huit pressions espacées, relâchées après200ms, et lit le back buffer D3D11 dans le callback de rendu
 existant. Deux options explicites, réservées au client de diagnostic loopback,
 commandent ces actions ; les lanceurs distribués ordinaires ne les passent pas.
 L'observateur exige maintenant le binding relâché et une baisse réelle du même

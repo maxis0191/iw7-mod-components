@@ -508,21 +508,23 @@ class component final : public component_interface {
         }
         if(client_probe && (probe_capture || probe_shoot)) {
             if(probe_capture){gui::enable();gui::on_frame(capture_probe_frame,true,false);}
-            scheduler::loop([probe_port,probe_capture,probe_shoot,ready=0ull,pressed=false,released=false,done=false]() mutable {
+            scheduler::loop([probe_port,probe_capture,probe_shoot,ready=0ull,last_shot=0ull,shots=0u,pressed=false,released=false,done=false]() mutable {
                 if(done)return;
                 const auto now=GetTickCount64();const auto* peer=party::get_server_connection_state();
                 const bool connected=peer && peer->hostDefined && peer->host.type==game::NA_IP &&
                     peer->host.ip[0]==127 && peer->host.ip[1]==0 && peer->host.ip[2]==0 && peer->host.ip[3]==1 &&
                     ntohs(peer->host.port)==probe_port && game::Com_GameMode_GetActiveGameMode()==game::GAME_MODE_CP;
-                if(pressed && !released && (!connected || now-ready>=5500)) {probe_fire(false);released=true;}
+                if(pressed && !released && (!connected || now-last_shot>=200)) {probe_fire(false);released=true;}
                 if(!connected || rendered_characters.load()<ordinary)return;
                 if(!ready){ready=now;return;}
-                if(now-ready>=30000 && !pressed) {
+                if(now-ready>=30000 && (!probe_shoot || shots<8)) {
                     console::error("[Paris capacity fire] Probe expired before idle input. catchers=%d\n",*game::keyCatchers);
                     if(probe_capture)capture_requested=true;done=true;return;
                 }
-                if(probe_shoot && !pressed && now-ready>=5000 && *game::keyCatchers==0){probe_fire(true);pressed=true;}
-                if(now-ready>=7000 && (!probe_shoot || released)) {
+                if(probe_shoot && (!pressed || released) && shots<8 && now-ready>=5000 && now-last_shot>=1000 && *game::keyCatchers==0){
+                    probe_fire(true);pressed=true;released=false;last_shot=now;++shots;
+                }
+                if(now-ready>=7000 && (!probe_shoot || (shots==8 && released))) {
                     if(probe_capture)capture_requested=true;done=true;
                 }
             },scheduler::main,50ms);
