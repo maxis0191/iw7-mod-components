@@ -49,8 +49,8 @@ static void archive_ranges() {
         // The first widened caller wrote through its original cookie even
         // when none of the queried characters existed: it clears every row.
         std::vector<unsigned char> stack(cookie+16,0xA7);
-        std::fill(stack.begin()+position_base,stack.begin()+position_base+characters*12,0);
-        std::fill(stack.begin()+new_flags,stack.begin()+new_flags+characters,0);
+        std::fill(stack.begin()+position_base,stack.begin()+position_base+characters*12,static_cast<unsigned char>(0));
+        std::fill(stack.begin()+new_flags,stack.begin()+new_flags+characters,static_cast<unsigned char>(0));
         assert(stack[cookie]==0xA7);
         assert(stack[old_flags+0x30]!=0xA7);
     }
@@ -69,7 +69,7 @@ static void archive_query_unwind() {
     RUNTIME_FUNCTION parent{};parent.BeginAddress=0;parent.EndAddress=0x40;parent.UnwindData=0x100;
     std::memcpy(image.data()+0x14c,&parent,sizeof(parent));
     RUNTIME_FUNCTION function{};function.BeginAddress=0x40;function.EndAddress=0x80;function.UnwindData=0x140;
-    std::array<std::uint64_t,0x600/8> stack{};
+    alignas(16) std::array<std::uint64_t,0x600/8> stack{};
     const std::uint64_t values[]={0xF15,0xF14,0xF12,0xD17,0x515,0xB15,0xB1B,0x1122334455667788ull};
     for(unsigned i=0;i<8;++i)stack[0x4b0/8+i]=values[i];
     stack[0x508/8]=0x13131313;
