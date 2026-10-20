@@ -59,22 +59,31 @@ void agent_delta(void* info,void* message,int time,const void* from,const void* 
 }
 std::uint64_t observed_characters[characters]{};
 void character_render(int local_client,void* entity) {
+    character_render_hook.invoke<void>(local_client,entity);
     auto state=static_cast<const unsigned char*>(entity)+0x700;
-    std::uint16_t number{},animation{}; unsigned type{},client_number{};
+    std::uint16_t number{},animation{}; unsigned type{},client_number{},entity_flags{};
     std::memcpy(&number,state,sizeof(number));
     std::memcpy(&type,state+4,sizeof(type));
     std::memcpy(&client_number,state+0x9C,sizeof(client_number));
     std::memcpy(&animation,state+0xE6,sizeof(animation));
+    std::memcpy(&entity_flags,state+8,sizeof(entity_flags));
     if(local_client==0 && number>=players && number<characters) {
+        // Same character-info and DObj lookups used by the retail render path.
+        // Their presence is diagnostic data; pixels still need inspection.
+        auto object=reinterpret_cast<void*(*)(unsigned,int)>(0x140BB1560)(number,local_client);
+        auto system=reinterpret_cast<void**>(0x141FAEE58)[local_client];
+        auto vtable=*static_cast<void***>(system);
+        auto info=reinterpret_cast<void*(*)(void*,unsigned)>(vtable[6])(system,client_number);
+        unsigned valid{};std::memcpy(&valid,static_cast<unsigned char*>(info)+4,sizeof(valid));
         const auto signature=(static_cast<std::uint64_t>(type)<<48) |
-            (static_cast<std::uint64_t>(client_number)<<16) | (animation&15) | 0x8000;
+            (static_cast<std::uint64_t>(client_number)<<16) | (animation&15) | 0x8000 |
+            (object?0x100:0) | (valid?0x200:0);
         if(observed_characters[number]!=signature) {
             observed_characters[number]=signature;
-            console::info("[Paris capacity character] entity=%u type=%u client_num=%u animation_class=%u\n",
-                static_cast<unsigned>(number),type,client_number,static_cast<unsigned>(animation&15));
+            console::info("[Paris capacity character] entity=%u type=%u client_num=%u animation_class=%u valid=%u dobj=%p flags=%08X\n",
+                static_cast<unsigned>(number),type,client_number,static_cast<unsigned>(animation&15),valid,object,entity_flags);
         }
     }
-    character_render_hook.invoke<void>(local_client,entity);
 }
 void engine_error(game::errorParm code,const char* format,...) {
     char message[4096]{};
@@ -389,10 +398,10 @@ class component final : public component_interface {
                 readable_code(0x140BBFA30,1);
                 agent_delta_hook.create(0x140BBFA30,agent_delta);
             }
-            if(!dedicated) {
-                readable_code(0x1408260D0,1);
-                character_render_hook.create(0x1408260D0,character_render);
-            }
+        }
+        if(!dedicated && (!production || client_probe)) {
+            readable_code(0x1408260D0,1);
+            character_render_hook.create(0x1408260D0,character_render);
         }
         scheduler::once([] {
             game::Dvar_RegisterInt("paris_native_agent_capacity",agents,agents,agents,game::DVAR_FLAG_NONE,"Private native capacity candidate");
