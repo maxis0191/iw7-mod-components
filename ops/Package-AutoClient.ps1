@@ -18,8 +18,8 @@ $Output=[IO.Path]::GetFullPath($Output)
 if(Test-Path -LiteralPath $Output){throw 'Fresh one-file player delivery output required.'}
 [IO.Directory]::CreateDirectory($Output)|Out-Null
 $payload=Join-Path $Output 'client.gz'
-$input=[IO.File]::OpenRead($image);$target=[IO.File]::Open($payload,'CreateNew','Write','None');$gzip=[IO.Compression.GZipStream]::new($target,[IO.Compression.CompressionLevel]::Optimal)
-try{$input.CopyTo($gzip)}finally{$gzip.Dispose();$target.Dispose();$input.Dispose()}
+$payloadInput=[IO.File]::OpenRead($image);$payloadTarget=[IO.File]::Open($payload,'CreateNew','Write','None');$gzip=[IO.Compression.GZipStream]::new($payloadTarget,[IO.Compression.CompressionLevel]::Optimal)
+try{$payloadInput.CopyTo($gzip)}finally{$gzip.Dispose();$payloadTarget.Dispose();$payloadInput.Dispose()}
 [IO.File]::WriteAllText((Join-Path $Output 'client.sha256'),$manifest.SHA256,[Text.UTF8Encoding]::new($false))
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 Invoke-IW7ResourceJob -Scope $repo -Owner 'Single-file automatic client onboarding build' -PhysicalBytes 1GB -CommitBytes 1GB -Body {

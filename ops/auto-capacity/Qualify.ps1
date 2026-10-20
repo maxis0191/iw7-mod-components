@@ -92,8 +92,8 @@ set g_inactivity 0
 "@
         [IO.File]::WriteAllText((Join-Path $CandidateRoot ('iw7-mod/auto_'+$role.Name+'.cfg')),$cfg,[Text.UTF8Encoding]::new($false))
         $log=Join-Path $case ($role.Name+'.stdout.log')
-        $args="-nosteam -noupdate -dedicated -cpMode -stdout -allow_root_io -paris-isolated-lab -paris-debugger -paris-server-test$($role.Flags) +set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port $($role.Port) +exec auto_$($role.Name).cfg +map cp_zmb"
-        $handle=[IW7LabProcess]::StartOwned($image,$args,$CandidateRoot,$log,(Join-Path $case ($role.Name+'.stderr.log')),('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false)
+        $launchArguments="-nosteam -noupdate -dedicated -cpMode -stdout -allow_root_io -paris-isolated-lab -paris-debugger -paris-server-test$($role.Flags) +set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port $($role.Port) +exec auto_$($role.Name).cfg +map cp_zmb"
+        $handle=[IW7LabProcess]::StartOwned($image,$launchArguments,$CandidateRoot,$log,(Join-Path $case ($role.Name+'.stderr.log')),('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false)
         $server=[pscustomobject]@{Handle=$handle;Identity=(Capture-Identity $handle $image $serverManifest.SHA256);Port=$role.Port;Wire=$role.Wire;Log=$log}
         $servers+=$server;Add-IW7ResourceProcess -Token $lease.Token -ProcessId $server.Identity.PID
         $deadline=[datetime]::UtcNow.AddSeconds(150);$ready=$false
@@ -106,8 +106,8 @@ set g_inactivity 0
     }
     $image=Resolve-IW7BasePath $CandidateRoot 'iw7-auto-onboard.exe';Copy-Item (Join-Path $DeliveryRoot 'IW7-Paris.exe') $image
     $cache=Join-Path $CandidateRoot ('auto-client-cache/'+[guid]::NewGuid().ToString('N'))
-    $args='--game-root "'+$GameRoot+'" --connect 127.0.0.1:27946 --qualification-cache "'+$cache+'" --qualification-password '+$password+' --qualification-return 127.0.0.1:27947 --qualification-download'
-    $bootstrap=[IW7LabProcess]::StartOwned($image,$args,$GameRoot,(Join-Path $case 'onboard.stdout.log'),(Join-Path $case 'onboard.stderr.log'),('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false)
+    $launchArguments='--game-root "'+$GameRoot+'" --connect 127.0.0.1:27946 --qualification-cache "'+$cache+'" --qualification-password '+$password+' --qualification-return 127.0.0.1:27947 --qualification-download'
+    $bootstrap=[IW7LabProcess]::StartOwned($image,$launchArguments,$GameRoot,(Join-Path $case 'onboard.stdout.log'),(Join-Path $case 'onboard.stderr.log'),('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false)
     $bootstrapIdentity=Capture-Identity $bootstrap $image $delivery.SHA256
     Add-IW7ResourceProcess -Token $lease.Token -ProcessId $bootstrapIdentity.PID
     $deadline=[datetime]::UtcNow.AddMinutes(30);$seen=@{};$bootstrapClientSeen=$false
