@@ -160,7 +160,7 @@ static void snapshot_metadata() {
         for(unsigned slot=0;slot<agents;++slot)
             for(unsigned byte=0;byte<snap::agent_stride;++byte)
                 assert(object[snap::agent_base+slot*snap::agent_stride+byte]==slot);
-        assert(snap::legacy_agents+48*snap::agent_stride>snap::legacy_size);
+        assert(snap::legacy_agents+48*snap::agent_stride>0x39F48);
     }
     for(unsigned i=0;i<16;++i)assert(pair[i]==0xA7 && pair[snap::pair_bytes+16+i]==0xA7);
 #ifdef _WIN32
