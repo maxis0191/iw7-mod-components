@@ -402,8 +402,8 @@ finally{
             $clientManagedRestored=if($bankIsolation){$bankIsolation.Audits.Count -gt 0 -and @($bankIsolation.Audits|Where-Object {!$_.ManagedFilesRestored -or !$_.StaticMainUnchanged}).Count -eq 0}else{$client.Transaction.Restored}
             if(!$clientManagedRestored){throw 'Owned client restoration not verified.'}
         }
-        if($session -and $standardManifest -and $client -and $clientManagedRestored){Wait-IW7CapacityClientDeparture $session}
-        if($session -and $clientCrash -and $clientCrash.ConfirmedFatal -and $clientManagedRestored){
+        if($session -and $standardManifest -and $client -and $clientManagedRestored -and !($crash -and $crash.ConfirmedFatal)){Wait-IW7CapacityClientDeparture $session}
+        if($session -and $clientCrash -and $clientCrash.ConfirmedFatal -and $clientManagedRestored -and !($crash -and $crash.ConfirmedFatal)){
             Wait-IW7CapacityClientDeparture $session
         }
         if($clientImageTransaction){
