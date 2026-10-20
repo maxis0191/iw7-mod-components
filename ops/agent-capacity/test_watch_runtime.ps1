@@ -1,6 +1,15 @@
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/Watch-Runtime.Core.ps1"
 function Reject([scriptblock]$Action){$rejected=$false;try{&$Action|Out-Null}catch{$rejected=$true};if(!$rejected){throw 'Adversarial fixture was accepted.'}}
+$statsCatalog=@([pscustomobject]@{path='src/custom_scripts/cp/paris_stats.gsc'})
+foreach($manifest in @([pscustomobject]@{},[pscustomobject]@{OwnerCheatsEnabled=$false},[pscustomobject]@{OwnerCheatsEnabled='true'})){
+    Reject {Assert-IW7CapacityCatalogCapabilities $statsCatalog $manifest}
+}
+Assert-IW7CapacityCatalogCapabilities $statsCatalog ([pscustomobject]@{OwnerCheatsEnabled=$true})
+Assert-IW7CapacityCatalogCapabilities @() ([pscustomobject]@{})
+$watchSource=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Watch-Server.ps1'))
+if($watchSource.IndexOf('Assert-IW7CapacityCatalogCapabilities $catalog $manifest') -lt 0 -or
+   $watchSource.IndexOf('Assert-IW7CapacityCatalogCapabilities $catalog $manifest') -gt $watchSource.IndexOf('Save-IW7BaseTransaction')){throw 'Catalog capability preflight must precede snapshot/staging.'}
 $naturalPlan=[pscustomobject]@{PlannedClients=1;ClientImage='C:\\fixture\\client.exe';AgentCapacity=64;PopulateAgents=$false;SkipReload=$true;Catalog=@(1..18);NaturalFixtureSHA256=('A'*64)}
 Assert-IW7CapacityClientPlan $naturalPlan
 $naturalPlan.NaturalFixtureSHA256=$null
