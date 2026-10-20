@@ -228,7 +228,7 @@ set sv_mapRotationCurrent ""
         Assert-IW7CapacitySession $session
         $observedCrash=Get-IW7AgentNewCrash -CandidateRoot $CandidateRoot -Identity $identity -Before $crashBefore -OutputRoot $case -Cache $crashCache
         if($observedCrash){$crash=$observedCrash;if($crash.ConfirmedFatal){throw 'Correlated native fatal during private startup; dump preserved.'}}
-        Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log'))
+        Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')) -DiagnosticRuntime:([bool]$NaturalFixturePath)
         try{$info=& "$ops/Get-ServerInfo.ps1" -Address '127.0.0.1' -Port $ServerPort}catch{$info=$null}
         if($info -and $info.sv_running -ceq '1' -and $info.mapname -ceq $Map -and $info.clients -ceq '0'){break}
         Start-Sleep -Milliseconds 500
@@ -243,7 +243,7 @@ set sv_mapRotationCurrent ""
     if($SkipReload){$result=[pscustomobject]@{Schema='iw7.capacity-watch-runtime/1';ReloadCommand='none';ProbeSkipped=$true;NativeCleanupConfirmed=$false}}
     else{$result=Invoke-IW7CapacityWatch $session}
     if($ClientGameRoot){
-        Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log'))
+        Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')) -DiagnosticRuntime:([bool]$NaturalFixturePath)
         Assert-IW7BaseVacant $ClientGameRoot
         $clientStage=[pscustomobject]@{GameRoot=$ClientGameRoot;MutableFiles=@('iw7-capacity-test-client.exe');ProfileDirectory='iw7-mod/players2';ProfileDirectories=@()}
         $clientImageTransaction=Save-IW7BaseTransaction $clientStage (Join-Path $case 'client-image-backup')
@@ -257,6 +257,7 @@ set sv_mapRotationCurrent ""
         catch{if($_.Exception.Data.Contains('BaseClientContext')){$client=$_.Exception.Data['BaseClientContext']};throw}
         $clientDeadline=[datetime]::UtcNow.AddSeconds(180)
         do{
+            Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')) -DiagnosticRuntime:([bool]$NaturalFixturePath)
             $newClientCrash=Get-IW7AgentNewCrash -CandidateRoot $ClientGameRoot -Identity $client.Identity -Before @() -OutputRoot $case -Cache $clientCrashCache
             if($newClientCrash){$clientCrash=$newClientCrash;throw 'Correlated native client exception; artifact retained.'}
             $sample=Update-IW7BaseClient $client
@@ -266,7 +267,9 @@ set sv_mapRotationCurrent ""
         if(!$client.Protected){throw 'Matching capacity client lacks fresh protected playable witness.'}
         $observeUntil=[datetime]::UtcNow.AddSeconds($ClientObserveSeconds)
         do{
-            Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log'))
+            Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')) -DiagnosticRuntime:([bool]$NaturalFixturePath)
+            $observedCrash=Get-IW7AgentNewCrash -CandidateRoot $CandidateRoot -Identity $identity -Before $crashBefore -OutputRoot $case -Cache $crashCache
+            if($observedCrash){$crash=$observedCrash;if($crash.ConfirmedFatal){throw 'Correlated native dedicated fatal during natural observation; dump preserved.'}}
             $newClientCrash=Get-IW7AgentNewCrash -CandidateRoot $ClientGameRoot -Identity $client.Identity -Before @() -OutputRoot $case -Cache $clientCrashCache
             if($newClientCrash){$clientCrash=$newClientCrash;throw 'Correlated native client exception; artifact retained.'}
             Update-IW7BaseClient $client|ConvertTo-Json -Compress|Add-Content (Join-Path $case 'client/protection.jsonl')
@@ -281,6 +284,8 @@ set sv_mapRotationCurrent ""
             $result|Add-Member NoteProperty NaturalObservationSourceSHA256 $NaturalFixtureSHA256
             $result|Add-Member NoteProperty ForcedPoolConstruction $false
             $result|Add-Member NoteProperty ClientVisibilityQualified $false
+            $result|Add-Member NoteProperty ScriptRuntimeErrorCount ([regex]::Matches($naturalLog,'(?im)^\*+\s*script runtime error\b').Count)
+            $result|Add-Member NoteProperty DiagnosticOnly $true
         }
         if($HordeFixturePath){
             $hordeLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')

@@ -29,9 +29,16 @@ function Assert-IW7CapacityClientPlan($Plan) {
         throw 'Declared matching construction client, pinned natural observation or unchanged startup baseline required.'
     }
 }
-function Assert-IW7CapacityScriptLog([string]$Text) {
-    if($Text -match '(?im)^\*+\s*script (?:compile|runtime) error\b|^\[ERROR\]:compiler:'){
+function Assert-IW7CapacityScriptLog([string]$Text,[switch]$DiagnosticRuntime) {
+    if($Text -match '(?im)^\*+\s*script compile error\b|^\[ERROR\]:compiler:'){
         throw 'Fresh private engine script compilation/runtime failure; client admission refused.'
+    }
+    foreach($block in [regex]::Matches($Text,'(?ims)^\*+\s*script runtime error[^\r\n]*\r?\n.*?(?=^\*+\s*$|\z)')){
+        # A natural diagnosis remains unqualified and preserves ALL raw errors.
+        # Its unrelated retail/catalog errors must not hide the native incident.
+        if(!$DiagnosticRuntime -or $block.Value -match '(?i)custom_scripts[/\\]cp[/\\]capacity_(?:natural|pool|horde)\b'){
+            throw 'Fresh private engine script compilation/runtime failure; client admission refused.'
+        }
     }
 }
 function Assert-IW7CapacitySession($Session) {
