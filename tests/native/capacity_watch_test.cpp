@@ -40,9 +40,59 @@ static void archive_ranges() {
     assert(xanim_base==controller_base+controller_size);
     assert(restore==frame_base+frames*frame_size);
     assert(rewind_base>=restore+0x12010 && rewind_base+rewind_active<object_size);
+    for(const auto position_base:{0x30u,0x50u}) {
+        const auto old_flags=position_base+42*12+8;
+        const auto new_flags=old_flags+query_position_growth;
+        const auto cookie=old_flags+0x30+query_stack_growth;
+        assert(position_base+characters*12<=new_flags);
+        assert(new_flags+characters<=cookie);
+        // The first widened caller wrote through its original cookie even
+        // when none of the queried characters existed: it clears every row.
+        std::vector<unsigned char> stack(cookie+16,0xA7);
+        std::fill(stack.begin()+position_base,stack.begin()+position_base+characters*12,0);
+        std::fill(stack.begin()+new_flags,stack.begin()+new_flags+characters,0);
+        assert(stack[cookie]==0xA7);
+        assert(stack[old_flags+0x30]!=0xA7);
+    }
 }
 
 #ifdef _WIN32
+static void archive_query_unwind() {
+    using namespace paris_agent_capacity::animation_archive;
+    // Exercise Windows' real x64 unwinder on an enlarged synthetic frame,
+    // including the chained R13/XMM6 saves used by the snapshot callers.
+    std::array<unsigned char,0x180> image{};
+    const unsigned char root[]={1,0x24,9,0,0x12,1,0x96,0,0x0b,0xf0,9,0xe0,7,0xc0,5,0x70,4,0x60,3,0x50,2,0x30,0,0};
+    std::memcpy(image.data()+0x100,root,sizeof(root));
+    const unsigned char child[]={0x21,0,4,0,0,0xd4,0xa1,0,0,0x68,0x4a,0};
+    std::memcpy(image.data()+0x140,child,sizeof(child));
+    RUNTIME_FUNCTION parent{};parent.BeginAddress=0;parent.EndAddress=0x40;parent.UnwindData=0x100;
+    std::memcpy(image.data()+0x14c,&parent,sizeof(parent));
+    RUNTIME_FUNCTION function{};function.BeginAddress=0x40;function.EndAddress=0x80;function.UnwindData=0x140;
+    std::array<std::uint64_t,0x600/8> stack{};
+    const std::uint64_t values[]={0xF15,0xF14,0xF12,0xD17,0x515,0xB15,0xB1B,0x1122334455667788ull};
+    for(unsigned i=0;i<8;++i)stack[0x4b0/8+i]=values[i];
+    stack[0x508/8]=0x13131313;
+    auto xmm=reinterpret_cast<M128A*>(reinterpret_cast<unsigned char*>(stack.data())+0x4a0);
+    xmm->Low=0x66666666;xmm->High=0x77777777;
+    CONTEXT context{};context.Rsp=reinterpret_cast<DWORD64>(stack.data());
+    context.Rip=reinterpret_cast<DWORD64>(image.data()+0x50);
+    const auto initial=context;
+    PVOID handler{};DWORD64 establisher{};
+    RtlVirtualUnwind(UNW_FLAG_NHANDLER,reinterpret_cast<DWORD64>(image.data()),context.Rip,&function,&context,&handler,&establisher,nullptr);
+    assert(context.Rsp==initial.Rsp+0x4b0+64 && context.Rip==values[7]);
+    assert(context.R15==values[0] && context.R14==values[1] && context.R12==values[2]);
+    assert(context.Rdi==values[3] && context.Rsi==values[4] && context.Rbp==values[5] && context.Rbx==values[6]);
+    assert(context.R13==0x13131313 && context.Xmm6.Low==xmm->Low && context.Xmm6.High==xmm->High);
+    image[0x106]=0x54; // Old allocation metadata must fail the restoration witness.
+    auto bad=initial;
+    RtlVirtualUnwind(UNW_FLAG_NHANDLER,reinterpret_cast<DWORD64>(image.data()),bad.Rip,&function,&bad,&handler,&establisher,nullptr);
+    assert(bad.Rsp!=context.Rsp && bad.Rip!=context.Rip);
+    for(const auto& item:query_unwind) {
+        if(item.width==4)assert(item.after-item.before==query_stack_growth);
+        else assert(item.after-item.before==query_stack_growth/8 || item.after-item.before==query_stack_growth/16);
+    }
+}
 // Execute the actual replacement instructions with guarded synthetic buffers.
 // No engine process or retail executable is loaded by this regression test.
 static void archive_instructions() {
@@ -133,6 +183,7 @@ int main() {
     archive_ranges();
 #ifdef _WIN32
     archive_instructions();
+    archive_query_unwind();
 #endif
     {
         using namespace paris_agent_capacity;
