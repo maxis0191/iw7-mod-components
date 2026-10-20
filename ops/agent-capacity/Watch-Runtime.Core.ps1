@@ -30,7 +30,8 @@ function Assert-IW7CapacityClientPlan($Plan) {
     }
 }
 function Assert-IW7CapacityScriptLog([string]$Text,[switch]$DiagnosticRuntime) {
-    if($Text -match '(?im)^\*+\s*script compile error\b|^\[ERROR\]:compiler:'){
+    if($Text -match '(?im)^\*+\s*script compile error\b|^\[ERROR\]:compiler:' -or
+       (!$DiagnosticRuntime -and $Text -match '(?im)^\*+\s*script runtime error\b')){
         throw 'Fresh private engine script compilation/runtime failure; client admission refused.'
     }
     foreach($block in [regex]::Matches($Text,'(?ims)^\*+\s*script runtime error[^\r\n]*\r?\n.*?(?=^\*+\s*$|\z)')){
