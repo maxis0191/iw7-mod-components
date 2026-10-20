@@ -33,6 +33,7 @@
     "tests/ops/owner_cheats_test.ps1",
     "docs/AGENT-OFFHAND.md",
     "ops/standard-client/Loading-NewMap.Core.ps1",
+    "ops/standard-client/Output-Inventory.Core.ps1",
     "tests/ops/standard_client_loading_hook_test.ps1",
     "docs/STANDARD-CLIENT-UPDATE.md",
     "ops/standard-client/premake-build-only.lua",

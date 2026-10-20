@@ -8,15 +8,24 @@ function Test-MainEngineDebuggerSource {
     $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
     $builderText=[IO.File]::ReadAllText((Join-Path $repo 'ops/Build-StandardClient.ps1'))
     $overlayText=[IO.File]::ReadAllText((Join-Path $repo 'ops/Apply-DebuggerOverlay.ps1'))
+    $inventoryText=[IO.File]::ReadAllText((Join-Path $repo 'ops/standard-client/Output-Inventory.Core.ps1'))
+    $product=[IO.File]::ReadAllText((Join-Path $repo 'product.json'))|ConvertFrom-Json
+    Check (@($product.exports|Where-Object{$_ -ceq 'ops/standard-client/Output-Inventory.Core.ps1'}).Count -eq 1) 'The real output collector must be exported exactly once.'
     $tokens=$null;$errors=$null
     $builderAst=[Management.Automation.Language.Parser]::ParseInput($builderText,[ref]$tokens,[ref]$errors)
     Check (!$errors.Count) 'Builder Source must parse.'
     $overlayAst=[Management.Automation.Language.Parser]::ParseInput($overlayText,[ref]$tokens,[ref]$errors)
     Check (!$errors.Count) 'Overlay Source must parse.'
+    $inventoryAst=[Management.Automation.Language.Parser]::ParseInput($inventoryText,[ref]$tokens,[ref]$errors)
+    Check (!$errors.Count) 'Output inventory Source must parse.'
     foreach($entry in @(
         @($builderAst,'Assert-IW7StandardDebuggerOptions'),
         @($builderAst,'Test-IW7StandardControlledBuild'),
         @($builderAst,'Invoke-IW7StandardNativeStage'),
+        @($inventoryAst,'New-IW7StandardOutputHistory'),
+        @($inventoryAst,'Test-IW7StandardOutputNotFound'),
+        @($inventoryAst,'Measure-IW7StandardBuildOutputs'),
+        @($inventoryAst,'Wait-IW7StandardBuildOutputOwner'),
         @($overlayAst,'Convert-IW7MainEngineDebuggerScheduler'),
         @($overlayAst,'Assert-IW7MainEngineDebuggerPathAttributes'),
         @($overlayAst,'Assert-IW7MainEngineDebuggerSourceState'),
@@ -233,6 +242,54 @@ void other() { untouched(); }
         $bad=@($measured|ForEach-Object{[pscustomobject]@{Relative=$_.Relative;SHA256=$_.SHA256}});$bad[0].SHA256='0'*64
         Refuse {Assert-IW7MainEngineDebuggerSourceState $changed $untracked $receipt $bad}
         Refuse {Assert-IW7MainEngineDebuggerSourceState $changed $untracked $receipt @($measured[0])}
+        # One owned TEMP race in the actual collector and SAME-owner wait.
+        # Only its two GetAttributes expressions are replaced before any call.
+        $inventoryDefinition=@($inventoryAst.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst]},$true)|Where-Object Name -CEQ 'Measure-IW7StandardBuildOutputs')[0].Extent.Text
+        foreach($attributePath in @('$rootPath','$path')){
+            $attributeExpression='[IO.File]::GetAttributes('+$attributePath+')'
+            Check ($inventoryDefinition.Split([string[]]@($attributeExpression),[StringSplitOptions]::None).Count -eq 2) 'One actual root or queued-attributes seam required.'
+            $inventoryDefinition=$inventoryDefinition.Replace($attributeExpression,('(Get-SyntheticStandardOutputAttributes '+$attributePath+')'))
+        }
+        . ([scriptblock]::Create($inventoryDefinition))
+        $inventoryRoot=Join-Path $sourceSandbox 'inventory';$stageTemp=Join-Path $inventoryRoot 'Premake-temp'
+        $null=[IO.Directory]::CreateDirectory($stageTemp)
+        $vanishing=Join-Path $stageTemp 'ephemeral.tmp';$stable=Join-Path $inventoryRoot 'stable.txt'
+        [IO.File]::WriteAllText($stable,'stable',[Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText($vanishing,'transient',[Text.UTF8Encoding]::new($false))
+        $race=[pscustomobject]@{Removed=0;ForeignReadAttempts=0;RebindStarted=$false}
+        function Get-SyntheticStandardOutputAttributes([string]$Path) {
+            if(!$Path.StartsWith($inventoryRoot+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -and $Path -cne $inventoryRoot){$race.ForeignReadAttempts++;throw 'Foreign synthetic attribute read refused.'}
+            if($Path -ceq $vanishing){
+                Check ([IO.File]::Exists($Path)) 'The real enumeration must enqueue the existing TEMP before its attribute read.'
+                [IO.File]::Delete($Path);$race.Removed++
+            }
+            [IO.File]::GetAttributes($Path)
+        }
+        $sameOwner=[pscustomobject]@{Queries=0}
+        $sameOwner|Add-Member ScriptMethod TreeExited {$this.Queries++;if($race.RebindStarted){$stage.Started+=1.0};return $this.Queries -ge 2}
+        $startInfo=[Diagnostics.ProcessStartInfo]::new();$startInfo.Environment['TEMP']=$stageTemp;$startInfo.Environment['TMP']=$stageTemp
+        $stage=[pscustomobject]@{Stage='Premake';Owner=$sameOwner;StartInfo=$startInfo;StartAttempted=$true;Started=0.0;Unknown=$false;FirstErrorRecord=$null}
+        $history=New-IW7StandardOutputHistory;$clock=[Diagnostics.Stopwatch]::StartNew()
+        try {
+            Wait-IW7StandardBuildOutputOwner -Stage $stage -Clock $clock -GroupSeconds 10 -StageSeconds 10 -Roots @($inventoryRoot) -RunRoot $inventoryRoot -MaximumBytes 1024 -MaximumEntries 16 -History $history
+            Check ($race.Removed -eq 1 -and $sameOwner.Queries -eq 2 -and [object]::ReferenceEquals($stage.Owner,$sameOwner)) 'The vanished TEMP must not interrupt waiting on the SAME original owner.'
+            Check ($history.Samples -eq 1 -and $history.IncompleteSamples -eq 1 -and $history.MissingTempCount -eq 1 -and !$history.CounterSaturated) 'The bounded original history must retain the incomplete observation.'
+            Check (!$history.LastSample.Complete -and $history.LastSample.TraversalFinished -and $history.LastSample.MissingTempCount -eq 1 -and $history.LastSample.ObservedBytes -eq 6 -and $history.LastSample.VisitedEntries -eq 4) 'A gap is an observed lower bound, not a complete or atomic inventory.'
+            Check (!$stage.Unknown -and $null -eq $stage.FirstErrorRecord -and $clock.IsRunning) 'A known TEMP disappearance must not manufacture ownership failure or reset the clock.'
+            $lastSample=$history.LastSample
+            Refuse {Measure-IW7StandardBuildOutputs -Roots @([IO.Path]::GetPathRoot($inventoryRoot)) -RunRoot $inventoryRoot -MaximumBytes 1024 -MaximumEntries 16 -History $history}
+            Check ($race.ForeignReadAttempts -eq 0 -and [object]::ReferenceEquals($history.LastSample,$lastSample)) 'A volume root must refuse before any real or fake filesystem observation.'
+            $samplesBeforeRebind=$history.Samples;$sameOwner.Queries=0;$race.RebindStarted=$true;$stage.Started=$clock.Elapsed.TotalSeconds
+            Refuse {Wait-IW7StandardBuildOutputOwner -Stage $stage -Clock $clock -GroupSeconds 10 -StageSeconds 10 -Roots @($inventoryRoot) -RunRoot $inventoryRoot -MaximumBytes 1024 -MaximumEntries 16 -History $history}
+            Check ($sameOwner.Queries -eq 1 -and $history.Samples -eq $samplesBeforeRebind) 'A Started change during TreeExited must refuse before another sample or a shifted deadline.'
+            $race.RebindStarted=$false;$stage.Started=0.0;$sameOwner.Queries=2
+            Refuse {Measure-IW7StandardBuildOutputs -Roots @($inventoryRoot) -RunRoot $inventoryRoot -MaximumBytes 1 -MaximumEntries 16 -AdditionalBytes 2 -History $history -WaitingStage $stage}
+            Check ($history.LastSample.BudgetExceeded -and !$history.LastSample.Complete -and $sameOwner.Queries -eq 2) 'An already observed excess stays blocking despite earlier incomplete samples.'
+            [IO.File]::WriteAllText($vanishing,'transient',[Text.UTF8Encoding]::new($false))
+            Refuse {Measure-IW7StandardBuildOutputs -Roots @($inventoryRoot) -RunRoot $inventoryRoot -MaximumBytes 1024 -MaximumEntries 16 -History $history}
+            Check (!$history.LastSample.TraversalFinished -and !$history.LastSample.Complete -and $history.MissingTempCount -eq 1) 'Without periodic waiting, the same queued disappearance remains a strict final-inventory failure.'
+            Check (!(Test-IW7StandardOutputNotFound ([IO.IOException]::new('not found'))) -and !(Test-IW7StandardOutputNotFound ([UnauthorizedAccessException]::new()))) 'Message text, generic I/O and access failures must not enable missing-TEMP tolerance.'
+        } finally {$clock.Stop()}
     } finally {
         # Only this fresh synthetic Source directory is recursively removed.
         $full=[IO.Path]::GetFullPath($sourceSandbox)

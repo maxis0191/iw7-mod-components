@@ -732,7 +732,7 @@ unchanged TU still contains three GSC native registrations under its explicit
 runtime flags; a scheduler-only overlay does not prove runtime zero-GSC,
 privacy, protection or observer overhead.
 
-The Standard native build has not been performed for this integration. The
+No controlled full-build PASS is qualified for this integration. The
 ordinary builder path releases its resource job automatically; the controlled
 path uses the retained-release hook. A reviewed physical NoExit caller and
 parent were supplied for attempt A, which reached only the pre-build guard.
@@ -785,6 +785,36 @@ child returned one; the authenticated parent was then closed with
 `Environment.Exit(1)` using its retained original code. That narrow closure does
 not prove a universal normal terminal command. These results establish no
 full-TU, game, deployment or performance acceptance; cfca remains refused.
+
+### Controlled output inventory (Source only)
+
+`ops/standard-client/Output-Inventory.Core.ps1` supplies bounded output collection
+and waiting on the SAME original owner and clock. It does not start or close an
+owner, or release its lease. During a periodic wait, only effective `FileNotFoundException`
+or `DirectoryNotFoundException` for a strict descendant of `RunRoot/<Stage>-temp`
+may be tolerated only when that root matches both original `StartInfo.Environment`
+TEMP/TMP values. Such a sample is incomplete, with a bounded missing-entry count,
+observed bytes and bounded visited-entry counts. Visits include vanished attempts
+and do not measure files currently present. Budget excess, access failures, reparse
+points and identity contradictions remain blocking.
+
+`Complete` means traversal of the found roots finished without queued misses.
+Initially absent roots remain counted in `AbsentRoots` and allowed; this does not
+attest that mandatory artifacts exist.
+
+Even a sample without a detected gap is not an atomic or global snapshot, a
+cumulative or peak measurement, or a build PASS. Final inventory and mandatory
+artifact checks remain strict after the original tree's actual closure.
+
+The deterministic SourceOnly regression removes an entry between enqueue and
+attribute lookup and checks that waiting continues with the SAME owner. This
+Source regression does not qualify a future full-build connection or actual
+validation. The helper's export also supplies no such qualification. Consumed
+attempt B keeps `Unknown=true` and `BuildPassed=false`; its evidence is not
+rewritten by this correction. B was subsequently abandoned through controlled
+teardown: both original jobs closed with exit zero, its lease was canonically
+released, and the hosts terminated with exit one. No engine gain, C++ build or
+game credit follows.
 
 For a specific script suspect, bracket a region only in a separate lab candidate:
 
