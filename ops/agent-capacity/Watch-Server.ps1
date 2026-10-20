@@ -2,6 +2,7 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [ValidateRange(27100,27999)][int]$ServerPort=27116,[switch]$DryRun,[switch]$CaptureWriterPages,[switch]$CaptureNativeText,
       [ValidateSet(24,64)][int]$AgentCapacity=24,[switch]$PopulateAgents,
       [string]$ClientGameRoot,[ValidateRange(1,600)][int]$ClientObserveSeconds=30,
+      [ValidateSet('Full','Reduced')][string]$ClientGraphicsProfile='Reduced',
       [switch]$SkipReload,
       [ValidateSet('cp_zmb','cp_rave','cp_disco','cp_town','cp_final')][string]$Map='cp_zmb',
       [string]$CatalogRoot,[switch]$RotateBeast,
@@ -102,7 +103,7 @@ if($ClientGameRoot){
     Assert-IW7BaseVacant $ClientGameRoot
     $clientImage=Resolve-IW7BasePath $ClientGameRoot 'iw7-capacity-test-client.exe'
 }
-$budget=Get-IW7LabRunPlan -PlannedClients $plannedClients -Debugger
+$budget=Get-IW7LabRunPlan -PlannedClients $plannedClients -GraphicsProfile $ClientGraphicsProfile -Debugger
 if($CaptureClientCrashMemory){
     if(!$ClientGameRoot){throw 'Client crash capture requires the owned protected client scenario.'}
     $budget.PhysicalBytes+=512MB;$budget.CommitBytes+=1GB
@@ -112,6 +113,7 @@ $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$Cand
     Map=$Map;Catalog=@($catalog);RotateBeast=[bool]$RotateBeast;PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;HordeOrdinary=$HordeOrdinary;HordeSpecials=$HordeSpecials;RetailCpPatchSHA256=$RetailCpPatchSHA256;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
 $plan|Add-Member NoteProperty NaturalFixtureSHA256 $NaturalFixtureSHA256
 $plan|Add-Member NoteProperty RequireSparseAgentWire ([bool]$RequireSparseAgentWire)
+$plan|Add-Member NoteProperty ClientGraphicsProfile $ClientGraphicsProfile
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -244,7 +246,7 @@ set sv_mapRotationCurrent ""
         $clientImageTransaction=Save-IW7BaseTransaction $clientStage (Join-Path $case 'client-image-backup')
         $clientExe=if($standardManifest){Join-Path $StandardClientPackageRoot 'iw7-mod.exe'}else{$exe}
         Copy-Item -LiteralPath $clientExe -Destination $clientImage
-        $clientPlan=New-IW7BaseClientPlan -GameRoot $ClientGameRoot -ClientImage $clientImage -ServerPort $ServerPort -ClientPort ($ServerPort+1) -Debugger -GraphicsProfile Reduced -Capacity64:(!$standardManifest -and $AgentCapacity -eq 64)
+        $clientPlan=New-IW7BaseClientPlan -GameRoot $ClientGameRoot -ClientImage $clientImage -ServerPort $ServerPort -ClientPort ($ServerPort+1) -Debugger -GraphicsProfile $ClientGraphicsProfile -Capacity64:(!$standardManifest -and $AgentCapacity -eq 64)
         try{
             if($standardManifest){$client=Start-IW7CapacityStandardClient $clientPlan $identity $lease.Token $password (Join-Path $case 'client')}
             else{$client=Start-IW7BaseClient -Plan $clientPlan -ServerIdentity $identity -LeaseToken $lease.Token -Password $password -OutputRoot (Join-Path $case 'client')}
