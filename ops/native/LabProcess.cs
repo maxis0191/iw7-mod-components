@@ -266,7 +266,19 @@ public static class IW7LabProcess
     }
     public static OwnedProcess StartOwned(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName, bool waitForInputIdle, bool originalRigConsole, bool collisionProbeConsole,int capacityPeerPort)
     {
-        if (exe.Contains("\"") || !System.Text.RegularExpressions.Regex.IsMatch(desktopName, "^IW7ParisLab_[a-f0-9]{32}$"))
+        return StartOwnedCore(exe,arguments,cwd,stdout,stderr,desktopName,waitForInputIdle,originalRigConsole,collisionProbeConsole,capacityPeerPort,false);
+    }
+    // Explicit visible renderer qualification. Caller reserves the complete
+    // scenario, verifies base-client vacancy and pins this temporary image.
+    public static OwnedProcess StartInteractiveCapacityOwned(string exe,string arguments,string cwd,string stdout,string stderr,int capacityPeerPort)
+    {
+        if(!String.Equals(Path.GetFileName(exe),"iw7-capacity-test-client.exe",StringComparison.OrdinalIgnoreCase) || capacityPeerPort<27100 || capacityPeerPort>27999)
+            throw new ArgumentException("Explicit temporary capacity client and private peer required for interactive qualification.");
+        return StartOwnedCore(exe,arguments,cwd,stdout,stderr,"Default",true,false,false,capacityPeerPort,true);
+    }
+    static OwnedProcess StartOwnedCore(string exe, string arguments, string cwd, string stdout, string stderr, string desktopName, bool waitForInputIdle, bool originalRigConsole, bool collisionProbeConsole,int capacityPeerPort,bool interactiveCapacity)
+    {
+        if (exe.Contains("\"") || (interactiveCapacity ? desktopName!="Default" : !System.Text.RegularExpressions.Regex.IsMatch(desktopName, "^IW7ParisLab_[a-f0-9]{32}$")))
             throw new ArgumentException("Invalid executable/desktop name.");
         bool consoleDedicated=false;
         if(capacityPeerPort!=0) {
@@ -294,8 +306,8 @@ public static class IW7LabProcess
                 throw new ArgumentException("Rig stdin requires explicit isolated server/client test flags and wincon.");
         }
         var security = new SecurityAttributes {length=Marshal.SizeOf(typeof(SecurityAttributes)), inherit=true};
-        IntPtr desktop = CreateDesktopW(desktopName, IntPtr.Zero, IntPtr.Zero, 0, 0x10000000, ref security);
-        if (desktop == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateDesktop failed");
+        IntPtr desktop = interactiveCapacity ? IntPtr.Zero : CreateDesktopW(desktopName, IntPtr.Zero, IntPtr.Zero, 0, 0x10000000, ref security);
+        if (!interactiveCapacity && desktop == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateDesktop failed");
         try {
             using (var output = new FileStream(stdout, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite))
             using (var error = new FileStream(stderr, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite))
@@ -310,11 +322,11 @@ public static class IW7LabProcess
                 foreach (var handle in new [] {output.SafeFileHandle, error.SafeFileHandle, input})
                     if (!SetHandleInformation(handle.DangerousGetHandle(), 1, 1)) throw new Win32Exception(Marshal.GetLastWin32Error());
                 var startup = new StartupInfo {cb=Marshal.SizeOf(typeof(StartupInfo)), desktop="WinSta0\\" + desktopName,
-                    flags=0x101, show=0, input=input.DangerousGetHandle(),
+                    flags=0x101, show=(short)(interactiveCapacity ? 1 : 0), input=input.DangerousGetHandle(),
                     output=output.SafeFileHandle.DangerousGetHandle(), error=error.SafeFileHandle.DangerousGetHandle()};
                 ProcessInfo process;
                 if (!CreateProcessW(exe, new StringBuilder("\"" + exe + "\" " + arguments), IntPtr.Zero, IntPtr.Zero,
-                    true, 0x08000200u | (waitForInputIdle ? 0u : 0x00004000u), IntPtr.Zero, cwd, ref startup, out process))
+                    true, (interactiveCapacity ? 0x00000200u : 0x08000200u) | (waitForInputIdle ? 0u : 0x00004000u), IntPtr.Zero, cwd, ref startup, out process))
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "Private desktop process launch failed");
                 try {
                     if (waitForInputIdle) {
@@ -331,7 +343,7 @@ public static class IW7LabProcess
                 finally { CloseHandle(process.thread); if (process.process!=IntPtr.Zero) CloseHandle(process.process); }
                 } finally { if(input!=null)input.Dispose(); if(writer!=null)writer.Dispose(); }
             }
-        } finally { CloseDesktop(desktop); }
+        } finally { if(desktop!=IntPtr.Zero) CloseDesktop(desktop); }
     }
     // Separate opt-in STARTUP owner. Legacy factories/owners above are unchanged.
     // The parent MUST store this object before Launch: Launch never returns/adopts another owner.

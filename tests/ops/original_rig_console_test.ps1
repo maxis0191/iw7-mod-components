@@ -87,6 +87,9 @@ try {
 $owned=$null
 try {
     $capacityArguments='-NoLogo -NoProfile -NonInteractive -File "'+$scriptPath+'" -cpMode -wincon -paris-capacity-64 -paris-capacity-production -paris-capacity-client-probe +set net_ip 127.0.0.1 +set net_port 27947'
+    Refuses {[IW7LabProcess]::StartOwned($shell,$capacityArguments,$root,"$root/default-bad.out","$root/default-bad.err",'Default',$false,$false,$false,27946)} 'Generic launcher accepted interactive desktop.'
+    Refuses {[IW7LabProcess]::StartInteractiveCapacityOwned($shell,$capacityArguments,$root,"$root/visible-bad.out","$root/visible-bad.err",27946)} 'Interactive capacity accepted an unrelated executable.'
+    Refuses {[IW7LabProcess]::StartInteractiveCapacityOwned('C:\fixture\iw7-capacity-test-client.exe','-dedicated',$root,"$root/visible-role-bad.out","$root/visible-role-bad.err",27946)} 'Interactive capacity accepted dedicated/missing client role.'
     Refuses {[IW7LabProcess]::StartOwned($shell,($capacityArguments+' -dedicated'),$root,"$root/capacity-bad.out","$root/capacity-bad.err",('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false,$false,$false,27946)} 'Mixed capacity dedicated role accepted.'
     $owned=[IW7LabProcess]::StartOwned($shell,$capacityArguments,$root,"$root/capacity.out","$root/capacity.err",('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false,$false,$false,27946)
     $identity=$owned.ReadIdentity()

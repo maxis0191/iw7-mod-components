@@ -166,3 +166,16 @@ script model field (not a rendered-DObj witness), explicitly validates the pinne
 startup-only natural plan throughout the session, forbids its reload/watch arm,
 and refuses fresh engine script errors before client admission. Qualification
 still requires an actual protected client, rendered evidence and native repair.
+
+Natural supply subsequently reached48 ordinary actors without forced pool
+construction or a forced codec. A300-second protected observation also exercised
+16 high-entity deaths with retail replacements and restored both instances.
+This is not visibility acceptance: PrintWindow on the private desktop returned
+black pixels. Fixed console transport passed its echo-child test, but actual
+client ammunition did not decrease; a pipe write is not a fired shot. Preserve
+these failed visual/input witnesses. An explicit InteractiveClient scenario now
+uses only the temporary capacity client, the same private peer, complete lease,
+vacancy/protection/restore checks and the visible Default desktop. The generic
+launcher still rejects Default. The owner's fatal return site also exposes an
+unexpanded42-character animation-rewind scratch table; its full layout and
+consumers require audit before a native repair, rather than a null-pointer mask.

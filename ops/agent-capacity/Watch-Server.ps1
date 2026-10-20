@@ -9,14 +9,14 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [string]$StandardClientPackageRoot,
       [switch]$CaptureClientCrashMemory,
       [switch]$RequireSparseAgentWire,
-      [switch]$ExerciseClientFire,[switch]$CaptureClientFrame,
+      [switch]$ExerciseClientFire,[switch]$CaptureClientFrame,[switch]$InteractiveClient,
       [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
       [string]$NaturalFixturePath,[string]$NaturalFixtureSHA256,
       [ValidateSet(24,48)][int]$HordeOrdinary=48,[ValidateRange(0,2)][int]$HordeSpecials=2,
       [string]$RetailCpPatchPath,[string]$RetailCpPatchSHA256,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
-if(($ExerciseClientFire -or $CaptureClientFrame) -and (!$NaturalFixturePath -or !$StandardClientPackageRoot)){
+if(($ExerciseClientFire -or $CaptureClientFrame -or $InteractiveClient) -and (!$NaturalFixturePath -or !$StandardClientPackageRoot)){
     throw 'Fixed client input/capture requires the pinned natural observation and standard client.'
 }
 if($NaturalFixturePath -or $NaturalFixtureSHA256){
@@ -120,6 +120,7 @@ $plan|Add-Member NoteProperty RequireSparseAgentWire ([bool]$RequireSparseAgentW
 $plan|Add-Member NoteProperty ClientGraphicsProfile $ClientGraphicsProfile
 $plan|Add-Member NoteProperty ExerciseClientFire ([bool]$ExerciseClientFire)
 $plan|Add-Member NoteProperty CaptureClientFrame ([bool]$CaptureClientFrame)
+$plan|Add-Member NoteProperty InteractiveClient ([bool]$InteractiveClient)
 Assert-IW7CapacityClientPlan $plan
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
@@ -258,7 +259,7 @@ set sv_mapRotationCurrent ""
         Copy-Item -LiteralPath $clientExe -Destination $clientImage
         $clientPlan=New-IW7BaseClientPlan -GameRoot $ClientGameRoot -ClientImage $clientImage -ServerPort $ServerPort -ClientPort ($ServerPort+1) -Debugger -GraphicsProfile $ClientGraphicsProfile -Capacity64:(!$standardManifest -and $AgentCapacity -eq 64)
         try{
-            if($standardManifest){$client=Start-IW7CapacityStandardClient $clientPlan $identity $lease.Token $password (Join-Path $case 'client')}
+            if($standardManifest){$client=Start-IW7CapacityStandardClient $clientPlan $identity $lease.Token $password (Join-Path $case 'client') ([bool]$InteractiveClient)}
             else{$client=Start-IW7BaseClient -Plan $clientPlan -ServerIdentity $identity -LeaseToken $lease.Token -Password $password -OutputRoot (Join-Path $case 'client')}
         }
         catch{if($_.Exception.Data.Contains('BaseClientContext')){$client=$_.Exception.Data['BaseClientContext']};throw}
