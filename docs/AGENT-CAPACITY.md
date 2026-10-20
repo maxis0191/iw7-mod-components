@@ -1,5 +1,57 @@
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
+## Correctif d'archive CP en qualification privée — 20 octobre 2026
+
+Le layout de compensation des tirs conservait 42 entrées alors que les pools
+vivants en exposaient 82. Dans son groupe de restauration, les drapeaux à
+`+0x14` des indices 48 et 49 écrivaient les octets 4 et 5 du pointeur 0 à
+`+0x40`. Deux écritures de valeur 1 reproduisent exactement `0x10100000000`,
+le pointeur invalide de l'incident propriétaire. Cette correspondance établit
+un débordement précis ; elle ne démontre pas encore la résolution de tous les
+crashs ni de l'invisibilité.
+
+Le candidat déplace ensemble les 40 frames, leurs contrôleurs et XAnim, le
+contexte générique inchangé, les drapeaux et les pointeurs sauvegardés. Les
+signatures vérifiées couvrent allocation, réserve hunk, initialisation, capture,
+lecture/interpolation, restauration et le memset de destruction en code protégé.
+La frame passe de `0xC7A8` à `0xD478`, l'objet de `0x2077F0` à `0x2279D8`.
+Les pointeurs commencent à `+0x68`, après les 82 drapeaux. Les copies utilisant
+des disp8 sont réencodées en blocs entiers, sans transformer `+0x54` en `-0x5C`.
+
+Les tests exécutent les vraies nouvelles instructions x64 sur des buffers
+synthétiques pour chacun des 82 indices, dans les deux copies et le calcul des
+deux bases d'interpolation. Ils reproduisent aussi les anciens mauvais résultats
+et la corruption exacte du pointeur, puis vérifient les bornes. Le premier essai
+de compilation a refusé un conflit avec `rewind(FILE*)` et les macros Windows ;
+la correction est conservée séparément. Ces tests ne chargent aucun jeu.
+
+L'observateur du client standard peut maintenant relever characterInfo/DObj
+uniquement dans son scénario explicite de connexion privée loopback. Ces valeurs
+ne remplacent pas une capture visible. Nouvelle compilation, tir réel, visibilité
+des indices supplémentaires, recyclage naturel et transitions restent à qualifier.
+Main et la distribution du mode48 restent suspendus.
+
+Le premier nouveau serveur compile le natif mais refuse le catalogue GSC avant
+toute connexion : le build avait omis `OwnerCheats`, dont le composant enregistre
+aussi `paris_get_connection_id` utilisé par les statistiques. Aucun test de horde
+n'en découle. Le préflight refuse maintenant ce couple manifeste/catalogue avant
+snapshot et lancement ; le build privé complet doit conserver cette capacité.
+
+## Régression propriétaire —20 octobre2026 : production suspendue
+
+Le vrai test propriétaire du client39AA01F1 avec le serveur1EC9BB6D donne des
+zombies invisibles au-delà24, puis un fatal Dedicated C0000005 à140D75BD0.
+Le dump lit un word àRCX+8 avec RCX10100000000 ; cause non démontrée. Le retour
+àl'ancien natif24 est effectué côté serveur, banque actuelle préservée.
+Server PR333 suspend les nouvelles activations de production48.
+
+Les anciens tests ci-dessous sont conservés mais ne valident pas la visibilité.
+Ils imposaient la préconstruction explicite des64 agents et pouvaient forcer la
+représentation clairsemée du codec. Le diagnostic suivant accepte une fixture
+privée épinglée sans cette préconstruction, avec le fournisseur retail/Rush et
+le codec normal, protection native fraîche et observation du client distribué.
+Un nom de modèle présent côté serveur ou CA_ACTIVE ne vaut pas preuve de rendu.
+
 ## Qualification64-v2 avec le client standard — 19 octobre2026
 
 La série réelle sur les cinq cartes passe48 ordinaires +2 spéciaux et24 morts/

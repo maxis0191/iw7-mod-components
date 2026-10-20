@@ -79,6 +79,7 @@ $manifest=Get-Content (Resolve-IW7BasePath $PackageRoot 'build-manifest.json') -
 if(!$manifest.IsolatedLab -or !$manifest.ServerModules -or !$manifest.Debugger -or !$manifest.CapacityWatchBuild.Compiled -or
    !$manifest.TestHeartbeatSuppressed -or
    $manifest.BuildProfile -cne 'isolated-modules' -or (Get-FileHash $exe).Hash -cne $manifest.SHA256){throw 'Reviewed isolated watcher package required.'}
+Assert-IW7CapacityCatalogCapabilities $catalog $manifest
 foreach($row in $manifest.SourceHashes){
     if($row.File -cnotmatch '^[a-zA-Z0-9_]+\.(cpp|hpp)$' -or (Get-FileHash (Join-Path $repo ('src/native/'+$row.File))).Hash -cne $row.SHA256){throw 'Native source/build mismatch.'}
 }

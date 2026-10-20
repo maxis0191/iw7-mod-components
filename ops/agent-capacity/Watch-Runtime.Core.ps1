@@ -1,5 +1,15 @@
 # No launch, staging, socket or reservation on import.
 . "$PSScriptRoot/../Agent-Scenario.Core.ps1"
+function Assert-IW7CapacityCatalogCapabilities($Catalog,$Manifest) {
+    # The current stats script binds paris_get_connection_id, registered by
+    # the owner-capable native component. Refuse before staging or launching
+    # an incompatible server, rather than discovering it in the live GSC VM.
+    if(@($Catalog|Where-Object path -CEQ 'src/custom_scripts/cp/paris_stats.gsc').Count -and
+       (!$Manifest.PSObject.Properties['OwnerCheatsEnabled'] -or
+        $Manifest.OwnerCheatsEnabled -isnot [bool] -or !$Manifest.OwnerCheatsEnabled)) {
+        throw 'Stats catalog requires the native connection-identity capability (OwnerCheats build).'
+    }
+}
 function Get-IW7CapacitySessionMap($Session) {
     if($Session.Plan.PSObject.Properties['Map']){
         if($Session.Plan.Map -cnotin @('cp_zmb','cp_rave','cp_disco','cp_town','cp_final')){throw 'Unknown fixed capacity map.'}
