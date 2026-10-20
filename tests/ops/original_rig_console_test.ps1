@@ -87,6 +87,9 @@ try {
 $owned=$null
 try {
     $capacityArguments='-NoLogo -NoProfile -NonInteractive -File "'+$scriptPath+'" -cpMode -wincon -paris-capacity-64 -paris-capacity-production -paris-capacity-client-probe +set net_ip 127.0.0.1 +set net_port 27947'
+    Refuses {[IW7LabProcess]::StartOwned($shell,$capacityArguments,$root,"$root/default-bad.out","$root/default-bad.err",'Default',$false,$false,$false,27946)} 'Generic launcher accepted interactive desktop.'
+    Refuses {[IW7LabProcess]::StartInteractiveCapacityOwned($shell,$capacityArguments,$root,"$root/visible-bad.out","$root/visible-bad.err",27946)} 'Interactive capacity accepted an unrelated executable.'
+    Refuses {[IW7LabProcess]::StartInteractiveCapacityOwned('C:\fixture\iw7-capacity-test-client.exe','-dedicated',$root,"$root/visible-role-bad.out","$root/visible-role-bad.err",27946)} 'Interactive capacity accepted dedicated/missing client role.'
     Refuses {[IW7LabProcess]::StartOwned($shell,($capacityArguments+' -dedicated'),$root,"$root/capacity-bad.out","$root/capacity-bad.err",('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false,$false,$false,27946)} 'Mixed capacity dedicated role accepted.'
     $owned=[IW7LabProcess]::StartOwned($shell,$capacityArguments,$root,"$root/capacity.out","$root/capacity.err",('IW7ParisLab_'+[guid]::NewGuid().ToString('N')),$false,$false,$false,27946)
     $identity=$owned.ReadIdentity()
@@ -97,8 +100,14 @@ try {
     Refuses {$owned.WriteCapacityLifecycle('connect',$identity.Image,($identity.CreationFileTime+1))} 'Capacity creation identity mismatch accepted.'
     $owned.WriteCapacityLifecycle('connect',$identity.Image,$identity.CreationFileTime)
     Refuses {$owned.WriteCapacityLifecycle('connect',$identity.Image,$identity.CreationFileTime)} 'Capacity connect replay accepted.'
+    Refuses {$owned.WriteCapacityLifecycle('fire-off',$identity.Image,$identity.CreationFileTime)} 'Unpaired capacity fire stop accepted.'
+    $owned.WriteCapacityLifecycle('capture',$identity.Image,$identity.CreationFileTime)
+    $owned.WriteCapacityLifecycle('fire-on',$identity.Image,$identity.CreationFileTime)
+    $owned.WriteCapacityLifecycle('fire-off',$identity.Image,$identity.CreationFileTime)
+    Refuses {$owned.WriteCapacityLifecycle('fire-on',$identity.Image,$identity.CreationFileTime)} 'Capacity fire replay accepted.'
     $owned.WriteCapacityLifecycle('stop',$identity.Image,$identity.CreationFileTime)
     $deadline=[datetime]::UtcNow.AddSeconds(10)
     do{$text=Read-IW7BaseLog "$root/capacity.out";if($text.Contains('CONSUMED:quit;')){break};Start-Sleep -Milliseconds 50}while([datetime]::UtcNow -lt $deadline)
-    Check ($text.Contains('CONSUMED:connect 127.0.0.1:27946;') -and $text.Contains('CONSUMED:quit;')) 'Fixed delimited capacity lifecycle lines not consumed.'
+    Check ($text.Contains('CONSUMED:connect 127.0.0.1:27946;') -and $text.Contains('CONSUMED:quit;') -and
+        $text.Contains('CONSUMED:screenshot;') -and $text.Contains('CONSUMED:+attack;') -and $text.Contains('CONSUMED:-attack;')) 'Fixed delimited capacity lifecycle/capture/fire lines not consumed.'
 }finally{Close-Owned $owned}

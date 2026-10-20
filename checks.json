@@ -1,6 +1,7 @@
 {
   "product": "iw7-mod-components",
   "checks": [
+    {"id":"capacity_standard_graphics","command":["pwsh","-NoLogo","-NoProfile","-NonInteractive","-File","tests/ops/capacity_standard_graphics_test.ps1"]},
     {
       "id": "capacity_peer_overlay",
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/capacity_peer_overlay_test.ps1"]

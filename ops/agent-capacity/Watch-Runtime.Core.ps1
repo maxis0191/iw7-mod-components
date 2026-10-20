@@ -26,12 +26,36 @@ function New-IW7CapacityRconPacket([string]$Secret,[string]$Command) {
     # Pin77 network::send defaults to space separator; rcon callback splits secret.
     ,[byte[]]([byte[]](255,255,255,255)+[Text.Encoding]::ASCII.GetBytes('rcon '+$Secret+' '+$Command))
 }
+function Assert-IW7CapacityClientPlan($Plan) {
+    $natural=$Plan.PSObject.Properties['NaturalFixtureSHA256'] -and $Plan.NaturalFixtureSHA256
+    if($natural -and ($Plan.NaturalFixtureSHA256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or
+       !$Plan.SkipReload -or $Plan.PopulateAgents -or $Plan.AgentCapacity -ne 64 -or
+       $Plan.PlannedClients -ne 1 -or !$Plan.ClientImage -or @($Plan.Catalog).Count -lt 18)){
+        throw 'Pinned natural observation requires its complete startup-only client/catalog plan.'
+    }
+    if($Plan.PlannedClients -eq 1 -and (!$Plan.ClientImage -or
+       ($Plan.AgentCapacity -eq 64 -and !$Plan.PopulateAgents -and !$natural) -or
+       ($Plan.AgentCapacity -eq 24 -and (!$Plan.SkipReload -or $Plan.PopulateAgents)))){
+        throw 'Declared matching construction client, pinned natural observation or unchanged startup baseline required.'
+    }
+}
+function Assert-IW7CapacityScriptLog([string]$Text,[switch]$DiagnosticRuntime) {
+    if($Text -match '(?im)^\*+\s*script compile error\b|^\[ERROR\]:compiler:' -or
+       (!$DiagnosticRuntime -and $Text -match '(?im)^\*+\s*script runtime error\b')){
+        throw 'Fresh private engine script compilation/runtime failure; client admission refused.'
+    }
+    foreach($block in [regex]::Matches($Text,'(?ims)^\*+\s*script runtime error[^\r\n]*\r?\n.*?(?=^\*+\s*$|\z)')){
+        # A natural diagnosis remains unqualified and preserves ALL raw errors.
+        # Its unrelated retail/catalog errors must not hide the native incident.
+        if(!$DiagnosticRuntime -or $block.Value -match '(?i)custom_scripts[/\\]cp[/\\]capacity_(?:natural|pool|horde)\b'){
+            throw 'Fresh private engine script compilation/runtime failure; client admission refused.'
+        }
+    }
+}
 function Assert-IW7CapacitySession($Session) {
     if(!$Session -or $Session.ServerPort -lt 27100 -or $Session.ServerPort -gt 27999 -or
        !$Session.Plan.Debugger -or $Session.Plan.PlannedClients -notin @(0,1) -or $Session.Plan.StockCopied -or $Session.Plan.MainDeployed) { throw 'Owned private debugger plan required.' }
-    if($Session.Plan.PlannedClients -eq 1 -and (!$Session.Plan.ClientImage -or
-       ($Session.Plan.AgentCapacity -eq 64 -and !$Session.Plan.PopulateAgents) -or
-       ($Session.Plan.AgentCapacity -eq 24 -and (!$Session.Plan.SkipReload -or $Session.Plan.PopulateAgents)))){throw 'Declared matching construction client or unchanged startup baseline required.'}
+    Assert-IW7CapacityClientPlan $Session.Plan
     Assert-IW7BaseIdentity $Session.Identity
     if($Session.Handle.HasExited){throw 'Owned dedicated exited.'}
     $leases=@((Get-IW7ResourceStatus).Leases|Where-Object Token -CEQ $Session.LeaseToken)
@@ -50,6 +74,10 @@ function Assert-IW7CapacitySession($Session) {
 }
 function Send-IW7CapacityRcon($Session,[string]$Command) {
     Assert-IW7CapacitySession $Session
+    if($Session.Plan.PSObject.Properties['NaturalFixtureSHA256'] -and $Session.Plan.NaturalFixtureSHA256 -and
+       ($Command -in @('map_restart','map cp_zmb') -or $Command.StartsWith('paris_capacity_arm ',[StringComparison]::Ordinal))){
+        throw 'Natural observation cannot arm a reset watch or reload the map.'
+    }
     $packet=New-IW7CapacityRconPacket $Session.Secret $Command
     if($Command -in @('quit','map_restart','map cp_zmb') -or $Command.StartsWith('paris_capacity_arm ',[StringComparison]::Ordinal)) {
         if(!$Session.VacancyProof -or $Session.VacancyProof.Seconds -lt 30 -or
