@@ -2,6 +2,22 @@
 
 ## Correctif d'archive CP en qualification privée — 20 octobre 2026
 
+Le candidat `b93b506` tient ensuite 240 secondes à48, avec16 morts/remplacements,
+52 identités graphiques distinctes observées jusqu'à69, toutes avec characterInfo
+valide et DObj. Aucun crash natif ; sortie des deux processus, restauration et
+libération du bail confirmées. C'est un progrès technique ; le tir et l'image
+restent non prouvés dans ce cas. Une tentative de capture par console est refusée
+car la console contient un troisième processus : aucun caractère n'y est envoyé.
+
+Le diagnostic suivant utilise les vrais bindings retail `+attack/-attack`,
+avec relâchement borné, et lit le back buffer D3D11 dans le callback de rendu
+existant. Deux options explicites, réservées au client de diagnostic loopback,
+commandent ces actions ; les lanceurs distribués ordinaires ne les passent pas.
+L'observateur exige maintenant le binding relâché et une baisse réelle du même
+chargeur, ainsi qu'une image native fraîche corrélée au PID et copiée avant la
+restauration. Un simple octet écrit dans stdin ou une ancienne image ne suffit
+plus. Cette instrumentation reste à compiler et qualifier.
+
 Le candidat `2d82792` corrige les modèles observés des indices42–63, puis le
 client plante à `140870775`. Son dump montre R13=`26D9D7E01`, au lieu du pointeur
 aligné `26D9D7E00`. CG_SetNextSnap utilisait encore un masque de deux words à

@@ -5,6 +5,10 @@
 #include "scheduler.hpp"
 #include "console/console.hpp"
 #include "party.hpp"
+#include "gui/gui.hpp"
+#include <utils/io.hpp>
+#include <d3d11.h>
+#include <wrl/client.h>
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <shellapi.h>
@@ -58,6 +62,60 @@ void agent_delta(void* info,void* message,int time,const void* from,const void* 
             number,previous,to?0u:1u,character_bits,after-before);
 }
 std::uint64_t observed_characters[characters]{};
+std::atomic_uint rendered_characters{};
+std::atomic_bool capture_requested{};
+void capture_probe_frame() {
+    if(!capture_requested.exchange(false))return;
+    try {
+        // Same swap-chain selection as the pinned CB/Aurora GUI, called from
+        // its render callback under the existing render mutex. No desktop UI.
+        const int window=*reinterpret_cast<int*>(0x148B1BE34);
+        if(window<0 || window>=2)throw std::runtime_error("No active game swap chain");
+        auto* chain=reinterpret_cast<IDXGISwapChain**>(0x148B1BE48)[12*window];
+        using Microsoft::WRL::ComPtr;
+        ComPtr<ID3D11Texture2D> source,staging;
+        if(!chain || FAILED(chain->GetBuffer(0,IID_PPV_ARGS(&source))))throw std::runtime_error("No back buffer");
+        ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
+        source->GetDevice(&device);device->GetImmediateContext(&context);
+        D3D11_TEXTURE2D_DESC desc{};source->GetDesc(&desc);
+        const bool rgba=desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM || desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        const bool bgra=desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM || desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        if((!rgba && !bgra) || !desc.Width || !desc.Height || desc.Width>8192 || desc.Height>8192 ||
+            desc.ArraySize!=1 || desc.SampleDesc.Count!=1)throw std::runtime_error("Unsupported probe back buffer");
+        auto copy=desc;copy.MipLevels=1;copy.Usage=D3D11_USAGE_STAGING;copy.BindFlags=0;
+        copy.CPUAccessFlags=D3D11_CPU_ACCESS_READ;copy.MiscFlags=0;
+        if(FAILED(device->CreateTexture2D(&copy,nullptr,&staging)))throw std::runtime_error("Probe staging allocation failed");
+        context->CopySubresourceRegion(staging.Get(),0,0,0,0,source.Get(),0,nullptr);
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if(FAILED(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped)))throw std::runtime_error("Probe map failed");
+        struct unmap {ID3D11DeviceContext* context;ID3D11Texture2D* texture;~unmap(){context->Unmap(texture,0);}} guard{context.Get(),staging.Get()};
+        BITMAPFILEHEADER file{};BITMAPINFOHEADER info{};
+        file.bfType=0x4D42;file.bfOffBits=sizeof(file)+sizeof(info);file.bfSize=file.bfOffBits+desc.Width*desc.Height*4;
+        info.biSize=sizeof(info);info.biWidth=static_cast<LONG>(desc.Width);info.biHeight=-static_cast<LONG>(desc.Height);
+        info.biPlanes=1;info.biBitCount=32;info.biCompression=BI_RGB;
+        std::string bytes(file.bfSize,'\0');std::memcpy(bytes.data(),&file,sizeof(file));
+        std::memcpy(bytes.data()+sizeof(file),&info,sizeof(info));
+        for(UINT y=0;y<desc.Height;++y) {
+            const auto* row=static_cast<const unsigned char*>(mapped.pData)+y*mapped.RowPitch;
+            auto* output=reinterpret_cast<unsigned char*>(bytes.data()+file.bfOffBits+y*desc.Width*4);
+            for(UINT x=0;x<desc.Width;++x) {
+                output[x*4]=row[x*4+(rgba?2:0)];output[x*4+1]=row[x*4+1];
+                output[x*4+2]=row[x*4+(rgba?0:2)];output[x*4+3]=255;
+            }
+        }
+        if(!utils::io::write_file("iw7-mod/screenshots/server-modules-fixture.bmp",bytes))throw std::runtime_error("Probe BMP write failed");
+        console::info("[Paris capacity frame] saved pid=%lu models=%u width=%u height=%u\n",GetCurrentProcessId(),rendered_characters.load(),desc.Width,desc.Height);
+    } catch(const std::exception& error) {console::error("[Paris capacity frame] failed: %s\n",error.what());}
+}
+void probe_fire(bool down) {
+    const char* name=down?"+attack":"-attack";
+    for(int binding=0;binding<118;++binding)if(game::command_whitelist[binding] &&
+        std::strcmp(game::command_whitelist[binding],name)==0) {
+        utils::hook::invoke<void>(0x14032A3B0,0,binding,200,game::Sys_Milliseconds());
+        console::info("[Paris capacity fire] %s pid=%lu catchers=%d\n",down?"pressed":"released",GetCurrentProcessId(),*game::keyCatchers);return;
+    }
+    console::error("[Paris capacity fire] Retail binding absent: %s\n",name);
+}
 void character_render(int local_client,void* entity) {
     character_render_hook.invoke<void>(local_client,entity);
     auto state=static_cast<const unsigned char*>(entity)+0x700;
@@ -79,6 +137,8 @@ void character_render(int local_client,void* entity) {
             (static_cast<std::uint64_t>(client_number)<<16) | (animation&15) | 0x8000 |
             (object?0x100:0) | (valid?0x200:0);
         if(observed_characters[number]!=signature) {
+            if((signature&0x300)==0x300 && (observed_characters[number]&0x300)!=0x300)++rendered_characters;
+            else if((signature&0x300)!=0x300 && (observed_characters[number]&0x300)==0x300)--rendered_characters;
             observed_characters[number]=signature;
             console::info("[Paris capacity character] entity=%u type=%u client_num=%u animation_class=%u valid=%u dobj=%p flags=%08X\n",
                 static_cast<unsigned>(number),type,client_number,static_cast<unsigned>(animation&15),valid,object,entity_flags);
@@ -377,7 +437,10 @@ class component final : public component_interface {
         if(sparse_probe && (production || !dedicated))
             throw std::runtime_error("Sparse wire probe requires the private dedicated identity");
         const bool client_probe=utils::flags::has_flag("paris-capacity-client-probe");
+        const bool probe_capture=utils::flags::has_flag("paris-capacity-client-capture");
+        const bool probe_shoot=utils::flags::has_flag("paris-capacity-client-fire");
         const auto probe_port=client_probe ? private_port(false) : 0;
+        if((probe_capture || probe_shoot) && !client_probe)throw std::runtime_error("Capacity capture/fire requires the private client probe");
         if(client_probe && (!production || dedicated || !probe_port))
             throw std::runtime_error("Normal capacity client probe requires its explicit private loopback peer port");
         if(!(utils::flags::has_flag("cpMode") || utils::flags::has_flag("zombies")))
@@ -442,6 +505,27 @@ class component final : public component_interface {
         if(!dedicated && (!production || client_probe)) {
             readable_code(0x1408260D0,1);
             character_render_hook.create(0x1408260D0,character_render);
+        }
+        if(client_probe && (probe_capture || probe_shoot)) {
+            if(probe_capture)gui::on_frame(capture_probe_frame,true,false);
+            scheduler::loop([probe_port,probe_capture,probe_shoot,ready=0ull,pressed=false,released=false,done=false]() mutable {
+                if(done)return;
+                const auto now=GetTickCount64();const auto* peer=party::get_server_connection_state();
+                const bool connected=peer && peer->hostDefined && peer->host.type==game::NA_IP &&
+                    peer->host.ip[0]==127 && peer->host.ip[1]==0 && peer->host.ip[2]==0 && peer->host.ip[3]==1 &&
+                    ntohs(peer->host.port)==probe_port && game::Com_GameMode_GetActiveGameMode()==game::GAME_MODE_CP;
+                if(pressed && !released && (!connected || now-ready>=5500)) {probe_fire(false);released=true;}
+                if(!connected || rendered_characters.load()<ordinary)return;
+                if(!ready){ready=now;return;}
+                if(now-ready>=30000 && !pressed) {
+                    console::error("[Paris capacity fire] Probe expired before idle input. catchers=%d\n",*game::keyCatchers);
+                    if(probe_capture)capture_requested=true;done=true;return;
+                }
+                if(probe_shoot && !pressed && now-ready>=5000 && *game::keyCatchers==0){probe_fire(true);pressed=true;}
+                if(now-ready>=7000 && (!probe_shoot || released)) {
+                    if(probe_capture)capture_requested=true;done=true;
+                }
+            },scheduler::main,50ms);
         }
         scheduler::once([] {
             game::Dvar_RegisterInt("paris_native_agent_capacity",agents,agents,agents,game::DVAR_FLAG_NONE,"Private native capacity candidate");

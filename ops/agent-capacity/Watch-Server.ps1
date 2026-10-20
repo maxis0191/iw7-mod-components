@@ -259,6 +259,8 @@ set sv_mapRotationCurrent ""
         $clientExe=if($standardManifest){Join-Path $StandardClientPackageRoot 'iw7-mod.exe'}else{$exe}
         Copy-Item -LiteralPath $clientExe -Destination $clientImage
         $clientPlan=New-IW7BaseClientPlan -GameRoot $ClientGameRoot -ClientImage $clientImage -ServerPort $ServerPort -ClientPort ($ServerPort+1) -Debugger -GraphicsProfile $ClientGraphicsProfile -Capacity64:(!$standardManifest -and $AgentCapacity -eq 64)
+        $clientPlan|Add-Member NoteProperty CaptureClientFrame ([bool]$CaptureClientFrame)
+        $clientPlan|Add-Member NoteProperty ExerciseClientFire ([bool]$ExerciseClientFire)
         try{
             if($standardManifest){$client=Start-IW7CapacityStandardClient $clientPlan $identity $lease.Token $password (Join-Path $case 'client') ([bool]$InteractiveClient)}
             else{$client=Start-IW7BaseClient -Plan $clientPlan -ServerIdentity $identity -LeaseToken $lease.Token -Password $password -OutputRoot (Join-Path $case 'client')}
@@ -283,7 +285,7 @@ set sv_mapRotationCurrent ""
             $newClientCrash=Get-IW7AgentNewCrash -CandidateRoot $ClientGameRoot -Identity $client.Identity -Before @() -OutputRoot $case -Cache $clientCrashCache
             if($newClientCrash){$clientCrash=$newClientCrash;throw 'Correlated native client exception; artifact retained.'}
             Update-IW7BaseClient $client|ConvertTo-Json -Compress|Add-Content (Join-Path $case 'client/protection.jsonl')
-            if(($ExerciseClientFire -or $CaptureClientFrame) -and [datetime]::UtcNow -ge $inputAt -and
+            if(!$standardManifest -and ($ExerciseClientFire -or $CaptureClientFrame) -and [datetime]::UtcNow -ge $inputAt -and
                (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')).Contains('; ordinary=48;')){
                 Assert-IW7BaseIdentity $client.Identity $client.Handle
                 if(!$client.Protected -or ([datetime]::UtcNow-$client.LastHeartbeatUtc).TotalSeconds -gt 5){throw 'Fresh protection required before fixed client input.'}
@@ -307,6 +309,27 @@ set sv_mapRotationCurrent ""
             $result|Add-Member NoteProperty DiagnosticOnly $true
             $result|Add-Member NoteProperty ClientFireInputSent $fireStarted
             $result|Add-Member NoteProperty FrameCommandSent $frameRequested
+            if($standardManifest -and ($ExerciseClientFire -or $CaptureClientFrame)){
+                $clientLog=Read-IW7BaseLog (Join-Path $case 'client/client.stdout.log')
+                $pressed=$clientLog.Contains("[Paris capacity fire] pressed pid=$($client.Identity.PID) catchers=0")
+                $released=$clientLog.Contains("[Paris capacity fire] released pid=$($client.Identity.PID)")
+                $shots=@([regex]::Matches($naturalLog,'\[Paris natural capacity\] CLIENT weapon=([^;\r\n]+); clip=(\d+); time=(\d+);')|ForEach-Object {
+                    [pscustomobject]@{Weapon=$_.Groups[1].Value;Clip=[int]$_.Groups[2].Value}
+                }|Group-Object Weapon|Where-Object {($_.Group.Clip|Measure-Object -Minimum -Maximum).Maximum -gt ($_.Group.Clip|Measure-Object -Minimum -Maximum).Minimum})
+                $result|Add-Member NoteProperty RetailFireDispatched ($pressed -and $released)
+                $result|Add-Member NoteProperty WeaponClipDecreaseObserved ($shots.Count -gt 0)
+                if($ExerciseClientFire -and (!$pressed -or !$released -or !$shots.Count)){throw 'Requested retail fire lacks a released native binding and actual clip decrease.'}
+                if($CaptureClientFrame){
+                    $frame=Join-Path $ClientGameRoot 'iw7-mod/screenshots/server-modules-fixture.bmp'
+                    $fresh=$clientLog.Contains("[Paris capacity frame] saved pid=$($client.Identity.PID) models=") -and
+                        (Test-Path -LiteralPath $frame) -and (Get-Item -LiteralPath $frame).Length -gt 54 -and
+                        (Get-Item -LiteralPath $frame).LastWriteTimeUtc -ge ([datetimeoffset]$client.Identity.CreatedUtc).UtcDateTime
+                    $result|Add-Member NoteProperty FreshNativeFrameObserved ([bool]$fresh)
+                    if(!$fresh){throw 'Requested capacity frame lacks a fresh correlated native capture.'}
+                    Copy-Item -LiteralPath $frame -Destination (Join-Path $case 'client/capacity-frame.bmp')
+                    $result|Add-Member NoteProperty NativeFrameSHA256 (Get-FileHash -LiteralPath (Join-Path $case 'client/capacity-frame.bmp')).Hash
+                }
+            }
         }
         if($HordeFixturePath){
             $hordeLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
