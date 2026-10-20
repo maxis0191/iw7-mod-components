@@ -9,12 +9,16 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [string]$StandardClientPackageRoot,
       [switch]$CaptureClientCrashMemory,
       [switch]$RequireSparseAgentWire,
+      [switch]$ExerciseClientFire,[switch]$CaptureClientFrame,
       [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
       [string]$NaturalFixturePath,[string]$NaturalFixtureSHA256,
       [ValidateSet(24,48)][int]$HordeOrdinary=48,[ValidateRange(0,2)][int]$HordeSpecials=2,
       [string]$RetailCpPatchPath,[string]$RetailCpPatchSHA256,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
+if(($ExerciseClientFire -or $CaptureClientFrame) -and (!$NaturalFixturePath -or !$StandardClientPackageRoot)){
+    throw 'Fixed client input/capture requires the pinned natural observation and standard client.'
+}
 if($NaturalFixturePath -or $NaturalFixtureSHA256){
     if(!$SkipReload -or !$ClientGameRoot -or !$CatalogRoot -or $PopulateAgents -or $HordeFixturePath -or
        $AgentCapacity -ne 64 -or $ClientObserveSeconds -lt 90 -or ![IO.Path]::IsPathFullyQualified($NaturalFixturePath) -or
@@ -114,6 +118,8 @@ $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$Cand
 $plan|Add-Member NoteProperty NaturalFixtureSHA256 $NaturalFixtureSHA256
 $plan|Add-Member NoteProperty RequireSparseAgentWire ([bool]$RequireSparseAgentWire)
 $plan|Add-Member NoteProperty ClientGraphicsProfile $ClientGraphicsProfile
+$plan|Add-Member NoteProperty ExerciseClientFire ([bool]$ExerciseClientFire)
+$plan|Add-Member NoteProperty CaptureClientFrame ([bool]$CaptureClientFrame)
 Assert-IW7CapacityClientPlan $plan
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
@@ -126,6 +132,7 @@ $crash=$null;$crashCache=@{}
 $client=$null;$clientImageTransaction=$null
 $bankIsolation=$null;$clientManagedRestored=$false
 $clientCrash=$null;$clientCrashCache=@{}
+$fireStarted=$false;$fireStopped=$false;$frameRequested=$false;$fireDeadline=$null
 try{
     $leaseOptions=@{}
     if($clientImage){$leaseOptions.BaseClientImage=$clientImage}
@@ -266,6 +273,7 @@ set sv_mapRotationCurrent ""
         }while([datetime]::UtcNow -lt $clientDeadline)
         if(!$client.Protected){throw 'Matching capacity client lacks fresh protected playable witness.'}
         $observeUntil=[datetime]::UtcNow.AddSeconds($ClientObserveSeconds)
+        $inputAt=[datetime]::UtcNow.AddSeconds(60)
         do{
             Assert-IW7CapacityScriptLog (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')) -DiagnosticRuntime:([bool]$NaturalFixturePath)
             $observedCrash=Get-IW7AgentNewCrash -CandidateRoot $CandidateRoot -Identity $identity -Before $crashBefore -OutputRoot $case -Cache $crashCache
@@ -273,6 +281,15 @@ set sv_mapRotationCurrent ""
             $newClientCrash=Get-IW7AgentNewCrash -CandidateRoot $ClientGameRoot -Identity $client.Identity -Before @() -OutputRoot $case -Cache $clientCrashCache
             if($newClientCrash){$clientCrash=$newClientCrash;throw 'Correlated native client exception; artifact retained.'}
             Update-IW7BaseClient $client|ConvertTo-Json -Compress|Add-Content (Join-Path $case 'client/protection.jsonl')
+            if(($ExerciseClientFire -or $CaptureClientFrame) -and [datetime]::UtcNow -ge $inputAt -and
+               (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')).Contains('; ordinary=48;')){
+                Assert-IW7BaseIdentity $client.Identity $client.Handle
+                if(!$client.Protected -or ([datetime]::UtcNow-$client.LastHeartbeatUtc).TotalSeconds -gt 5){throw 'Fresh protection required before fixed client input.'}
+                $inputIdentity=$client.Handle.ReadIdentity()
+                if($CaptureClientFrame -and !$frameRequested){$client.Handle.WriteCapacityLifecycle('capture',$inputIdentity.Image,$inputIdentity.CreationFileTime);$frameRequested=$true}
+                if($ExerciseClientFire -and !$fireStarted){$client.Handle.WriteCapacityLifecycle('fire-on',$inputIdentity.Image,$inputIdentity.CreationFileTime);$fireStarted=$true;$fireDeadline=[datetime]::UtcNow.AddMilliseconds(500)}
+                if($fireStarted -and !$fireStopped -and [datetime]::UtcNow -ge $fireDeadline){$client.Handle.WriteCapacityLifecycle('fire-off',$inputIdentity.Image,$inputIdentity.CreationFileTime);$fireStopped=$true}
+            }
             if($HordeFixturePath -and (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')).Contains('[Paris capacity horde] FAIL')){throw 'Private horde reported failure; stop and retain its diagnostics.'}
             if($NaturalFixturePath -and (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')).Contains('[Paris natural capacity] FAIL')){throw 'Private natural observer reported failure; retain its diagnostics.'}
             Start-Sleep -Milliseconds 250
@@ -286,6 +303,8 @@ set sv_mapRotationCurrent ""
             $result|Add-Member NoteProperty ClientVisibilityQualified $false
             $result|Add-Member NoteProperty ScriptRuntimeErrorCount ([regex]::Matches($naturalLog,'(?im)^\*+\s*script runtime error\b').Count)
             $result|Add-Member NoteProperty DiagnosticOnly $true
+            $result|Add-Member NoteProperty ClientFireInputSent $fireStarted
+            $result|Add-Member NoteProperty FrameCommandSent $frameRequested
         }
         if($HordeFixturePath){
             $hordeLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')

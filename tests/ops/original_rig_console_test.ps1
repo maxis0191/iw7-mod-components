@@ -97,8 +97,14 @@ try {
     Refuses {$owned.WriteCapacityLifecycle('connect',$identity.Image,($identity.CreationFileTime+1))} 'Capacity creation identity mismatch accepted.'
     $owned.WriteCapacityLifecycle('connect',$identity.Image,$identity.CreationFileTime)
     Refuses {$owned.WriteCapacityLifecycle('connect',$identity.Image,$identity.CreationFileTime)} 'Capacity connect replay accepted.'
+    Refuses {$owned.WriteCapacityLifecycle('fire-off',$identity.Image,$identity.CreationFileTime)} 'Unpaired capacity fire stop accepted.'
+    $owned.WriteCapacityLifecycle('capture',$identity.Image,$identity.CreationFileTime)
+    $owned.WriteCapacityLifecycle('fire-on',$identity.Image,$identity.CreationFileTime)
+    $owned.WriteCapacityLifecycle('fire-off',$identity.Image,$identity.CreationFileTime)
+    Refuses {$owned.WriteCapacityLifecycle('fire-on',$identity.Image,$identity.CreationFileTime)} 'Capacity fire replay accepted.'
     $owned.WriteCapacityLifecycle('stop',$identity.Image,$identity.CreationFileTime)
     $deadline=[datetime]::UtcNow.AddSeconds(10)
     do{$text=Read-IW7BaseLog "$root/capacity.out";if($text.Contains('CONSUMED:quit;')){break};Start-Sleep -Milliseconds 50}while([datetime]::UtcNow -lt $deadline)
-    Check ($text.Contains('CONSUMED:connect 127.0.0.1:27946;') -and $text.Contains('CONSUMED:quit;')) 'Fixed delimited capacity lifecycle lines not consumed.'
+    Check ($text.Contains('CONSUMED:connect 127.0.0.1:27946;') -and $text.Contains('CONSUMED:quit;') -and
+        $text.Contains('CONSUMED:screenshot;') -and $text.Contains('CONSUMED:+attack;') -and $text.Contains('CONSUMED:-attack;')) 'Fixed delimited capacity lifecycle/capture/fire lines not consumed.'
 }finally{Close-Owned $owned}

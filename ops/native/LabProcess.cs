@@ -106,10 +106,13 @@ public static class IW7LabProcess
             lock(consoleLock) {
                 CheckOpen();
                 if(capacityPeerPort<27100 || capacityPeerPort>27999 || consoleInput==null || consoleInput.IsClosed ||
-                   (action!="connect" && action!="stop") || consoleSent.Contains(action)) throw new InvalidOperationException("Fixed owned capacity lifecycle required");
+                   (action!="connect" && action!="stop" && action!="capture" && action!="fire-on" && action!="fire-off") ||
+                   consoleSent.Contains(action) || (action=="fire-off" && !consoleSent.Contains("fire-on"))) throw new InvalidOperationException("Fixed owned capacity lifecycle required");
                 var identity=ReadIdentity();
                 if(identity.CreationFileTime!=expectedCreation || !String.Equals(identity.Image,expectedImage,StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Capacity client identity differs");
-                string command=action=="connect" ? "connect 127.0.0.1:"+capacityPeerPort : "quit";
+                string command=action=="connect" ? "connect 127.0.0.1:"+capacityPeerPort :
+                    action=="capture" ? "screenshot" : action=="fire-on" ? "+attack" : action=="fire-off" ? "-attack" :
+                    consoleSent.Contains("fire-on") && !consoleSent.Contains("fire-off") ? "-attack;quit" : "quit";
                 // wincon uses getline and passes the line to Cbuf_AddText
                 // without its newline. Keep a fixed engine command delimiter.
                 byte[] bytes=Encoding.ASCII.GetBytes(command+";\n");uint written;
