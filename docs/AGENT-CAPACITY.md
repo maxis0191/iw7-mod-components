@@ -1,5 +1,20 @@
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
+## Régression propriétaire —20 octobre2026 : production suspendue
+
+Le vrai test propriétaire du client39AA01F1 avec le serveur1EC9BB6D donne des
+zombies invisibles au-delà24, puis un fatal Dedicated C0000005 à140D75BD0.
+Le dump lit un word àRCX+8 avec RCX10100000000 ; cause non démontrée. Le retour
+àl'ancien natif24 est effectué côté serveur, banque actuelle préservée.
+Server PR333 suspend les nouvelles activations de production48.
+
+Les anciens tests ci-dessous sont conservés mais ne valident pas la visibilité.
+Ils imposaient la préconstruction explicite des64 agents et pouvaient forcer la
+représentation clairsemée du codec. Le diagnostic suivant accepte une fixture
+privée épinglée sans cette préconstruction, avec le fournisseur retail/Rush et
+le codec normal, protection native fraîche et observation du client distribué.
+Un nom de modèle présent côté serveur ou CA_ACTIVE ne vaut pas preuve de rendu.
+
 ## Qualification64-v2 avec le client standard — 19 octobre2026
 
 La série réelle sur les cinq cartes passe48 ordinaires +2 spéciaux et24 morts/

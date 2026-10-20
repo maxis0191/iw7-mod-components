@@ -1,5 +1,11 @@
 # Automatic standard / Paris48 client profiles
 
+The owner's20 October gameplay rejected the currently embedded capacity port:
+extra agents were invisible and the Dedicated crashed. Server PR333 restores
+Main24 and suspends production48. This candidate must use a corrected and newly
+qualified native port before distribution; successful managed data preparation
+does not qualify the regressed engine implementation.
+
 Owner clarification,20 October2026: first investigate unchanged community
 clients through their existing download/content interfaces. The
 [native-first audit](EXISTING-CLIENT-CAPACITY.md) records the inspected paths,

@@ -9,10 +9,19 @@ param([Parameter(Mandatory)][string]$CandidateRoot,[string]$PackageRoot,
       [switch]$CaptureClientCrashMemory,
       [switch]$RequireSparseAgentWire,
       [string]$HordeFixturePath,[string]$HordeFixtureSHA256,
+      [string]$NaturalFixturePath,[string]$NaturalFixtureSHA256,
       [ValidateSet(24,48)][int]$HordeOrdinary=48,[ValidateRange(0,2)][int]$HordeSpecials=2,
       [string]$RetailCpPatchPath,[string]$RetailCpPatchSHA256,
       [ValidateSet('writer-path-20261019','binding-continuation-20261019')][string]$WriterPagePlan='writer-path-20261019')
 $ErrorActionPreference='Stop'
+if($NaturalFixturePath -or $NaturalFixtureSHA256){
+    if(!$SkipReload -or !$ClientGameRoot -or !$CatalogRoot -or $PopulateAgents -or $HordeFixturePath -or
+       $AgentCapacity -ne 64 -or $ClientObserveSeconds -lt 90 -or ![IO.Path]::IsPathFullyQualified($NaturalFixturePath) -or
+       $NaturalFixtureSHA256 -cnotmatch '^[A-Fa-f0-9]{64}$'){throw 'Natural capacity observation requires its complete protected64 catalog/client scenario without forced construction or a horde supplier.'}
+    $naturalItem=Get-Item -LiteralPath $NaturalFixturePath
+    if($naturalItem.Length -lt 1 -or $naturalItem.Length -gt 16KB -or $naturalItem.Extension -cne '.gsc' -or
+       ($naturalItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or (Get-FileHash -LiteralPath $NaturalFixturePath).Hash -ine $NaturalFixtureSHA256){throw 'Pinned natural observation source differs.'}
+}
 if($RetailCpPatchPath -or $RetailCpPatchSHA256){
     if(![IO.Path]::IsPathFullyQualified($RetailCpPatchPath) -or $RetailCpPatchSHA256 -cnotmatch '^[A-Fa-f0-9]{64}$'){throw 'Pinned managed CP patch required.'}
     $retailItem=Get-Item -LiteralPath $RetailCpPatchPath
@@ -32,7 +41,7 @@ if($PopulateAgents -and $AgentCapacity -ne 64){throw 'Pool construction probe re
 if($RequireSparseAgentWire -and (!$HordeFixturePath -or !$ClientGameRoot -or $HordeOrdinary -ne 48)){throw 'Sparse wire witness requires the pinned active48 encounter and owned client.'}
 if($SkipReload -and (!$ClientGameRoot -or $CaptureWriterPages -or $CaptureNativeText)){throw 'Startup-only client mode cannot capture executable pages.'}
 if($ClientGameRoot -and ($CaptureWriterPages -or $CaptureNativeText -or
-   ($AgentCapacity -eq 64 -and !$PopulateAgents) -or ($AgentCapacity -eq 24 -and (!$SkipReload -or $PopulateAgents)))){throw 'Client probe requires private 64-agent construction or explicit unchanged 24-agent startup baseline.'}
+   ($AgentCapacity -eq 64 -and !$PopulateAgents -and !$NaturalFixturePath) -or ($AgentCapacity -eq 24 -and (!$SkipReload -or $PopulateAgents)))){throw 'Client probe requires private64 construction, explicit natural observation or an unchanged24 startup baseline.'}
 $ops=Split-Path $PSScriptRoot -Parent;$repo=Split-Path $ops -Parent
 if(($Map -cne 'cp_zmb' -or $CatalogRoot -or $RotateBeast) -and !$SkipReload){throw 'Map/catalog probes require fresh protected startup.'}
 if($RotateBeast -and (!$ClientGameRoot -or !$CatalogRoot -or $Map -ceq 'cp_final')){throw 'Occupied Beast rotation requires the complete catalog and owned client.'}
@@ -101,6 +110,8 @@ if($CaptureClientCrashMemory){
 $image=Resolve-IW7BasePath $CandidateRoot 'iw7-paris-agent-lab.exe'
 $plan=[pscustomobject]@{Schema='iw7.capacity-watch-server/1';CandidateRoot=$CandidateRoot;ServerImage=$image;ServerPort=$ServerPort;
     Map=$Map;Catalog=@($catalog);RotateBeast=[bool]$RotateBeast;PlannedClients=$plannedClients;ClientImage=$clientImage;AgentCapacity=$AgentCapacity;PopulateAgents=[bool]$PopulateAgents;SkipReload=[bool]$SkipReload;HordeFixtureSHA256=$HordeFixtureSHA256;HordeOrdinary=$HordeOrdinary;HordeSpecials=$HordeSpecials;RetailCpPatchSHA256=$RetailCpPatchSHA256;PhysicalBytes=$budget.PhysicalBytes;CommitBytes=$budget.CommitBytes;Debugger=$true;NativeSHA256=$manifest.SHA256;StockCopied=$false;MainDeployed=$false}
+$plan|Add-Member NoteProperty NaturalFixtureSHA256 $NaturalFixtureSHA256
+$plan|Add-Member NoteProperty RequireSparseAgentWire ([bool]$RequireSparseAgentWire)
 if($DryRun){$plan|ConvertTo-Json;return}
 Assert-IW7AgentCandidateVacant -CandidateRoot $CandidateRoot -Ports @($ServerPort)
 $case=Join-Path $repo ('runtime/agent-capacity/watch-server-'+[datetime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[guid]::NewGuid().ToString('N'))
@@ -149,6 +160,11 @@ try{
         Copy-Item -LiteralPath $HordeFixturePath -Destination $target
         if((Get-FileHash $target).Hash -ine $HordeFixtureSHA256 -or (Get-FileHash $HordeFixturePath).Hash -ine $HordeFixtureSHA256){throw 'Horde source changed during staging.'}
     }
+    if($NaturalFixturePath){
+        $target=Resolve-IW7BasePath $CandidateRoot 'iw7-mod/custom_scripts/cp/capacity_natural.gsc'
+        Copy-Item -LiteralPath $NaturalFixturePath -Destination $target
+        if((Get-FileHash -LiteralPath $target).Hash -ine $NaturalFixtureSHA256 -or (Get-FileHash -LiteralPath $NaturalFixturePath).Hash -ine $NaturalFixtureSHA256){throw 'Natural observation source changed during staging.'}
+    }
     # This native allocation probe needs retail CP only. The split Native
     # product intentionally does not vendor the Server gameplay script set.
     Copy-Item -LiteralPath $exe -Destination $image
@@ -161,6 +177,7 @@ set sv_maxclients 4
 set g_gametype "zombie"
 set scr_zombie_maxagents $AgentCapacity
 set paris_capacity_pool_probe $([int][bool]$PopulateAgents)
+set paris_capacity_natural_probe $([int][bool]$NaturalFixturePath)
 set paris_capacity_pool_validate 0
 set paris_capacity_client_probe $plannedClients
 set paris_capacity_horde_target $(if($HordeFixturePath){$HordeOrdinary}else{0})
@@ -181,7 +198,7 @@ set paris_agent_combat_probe 0
 set paris_model_probe 0
 set paris_mod_voice 0
 set paris_mod_doom 0
-set paris_mod_rush 0
+set paris_mod_rush $([int][bool]$NaturalFixturePath)
 set paris_mod_loadout 0
 set paris_join_loadout_test 0
 set sv_mapRotation "gametype zombie map $Map"
@@ -248,9 +265,17 @@ set sv_mapRotationCurrent ""
             if($newClientCrash){$clientCrash=$newClientCrash;throw 'Correlated native client exception; artifact retained.'}
             Update-IW7BaseClient $client|ConvertTo-Json -Compress|Add-Content (Join-Path $case 'client/protection.jsonl')
             if($HordeFixturePath -and (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')).Contains('[Paris capacity horde] FAIL')){throw 'Private horde reported failure; stop and retain its diagnostics.'}
+            if($NaturalFixturePath -and (Read-IW7BaseLog (Join-Path $case 'server.stdout.log')).Contains('[Paris natural capacity] FAIL')){throw 'Private natural observer reported failure; retain its diagnostics.'}
             Start-Sleep -Milliseconds 250
         }while([datetime]::UtcNow -lt $observeUntil)
         $result|Add-Member NoteProperty MatchingClientProtected $true
+        if($NaturalFixturePath){
+            $naturalLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
+            if(!$naturalLog.Contains('[Paris natural capacity] OBSERVE native=64;')){throw 'Natural capacity observation was not recorded.'}
+            $result|Add-Member NoteProperty NaturalObservationSourceSHA256 $NaturalFixtureSHA256
+            $result|Add-Member NoteProperty ForcedPoolConstruction $false
+            $result|Add-Member NoteProperty ClientVisibilityQualified $false
+        }
         if($HordeFixturePath){
             $hordeLog=Read-IW7BaseLog (Join-Path $case 'server.stdout.log')
             $expected="[Paris capacity horde] PASS ordinary=$HordeOrdinary special=$HordeSpecials total=$($HordeOrdinary+$HordeSpecials);"
