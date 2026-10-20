@@ -37,15 +37,15 @@ constexpr std::uint32_t xanim_counts=characters*4, xanim_counter=characters*8;
 constexpr std::uint32_t xanim_data=xanim_counter+4;
 constexpr std::uint32_t frame_size=xanim_base+xanim_data+1000*12;
 constexpr std::uint32_t restore=frame_base+frames*frame_size;
-constexpr std::uint32_t rewind=restore+0x12010, flags=0x14;
+constexpr std::uint32_t rewind_base=restore+0x12010, flags=0x14;
 constexpr std::uint32_t pointers=align8(flags+characters);
-constexpr std::uint32_t active=pointers+characters*8;
-constexpr std::uint32_t object_size=rewind+align8(active+1);
+constexpr std::uint32_t rewind_active=pointers+characters*8;
+constexpr std::uint32_t object_size=rewind_base+align8(rewind_active+1);
 constexpr std::uint32_t growth=object_size-0x2077F0;
 static_assert(controller_records==0xA4 && controller_size==0x17B4);
 static_assert(xanim_base==0xA304 && xanim_data==0x294 && frame_size==0xD478);
-static_assert(restore==0x2156C8 && rewind==0x2276D8);
-static_assert(pointers==0x68 && active==0x2F8 && object_size==0x2279D8);
+static_assert(restore==0x2156C8 && rewind_base==0x2276D8);
+static_assert(pointers==0x68 && rewind_active==0x2F8 && object_size==0x2279D8);
 // Complete straight-line blocks; widening a disp8 from54 toA4 would address
 // negative memory. Re-encode the same copies with a computed positive base.
 constexpr std::array<std::uint8_t,33> blend_before={
