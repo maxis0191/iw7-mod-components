@@ -507,7 +507,7 @@ class component final : public component_interface {
             character_render_hook.create(0x1408260D0,character_render);
         }
         if(client_probe && (probe_capture || probe_shoot)) {
-            if(probe_capture)gui::on_frame(capture_probe_frame,true,false);
+            if(probe_capture){gui::enable();gui::on_frame(capture_probe_frame,true,false);}
             scheduler::loop([probe_port,probe_capture,probe_shoot,ready=0ull,pressed=false,released=false,done=false]() mutable {
                 if(done)return;
                 const auto now=GetTickCount64();const auto* peer=party::get_server_connection_state();

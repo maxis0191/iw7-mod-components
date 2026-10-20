@@ -16,7 +16,10 @@ commandent ces actions ; les lanceurs distribués ordinaires ne les passent pas.
 L'observateur exige maintenant le binding relâché et une baisse réelle du même
 chargeur, ainsi qu'une image native fraîche corrélée au PID et copiée avant la
 restauration. Un simple octet écrit dans stdin ou une ancienne image ne suffit
-plus. Cette instrumentation reste à compiler et qualifier.
+plus. Son premier essai donne un vrai tir (chargeur12→11), mais le callback
+graphique reste inactif car le GUI natif est désactivé par défaut. Le correctif
+active son infrastructure de rendu uniquement pour cette option privée, sans
+ouvrir de menu ni capturer les entrées. La capture corrigée reste à qualifier.
 
 Le candidat `2d82792` corrige les modèles observés des indices42–63, puis le
 client plante à `140870775`. Son dump montre R13=`26D9D7E01`, au lieu du pointeur
