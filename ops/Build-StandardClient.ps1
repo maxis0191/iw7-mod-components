@@ -1,9 +1,25 @@
-param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$OwnerCheats,[switch]$Capacity64,[switch]$MainEngineDebugger)
+param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$OwnerCheats,[switch]$Capacity64,[switch]$MainEngineDebugger,
+    [scriptblock]$NativeStageRunner=$null,[scriptblock]$BeforeReleaseCheck=$null,[object]$OriginalContext=$null,[object]$RetentionRoot=$null)
 $ErrorActionPreference='Stop'
 function Assert-IW7StandardDebuggerOptions([bool]$Enabled,[bool]$OwnerCheats,[bool]$Capacity64) {
     if($Enabled -and ($OwnerCheats -or $Capacity64)){throw 'MainEngineDebugger is exclusive with OwnerCheats and Capacity64.'}
 }
+function Test-IW7StandardControlledBuild([bool]$Enabled,[Collections.IDictionary]$Bound) {
+    $names=@('NativeStageRunner','BeforeReleaseCheck','OriginalContext','RetentionRoot')
+    if(!@($names|Where-Object{$Bound.ContainsKey($_)}).Count){return $false}
+    if(!$Enabled){throw 'Controlled native stages require MainEngineDebugger.'}
+    foreach($name in $names){
+        if(!$Bound.ContainsKey($name) -or $null -eq $Bound[$name]){throw 'NativeStageRunner, BeforeReleaseCheck, OriginalContext and RetentionRoot must be supplied together and non-null.'}
+    }
+    return $true
+}
+function Invoke-IW7StandardNativeStage([scriptblock]$Runner,[ValidateSet('Premake','MSBuild')][string]$Stage,[string]$FilePath,[string[]]$ArgumentList,[string]$WorkingDirectory) {
+    $exitCode=& $Runner -Stage $Stage -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory
+    if($exitCode -isnot [int]){throw 'NativeStageRunner must return exactly one Int32 exit code.'}
+    if($exitCode -ne 0){throw "Standard client $Stage failed with exit code $exitCode."}
+}
 Assert-IW7StandardDebuggerOptions ([bool]$MainEngineDebugger) ([bool]$OwnerCheats) ([bool]$Capacity64)
+$controlledBuild=Test-IW7StandardControlledBuild ([bool]$MainEngineDebugger) $PSBoundParameters
 $repo=Split-Path $PSScriptRoot -Parent
 $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw | ConvertFrom-Json).Standard
 . "$PSScriptRoot/standard-client/Loading-NewMap.Core.ps1"
@@ -23,6 +39,11 @@ while($cursor){
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 $admissionOptions=@{}
 if($MainEngineDebugger){$admissionOptions.RequireNewLease=$true}
+if($controlledBuild){
+    $admissionOptions.BeforeReleaseCheck=$BeforeReleaseCheck
+    $admissionOptions.OriginalContext=$OriginalContext
+    $admissionOptions.RetentionRoot=$RetentionRoot
+}
 Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) @admissionOptions -Body {
     if(!$MainEngineDebugger){
         Remove-IW7CapacityPeerOverlay $root
@@ -80,16 +101,24 @@ Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native 
     }
     Push-Location $root
     try {
-        & ./tools/premake5.exe --file=paris-build-only.lua vs2022
-        if($LASTEXITCODE){throw 'Standard client Premake failed.'}
+        if($controlledBuild){
+            Invoke-IW7StandardNativeStage -Runner $NativeStageRunner -Stage 'Premake' -FilePath (Join-Path $root 'tools/premake5.exe') -ArgumentList ([string[]]@('--file=paris-build-only.lua','vs2022')) -WorkingDirectory $root
+        }else{
+            & ./tools/premake5.exe --file=paris-build-only.lua vs2022
+            if($LASTEXITCODE){throw 'Standard client Premake failed.'}
+        }
         $project=Join-Path $root 'build/client.vcxproj'
         $projectText=[IO.File]::ReadAllText($project)
         [xml]$generatedProject=$projectText
         $postBuildNodes=@($generatedProject.SelectNodes("//*[local-name()='PostBuildEvent']/*[local-name()='Command']")|Where-Object{![string]::IsNullOrWhiteSpace($_.InnerText)})
         if($postBuildNodes.Count){throw 'Automatic upstream copy/deployment post-build events refused before MSBuild.'}
         if($projectText -match '(?:paris_voice|voice_relay|paris_test_fixture|player_movement)\.cpp'){throw 'Unexpected private or duplicate translation unit in regenerated client project.'}
-        & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false /p:PostBuildEventUseInBuild=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"
-        if($LASTEXITCODE){throw 'Standard client native build failed.'}
+        if($controlledBuild){
+            Invoke-IW7StandardNativeStage -Runner $NativeStageRunner -Stage 'MSBuild' -FilePath "$installation/MSBuild/Current/Bin/MSBuild.exe" -ArgumentList ([string[]]@('build/iw7-mod.sln',"/m:$BuildJobs",'/nr:false','/v:minimal','/p:Configuration=Release','/p:Platform=x64','/p:MultiProcessorCompilation=false','/p:PostBuildEventUseInBuild=false',"/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal")) -WorkingDirectory $root
+        }else{
+            & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false /p:PostBuildEventUseInBuild=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"
+            if($LASTEXITCODE){throw 'Standard client native build failed.'}
+        }
     } finally {Pop-Location}
     if($MainEngineDebugger){
         $changed=@(& git -C $root diff --name-only HEAD);if($LASTEXITCODE){throw 'Debugger tracked source inventory failed.'}

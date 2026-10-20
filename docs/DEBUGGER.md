@@ -738,12 +738,34 @@ NoExit/original-job containment, artifact inventory and Root review before
 release still need a separately reviewed execution path. No previous standalone
 packet qualifies that lifecycle. `EnabledCfcaMustRemainRefused=true` and the
 other stopped routes remain unchanged. The existing loading-hook Source test
-passed its bounded `-MainEngineDebuggerSourceOnly` selection with 57 assertions
+previously passed its bounded `-MainEngineDebuggerSourceOnly` selection with 57 assertions
 and exit zero, before its legacy imports. It exercised real guards and overlay
 functions with fake Git, synthetic reparse attributes and owned temporary Source
 copies. It did not invoke the native builder, PCH, SDK, registry or resource
 lease. This result does not qualify the full TU, NoExit build lifecycle, game
 behavior or performance.
+
+For `MainEngineDebugger` only, the builder also accepts a controlled build
+connection: `NativeStageRunner`, `BeforeReleaseCheck`, `OriginalContext` and
+`RetentionRoot` must all be explicitly supplied and non-null as soon as one is
+bound. Invalid combinations refuse before imports. The original release check,
+context and retention root are forwarded unchanged to the resource wrapper;
+the initial admission still requires a new lease. Omitting all four preserves
+the original direct invocations and their exit checks.
+
+The runner is called by named `Stage`, `FilePath`, `ArgumentList` (`string[]`)
+and `WorkingDirectory` arguments for Premake then MSBuild. It must return
+exactly one `Int32` exit code; nonzero or another output type fails the stage.
+Controlled calls retain the original argv and inherited environment and do not
+consult a previous `LASTEXITCODE`. This connection is not an H1 direct-compiler
+policy for MSBuild. The external full-build owner, durable NoExit caller, job
+containment, artifact inventory and review-before-release remain to be supplied
+and qualified separately. The extended `-MainEngineDebuggerSourceOnly`
+selection passed with 102 assertions and exit zero, exercising real controlled
+guards, forwarding and stage branches with fake callbacks. It did not invoke
+the whole builder, resource Core, native tools, SDK, registry or lease. This
+Source result extends the earlier 57-assertion selection; neither result
+qualifies a full native build or the external NoExit lifecycle.
 
 For a specific script suspect, bracket a region only in a separate lab candidate:
 

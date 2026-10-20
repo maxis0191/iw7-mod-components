@@ -15,6 +15,8 @@ function Test-MainEngineDebuggerSource {
     Check (!$errors.Count) 'Overlay Source must parse.'
     foreach($entry in @(
         @($builderAst,'Assert-IW7StandardDebuggerOptions'),
+        @($builderAst,'Test-IW7StandardControlledBuild'),
+        @($builderAst,'Invoke-IW7StandardNativeStage'),
         @($overlayAst,'Convert-IW7MainEngineDebuggerScheduler'),
         @($overlayAst,'Assert-IW7MainEngineDebuggerPathAttributes'),
         @($overlayAst,'Assert-IW7MainEngineDebuggerSourceState'),
@@ -61,6 +63,82 @@ function Test-MainEngineDebuggerSource {
     $application=$builderText.IndexOf('$mainEngineOverlay=. "$PSScriptRoot/Apply-DebuggerOverlay.ps1"')
     Check ($application -gt $builderText.IndexOf('Untracked native source refused') -and $application -gt $builderText.IndexOf('Exact standard client pin required')) 'Original HEAD/dirty/untracked gates must precede application.'
     Check ($application -gt $builderText.IndexOf('$loadingHook = Assert-IW7StandardClientLoadingHook') -and $application -lt $builderText.IndexOf('& ./tools/premake5.exe')) 'Loading hook must remain guarded before generation.'
+    $controlGuard=$builderText.IndexOf('$controlledBuild=Test-IW7StandardControlledBuild ')
+    Check ($controlGuard -gt 0 -and $controlGuard -lt $builderText.IndexOf('$profile=') -and $controlGuard -lt $builderText.IndexOf('. "$PSScriptRoot/standard-client/Loading-NewMap.Core.ps1"')) 'Controlled options must refuse before imports or operational paths.'
+    $guardStatement=@($builderAst.EndBlock.Statements|Where-Object{$_.Extent.Text.StartsWith('$controlledBuild=Test-IW7StandardControlledBuild ',[StringComparison]::Ordinal)})
+    $admissionStatements=@($builderAst.EndBlock.Statements|Where-Object{
+        $_.Extent.Text -ceq '$admissionOptions=@{}' -or
+        ($_ -is [Management.Automation.Language.IfStatementAst] -and $_.Extent.Text.Contains('$admissionOptions.'))
+    })
+    Check ($guardStatement.Count -eq 1 -and $admissionStatements.Count -eq 3) 'Actual controlled guard and three admission fragments required.'
+    $admissionSelection=[scriptblock]::Create($builderAst.ParamBlock.Extent.Text+"`n"+$guardStatement[0].Extent.Text+"`n"+($admissionStatements.Extent.Text-join"`n")+"`n"+'$admissionOptions')
+    $ordinary=& $admissionSelection -NativeRoot 'SYNTHETIC_SOURCE'
+    $ordinaryFalse=& $admissionSelection -NativeRoot 'SYNTHETIC_SOURCE' -MainEngineDebugger:$false
+    $diagnostic=& $admissionSelection -NativeRoot 'SYNTHETIC_SOURCE' -MainEngineDebugger
+    Check ($ordinary.Count -eq 0 -and $ordinaryFalse.Count -eq 0) 'Omitted/false control bundle must preserve the empty legacy admission splat.'
+    Check ($diagnostic.Count -eq 1 -and $diagnostic.RequireNewLease -is [bool] -and $diagnostic.RequireNewLease) 'Uncontrolled diagnostic still requires a fresh initial lease.'
+    $originalView=[pscustomobject]@{ResourceJobLease=$null;ResourceJobFirstErrorRecord=$null;ResourceJobFirstException=$null;ResourceJobSecondaryErrors=$null;ResourceJobReleaseAttempted=$false;ResourceJobReleaseReturned=$false}
+    $originalRoot=[Management.Automation.PSVariable]::new('SyntheticStandardRetention',$null)
+    $bundle=@{NativeStageRunner={return [int]0};BeforeReleaseCheck={return $true};OriginalContext=$originalView;RetentionRoot=$originalRoot}
+    $forwarded=& $admissionSelection -NativeRoot 'SYNTHETIC_SOURCE' -MainEngineDebugger @bundle
+    Check ($forwarded.Count -eq 4 -and $forwarded.RequireNewLease) 'Controlled admission must contain only the fresh-lease flag and original triple.'
+    foreach($name in @('BeforeReleaseCheck','OriginalContext','RetentionRoot')){Check ([object]::ReferenceEquals($forwarded[$name],$bundle[$name])) 'The actual admission fragment must forward the SAME original triple.'}
+    Refuse {& $admissionSelection -NativeRoot 'SYNTHETIC_SOURCE' @bundle}
+    Refuse {& $admissionSelection -NativeRoot 'SYNTHETIC_SOURCE' -MainEngineDebugger:$false @bundle}
+    foreach($name in @('NativeStageRunner','BeforeReleaseCheck','OriginalContext','RetentionRoot')){
+        $partial=$bundle.Clone();$partial.Remove($name)
+        Refuse {& $admissionSelection -NativeRoot 'SYNTHETIC_SOURCE' -MainEngineDebugger @partial}
+        $nullBundle=$bundle.Clone();$nullBundle[$name]=$null
+        Refuse {& $admissionSelection -NativeRoot 'SYNTHETIC_SOURCE' -MainEngineDebugger @nullBundle}
+        $single=@{};$single[$name]=$bundle[$name]
+        Refuse {& $admissionSelection -NativeRoot 'SYNTHETIC_SOURCE' -MainEngineDebugger @single}
+    }
+    # Exercise the two actual branch bodies, replacing only their legacy
+    # process invocations with a fake before either branch is called.
+    $stageBranches=@($builderAst.FindAll({param($n)$n -is [Management.Automation.Language.IfStatementAst]},$true)|Where-Object{
+        $_.Clauses[0].Item1.Extent.Text -ceq '$controlledBuild' -and $_.Extent.Text.Contains('Invoke-IW7StandardNativeStage')
+    })
+    Check ($stageBranches.Count -eq 2) 'Exactly the Premake and MSBuild controlled frontiers required.'
+    $stageBodies=foreach($branch in $stageBranches){
+        $legacyInvocation=$branch.ElseClause.Statements[0].Extent.Text
+        Check ($branch.Extent.Text.Split([string[]]@($legacyInvocation),[StringSplitOptions]::None).Count -eq 2 -and $branch.ElseClause.Statements[1].Extent.Text.Contains('$LASTEXITCODE')) 'Legacy invocation and its own exit check must remain together.'
+        if($branch.Extent.Text.Contains("-Stage 'Premake'")){
+            Check ($legacyInvocation -ceq '& ./tools/premake5.exe --file=paris-build-only.lua vs2022') 'Legacy Premake argv must remain literal.'
+        }else{
+            Check ($legacyInvocation -ceq '& "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false /p:PostBuildEventUseInBuild=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"') 'Legacy MSBuild argv must remain literal.'
+        }
+        $branch.Extent.Text.Replace($legacyInvocation,'Invoke-SyntheticStandardLegacyStage')
+    }
+    $nativeCalls=[Collections.Generic.List[object]]::new();$legacyCalls=[Collections.Generic.List[string]]::new()
+    $root='SYNTHETIC Source With Spaces';$installation='SYNTHETIC VS';$runtime='SYNTHETIC Runtime';$BuildJobs=2
+    $NativeStageRunner={param($Stage,$FilePath,$ArgumentList,$WorkingDirectory)
+        $nativeCalls.Add([pscustomobject]@{Stage=$Stage;FilePath=$FilePath;ArgumentList=$ArgumentList;WorkingDirectory=$WorkingDirectory})
+        return [int]0
+    }
+    function Invoke-SyntheticStandardLegacyStage {$legacyCalls.Add($legacyLabel);Set-Variable LASTEXITCODE -Scope 1 -Value $legacyExit}
+    $LASTEXITCODE=99;$controlledBuild=$true
+    foreach($body in $stageBodies){& ([scriptblock]::Create($body))}
+    Check ($nativeCalls.Count -eq 2 -and $legacyCalls.Count -eq 0 -and $nativeCalls[0].Stage -ceq 'Premake' -and $nativeCalls[1].Stage -ceq 'MSBuild') 'Controlled path must call exactly its two named stages without inheriting LASTEXITCODE.'
+    Check ($nativeCalls[0].ArgumentList -is [string[]] -and ($nativeCalls[0].ArgumentList-join'|') -ceq '--file=paris-build-only.lua|vs2022' -and $nativeCalls[0].FilePath -ceq (Join-Path $root 'tools/premake5.exe')) 'Premake callback must retain its separate exact argv and file path.'
+    $expectedMsbuild=[string[]]@('build/iw7-mod.sln','/m:2','/nr:false','/v:minimal','/p:Configuration=Release','/p:Platform=x64','/p:MultiProcessorCompilation=false','/p:PostBuildEventUseInBuild=false',"/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal")
+    Check ($nativeCalls[1].ArgumentList -is [string[]] -and ($nativeCalls[1].ArgumentList-join'|') -ceq ($expectedMsbuild-join'|') -and $nativeCalls[1].FilePath -ceq "$installation/MSBuild/Current/Bin/MSBuild.exe") 'MSBuild callback must retain its separate exact argv and file path.'
+    Check ($nativeCalls[0].WorkingDirectory -ceq $root -and $nativeCalls[1].WorkingDirectory -ceq $root) 'Both stages must retain the same working directory.'
+    $controlledBuild=$false;$legacyExit=0
+    foreach($body in $stageBodies){$legacyLabel=if($body.Contains("-Stage 'Premake'")){'Premake'}else{'MSBuild'};& ([scriptblock]::Create($body))}
+    Check ($legacyCalls.Count -eq 2 -and $nativeCalls.Count -eq 2 -and ($legacyCalls-join'|') -ceq 'Premake|MSBuild') 'Uncontrolled branches must use only their original legacy invocations.'
+    $controlledBuild=$true;$nativeCalls.Clear()
+    $NativeStageRunner={param($Stage,$FilePath,$ArgumentList,$WorkingDirectory)$nativeCalls.Add($Stage);return [int]7}
+    Refuse {foreach($body in $stageBodies){& ([scriptblock]::Create($body))}}
+    Check ($nativeCalls.Count -eq 1) 'Premake failure must not start the MSBuild callback.'
+    $nativeCalls.Clear()
+    $NativeStageRunner={param($Stage,$FilePath,$ArgumentList,$WorkingDirectory)$nativeCalls.Add($Stage);if($Stage -ceq 'Premake'){return [int]0};return [int]8}
+    Refuse {foreach($body in $stageBodies){& ([scriptblock]::Create($body))}}
+    Check ($nativeCalls.Count -eq 2) 'MSBuild callback nonzero must be refused after the successful Premake callback.'
+    foreach($badRunner in @({},{return $false},{return '0'},{return [long]0},{return @(0,0)},{return [pscustomobject]@{ExitCode=0}})){
+        Refuse {Invoke-IW7StandardNativeStage -Runner $badRunner -Stage Premake -FilePath 'SYNTHETIC' -ArgumentList ([string[]]@('literal')) -WorkingDirectory 'SYNTHETIC'}
+    }
+    $controlledBuild=$false;$legacyExit=9
+    Refuse {& ([scriptblock]::Create($stageBodies[0]))}
     $baseline=@'
 #include <std_include.hpp>
 namespace scheduler {
