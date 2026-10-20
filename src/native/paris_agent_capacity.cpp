@@ -171,6 +171,23 @@ template<std::size_t N> void sequence(std::uintptr_t address,
         throw std::runtime_error("Capacity animation instruction block differs");
     for(std::size_t i=0;i<N;++i)add(address+i,before[i],after[i],1);
 }
+void unwind_field(const animation_archive::query_patch& item) {
+    // These exact non-executable .rdata fields describe the three changed
+    // stack frames, chained register saves and GS cookie locations.
+    MEMORY_BASIC_INFORMATION info{};
+    if(item.address<0x1416CCF0C || item.address+item.width>0x1416E29C4 ||
+       (item.width!=2 && item.width!=4) ||
+       VirtualQuery(reinterpret_cast<void*>(item.address),&info,sizeof(info))!=sizeof(info) ||
+       info.State!=MEM_COMMIT || (info.Protect&PAGE_GUARD))throw std::runtime_error("Capacity query unwind range unavailable");
+    const auto start=reinterpret_cast<std::uintptr_t>(info.BaseAddress);
+    const auto protection=info.Protect&0xff;
+    if(item.address<start || item.address-start+item.width>info.RegionSize ||
+       (protection!=PAGE_READONLY && protection!=PAGE_READWRITE && protection!=PAGE_WRITECOPY))
+        throw std::runtime_error("Capacity query requires static readable unwind data");
+    std::uint32_t actual{};std::memcpy(&actual,reinterpret_cast<void*>(item.address),item.width);
+    if(actual!=item.before)throw std::runtime_error("Capacity query unwind signature differs");
+    plan.push_back({item.address,item.width,item.before,item.after,false});
+}
 void rip(std::uintptr_t field, std::uintptr_t before, std::uintptr_t after) {
     std::int32_t original{}, replacement{};
     if (!relative32(before,field+4,original) || !relative32(after,field+4,replacement))
@@ -314,6 +331,8 @@ void build_plan() {
     sequence(0x140415205,blend_before,blend_after);
     sequence(0x14041527F,next_before,next_after);
     sequence(0x140415305,previous_before,previous_after);
+    for(const auto& item:query_code)add(item.address,item.before,item.after,item.width);
+    for(const auto& item:query_unwind)unwind_field(item);
     std::sort(plan.begin(),plan.end(),[](const patch& a,const patch& b){return a.address<b.address;});
     for (std::size_t i=1;i<plan.size();++i) if (plan[i-1].address+plan[i-1].width>plan[i].address)
         throw std::runtime_error("Overlapping capacity candidate patches");
