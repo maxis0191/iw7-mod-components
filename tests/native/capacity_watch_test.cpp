@@ -7,6 +7,9 @@
 #include <random>
 #include <cstring>
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <Windows.h>
 #endif
 
@@ -32,11 +35,11 @@ static void archive_ranges() {
         assert(slot*4+4<=xanim_counts);
         assert(xanim_counts+slot*4+4<=xanim_counter);
         assert(flags+slot<pointers);
-        assert(pointers+slot*8+8<=active);
+        assert(pointers+slot*8+8<=rewind_active);
     }
     assert(xanim_base==controller_base+controller_size);
     assert(restore==frame_base+frames*frame_size);
-    assert(rewind>=restore+0x12010 && rewind+active<object_size);
+    assert(rewind_base>=restore+0x12010 && rewind_base+rewind_active<object_size);
 }
 
 #ifdef _WIN32

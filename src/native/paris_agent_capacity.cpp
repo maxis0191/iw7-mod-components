@@ -285,12 +285,12 @@ void build_plan() {
     add(0x140445DDA,0xA8,xanim_counts);
     add(0x140445DE0,0x150,xanim_counter);
     for(const auto address:{0x140445AB8ull,0x140445B5Full,0x140445B96ull,0x140445ED2ull})
-        add(address,0x2077E8,rewind+active);
-    add(0x140445ACE,0x207698,rewind+pointers);
-    add(0x140445ADF,0x20766C,rewind+flags);
-    add(0x140445B7B,0x207668,rewind+0x10);
-    for(const auto address:{0x140445B82ull,0x140445EDCull})add(address,0x207658,rewind);
-    add(0x140445B90,0x207660,rewind+8);
+        add(address,0x2077E8,rewind_base+rewind_active);
+    add(0x140445ACE,0x207698,rewind_base+pointers);
+    add(0x140445ADF,0x20766C,rewind_base+flags);
+    add(0x140445B7B,0x207668,rewind_base+0x10);
+    for(const auto address:{0x140445B82ull,0x140445EDCull})add(address,0x207658,rewind_base);
+    add(0x140445B90,0x207660,rewind_base+8);
     add(0x140445B45,42,characters,1);
     add(0x140445F0C,42,characters);
     add(0x1400A8585,42,characters);
