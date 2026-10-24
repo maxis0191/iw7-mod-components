@@ -13,6 +13,7 @@
 #include "gsc/script_extension.hpp"
 #include <utils/cryptography.hpp>
 #include <utils/io.hpp>
+#include <utils/string.hpp>
 #include <charconv>
 
 namespace owner_cheats
@@ -80,6 +81,67 @@ namespace owner_cheats
             }
             catch (const std::exception& error)
             { console::info("[Owner teleport] state error=%s\n", error.what()); reply("f \"Teleport refused; player state unavailable.\""); }
+        }
+
+        // Owner console moderation. Targets use the same name or .players #ID
+        // resolution as tp; bans persist by authenticated GUID token.
+        constexpr auto ban_file = "iw7-mod/owner-bans.txt";
+        std::vector<policy::ban_entry> bans;
+        std::array<std::string, 4> ban_kicked{};
+        std::string identity(const game::client_t* c);
+        void load_bans()
+        {
+            std::string text;
+            if (utils::io::read_file(ban_file, &text)) bans = policy::parse_bans(text);
+            console::info("[Owner moderation] %zu persistent bans loaded.\n", bans.size());
+        }
+        void moderate(int owner, const command::params_sv& args, const std::string& action)
+        {
+            const auto reply = [owner](const std::string& text)
+            {
+                console::info("[Owner moderation] slot=%d result=%s\n", owner, text.c_str());
+                game::SV_GameSendServerCommand(owner, game::SV_CMD_RELIABLE, ("f \"" + text + "\"").c_str());
+            };
+            if (!server_allowed(owner)) { reply("Owner authentication required."); return; }
+            const auto query = args.join(1);
+            if (action == "banlist")
+            {
+                if (bans.empty()) { reply("No bans."); return; }
+                for (std::size_t i = 0; i < bans.size(); ++i)
+                    reply("Ban #" + std::to_string(i + 1) + ": " + bans[i].name + " (" + bans[i].identity + ")");
+                return;
+            }
+            if (action == "unban")
+            {
+                const auto index = policy::ban_index(bans, query);
+                if (index < 0) { reply("Usage: unban <#N|GUID>. Numbers: banlist"); return; }
+                const auto entry = bans[index];
+                bans.erase(bans.begin() + index);
+                const bool saved = utils::io::write_file(ban_file, policy::serialize_bans(bans));
+                reply("Unbanned " + entry.name + (saved ? "." : "; saving failed, active until restart."));
+                return;
+            }
+            if (!policy::safe_target(query)) { reply("Usage: " + action + " <name|#ID>. IDs: .players"); return; }
+            std::vector<std::pair<int, std::string>> players;
+            for (unsigned slot = 0; slot < 4; ++slot)
+                if (connection(slot))
+                    players.emplace_back(slot, scripting::entity({static_cast<uint16_t>(slot), 0}).get<std::string>("name"));
+            const auto target = policy::target_slot(query, players);
+            if (target < 0) { reply("No unique player found. Use .players and #ID."); return; }
+            if (target == owner) { reply("Choose another player."); return; }
+            std::string name;
+            for (const auto& [slot, value] : players) if (slot == target) name = policy::display_name(value);
+            if (action == "ban")
+            {
+                const auto id = identity(connection(target));
+                if (id.empty()) { reply("Ban refused; this player has no stable GUID."); return; }
+                if (!policy::banned(bans, id)) bans.push_back({id, name});
+                const bool saved = utils::io::write_file(ban_file, policy::serialize_bans(bans));
+                reply("Banned " + name + (saved ? "." : "; saving failed, active until restart."));
+            }
+            else reply("Kicked " + name + ".");
+            console::info("[Owner moderation] actor=%d target=%d action=%s\n", owner, target, action.c_str());
+            scheduler::once([target] { game::SV_CmdsMP_KickClientNum(target, "EXE_PLAYERKICKED", false); }, scheduler::pipeline::server);
         }
 
         std::string nonce()
@@ -172,6 +234,18 @@ namespace owner_cheats
             std::lock_guard lock(state_mutex);
             for (unsigned slot = 0; slot < sessions.size(); ++slot)
             {
+                // A banned GUID is dropped as soon as its connection exists,
+                // once per connection, before it can become an active player.
+                const auto* pending = game::SV_Loaded() && *game::svs_clients ?
+                    policy::client_at(*game::svs_clients, *game::svs_numclients, slot) : nullptr;
+                const auto id = pending && pending->header.state >= game::CS_CONNECTED ? identity(pending) : std::string{};
+                if (id.empty() || !policy::banned(bans, id)) ban_kicked[slot].clear();
+                else if (ban_kicked[slot] != id)
+                {
+                    ban_kicked[slot] = id;
+                    console::info("[Owner moderation] Refusing banned connection; slot=%u.\n", slot);
+                    scheduler::once([slot] { game::SV_CmdsMP_KickClientNum(static_cast<int>(slot), "EXE_PLAYERKICKED", false); }, scheduler::pipeline::server);
+                }
                 auto* c = connection(slot);
                 if (!c) { sessions[slot] = {}; continue; }
                 if (!bound(slot)) sessions[slot] = {c, c->remoteAddress, identity(c), {}, 0};
@@ -269,16 +343,51 @@ namespace owner_cheats
                 {
                     command::add_sv("tp", [](int slot, const command::params_sv& args) { teleport(slot, args, false); });
                     command::add_sv("tphere", [](int slot, const command::params_sv& args) { teleport(slot, args, true); });
+                    load_bans();
+                    for (const auto* name : {"kick", "kickclient", "ban", "unban", "banlist"})
+                        command::add_sv((std::string("owner_") + name).c_str(), [name](int slot, const command::params_sv& args)
+                        { moderate(slot, args, name == std::string("kickclient") ? "kick" : name); });
                 }
-                else for (const auto* name : {"tp", "tphere"})
-                    command::add(name, [name](const command::params& args)
-                    {
-                        const auto target = args.join(1);
-                        console::info("[Owner teleport] client command=%s allowed=%d\n", name, client_allowed());
-                        if (!client_allowed() || !policy::safe_target(target))
-                        { console::info("Owner access required. Usage: %s <name|#ID>; IDs: .players\n", name); return; }
-                        command::execute(std::string("cmd ") + name + " \"" + target + "\"");
-                    });
+                else
+                {
+                    for (const auto* name : {"tp", "tphere"})
+                        command::add(name, [name](const command::params& args)
+                        {
+                            const auto target = args.join(1);
+                            console::info("[Owner teleport] client command=%s allowed=%d\n", name, client_allowed());
+                            if (!client_allowed() || !policy::safe_target(target))
+                            { console::info("Owner access required. Usage: %s <name|#ID>; IDs: .players\n", name); return; }
+                            command::execute(std::string("cmd ") + name + " \"" + target + "\"");
+                        });
+                    // Owner moderation relays to the authenticated dedicated.
+                    // These replace the client's listen-server kick commands,
+                    // whose local behavior is kept when no owner session exists.
+                    for (const auto* name : {"kick", "kickClient", "ban", "unban", "banlist"})
+                        command::add(name, [name](const command::params& args)
+                        {
+                            const std::string verb = name;
+                            auto target = args.join(1);
+                            if (!client_allowed())
+                            {
+                                if ((verb == "kick" || verb == "kickClient") && game::SV_Loaded() && !game::Com_FrontEnd_IsInFrontEnd() && args.size() >= 2)
+                                {
+                                    const auto slot = verb == "kick" ? party::get_client_num_by_name(args.get(1)) : atoi(args.get(1));
+                                    if (slot >= 0 && static_cast<unsigned>(slot) < *game::svs_numclients)
+                                        scheduler::once([slot] { game::SV_CmdsMP_KickClientNum(slot, "EXE_PLAYERKICKED", false); }, scheduler::pipeline::server);
+                                    return;
+                                }
+                                console::info("Owner access required for %s on this server.\n", name);
+                                return;
+                            }
+                            // kickClient N keeps the engine's zero-based slot;
+                            // #ID and names use the .players numbering.
+                            if (verb == "kickClient" && target.size() == 1 && target[0] >= '0' && target[0] <= '3')
+                                target = "#" + std::to_string(target[0] - '0' + 1);
+                            if ((verb != "banlist" && target.empty()) || (!target.empty() && !policy::safe_target(target)))
+                            { console::info("Usage: %s <name|#ID>; IDs: .players. unban <#N|GUID>; banlist.\n", name); return; }
+                            command::execute("cmd owner_" + utils::string::to_lower(verb) + (target.empty() ? "" : " \"" + target + "\""));
+                        });
+                }
                 network::on(wire, receive);
                 if (dedicated) scheduler::loop(server_tick, scheduler::pipeline::server, 100ms);
                 else scheduler::loop(client_tick, scheduler::pipeline::main, 100ms);
