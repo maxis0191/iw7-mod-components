@@ -35,6 +35,10 @@ int main(int argc, char** argv)
     assert(policy::target_slot("#3x",roster)==-1);
     assert(policy::target_slot("",roster)==-1);
     assert(policy::target_slot("Owner",{{0,"Owner"},{1,"Owner"}})==-1);
+    assert(policy::customizable_give("iw7_ar57_zm"));
+    assert(policy::customizable_give("iw7_ar57_zm+reflex+xmags"));
+    for (const auto* keyword : {"ammo", "allammo", "health", "all", "", "x;quit", "IW7_AR57_ZM", "iw7_ar57_zm+", "+reflex", "ar57", "iw7 ar57"})
+        assert(!policy::customizable_give(keyword));
     assert(policy::safe_target("Unknown Soldier"));
     assert(!policy::safe_target("x;quit"));
     assert(!policy::safe_target("x\nquit"));

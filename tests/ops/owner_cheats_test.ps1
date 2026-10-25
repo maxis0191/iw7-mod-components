@@ -7,7 +7,7 @@ function Refuses([scriptblock]$Body){$failed=$false;try{& $Body|Out-Null}catch{$
 $scratch=Join-Path $repo ('runtime/owner-cheats-test-'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory((Join-Path $scratch 'src/client/component'))|Out-Null
 $sources=@{
-    'command.cpp'="#include <std_include.hpp>`n"+((1..10|ForEach-Object{'if (!game::shared::cheats_ok(client_num, true)) {}'}) -join "`n")
+    'command.cpp'="#include <std_include.hpp>`n"+((1..10|ForEach-Object{'if (!game::shared::cheats_ok(client_num, true)) {}'}) -join "`n")+"`ncmd_give(client_num, params.get_all());"
     'dvar_cheats.cpp'='#include <std_include.hpp>'+"`n"+'if ((dvar->flags & game::DvarFlags::DVAR_FLAG_CHEAT) && (!game::shared::cheats_ok() && *game::isCheatOverride)) {}'
     'auth.cpp'='#include <std_include.hpp>'+"`n"+'game::SV_ClientMP_DirectConnect(from);'
 }
@@ -22,6 +22,8 @@ foreach($name in $sources.Keys){
 }
 $auth=[IO.File]::ReadAllText((Join-Path $scratch 'src/client/component/auth.cpp'))
 Assert ($auth.IndexOf('owner_cheats::invalidate(from);') -lt $auth.IndexOf('game::SV_ClientMP_DirectConnect(from);')) 'Reconnect invalidation must precede retail connection.'
+$command=[IO.File]::ReadAllText((Join-Path $scratch 'src/client/component/command.cpp'))
+Assert ($command.Contains('if (!owner_cheats::give_customized(client_num, params.get_all())) cmd_give(client_num, params.get_all());')) 'Console give must try the Barracks build first.'
 Refuses {Add-IW7OwnerCheatsOverlay $scratch $repo}
 $target=Join-Path $scratch 'src/client/component/command.cpp'
 [IO.File]::AppendAllText($target,'// unknown edit')
@@ -32,6 +34,7 @@ Remove-IW7OwnerCheatsOverlay $scratch
 foreach($name in $sources.Keys){Assert ((Get-FileHash (Join-Path $scratch ('src/client/component/'+$name))).Hash -ceq $before[$name]) 'Native source restoration changed bytes.'}
 Refuses {ConvertTo-IW7OwnerCheatsSource 'command.cpp' ($sources['command.cpp'].Replace('cheats_ok(client_num, true)','changed(client_num, true)'))}
 Refuses {ConvertTo-IW7OwnerCheatsSource 'arbitrary.cpp' $sources['command.cpp']}
+Refuses {ConvertTo-IW7OwnerCheatsSource 'command.cpp' ($sources['command.cpp'].Replace('cmd_give(client_num, params.get_all());',''))}
 if($Compile){
     . "$repo/ops/Resource-Scheduler.Core.ps1"
     Invoke-IW7ResourceJob -Scope $repo -Owner 'Owner cheats policy and Windows CNG tests' -PhysicalBytes 512MB -CommitBytes 1GB -Body {

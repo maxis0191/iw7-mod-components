@@ -294,6 +294,37 @@ namespace owner_cheats
         return configured && slot >= 0 && slot < policy::max_clients && bound(static_cast<unsigned>(slot)) &&
             sessions[slot].proof.allowed(GetTickCount64());
     }
+    // Console give through the retail CP wall-buy path, so the issuing
+    // player's Barracks build (attachments, camo, reticle, cosmetic, paint job
+    // and variant) applies. Keywords, unknown builds and errors fall back to
+    // the upstream command unchanged.
+    bool give_customized(int slot, const std::vector<std::string>& params)
+    {
+        if (params.size() != 2 || !policy::customizable_give(params[1]) ||
+            game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP) return false;
+        try
+        {
+            const scripting::entity player({static_cast<uint16_t>(slot), 0});
+            const auto& requested = params[1];
+            const auto raw = scripting::call_script_function(player, "scripts/cp/utility", "getrawbaseweaponname", {requested});
+            const auto builds = player.get("weapon_build_models");
+            if (!raw.is<std::string>() || !builds.is<scripting::array>()) return false;
+            const auto build = builds.as<scripting::array>().get(raw.as<std::string>());
+            if (!build.is<std::string>()) return false;
+            // Typed attachments stay explicit; a bare name takes the Barracks build.
+            const auto base = requested.find('+') == std::string::npos ? build.as<std::string>() : requested;
+            const auto attachments = scripting::call("getweaponattachments", {base});
+            const auto weapon = scripting::call_script_function(player, "scripts/cp/cp_weapon", "return_weapon_name_with_like_attachments",
+                {base, scripting::script_value{}, attachments});
+            if (!weapon.is<std::string>()) return false;
+            const auto given = scripting::call_script_function(player, "scripts/cp/utility", "_giveweapon",
+                {weapon, scripting::script_value{}, scripting::script_value{}, 0});
+            player.call("switchtoweapon", {given.is<std::string>() ? given : weapon});
+            console::info("[Owner give] slot=%d customized=1\n", slot);
+            return true;
+        }
+        catch (const std::exception&) { return false; }
+    }
     bool client_allowed()
     {
         std::lock_guard lock(state_mutex);

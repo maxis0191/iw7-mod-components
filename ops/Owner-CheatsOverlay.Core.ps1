@@ -10,6 +10,9 @@ function ConvertTo-IW7OwnerCheatsSource([string]$Path,[string]$Source) {
             $marker='if (!game::shared::cheats_ok(client_num, true))'
             $count=$Source.Split([string[]]@($marker),[StringSplitOptions]::None).Count-1
             if($count -ne 10){throw "Expected ten native per-client cheat checks; found $count."}
+            $give='cmd_give(client_num, params.get_all());'
+            if($Source.Split([string[]]@($give),[StringSplitOptions]::None).Count -ne 2){throw 'Pinned native give dispatch changed.'}
+            $Source=$Source.Replace($give,'if (!owner_cheats::give_customized(client_num, params.get_all())) '+$give)
             return $Source.Replace($marker,'if (!owner_cheats::server_allowed(client_num) && !game::shared::cheats_ok(client_num, true))')
         }
         'dvar_cheats.cpp' {
