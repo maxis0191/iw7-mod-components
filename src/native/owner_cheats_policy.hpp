@@ -7,9 +7,10 @@
 
 namespace owner_cheats::policy
 {
+    inline constexpr unsigned max_clients = 18;
     template <typename T> T* client_at(T* clients, int count, unsigned slot)
     {
-        if (!clients || count <= 0 || slot >= 4 || slot >= static_cast<unsigned>(count)) return nullptr;
+        if (!clients || count <= 0 || slot >= max_clients || slot >= static_cast<unsigned>(count)) return nullptr;
         return &clients[slot];
     }
     inline std::string name_key(std::string_view name)
@@ -31,9 +32,16 @@ namespace owner_cheats::policy
         if (key.front() == '#' || (key.front() >= '0' && key.front() <= '9'))
         {
             const auto digits = key.front() == '#' ? key.substr(1) : key;
-            if (digits.size() == 1 && digits[0] >= '1' && digits[0] <= '4')
+            unsigned id = 0;
+            bool numeric = !digits.empty() && digits.size() <= 2 && digits.front() != '0';
+            for (const auto c : digits)
             {
-                for (const auto& [slot, name] : players) if (slot == digits[0] - '1') return slot;
+                if (c < '0' || c > '9') { numeric = false; break; }
+                id = id * 10 + static_cast<unsigned>(c - '0');
+            }
+            if (numeric && id >= 1 && id <= max_clients)
+            {
+                for (const auto& [slot, name] : players) if (slot == static_cast<int>(id - 1)) return slot;
                 return -1;
             }
             if (key.front() == '#') return -1;

@@ -7,6 +7,17 @@ void hold(ballot& b,unsigned slot,unsigned key,std::uint64_t start) {
     assert(!b.players[slot].voted);b.input(slot,key,start+2001);
 }
 int main(){
+    ballot eight;
+    for (unsigned slot=0; slot<8; ++slot) eight.roster(slot,std::to_string(slot));
+    for (unsigned slot=0; slot<7; ++slot) hold(eight,slot,1,100);
+    assert(eight.total()==8 && eight.votes()==7 && !eight.unanimous());
+    hold(eight,7,4,100);assert(eight.unanimous());
+    eight.roster(7,"replacement");assert(!eight.unanimous());
+    eight.roster(7,"");assert(eight.unanimous());
+    eight.roster(17,"last");assert(eight.total()==8 && !eight.unanimous());
+    eight.roster(18,"invalid");assert(eight.total()==8);
+    assert(iw7::cutscene::hud_ballot(4,4)==36);
+    assert(iw7::cutscene::hud_ballot(7,8)==0);
     for(unsigned key:{1u,2u,4u}){
         ballot b;b.roster(0,"one");
         b.input(0,key,1);b.input(0,key,5000);assert(!b.unanimous()); // Held before window needs release.

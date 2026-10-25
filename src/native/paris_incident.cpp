@@ -35,7 +35,7 @@ namespace paris_incident
             std::atomic<std::uintptr_t> text_caller{}, binary_caller{};
             std::array<std::atomic<unsigned>, 256> opcodes{};
         };
-        std::array<counters, 4> clients;
+        std::array<counters, 18> clients;
         // Own only successfully created hooks. The common detour wrapper sets
         // its address before MH_CreateHook succeeds, so clearing a failed
         // duplicate could otherwise remove another component's hook.
@@ -76,7 +76,7 @@ namespace paris_incident
             // The engine publishes a table of pointers; do not assume a
             // contiguous allocation when attributing a diagnostic to a slot.
             const auto table = reinterpret_cast<game::client_t* const*>(0x146B22950);
-            for (unsigned i = 0; i < std::min(*game::svs_numclients, 4u); ++i)
+            for (unsigned i = 0; i < std::min(*game::svs_numclients, 18u); ++i)
                 if (table[i] == client) return static_cast<int>(i);
             return -1;
         }
@@ -119,7 +119,7 @@ namespace paris_incident
             const int previous_slot = packet_slot;
             packet_slot = -1;
             const auto table = reinterpret_cast<game::client_t* const*>(0x146B22950);
-            for (unsigned i = 0; i < std::min(*game::svs_numclients, 4u); ++i)
+            for (unsigned i = 0; i < std::min(*game::svs_numclients, 18u); ++i)
             {
                 const auto* client = table[i];
                 if (client && client->header.state >= 3 && from->type == client->remoteAddress.type &&
@@ -256,7 +256,7 @@ namespace paris_incident
                 const auto header = *reinterpret_cast<const char* const*>(0x146B22AC8);
                 if (!header) return;
                 const auto server_time = field(header, 0x1C);
-                for (unsigned i = 0; i < std::min(*game::svs_numclients, 4u); ++i)
+                for (unsigned i = 0; i < std::min(*game::svs_numclients, 18u); ++i)
                 {
                     const auto* client = table[i];
                     if (!client || client->header.state < 3) continue;
@@ -343,7 +343,7 @@ namespace paris_incident
 
     void reliable_ack(std::int64_t value) noexcept
     {
-        if (!network_trace || packet_slot < 0 || packet_slot >= 4) return;
+        if (!network_trace || packet_slot < 0 || packet_slot >= 18) return;
         auto& c = clients[packet_slot];
         c.raw_ack = static_cast<int>(value); ++c.raw_acks;
         const bool negative = (static_cast<std::uint32_t>(value) & 0x80000000u) != 0;

@@ -51,9 +51,9 @@ bool active{}, enabled{};
 std::string movie;
 iw7::cutscene::ballot ballot;
 struct remote_input { unsigned mask{}; std::uint64_t received{}; unsigned epoch{}; };
-std::array<remote_input,4> inputs{};
-std::array<unsigned,4> published_epoch{};
-std::array<unsigned,4> published_ballot{};
+std::array<remote_input,iw7::cutscene::max_clients> inputs{};
+std::array<unsigned,iw7::cutscene::max_clients> published_epoch{};
+std::array<unsigned,iw7::cutscene::max_clients> published_ballot{};
 std::uint16_t begin_id{}, pending_id{};
 std::array<bool,3> keys{};
 unsigned key_epoch{};
@@ -72,12 +72,12 @@ int clock() { return scripting::call<int>("gettime"); }
 unsigned thread() { return game::scr_function_stack->localId; }
 game::client_t* player(unsigned slot) {
     if (!game::environment::is_dedi() || !game::SV_Loaded() || !*game::svs_clients ||
-        slot >= 4 || slot >= static_cast<unsigned>(*game::svs_numclients)) return nullptr;
+        slot >= iw7::cutscene::max_clients || slot >= static_cast<unsigned>(*game::svs_numclients)) return nullptr;
     auto* c = *game::svs_clients + slot;
     return c->header.state == game::CS_ACTIVE && c->gentity == &game::g_entities[slot] && c->gentity->client ? c : nullptr;
 }
 void roster() {
-    for(unsigned slot=0;slot<4;++slot) {
+    for(unsigned slot=0;slot<iw7::cutscene::max_clients;++slot) {
         auto* c=player(slot);
         std::string identity;
         if(c) identity=std::string(c->playerGuid,strnlen(c->playerGuid,sizeof(c->playerGuid)))+":"+
@@ -109,7 +109,7 @@ void tick() {
     if(!active || !enabled) return;
     roster();
     const auto now=GetTickCount64();
-    for(unsigned slot=0;slot<4;++slot) if(player(slot)) {
+    for(unsigned slot=0;slot<iw7::cutscene::max_clients;++slot) if(player(slot)) {
         const scripting::entity p(game::scr_entref_t{static_cast<unsigned short>(slot),0});
         unsigned mask{};
         const auto& raw=inputs[slot];
@@ -128,7 +128,7 @@ void tick() {
             p.call("setclientdvar", {"paris_cutscene_epoch",static_cast<int>(epoch)});
             published_epoch[slot]=epoch;
         }
-        const auto state=ballot.votes()*8+ballot.total();
+        const auto state=iw7::cutscene::hud_ballot(ballot.votes(),ballot.total());
         if(published_ballot[slot]!=state){
             p.call("setclientdvar",{"paris_cutscene_ballot",static_cast<int>(state)});
             published_ballot[slot]=state;
@@ -140,7 +140,7 @@ void end() {
     const auto removed=enabled && ballot.unanimous() ? std::max(0,finish_time-now) : 0;
     for(auto& [id,w]:waits) if(w.epoch==epoch) w.deadline-=removed;
     active=false;
-    for(unsigned slot=0;slot<4;++slot)if(player(slot))
+    for(unsigned slot=0;slot<iw7::cutscene::max_clients;++slot)if(player(slot))
         scripting::entity(game::scr_entref_t{static_cast<unsigned short>(slot),0}).call("setclientdvar",{"paris_cutscene_epoch",0});
     console::info("[Paris cutscene] Complete movie=%s epoch=%u removed_ms=%d votes=%u/%u\n",movie.c_str(),epoch,removed,ballot.votes(),ballot.total());
 }
@@ -300,7 +300,7 @@ void post_unpack() override {
         if(game::environment::is_dedi()) {
             command::add("paris_cutscene_install",install);
             command::add_sv("paris_cutscene_hold",[](int slot,const command::params_sv& args){
-                if(!active || !enabled || slot<0 || slot>=4 || !player(slot) || args.size()!=3)return;
+                if(!active || !enabled || slot<0 || slot>=iw7::cutscene::max_clients || !player(slot) || args.size()!=3)return;
                 const std::string a=args[1],b=args[2];
                 if(a.empty() || a.size()>10 || a.find_first_not_of("0123456789")!=std::string::npos || b.size()!=1 || b[0]<'0' || b[0]>'7')return;
                 if(std::strtoull(a.c_str(),nullptr,10)!=epoch)return;

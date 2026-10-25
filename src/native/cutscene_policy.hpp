@@ -4,6 +4,10 @@
 #include <string>
 
 namespace iw7::cutscene {
+inline constexpr unsigned max_clients = 18;
+// Existing clients decode a four-player ballot. Zero hides that overlay for
+// larger parties without weakening the server's all-player unanimity.
+inline unsigned hud_ballot(unsigned votes, unsigned total) { return total <= 4 ? votes * 8 + total : 0; }
 struct voter {
     std::string identity;
     bool voted{};
@@ -11,7 +15,7 @@ struct voter {
     std::array<std::uint64_t, 3> since{};
 };
 struct ballot {
-    std::array<voter, 4> players{};
+    std::array<voter, max_clients> players{};
     void roster(unsigned slot, const std::string& identity) {
         if (slot < players.size() && players[slot].identity != identity) players[slot] = {identity};
     }
