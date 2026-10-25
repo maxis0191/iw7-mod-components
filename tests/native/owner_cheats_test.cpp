@@ -32,6 +32,19 @@ int main(int argc, char** argv)
     assert(!policy::safe_target("x;quit"));
     assert(!policy::safe_target("x\nquit"));
     assert(!policy::safe_target("x\"quit"));
+    // Persistent moderation bans: tolerant parsing, stable round trip, lookup.
+    auto bans=policy::parse_bans("123456789abcdef0\t^2Bad \"Guy\";\r\nnot-hex\tx\n123456789abcdef0\tdup\n\nabc\n00000000000000001\ttoo long\n");
+    assert(bans.size()==2);
+    assert(bans[0].identity=="123456789abcdef0" && bans[0].name=="^2Bad Guy");
+    assert(bans[1].identity=="abc" && bans[1].name=="Unknown Soldier");
+    assert(policy::parse_bans(policy::serialize_bans(bans)).size()==2);
+    assert(policy::serialize_bans(bans)=="123456789abcdef0\t^2Bad Guy\nabc\tUnknown Soldier\n");
+    assert(policy::banned(bans,"abc") && !policy::banned(bans,"abd") && !policy::banned(bans,""));
+    assert(policy::ban_index(bans,"#1")==0 && policy::ban_index(bans,"2")==1);
+    assert(policy::ban_index(bans,"123456789abcdef0")==0 && policy::ban_index(bans,"abc")==1);
+    assert(policy::ban_index(bans,"#3")==-1 && policy::ban_index(bans,"0")==-1 && policy::ban_index(bans,"")==-1 && policy::ban_index(bans,"#")==-1);
+    assert(policy::display_name(std::string(40,'a')).size()==31);
+    assert(policy::display_name("\"\\;")=="Unknown Soldier");
     const std::filesystem::path root(argv[1]);
     crypto::key owner, owner_public, server, server_public, malformed;
     assert(owner.load(read(root/"client/iw7-mod/owner-cheats/client-private.blob"), true));

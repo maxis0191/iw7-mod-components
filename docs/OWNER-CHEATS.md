@@ -9,6 +9,30 @@ Movement uses the engine's GSC SetOrigin, retaining its teleport bookkeeping.
 The client shorthand requires the matching OwnerCheats client build. Access is
 checked again on the dedicated; global cheats and trust files stay unchanged.
 
+## Owner console moderation - 24 October 2026
+
+Owner request: console commands that target a player also accept the `.players`
+`#ID`. The authenticated owner client relays `kick <name|#ID>`,
+`kickClient <slot|#ID|name>`, `ban <name|#ID>`, `unban <#N|GUID>` and `banlist`
+to the dedicated as `owner_*` client commands, using the same exact/unique name
+and `#ID` resolver as `tp`. A bare `kickClient` digit keeps the engine's
+zero-based slot; `#ID` is the public slot plus one. The dedicated re-checks owner
+authentication, refuses the owner as a target and replies privately.
+
+`ban` records the target's authenticated GUID token and display name in
+`iw7-mod/owner-bans.txt` (one `GUID<TAB>name` line, outside the trust-file
+directory), then kicks. Every connection whose GUID is listed is dropped once per
+connection as soon as it reaches the connected state, including after restarts.
+`banlist` numbers the entries; `unban` takes that number or the exact GUID. A
+failed save keeps the in-memory change until restart and says so. Without an
+owner session, the client's `kick`/`kickClient` keep their listen-server behavior;
+the other commands report that owner access is required. Players without the
+owner build and keys see no change.
+
+Policy tests cover ban parsing, round trip, duplicates, invalid identities and
+lookups. Native compilation, authenticated relay and real kick/ban/reconnect
+behavior require the OwnerCheats builds and the protected private procedure.
+
 Owner request, 19 October 2026: allow cheats only for the owner's client on the
 public dedicated. This supersedes the earlier absence of native console access;
 it does not restore the cancelled chat administration commands.

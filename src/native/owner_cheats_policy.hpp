@@ -92,6 +92,63 @@ namespace owner_cheats::policy
         }
         return out;
     }
+    // Persistent owner bans: one "identity<TAB>display name" line per player.
+    // Identities are the lowercase hex GUID tokens used for authentication.
+    struct ban_entry { std::string identity, name; };
+    inline std::string display_name(std::string_view name)
+    {
+        std::string out;
+        for (const unsigned char c : name)
+            if (c >= 32 && c != 127 && c != '"' && c != '\\' && c != ';' && out.size() < 31) out += static_cast<char>(c);
+        return out.empty() ? "Unknown Soldier" : out;
+    }
+    inline std::vector<ban_entry> parse_bans(std::string_view text)
+    {
+        std::vector<ban_entry> out;
+        while (!text.empty() && out.size() < 256)
+        {
+            const auto end = text.find('\n');
+            auto line = text.substr(0, end);
+            if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+            const auto tab = line.find('\t');
+            const auto identity = line.substr(0, tab);
+            bool duplicate{};
+            for (const auto& entry : out) duplicate = duplicate || entry.identity == identity;
+            if (!identity.empty() && identity.size() <= 16 && hex_token(identity, identity.size()) && !duplicate)
+                out.push_back({std::string(identity), display_name(tab == std::string_view::npos ? std::string_view{} : line.substr(tab + 1))});
+            if (end == std::string_view::npos) break;
+            text.remove_prefix(end + 1);
+        }
+        return out;
+    }
+    inline std::string serialize_bans(const std::vector<ban_entry>& bans)
+    {
+        std::string out;
+        for (const auto& entry : bans) out += entry.identity + "\t" + display_name(entry.name) + "\n";
+        return out;
+    }
+    inline bool banned(const std::vector<ban_entry>& bans, std::string_view identity)
+    {
+        if (identity.empty()) return false;
+        for (const auto& entry : bans) if (entry.identity == identity) return true;
+        return false;
+    }
+    // unban accepts the banlist number (#N or N) or the exact identity.
+    inline int ban_index(const std::vector<ban_entry>& bans, std::string_view query)
+    {
+        if (!query.empty() && query.front() == '#') query.remove_prefix(1);
+        if (query.empty() || query.size() > 16) return -1;
+        bool digits = true;
+        for (const char c : query) digits = digits && c >= '0' && c <= '9';
+        if (digits && query.size() <= 3)
+        {
+            int number = 0;
+            for (const char c : query) number = number * 10 + (c - '0');
+            if (number >= 1 && number <= static_cast<int>(bans.size())) return number - 1;
+        }
+        for (std::size_t i = 0; i < bans.size(); ++i) if (bans[i].identity == query) return static_cast<int>(i);
+        return -1;
+    }
     inline std::string message(char role, std::string_view identity, std::string_view client, std::string_view server)
     {
         return "IW7_OWNER_CHEATS_V1|" + std::string(1, role) + "|" + std::string(identity) + "|" +
