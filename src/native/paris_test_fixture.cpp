@@ -31,7 +31,7 @@ namespace paris_test_fixture
     namespace
     {
         struct protected_player { std::string identity; game::netadr_s address{}; bool safety_failed{}; std::string agent_nonce; std::uint64_t agent_probe{}; };
-        std::array<protected_player, 4> protected_players{};
+        std::array<protected_player, 18> protected_players{};
         std::mutex safety_mutex;
         std::uint64_t script_inactivity_suppressed{};
         bool private_fixture()
@@ -512,7 +512,7 @@ namespace paris_test_fixture
                 bool safe{};unsigned protected_slot=4;
                 { std::lock_guard lock(safety_mutex);
                     std::array<bool, 4> matches{};
-                    for (unsigned slot = 0; clients && slot < protected_players.size() && slot < *game::svs_numclients; ++slot)
+                    for (unsigned slot = 0; clients && slot < matches.size() && slot < *game::svs_numclients; ++slot)
                         if (clients[slot].header.state == game::CS_ACTIVE &&
                             network::are_addresses_equal(query.address, clients[slot].remoteAddress) && bound_player(slot) &&
                             !protected_players[slot].safety_failed) matches[slot] = true;
@@ -1185,13 +1185,13 @@ namespace paris_test_fixture
             gsc::method::add("paris_test_bot", [](game::scr_entref_t ent, const gsc::function_args& args) -> scripting::script_value
             {
                 if (!private_fixture() || !utils::flags::has_flag("paris-isolated-lab") ||
-                    ent.classnum || ent.entnum >= 4 || !is_protected_player(0)) return false;
+                    ent.classnum || ent.entnum >= protected_players.size() || !is_protected_player(0)) return false;
                 auto* clients = *game::svs_clients;
                 if (!clients) return false;
                 const int operation = args[0].as<int>();
                 if (operation == 1 && ent.entnum == 0)
                 {
-                    for (unsigned slot = 1; slot < 4 && slot < *game::svs_numclients; ++slot)
+                    for (unsigned slot = 1; slot < protected_players.size() && slot < *game::svs_numclients; ++slot)
                         if (clients[slot].header.state >= game::CS_CONNECTED && game::SV_BotIsBot(static_cast<int>(slot)))
                             game::SV_DropClient(&clients[slot], "Isolated gameplay cleanup", true);
                     return true;

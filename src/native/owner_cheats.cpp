@@ -33,7 +33,7 @@ namespace owner_cheats
             policy::proof proof;
             std::uint64_t last_hello{};
         };
-        std::array<session, 4> sessions{};
+        std::array<session, policy::max_clients> sessions{};
         struct packet { game::netadr_s endpoint{}; std::string text; };
         std::mutex queue_mutex;
         std::vector<packet> packets;
@@ -56,7 +56,7 @@ namespace owner_cheats
             try
             {
                 std::vector<std::pair<int, std::string>> players;
-                for (unsigned slot = 0; slot < 4; ++slot)
+                for (unsigned slot = 0; slot < policy::max_clients; ++slot)
                     if (connection(slot))
                         players.emplace_back(slot, scripting::entity({static_cast<uint16_t>(slot), 0}).get<std::string>("name"));
                 const auto target = policy::target_slot(query, players);
@@ -87,7 +87,7 @@ namespace owner_cheats
         // resolution as tp; bans persist by authenticated GUID token.
         constexpr auto ban_file = "iw7-mod/owner-bans.txt";
         std::vector<policy::ban_entry> bans;
-        std::array<std::string, 4> ban_kicked{};
+        std::array<std::string, policy::max_clients> ban_kicked{};
         std::string identity(const game::client_t* c);
         void load_bans()
         {
@@ -123,7 +123,7 @@ namespace owner_cheats
             }
             if (!policy::safe_target(query)) { reply("Usage: " + action + " <name|#ID>. IDs: .players"); return; }
             std::vector<std::pair<int, std::string>> players;
-            for (unsigned slot = 0; slot < 4; ++slot)
+            for (unsigned slot = 0; slot < policy::max_clients; ++slot)
                 if (connection(slot))
                     players.emplace_back(slot, scripting::entity({static_cast<uint16_t>(slot), 0}).get<std::string>("name"));
             const auto target = policy::target_slot(query, players);
@@ -158,7 +158,7 @@ namespace owner_cheats
         {
             if (!game::environment::is_dedi() || !game::SV_Loaded() ||
                 game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP || !*game::svs_clients ||
-                slot >= 4 || slot >= *game::svs_numclients) return nullptr;
+                slot >= policy::max_clients || slot >= *game::svs_numclients) return nullptr;
             auto* c = policy::client_at(*game::svs_clients, *game::svs_numclients, slot);
             return c && c->header.state == game::CS_ACTIVE && c->gentity == &game::g_entities[slot] &&
                 c->gentity->client ? c : nullptr;
@@ -291,7 +291,7 @@ namespace owner_cheats
     bool server_allowed(int slot)
     {
         std::lock_guard lock(state_mutex);
-        return configured && slot >= 0 && slot < 4 && bound(static_cast<unsigned>(slot)) &&
+        return configured && slot >= 0 && slot < policy::max_clients && bound(static_cast<unsigned>(slot)) &&
             sessions[slot].proof.allowed(GetTickCount64());
     }
     bool client_allowed()
@@ -335,7 +335,7 @@ namespace owner_cheats
                 command::add("owner_cheats_status", []
                 {
                     if (game::environment::is_dedi())
-                        for (int slot = 0; slot < 4; ++slot) console::info("[Owner cheats] slot=%d allowed=%d\n", slot, server_allowed(slot));
+                        for (int slot = 0; slot < policy::max_clients; ++slot) console::info("[Owner cheats] slot=%d allowed=%d\n", slot, server_allowed(slot));
                     else console::info("[Owner cheats] local_allowed=%d\n", client_allowed());
                 });
                 if (!configured) return;
