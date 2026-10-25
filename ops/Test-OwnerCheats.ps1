@@ -1,10 +1,11 @@
-param([Parameter(Mandatory)][string]$CandidateRoot,[Parameter(Mandatory)][string]$ProtectedGameRoot,[Parameter(Mandatory)][string]$Output,[switch]$Effects)
+param([Parameter(Mandatory)][string]$CandidateRoot,[Parameter(Mandatory)][string]$ProtectedGameRoot,[Parameter(Mandatory)][string]$Output,[switch]$Effects,[switch]$Moderation)
 $Source=Split-Path $PSScriptRoot -Parent
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path -LiteralPath $CandidateRoot).Path.TrimEnd('\','/')
 $protected=(Resolve-Path -LiteralPath $ProtectedGameRoot).Path.TrimEnd('\','/')
 if($root -ieq $protected -or $root.StartsWith($protected+'\',[StringComparison]::OrdinalIgnoreCase) -or $protected.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Separate retained stock required; preserve Main'}
 if(Test-Path -LiteralPath $Output){throw 'Fresh witness output required'}
+if($Effects -and $Moderation){throw 'Run Effects and Moderation separately.'}
 if(!(Test-Path "$root/iw7-mod/paris-isolated-lab.marker") -or (Test-Path "$root/STOCK-ASSETS-REMOVED.json")){throw 'Complete retained stock and lab marker required'}
 if(@(Get-CimInstance Win32_Process|Where-Object{$_.ExecutablePath -and $_.ExecutablePath.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)}).Count){throw 'Retained candidate is occupied'}
 if(Get-NetUDPEndpoint -LocalPort 27946,27948 -ErrorAction SilentlyContinue){throw 'Witness ports occupied'}
@@ -19,6 +20,12 @@ function Text([string]$Path){if(Test-Path -LiteralPath $Path){Read-IW7BaseLog $P
 function Wait-For([scriptblock]$Check,[int]$Seconds,[string]$Failure){$until=[datetime]::UtcNow.AddSeconds($Seconds);while([datetime]::UtcNow -lt $until){if(& $Check){return};Start-Sleep -Milliseconds 500};throw $Failure}
 function Identity($Process,[string]$Image){[pscustomobject]@{PID=$Process.Id;Image=$Image;CreatedUtc=$Process.StartTime.ToUniversalTime().ToString('o');SHA256=(Get-FileHash -LiteralPath $Image).Hash}}
 function Stop-Owned($Process,$Record){if(!$Process){return};if(!$Process.HasExited){Assert-IW7BaseIdentity $Record $Process;$Process.Kill();if(!$Process.WaitForExit(15000)){throw 'Owned process closure failed'}}}
+function Reply([string]$Command,[string]$Expected,$Process=$client,$Record=$clientId){
+    $offset=(Text "$Output/server.stdout.log").Length
+    Send-Console $Process $Record $Command
+    Wait-For {(Text "$Output/server.stdout.log").Substring($offset).Contains('[Owner moderation] slot=0 result='+$Expected)} 10 "Moderation reply missing: $Command"
+    $result.Checks+=@{Command=$Command;Reply=$Expected}
+}
 function Angles {
     $offset=(Text "$Output/server.stdout.log").Length
     Send-Console $client $clientId 'cmd getviewang'
@@ -28,7 +35,7 @@ function Angles {
 }
 try{
     $lease=Enter-IW7ResourceLease -Scope $root -Kind Runtime -PhysicalBytes 12GB -CommitBytes 16GB -Owner 'Private owner-cheats positive and wrong-key native console witness'
-    $plan=[pscustomobject]@{GameRoot=$root;MutableFiles=@('iw7-owner-witness.exe','iw7-mod/owner-witness.cfg','iw7-mod/paris-server-client.request','iw7-mod/paris-server-client.response','iw7-mod/paris-agent.session','iw7-mod/paris-agent.request','iw7-mod/paris-agent.response','iw7-mod/paris-agent.safety');ProfileDirectory='iw7-mod/custom_scripts/cp';ProfileDirectories=@('iw7-mod/custom_scripts/cp','iw7-mod/owner-cheats','iw7-mod/players2','iw7-mod/lab-appdata','mods/paris_beta/bank')}
+    $plan=[pscustomobject]@{GameRoot=$root;MutableFiles=@('iw7-owner-witness.exe','iw7-mod/owner-witness.cfg','iw7-mod/paris-server-client.request','iw7-mod/paris-server-client.response','iw7-mod/paris-agent.session','iw7-mod/paris-agent.request','iw7-mod/paris-agent.response','iw7-mod/paris-agent.safety','iw7-mod/owner-bans.txt');ProfileDirectory='iw7-mod/custom_scripts/cp';ProfileDirectories=@('iw7-mod/custom_scripts/cp','iw7-mod/owner-cheats','iw7-mod/players2','iw7-mod/lab-appdata','mods/paris_beta/bank')}
     $transaction=Save-IW7BaseTransaction $plan (Join-Path $Output 'backup')
     & "$Source/ops/New-OwnerCheatsKit.ps1" -OutputDirectory (Join-Path $Output 'keys')
     & "$Source/ops/New-OwnerCheatsKit.ps1" -OutputDirectory (Join-Path $Output 'wrong-keys')
@@ -62,6 +69,8 @@ protection()
 }
 '@
     [IO.File]::WriteAllText("$root/iw7-mod/custom_scripts/cp/owner_witness.gsc",$fixture)
+    # A synthetic persisted ban proves load, listing, unban and rewrite.
+    if($Moderation){[IO.File]::WriteAllText("$root/iw7-mod/owner-bans.txt","0123456789abcdef`tSeed Player`n",[Text.UTF8Encoding]::new($false))}
     $password=[guid]::NewGuid().ToString('N')
     $cfg="set sv_hostname PrivateOwnerCheats`nset g_password $password`nset sv_maxclients 4`nset sv_lanOnly 1`nset sv_cheats 0`nset g_inactivity 0`nset paris_test_probe 1`nset paris_isolated_lab 1`nset g_gametype zombie`nset fs_game `"`"`nset logfile 2`n"
     [IO.File]::WriteAllText("$root/iw7-mod/owner-witness.cfg",$cfg)
@@ -93,6 +102,22 @@ protection()
                 Send-Console $client $clientId ('cmd setviewang '+($before -join ' '))
             }else{if(($before -join ',') -cne ($after -join ',')){throw 'Wrong-key client executed a native cheat command'}}
             $result.Checks+=@{Phase=$phase;NativeCommand='setviewang';Before=$before;After=$after;Allowed=($phase -eq 'owner')}
+        }
+        if($Moderation){
+            if($phase -eq 'owner'){
+                Reply 'banlist' 'Ban #1: Seed Player (0123456789abcdef)'
+                Reply 'kick #1' 'Choose another player.'
+                Reply 'kickClient 0' 'Choose another player.'
+                Reply 'ban #4' 'No unique player found. Use .players and #ID.'
+                Reply 'unban #1' 'Unbanned Seed Player.'
+                if((Get-Content -LiteralPath "$root/iw7-mod/owner-bans.txt" -Raw) -ne ''){throw 'Unban was not persisted'}
+            }elseif($phase -eq 'wrong-key'){
+                $offset=(Text "$Output/server.stdout.log").Length
+                Send-Console $client $clientId 'banlist'
+                Start-Sleep -Seconds 2
+                if((Text "$Output/server.stdout.log").Substring($offset).Contains('[Owner moderation]')){throw 'Unauthenticated client relayed moderation'}
+                Reply 'cmd owner_kick "#1"' 'Owner authentication required.'
+            }else{Reply 'banlist' 'No bans.'}
         }
         $queryOffset=(Text "$Output/server.stdout.log").Length
         Send-Console $server $serverId 'owner_cheats_status'
