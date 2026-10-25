@@ -55,6 +55,16 @@ namespace owner_cheats::policy
         }
         return exact_count == 1 ? exact : exact_count == 0 && partial_count == 1 ? partial : -1;
     }
+    // Console give keywords keep their upstream meaning; weapon names are
+    // plain asset names with optional explicit "+attachment" suffixes.
+    inline bool customizable_give(std::string_view weapon)
+    {
+        if (weapon.empty() || weapon.size() > 128 || weapon == "ammo" || weapon == "allammo" || weapon == "health" || weapon == "all") return false;
+        if (weapon.front() == '+' || weapon.back() == '+' || weapon.find('_') == std::string_view::npos) return false;
+        for (const unsigned char c : weapon)
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '+')) return false;
+        return true;
+    }
     inline bool safe_target(std::string_view value)
     {
         if (value.empty() || value.size() > 128) return false;
