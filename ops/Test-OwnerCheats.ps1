@@ -110,7 +110,7 @@ protection()
                 Reply 'kickClient 0' 'Choose another player.'
                 Reply 'ban #4' 'No unique player found. Use .players and #ID.'
                 Reply 'unban #1' 'Unbanned Seed Player.'
-                if((Get-Content -LiteralPath "$root/iw7-mod/owner-bans.txt" -Raw) -ne ''){throw 'Unban was not persisted'}
+                if([IO.File]::ReadAllText("$root/iw7-mod/owner-bans.txt") -ne ''){throw 'Unban was not persisted'}
             }elseif($phase -eq 'wrong-key'){
                 $offset=(Text "$Output/server.stdout.log").Length
                 Send-Console $client $clientId 'banlist'
