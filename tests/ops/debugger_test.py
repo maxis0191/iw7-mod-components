@@ -690,6 +690,63 @@ class DebuggerTests(unittest.TestCase):
 
 
 class CaptureModeTests(unittest.TestCase):
+    def page_observer(self):
+        observer = capture.Observer.__new__(capture.Observer)
+        observer.handle, observer.pid, observer.kernel = 42, 123, object()
+        observer.identity = {"pid": 123, "sha256": "a" * 64}
+        observer.wait = lambda handle, timeout: 258
+        return observer
+
+    def page_functions(self, *, protect=0x02, received=4096):
+        def resolve(kernel, name, args, result):
+            if name == "VirtualQueryEx":
+                def query(handle, address, target, size):
+                    region = capture.c.cast(target, capture.c.POINTER(capture.MemoryRegion)).contents
+                    region.base = region.allocation_base = address
+                    region.size, region.state, region.protect, region.kind = 4096, 0x1000, protect, 0x1000000
+                    return capture.c.sizeof(region)
+                return query
+            self.assertEqual(name, "ReadProcessMemory")
+            def read(handle, address, target, size, count):
+                capture.c.memmove(target, b"P" * 4096, 4096)
+                capture.c.cast(count, capture.c.POINTER(capture.c.c_size_t)).contents.value = received
+                return True
+            return read
+        return resolve
+
+    def test_bounded_pages_record_actual_mapping_and_bytes(self):
+        self.assertEqual(capture.c.sizeof(capture.MemoryRegion), 48)
+        observer = self.page_observer()
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(capture, "function", side_effect=self.page_functions()):
+            output = Path(directory) / "pages"
+            rows = observer.read_snapshot_pages(output, [0x141580000, 0x1416F7000])
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(sum(row["bytes"] for row in rows), 8192)
+            for row in rows:
+                self.assertEqual((output / row["file"]).read_bytes(), b"P" * 4096)
+                self.assertEqual(row["sha256"], dbg.digest(output / row["file"]))
+                self.assertEqual((row["protect"], row["memory_type"]), (0x02, 0x1000000))
+            manifest = json.loads((output / "manifest.local.json").read_text())
+            self.assertFalse(manifest["writes_target"])
+            self.assertEqual(manifest["identity"], observer.identity)
+            with self.assertRaises(FileExistsError):
+                observer.read_snapshot_pages(output, [0x141580000])
+
+    def test_page_window_alignment_duplicates_and_count_are_bounded(self):
+        for addresses in ([0x141580001], [0x13FFFF000], [0x142000000],
+                          [0x141580000] * 2, [0x141580000 + i * 4096 for i in range(9)]):
+            with self.subTest(addresses=addresses), self.assertRaises(ValueError):
+                capture.snapshot_pages(addresses)
+
+    def test_guarded_and_partial_pages_are_not_published(self):
+        for mode in ({"protect": 0x102}, {"protect": 0x01}, {"received": 4095}):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory, \
+                 mock.patch.object(capture, "function", side_effect=self.page_functions(**mode)):
+                output = Path(directory) / "pages"
+                with self.assertRaises(ValueError):
+                    self.page_observer().read_snapshot_pages(output, [0x141580000])
+                self.assertEqual(list(output.iterdir()), [])
+
     def test_snapshot_code_retains_sections_without_full_memory(self):
         observer = capture.Observer.__new__(capture.Observer)
         observer.handle, observer.pid = 42, 123
