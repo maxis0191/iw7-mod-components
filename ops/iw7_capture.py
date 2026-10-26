@@ -31,6 +31,21 @@ class ThreadEntry(c.Structure):
                 ("priority", w.LONG), ("delta", w.LONG), ("flags", w.DWORD)]
 
 
+class MemoryRegion(c.Structure):
+    _fields_ = [("base", c.c_void_p), ("allocation_base", c.c_void_p),
+                ("allocation_protect", c.c_uint32), ("partition", c.c_uint16),
+                ("size", c.c_size_t), ("state", c.c_uint32),
+                ("protect", c.c_uint32), ("kind", c.c_uint32)]
+
+
+def snapshot_pages(addresses):
+    # Explicit pinned IW7 image window; no heap traversal or arbitrary ranges.
+    if len(addresses) > 8 or len(set(addresses)) != len(addresses) or any(
+            address % 4096 or not 0x140000000 <= address < 0x142000000 for address in addresses):
+        raise ValueError("Snapshot pages require at most eight unique aligned pages in the pinned IW7 image window")
+    return addresses
+
+
 def ticks(ft):
     return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
 
@@ -163,6 +178,40 @@ class Observer:
             if not write(self.handle, self.pid, file_handle, flags, None, None, None):
                 raise c.WinError(c.get_last_error())
 
+    def read_snapshot_pages(self, output, addresses):
+        addresses = snapshot_pages(addresses)
+        if c.sizeof(c.c_void_p) != 8:
+            raise ValueError("Snapshot pages require an AMD64 observer")
+        query = function(self.kernel, "VirtualQueryEx", [w.HANDLE, c.c_void_p, c.POINTER(MemoryRegion), c.c_size_t], c.c_size_t)
+        read = function(self.kernel, "ReadProcessMemory", [w.HANDLE, c.c_void_p, c.c_void_p, c.c_size_t, c.POINTER(c.c_size_t)], w.BOOL)
+        output.mkdir(exist_ok=False)
+        rows = []
+        for address in addresses:
+            if self.wait(self.handle, 0) != 258:
+                raise ValueError("Original process exited before page acquisition")
+            region = MemoryRegion()
+            if query(self.handle, address, c.byref(region), c.sizeof(region)) != c.sizeof(region):
+                raise ValueError("Snapshot page mapping unavailable")
+            if (region.state != 0x1000 or region.protect & 0x100 or
+                    region.protect & 0xff not in (0x02, 0x04, 0x08, 0x20, 0x40, 0x80) or
+                    not region.base <= address or address + 4096 > region.base + region.size):
+                raise ValueError("Snapshot page is not fully committed and readable")
+            data, received = c.create_string_buffer(4096), c.c_size_t()
+            if not read(self.handle, address, data, 4096, c.byref(received)) or received.value != 4096:
+                raise ValueError("Snapshot page read was incomplete")
+            if self.wait(self.handle, 0) != 258:
+                raise ValueError("Original process exited during page acquisition")
+            target = output / (f"{address:016X}.bin")
+            with target.open("xb") as stream:
+                stream.write(data.raw)
+            rows.append(dict(address=address, bytes=4096, file=target.name, sha256=digest(target),
+                             allocation_base=region.allocation_base, region_base=region.base,
+                             region_bytes=region.size, state=region.state, protect=region.protect,
+                             allocation_protect=region.allocation_protect, memory_type=region.kind))
+        with (output / "manifest.local.json").open("x", encoding="utf-8") as stream:
+            json.dump(dict(identity=self.identity, pages=rows, writes_target=False, meaning="Read-only live pages; not a patch or a crash exception"), stream, indent=2)
+        return rows
+
 
 def udp_sample(port):
     start = time.perf_counter()
@@ -196,19 +245,26 @@ def main():
     p.add_argument("--threads", action="store_true")
     p.add_argument("--snapshot", action="store_true", help="Called only by the lab-ownership guarded PowerShell adapter")
     p.add_argument("--snapshot-code", action="store_true", help="Include loaded code/data sections for packed-image analysis; requires --snapshot")
+    p.add_argument("--snapshot-page", type=lambda value: int(value, 0), action="append", default=[], help="Read one aligned page in the pinned IW7 image window; at most eight, requires --snapshot")
     p.add_argument("--scenario", required=True)
     p.add_argument("--output", required=True)
     args = p.parse_args()
-    if args.snapshot_code and not args.snapshot:
-        p.error("--snapshot-code requires --snapshot")
+    if (args.snapshot_code or args.snapshot_page) and not args.snapshot:
+        p.error("--snapshot-code/--snapshot-page require --snapshot")
+    try:
+        snapshot_pages(args.snapshot_page)
+    except ValueError as error:
+        p.error(str(error))
     out = local_output(args.output)
     obs = Observer(args.pid, args.image, args.created, args.sha256, args.snapshot)
     count = 0
     try:
         if args.snapshot:
             obs.dump(out, include_code=args.snapshot_code)
+            pages = obs.read_snapshot_pages(out.with_suffix(out.suffix + ".pages"), args.snapshot_page) if args.snapshot_page else []
             emit({"schema": SCHEMA, "kind": "snapshot", "identity": obs.identity, "output": str(out), "sha256": digest(out),
                   "code_and_data_sections_requested": args.snapshot_code,
+                  "read_only_pages": pages,
                   "limits": "Live thread/stack snapshot, not a captured crash exception. Memory acquisition can perturb timing."})
             return
         with out.open("x", encoding="utf-8") as f:

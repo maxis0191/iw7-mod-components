@@ -13,6 +13,16 @@ can perturb timing and the ignored dump may contain private data; never publish
 it. A section request alone does not prove that DbgHelp included a desired range;
 verify actual minidump memory coverage before attributing code or stack frames.
 
+DbgHelp can still omit read-only vtables/unwind. A guarded scenario can add up
+to eight unique `--snapshot-page 0x...` requests, aligned to4096 bytes inside the
+pinned IW7 image address window `[0x140000000,0x142000000)`. The retained original
+process handle supplies `VirtualQueryEx` mapping/protection provenance and exactly
+4096 bytes per fully readable committed page; guard/no-access/partial reads are
+refused. Fresh `.dmp.pages/` sidecars contain hashes and a local identity manifest.
+This neither authenticates an image section by address alone nor traverses the
+heap. Requests require snapshot mode and the caller's same private ownership
+gate; no process is written, attached or suspended. Sidecars remain private.
+
 ## Client018: refused analysis, confirmed closure (2026-10-15)
 
 The one authorized finite Analysis invocation of frozen source capsule C ended
