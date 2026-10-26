@@ -145,16 +145,22 @@ class Observer:
             self.close_handle(self.handle)
             self.handle = None
 
-    def dump(self, output):
+    def dump(self, output, include_code=False):
         import msvcrt
         if self.wait(self.handle, 0) != 258:
             raise ValueError("Process exited before snapshot")
         # Separate external DbgHelp avoids its single-threaded in-process restriction.
         dbghelp = c.WinDLL("dbghelp", use_last_error=True)
         write = function(dbghelp, "MiniDumpWriteDump", [w.HANDLE, w.DWORD, w.HANDLE, w.DWORD, c.c_void_p, c.c_void_p, c.c_void_p], w.BOOL)
+        flags = 0x1000 | 0x800 | 0x20
+        if include_code:
+            # Packed images may differ from their disk PE. Retain executed code
+            # and initialized data (including unwind tables), not only the tiny
+            # instruction window around each thread. This is not full memory.
+            flags |= 0x2000 | 0x1  # WithCodeSegs | WithDataSegs
         with output.open("xb") as f:
             file_handle = msvcrt.get_osfhandle(f.fileno())
-            if not write(self.handle, self.pid, file_handle, 0x1000 | 0x800 | 0x20, None, None, None):
+            if not write(self.handle, self.pid, file_handle, flags, None, None, None):
                 raise c.WinError(c.get_last_error())
 
 
@@ -189,16 +195,20 @@ def main():
     p.add_argument("--port", type=int, default=0, choices=range(0, 65536))
     p.add_argument("--threads", action="store_true")
     p.add_argument("--snapshot", action="store_true", help="Called only by the lab-ownership guarded PowerShell adapter")
+    p.add_argument("--snapshot-code", action="store_true", help="Include loaded code/data sections for packed-image analysis; requires --snapshot")
     p.add_argument("--scenario", required=True)
     p.add_argument("--output", required=True)
     args = p.parse_args()
+    if args.snapshot_code and not args.snapshot:
+        p.error("--snapshot-code requires --snapshot")
     out = local_output(args.output)
     obs = Observer(args.pid, args.image, args.created, args.sha256, args.snapshot)
     count = 0
     try:
         if args.snapshot:
-            obs.dump(out)
+            obs.dump(out, include_code=args.snapshot_code)
             emit({"schema": SCHEMA, "kind": "snapshot", "identity": obs.identity, "output": str(out), "sha256": digest(out),
+                  "code_and_data_sections_requested": args.snapshot_code,
                   "limits": "Live thread/stack snapshot, not a captured crash exception. Memory acquisition can perturb timing."})
             return
         with out.open("x", encoding="utf-8") as f:

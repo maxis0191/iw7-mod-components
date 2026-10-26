@@ -16,6 +16,7 @@ spec = importlib.util.spec_from_file_location("debugger", ROOT / "ops/iw7_debugg
 dbg = importlib.util.module_from_spec(spec); spec.loader.exec_module(dbg)
 sys.path.insert(0, str(ROOT / "ops"))
 import iw7_watch as watch
+import iw7_capture as capture
 
 
 def make_dump():
@@ -686,6 +687,42 @@ class DebuggerTests(unittest.TestCase):
         self.assertIsNone(dbg.quantiles([]))
         self.assertEqual(dbg.quantiles([1, 3])["p50"], 2)
         self.assertEqual(dbg.quantiles([1, float("nan")])["count"], 1)
+
+
+class CaptureModeTests(unittest.TestCase):
+    def test_snapshot_code_retains_sections_without_full_memory(self):
+        observer = capture.Observer.__new__(capture.Observer)
+        observer.handle, observer.pid = 42, 123
+        observer.wait = lambda handle, timeout: 258
+        modes = []
+        def writer(handle, pid, file_handle, mode, *rest):
+            self.assertEqual((handle, pid), (42, 123))
+            modes.append(mode)
+            return True
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.dict(sys.modules, {"msvcrt": mock.Mock(get_osfhandle=lambda fd: fd)}), \
+             mock.patch.object(capture.c, "WinDLL", create=True), \
+             mock.patch.object(capture, "function", return_value=writer):
+            observer.dump(Path(directory) / "small.dmp")
+            observer.dump(Path(directory) / "code.dmp", include_code=True)
+            with self.assertRaises(FileExistsError):
+                observer.dump(Path(directory) / "code.dmp", include_code=True)
+        self.assertEqual(len(modes), 2)
+        self.assertFalse(modes[0] & (0x2000 | 0x1))
+        self.assertEqual(modes[1] & (0x2000 | 0x1), 0x2000 | 0x1)
+        self.assertFalse(modes[1] & 0x2)  # No full process-memory capture.
+        self.assertEqual(modes[1] & modes[0], modes[0])
+
+    def test_code_mode_cannot_start_an_observer_without_snapshot(self):
+        argv = ["capture", "--pid", "123", "--image", "unused.exe", "--created", "unused",
+                "--sha256", "unused", "--scenario", "test", "--output", "unused.dmp", "--snapshot-code"]
+        with mock.patch.object(sys, "argv", argv), mock.patch.object(capture, "Observer") as observer, \
+             mock.patch.object(capture, "local_output") as output, mock.patch("sys.stderr", new=io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                capture.main()
+        self.assertEqual(error.exception.code, 2)
+        observer.assert_not_called()
+        output.assert_not_called()
 
 
 if __name__ == "__main__":

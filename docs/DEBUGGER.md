@@ -1,5 +1,18 @@
 # Agent debugger and supervised IW7 sessions
 
+## Code sections in an owned private live snapshot (2026-10-26)
+
+The guarded private scenario adapter may pass `--snapshot --snapshot-code` to
+`ops/iw7_capture.py`. This requests loaded code and initialized data sections in
+addition to the default thread/stack snapshot. Packed retail images can differ
+from disk: without these sections CDB may show only256 actual instruction bytes
+and unusable disk-derived unwind data. The mode retains the original exact
+process identity/hash and exclusive new-output guards. It does not request full
+process memory, change engine state or capture a crash exception. Acquisition
+can perturb timing and the ignored dump may contain private data; never publish
+it. A section request alone does not prove that DbgHelp included a desired range;
+verify actual minidump memory coverage before attributing code or stack frames.
+
 ## Client018: refused analysis, confirmed closure (2026-10-15)
 
 The one authorized finite Analysis invocation of frozen source capsule C ended
