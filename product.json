@@ -364,7 +364,11 @@
     "tools-source/community-download/tests/native_stubs.hpp",
     "tools-source/community-download/tests/test_download.cpp",
     "tools-source/community-download/validation.json",
-    "tools-source/community-download/verify_archive.py"
+    "tools-source/community-download/verify_archive.py",
+    "docs/FRAME-EVIDENCE.md",
+    "docs/RUNTIME-PROBE-DESIGN.md",
+    "ops/iw7_frame_evidence.py",
+    "tests/ops/iw7_frame_evidence_test.py"
   ],
   "dependencies": [
     {

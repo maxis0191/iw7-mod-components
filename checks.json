@@ -167,6 +167,14 @@
       ]
     },
     {
+      "id": "iw7_frame_evidence_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/iw7_frame_evidence_test.py"
+      ]
+    },
+    {
       "id": "collision_player_result_test",
       "command": [
         "pwsh",
