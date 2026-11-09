@@ -212,6 +212,33 @@ function Assert-IW7VoiceOverlayAbsent {
     }
 }
 
+# Sources of the retired private relay (v1 paris_voice, v2 voice_relay, fake
+# capture, PTT guard) that older Build-Voice versions copied into checkouts.
+$script:IW7RetiredVoiceSources=@('paris_voice.cpp','paris_voice_protocol.hpp','paris_voice_test_capture.cpp','paris_voice_test_capture.hpp',
+    'voice_capture_adapter.hpp','voice_capture_wire.hpp','voice_inbox.hpp','voice_pcm_witness.hpp','voice_ptt_guard.hpp','voice_relay.cpp',
+    'voice_relay.hpp','voice_state.hpp','voice_test_binding.hpp','voice_test_capture.cpp','voice_test_capture.hpp','voice_transport.hpp','voice_wire.hpp')
+
+function Assert-IW7NoRetiredVoiceOverlay {
+    # Fail closed and never delete: a reused checkout built by an older
+    # Build-Voice still carries the retired relay's copied sources, its
+    # flags.cpp player-defaults overlay or its push-to-talk input receipt.
+    param([Parameter(Mandatory)][string]$NativeRoot,[Parameter(Mandatory)][string]$Commit)
+    $root=[IO.Path]::GetFullPath($NativeRoot)
+    $advice='build in a fresh -NativeRoot (prepared workspaces get one per revision).'
+    $tracked=@(& git -C $root ls-tree --name-only "$Commit`:src/client/component")
+    if($LASTEXITCODE){throw "Pinned component tree of $Commit is unreadable."}
+    $found=@($script:IW7RetiredVoiceSources|Where-Object{$_ -cnotin $tracked -and (Test-Path -LiteralPath (Join-Path $root ('src/client/component/'+$_)))})
+    if($found.Count){throw "Native checkout carries retired voice sources ($($found -join ', ')); $advice"}
+    if(Test-Path -LiteralPath (Join-Path $root 'paris-overlay-receipts')){throw "Native checkout carries the retired push-to-talk input overlay receipt; $advice"}
+    $flags='src/common/utils/flags.cpp'
+    $blob=Read-IW7VoiceGitBlob $root ($Commit+':'+$flags)
+    $target=Join-Path $root $flags
+    if($null -eq $blob -or !(Test-Path -LiteralPath $target -PathType Leaf) -or
+        (Get-IW7VoiceHash (ConvertTo-IW7VoiceLf ([IO.File]::ReadAllBytes($target)))) -cne (Get-IW7VoiceHash (ConvertTo-IW7VoiceLf $blob))){
+        throw "Native checkout carries the retired player-defaults flag overlay (flags.cpp differs from $Commit); $advice"
+    }
+}
+
 function Get-IW7VoiceOverlayState([string]$NativeRoot) {
     # Manifest flags come from verified receipts, never from the build switches.
     $relay=Read-IW7VoiceOverlayReceipt $NativeRoot 'voice-relay-overlay.local.json' 'iw7.voice-relay-overlay/1' $script:IW7VoiceRelayPaths

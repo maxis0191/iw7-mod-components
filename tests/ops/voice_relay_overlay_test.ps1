@@ -1,6 +1,7 @@
 # Offline test of ops/Voice-RelayOverlay.Core.ps1: apply, exact removal, refusal of
-# tampering and of leftovers, the certification probe overlay, the image folder and
-# the voice-certify-build.json contract read by ops/voice-certify/Invoke-VoiceCertify.ps1.
+# tampering and of leftovers, the certification probe overlay, the image folder, the
+# voice-certify-build.json contract read by ops/voice-certify/Invoke-VoiceCertify.ps1
+# and the refusal of checkouts that still carry the retired private voice relay.
 # It builds nothing and starts no game. -ReferenceRepo (an iw7-mod clone containing
 # the native pin) also checks the real pinned patch against the real pinned headers.
 param([string]$ReferenceRepo)
@@ -36,6 +37,9 @@ try {
     [IO.File]::WriteAllText($structs, "namespace game`n{`n`tstruct netadr_s {};`n}`n")
     [IO.File]::WriteAllText($symbols, "namespace game`n{`n`tWEAK symbol<int()> Sys_Milliseconds{ 0x140D58110 };`n}`n")
     [IO.File]::WriteAllText((Join-Path $native 'src/client/component/party.cpp'), "// unrelated`n")
+    $flags = Join-Path $native 'src/common/utils/flags.cpp'
+    [IO.Directory]::CreateDirectory((Split-Path $flags)) | Out-Null
+    [IO.File]::WriteAllText($flags, "namespace utils::flags`n{`n}`n")
     Invoke-Git -C $native add -A
     Invoke-Git -C $native -c user.name=test -c user.email=test@example.invalid commit -q -m base
     $base = (& git -C $native rev-parse HEAD).Trim()
@@ -196,6 +200,25 @@ try {
         $problems = @($output | Where-Object { $_ -match '^\s+! .*(manifest|overlay|voice relay|image)' })
         Assert (($problems.Count -eq 0) -eq $case[2]) "Invoke-VoiceCertify preflight decision differs for the $($case[0]) image (Baseline=$($case[1])): $($problems -join ' | ')"
     }
+
+    # ---- checkouts that still carry the retired private relay are refused
+    Assert-IW7NoRetiredVoiceOverlay -NativeRoot $native -Commit $base; $script:checks++
+    foreach ($name in @('paris_voice.cpp', 'paris_voice_protocol.hpp', 'voice_relay.cpp', 'voice_relay.hpp', 'voice_capture_wire.hpp', 'voice_ptt_guard.hpp', 'voice_test_capture.cpp')) {
+        $leftover = Join-Path $native ('src/client/component/' + $name)
+        [IO.File]::WriteAllText($leftover, '// copied by an older Build-Voice')
+        Refuses { Assert-IW7NoRetiredVoiceOverlay -NativeRoot $native -Commit $base } "retired voice sources \($([regex]::Escape($name))\)" "Retired $name was accepted."
+        Assert (Test-Path -LiteralPath $leftover) "The check deleted retired $name."
+        Remove-Item -LiteralPath $leftover
+    }
+    $receipts = Join-Path $native 'paris-overlay-receipts'
+    [IO.Directory]::CreateDirectory($receipts) | Out-Null
+    Refuses { Assert-IW7NoRetiredVoiceOverlay -NativeRoot $native -Commit $base } 'push-to-talk input overlay receipt' 'A retired PTT receipt was accepted.'
+    Remove-Item -LiteralPath $receipts
+    $originalFlags = Get-Bytes $flags
+    [IO.File]::WriteAllText($flags, "#include `"../../client/component/voice_relay.hpp`"`nnamespace utils::flags`n{`n}`n")
+    Refuses { Assert-IW7NoRetiredVoiceOverlay -NativeRoot $native -Commit $base } 'player-defaults flag overlay' 'A retired flags.cpp overlay was accepted.'
+    [IO.File]::WriteAllText($flags, [Text.Encoding]::UTF8.GetString($originalFlags).Replace("`n", "`r`n"))
+    Assert-IW7NoRetiredVoiceOverlay -NativeRoot $native -Commit $base; $script:checks++   # CRLF checkout of the pinned flags.cpp
 
     # ---- optional: the real pinned patch on the real pinned headers
     if ($ReferenceRepo) {

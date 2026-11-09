@@ -38,21 +38,7 @@ namespace paris_test_fixture
             now - s.query_tick <= 500 && token(s.nonce) && token(s.generation) && !s.challenge.empty() && known_map;
     }
     // Scheduler main only; invalid/foreign/stale state returns an empty value.
-    // Reuses the existing server-confirmed protection handshake, without voice
-    // flags, input authority, capture authority or a client-world reset promise.
+    // Reuses the existing server-confirmed protection handshake, without input
+    // authority or a client-world reset promise.
     client_test_protection client_protection(const char** refusal_reason = nullptr);
 }
-
-#ifdef IW7_PARIS_ISOLATED_VOICE_CAPTURE
-namespace paris_test_fixture {
-struct client_capture_protection {
-    bool protected_now{}, slot_correlated{}, ui_ready{}, talk_valid{};
-    int talk_key0{},talk_key1{}; unsigned talk_active{};
-    unsigned pid{}, port{}, slot{};
-    std::uint64_t query_tick{};
-    std::string nonce, generation;
-};
-// Read on scheduler main only. The integration copies this to its own mutex.
-client_capture_protection capture_protection();
-}
-#endif

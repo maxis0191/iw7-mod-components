@@ -1,4 +1,4 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
@@ -29,11 +29,15 @@ if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requir
 if ($Capacity64 -and !$ServerModules) { throw 'Capacity64 requires the current ServerModules profile.' }
 if ($VoiceRelay -and !$ServerModules) { throw 'VoiceRelay requires ServerModules (native pin cfca45b).' }
 if ($VoiceCertify -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceCertify requires ServerModules and IsolatedLab.' }
-if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
 if ($CollisionProvider -and (!$ServerModules -or !$IsolatedLab)) { throw 'CollisionProvider requires ServerModules and IsolatedLab.' }
 if ($WordProvenance -and (!$ServerModules -or !$IsolatedLab -or !$Debugger)) { throw 'WordProvenance requires ServerModules, IsolatedLab and Debugger.' }
 if ($ServerModules -and ($RhinoExperiment -or $EnemyExperiment)) {
     throw 'ServerModules is incompatible with enemy/Rhino overlays.'
+}
+# The default 36f7afe profile only built the retired private voice player
+# client (its last consumer was the server's Package-Voice). Select a profile.
+if (!$TestsOnly -and !$ServerModules -and !$RhinoExperiment -and !$EnemyExperiment) {
+    throw 'Select -ServerModules or an explicit experiment; the 36f7afe player-voice profile is retired.'
 }
 $repo = Split-Path $PSScriptRoot -Parent
 $root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
@@ -53,14 +57,13 @@ Remove-IW7VoiceRelayOverlay $root
 Remove-IW7CapacityPeerOverlay $root
 Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
-$commit = '36f7afedb9e4c8c665b6e29227e3f5c660ed63d6'
+$commit = $null
 if ($RhinoExperiment -or $EnemyExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
 if ($ServerModules) { $commit = 'cfca45b11ee14641945b9a264a95638387f48a4a' }
 if (!$TestsOnly) {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 if (!(Test-Path -LiteralPath "$root/.git")) {
-    if ($RhinoExperiment -or $EnemyExperiment -or $ServerModules) { git clone --no-checkout https://github.com/maxis0191/iw7-mod.git $root }
-    else { git clone --no-checkout https://github.com/auroramod/iw7-mod.git $root }
+    git clone --no-checkout https://github.com/maxis0191/iw7-mod.git $root
     if ($LASTEXITCODE) { throw 'Required IW7-Mod clone failed.' }
     git -C $root checkout --detach $commit
     if ($LASTEXITCODE) { throw 'Exact IW7-Mod pin checkout failed.' }
@@ -69,6 +72,8 @@ $null = Resolve-IW7VoiceBuildNativeRoot $root
 if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
 git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
+# A reused checkout must not carry sources or overlays of the retired voice relay.
+Assert-IW7NoRetiredVoiceOverlay -NativeRoot $root -Commit $commit
 # Without receipts, no relay or probe source may remain from a manual overlay.
 Assert-IW7VoiceOverlayAbsent -NativeRoot $root -Commit $commit
 }
@@ -79,8 +84,6 @@ if (!$installation) { throw 'VS 2022 C++ toolchain not found.' }
 $vcvars = Join-Path $installation 'VC/Auxiliary/Build/vcvars64.bat'
 $runtime = Join-Path $repo 'runtime'
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
-$testSource = Join-Path $repo 'tests/native/voice_protocol_test.cpp'
-$testExe = Join-Path $runtime 'voice-protocol-test.exe'
 # Save the compiler invocation to avoid PowerShell 5 native-argument quote rewriting.
 $testCmd = Join-Path $runtime 'compile-voice-tests.cmd'
 @"
@@ -98,10 +101,6 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\word_provenance_test.cpp" /Fe:"$runtime\word-provenance-test.exe" /Fo:"$runtime\word-provenance-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\word-provenance-test.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$testSource" /Fe:"$testExe" /Fo:"$runtime\voice-protocol-test.obj"
-if errorlevel 1 exit /b 1
-"$testExe"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\doom_test.cpp" /Fe:"$runtime\doom-test.exe" /Fo:"$runtime\doom-test.obj"
 if errorlevel 1 exit /b 1
@@ -123,71 +122,15 @@ pwsh -NoProfile -File "$repo\tests\ops\capacity_checkpoint_overlay_test.ps1"
 if errorlevel 1 exit /b 1
 pwsh -NoProfile -File "$repo\tests\ops\kernel_image_alias_regression_test.ps1"
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /c "$repo\tests\native\voice_test_capture_test.cpp" /Fo:"$runtime\fake-capture-test.obj"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /c "$repo\src\native\voice_test_capture.cpp" /Fo:"$runtime\fake-capture-impl.obj"
-if errorlevel 1 exit /b 1
-cl /nologo "$runtime\fake-capture-test.obj" "$runtime\fake-capture-impl.obj" /Fe:"$runtime\voice-test-capture.exe" /link bcrypt.lib dxguid.lib
-if errorlevel 1 exit /b 1
-"$runtime\voice-test-capture.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_test_binding_test.cpp" /Fe:"$runtime\voice-test-binding.exe" /Fo:"$runtime\voice-test-binding.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-test-binding.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_pcm_witness_test.cpp" /Fe:"$runtime\voice-pcm-witness.exe" /Fo:"$runtime\voice-pcm-witness.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-pcm-witness.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_capture_wire_test.cpp" /Fe:"$runtime\voice-capture-wire.exe" /Fo:"$runtime\voice-capture-wire.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-capture-wire.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_ptt_protocol_test.cpp" /Fe:"$runtime\voice-ptt-protocol.exe" /Fo:"$runtime\voice-ptt-protocol.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-ptt-protocol.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 /I"$repo\src\native" "$repo\tests\native\voice_ptt_guard_test.cpp" /Fe:"$runtime\voice-ptt-guard.exe" /Fo:"$runtime\voice-ptt-guard.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-ptt-guard.exe"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_agent_ptt_contract_test.ps1" -NativeSdkRoot "$root"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\ops\voice-agent\test_fake_build_copy.ps1" -RepoRoot "$repo"
-if errorlevel 1 exit /b 1
 pwsh -NoProfile -File "$repo\ops\agent-capacity\test_build_copy.ps1"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\agent_scenario_test.cpp" /Fe:"$runtime\agent-scenario-test.exe" /Fo:"$runtime\agent-scenario-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\agent-scenario-test.exe"
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_state_test.cpp" /Fe:"$runtime\voice-state-test.exe" /Fo:"$runtime\voice-state-test.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-state-test.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_launch_test.cpp" /Fe:"$runtime\voice-launch-test.exe" /Fo:"$runtime\voice-launch-test.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-launch-test.exe"
-if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\take_chat_test.cpp" /Fe:"$runtime\take-chat-test.exe" /Fo:"$runtime\take-chat-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\take-chat-test.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_transport_test.cpp" /Fe:"$runtime\voice-transport-test.exe" /Fo:"$runtime\voice-transport-test.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-transport-test.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_simulation_test.cpp" /Fe:"$runtime\voice-simulation-test.exe" /Fo:"$runtime\voice-simulation-test.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-simulation-test.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_inbox_test.cpp" /Fe:"$runtime\voice-inbox-test.exe" /Fo:"$runtime\voice-inbox-test.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-inbox-test.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_wan_test.cpp" /Fe:"$runtime\voice-wan-test.exe" /Fo:"$runtime\voice-wan-test.obj"
-if errorlevel 1 exit /b 1
-"$runtime\voice-wan-test.exe"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\dvar_metadata_test.cpp" /Fe:"$runtime\dvar-metadata-test.exe" /Fo:"$runtime\dvar-metadata-test.obj"
 if errorlevel 1 exit /b 1
@@ -197,35 +140,13 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.c
 if errorlevel 1 exit /b 1
 "$runtime\audio-output-probe.exe" --self-test
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\ops\voice-agent\capture_adapter_test.cpp" /Fe:"$runtime\capture-adapter-test.exe" /Fo:"$runtime\capture-adapter-test.obj"
-if errorlevel 1 exit /b 1
-"$runtime\capture-adapter-test.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_probe_worker_test.cpp" /Fe:"$runtime\audio-probe-worker-test.exe" /Fo:"$runtime\audio-probe-worker-test.obj"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_agent_recorder_test.ps1" -WorkerPath "$runtime\audio-probe-worker-test.exe"
-if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\voice_pair_recorder_worker_test.cpp" /Fe:"$runtime\voice-pair-recorder-worker-test.exe" /Fo:"$runtime\voice-pair-recorder-worker-test.obj"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_fake_source_test.ps1"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_pair_provider_test.ps1"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_pair_witness_test.ps1"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_pair_source_options_test.ps1"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_pair_envelope_test.ps1"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\voice_pair_recorder_test.ps1" -WorkerPath "$runtime\voice-pair-recorder-worker-test.exe"
-if errorlevel 1 exit /b 1
 "@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
-if ($LASTEXITCODE) { throw 'Native protocol tests failed.' }
+if ($LASTEXITCODE) { throw 'Native unit tests failed.' }
 if ($Sanitizers) {
     $sanitizerCmd = Join-Path $runtime 'compile-voice-sanitizers.cmd'
     $lines = @('@echo off', "call `"$vcvars`" >nul", 'if errorlevel 1 exit /b 1')
-    foreach ($name in @('voice_protocol_test','voice_state_test','voice_launch_test','take_chat_test','voice_transport_test','voice_simulation_test','voice_inbox_test','voice_wan_test','dvar_metadata_test')) {
+    foreach ($name in @('take_chat_test','dvar_metadata_test')) {
         $lines += "cl /nologo /std:c++17 /EHsc /W4 /WX /O2 /Zi /fsanitize=address `"$repo\tests\native\$name.cpp`" /Fe:`"$runtime\$name-asan.exe`" /Fo:`"$runtime\$name-asan.obj`" /Fd:`"$runtime\$name-asan.pdb`" /link /INCREMENTAL:NO"
         $lines += 'if errorlevel 1 exit /b 1'
         $lines += "`"$runtime\$name-asan.exe`""
@@ -237,15 +158,6 @@ if ($Sanitizers) {
 }
 & "$repo/tests/ops/download_cache_overlay_test.ps1"
 if ($TestsOnly) { return }
-$flagsPath = Join-Path $root 'src/common/utils/flags.cpp'
-$baseFlags = (((git -C $root show ($commit + ':src/common/utils/flags.cpp')) -join "`n").TrimEnd()) + "`n"
-$flagsMarker = "`t`t`tLocalFree(argv);"
-if (($baseFlags.Split([string[]]@($flagsMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned flag parser changed.' }
-$playerFlags = $baseFlags.Replace('#include "nt.hpp"', '#include "nt.hpp"' + "`n" + '#include "../../client/component/voice_relay.hpp"').Replace($flagsMarker,
-    "`t`t`tvoice_relay::apply_player_defaults(nt::library{}.get_name(), num_args, flags);`n" + $flagsMarker)
-$currentFlags = [IO.File]::ReadAllText($flagsPath).Replace("`r`n", "`n").TrimEnd() + "`n"
-if ($currentFlags -ne $baseFlags -and $currentFlags -ne $playerFlags) { throw 'Unowned flag parser edits; use an isolated checkout.' }
-[IO.File]::WriteAllText($flagsPath, $playerFlags, [Text.UTF8Encoding]::new($false))
 $properties = Join-Path $root 'src/common/utils/properties.cpp'
 $baseProperties = (((git -C $root show ($commit + ':src/common/utils/properties.cpp')) -join "`n").TrimEnd()) + "`n"
 $labProperties = [IO.File]::ReadAllText("$repo/src/native/paris_lab_properties.cpp").Replace("`r`n", "`n").TrimEnd() + "`n"
@@ -267,7 +179,7 @@ $labAuth = $labAuth.Replace($entropyMarker, $entropyMarker + "`n`t`t`t" + 'if (u
 $currentAuth = [IO.File]::ReadAllText($authPath).Replace("`r`n", "`n").TrimEnd() + "`n"
 if ($currentAuth -ne $baseAuth -and $currentAuth -ne $labAuth -and $currentAuth -ne $oldLabAuth) { throw 'Unowned auth.cpp changes; use an isolated native checkout.' }
 [IO.File]::WriteAllText($authPath, $(if ($IsolatedLab) { $labAuth } else { $baseAuth }), [Text.UTF8Encoding]::new($false))
-# The normal profile lists its native components and both protocol/test headers. Lab properties
+# The normal profile lists its native components and test headers. Lab properties
 # replace common/utils/properties.cpp above, never a component source.
 # Retire the known misplaced overlay from reused/package-source checkouts.
 # Its intended location is common/utils; unknown edits remain untouched.
@@ -277,12 +189,11 @@ if (Test-Path -LiteralPath $labComponent) {
     if ($currentLabComponent -ne $labProperties) { throw 'Unowned lab component overlay; preserve it and use an isolated native checkout.' }
     Remove-Item -LiteralPath $labComponent
 }
-$nativeSources = @('paris_voice.cpp','paris_voice_protocol.hpp','voice_capture_adapter.hpp','paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp',
-    'voice_relay.cpp','voice_relay.hpp','voice_state.hpp','voice_wire.hpp','voice_transport.hpp','voice_inbox.hpp','dvar_metadata.hpp','agent_scenario.hpp',
+$nativeSources = @('paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp','dvar_metadata.hpp','agent_scenario.hpp',
     'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp','paris_afk.cpp','paris_afk.hpp','afk_inactivity.hpp')
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
 else {
-    # The older standalone voice SDK does not expose the pinned CP WeaponDef.
+    # The experiment pin does not expose the ServerModules CP WeaponDef.
     # Clear only this task's exact previously copied adapter when switching
     # profiles; an independently edited component requires investigation.
     foreach ($file in @('paris_doom.cpp','paris_doom.hpp')) {
@@ -314,29 +225,7 @@ else {
 # Main/nondebugger profiles contain no capacity watcher translation unit.
 $capacityWatchBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]($Capacity64 -or ($IsolatedLab -and $Debugger))) -PortOnly:([bool]($Capacity64 -and !$Debugger))
 if ($capacityWatchBuild.Compiled) { $nativeSources += $capacityWatchBuild.Files }
-. "$PSScriptRoot/voice-agent/Fake-BuildCopy.Core.ps1"
-$fakeCaptureBuild=Set-IW7FakeCaptureBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]$IsolatedLab)
-if($fakeCaptureBuild.Compiled){$nativeSources+=$fakeCaptureBuild.Files}
-Copy-Item -LiteralPath @($nativeSources | Where-Object { $_ -cnotin $fakeCaptureBuild.Files } | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
-$copiedVoice=Join-Path $root 'src/client/component/paris_voice.cpp'
-if ($IsolatedLab) {
-    . "$PSScriptRoot/voice-agent/Build-Copy.Core.ps1"
-    $voiceSource=[IO.File]::ReadAllText($copiedVoice)
-    [IO.File]::WriteAllText($copiedVoice,(Convert-IW7IsolatedVoiceSource $voiceSource),[Text.UTF8Encoding]::new($false))
-    foreach($name in @('voice_relay.cpp','paris_test_fixture.cpp')){
-        $path=Join-Path $root ('src/client/component/'+$name)
-        [IO.File]::WriteAllText($path,(Convert-IW7IsolatedVoiceSource ([IO.File]::ReadAllText($path))),[Text.UTF8Encoding]::new($false))
-    }
-}
-# The real input owner is bridged only in the pinned CP isolated profile.
-# Disabled/ordinary profiles preserve clean input.cpp bytes exactly. Reusing
-# a known enabled checkout restores its retained original bytes, never a guessed
-# or generic detour. Helper/template/dependency pins enter the build manifest.
-. "$PSScriptRoot/voice-agent/PTT-InputBridge.Core.ps1"
-$inputBaseText=((git -C $root show ($commit+':src/client/component/input.cpp')) -join "`n")+"`n"
-if($LASTEXITCODE){throw 'Pinned upstream input.cpp could not be read.'}
-$pttInputBridgeBuild=Set-IW7PTTInputBridgeBuildCopy -RepoRoot $repo -NativeRoot $root -BaseInput ([Text.UTF8Encoding]::new($false).GetBytes($inputBaseText)) -IsolatedLab:([bool]$IsolatedLab) -ServerModules:([bool]$ServerModules)
-if($pttInputBridgeBuild.Compiled){$nativeSources+=$pttInputBridgeBuild.Files}
+Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 $incidentOverlay = & "$PSScriptRoot/Apply-IncidentOverlay.ps1" -NativeRoot $root -Commit $commit
 $testPrivacyOverlay = & "$PSScriptRoot/Apply-TestPrivacyOverlay.ps1" -NativeRoot $root -Commit $commit
@@ -404,17 +293,25 @@ $currentBots = [IO.File]::ReadAllText($botsPath).Replace("`r`n", "`n").TrimEnd()
 if ($currentBots -ne $baseBots -and $currentBots -ne $legacyTestBots -and $currentBots -ne $testBots) { throw 'Unowned bots.cpp changes; preserve them.' }
 [IO.File]::WriteAllText($botsPath,$testBots,[Text.UTF8Encoding]::new($false))
 # The pinned anti-debug helper writes legacy heap-header offsets. PageHeap uses
-# a different layout; preserve its verifier state only in the explicit private
-# diagnostic profile. Ordinary launches keep the pinned upstream behavior.
+# a different layout; preserve its verifier state only when a lab process asks
+# for it with -paris-pageheap -paris-isolated-lab and PageHeap is really active.
+# -paris-voice-native-trace is the retired voice trace flag; the server's
+# Voice-BaseTest still passes it, so it stays accepted until that script goes.
+# Ordinary launches keep the pinned upstream behavior.
 $arxanPath = Join-Path $root 'src/client/component/arxan/arxan.cpp'
 $baseArxan = (((git -C $root show ($commit + ':src/client/component/arxan/arxan.cpp')) -join "`n").TrimEnd()) + "`n"
 $heapMarker = "void hide_being_debugged()`n`t`t{`n`t`t`tauto* const peb = PPEB(__readgsqword(0x60));"
 if (($baseArxan.Split([string[]]@($heapMarker), [StringSplitOptions]::None)).Count -ne 2) { throw 'Pinned heap-debug helper marker changed.' }
-$testArxan = $baseArxan.Replace('#include <utils/string.hpp>', "#include <utils/string.hpp>`n#include <utils/flags.hpp>").Replace($heapMarker,
+$flagsArxan = $baseArxan.Replace('#include <utils/string.hpp>', "#include <utils/string.hpp>`n#include <utils/flags.hpp>")
+$legacyTestArxan = $flagsArxan.Replace($heapMarker,
     $heapMarker + "`n`t`t`t// Keep Windows PageHeap headers and flags intact during the private trace.`n`t`t`t" +
     'if (utils::flags::has_flag("paris-voice-native-trace") && (*reinterpret_cast<PDWORD>(LPSTR(peb) + 0xBC) & 0x02000000)) return;')
+$testArxan = $flagsArxan.Replace($heapMarker,
+    $heapMarker + "`n`t`t`t// Keep Windows PageHeap headers and flags intact for a private PageHeap diagnostic.`n`t`t`t" +
+    'if (((utils::flags::has_flag("paris-pageheap") && utils::flags::has_flag("paris-isolated-lab")) || utils::flags::has_flag("paris-voice-native-trace")) &&' + "`n`t`t`t`t" +
+    '(*reinterpret_cast<PDWORD>(LPSTR(peb) + 0xBC) & 0x02000000)) return;')
 $currentArxan = [IO.File]::ReadAllText($arxanPath).Replace("`r`n", "`n").TrimEnd() + "`n"
-if ($currentArxan -ne $baseArxan -and $currentArxan -ne $testArxan) { throw 'Unowned anti-debug helper edits; preserve them.' }
+if ($currentArxan -cne $baseArxan -and $currentArxan -cne $testArxan -and $currentArxan -cne $legacyTestArxan) { throw 'Unowned anti-debug helper edits; preserve them.' }
 [IO.File]::WriteAllText($arxanPath,$testArxan,[Text.UTF8Encoding]::new($false))
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
 $rhinoScriptInclude = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'
@@ -573,7 +470,6 @@ if ($voiceState.VoiceCertify) { $manifestSources += 'voice_test.cpp' }
 $manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash $packagedExe).Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
 $sourceIdentity = & (Join-Path $repo 'ops/Get-SourceIdentity.ps1') -Root $repo
 $manifest.OfficialUpstream = if ($ServerModules) { '37abcb260408ce7cdef0dde831bbfcad594510e3' } else { $null }
-$manifest.VoiceRelayProtocol = 2
 if ($ServerModules) { $manifest.LoadingNewMapHook = $loadingHook }
 $manifest.NativeTree = (& git -C $root rev-parse ($commit + '^{tree}')).Trim()
 $manifest.NativeSourceHashes = @(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File | Sort-Object FullName | ForEach-Object {
@@ -597,12 +493,6 @@ else {
 }
 $manifest.Debugger = [bool]$Debugger
 $manifest.CollisionProvider = [bool]$CollisionProvider
-$manifest.FakeCaptureBuild=$fakeCaptureBuild
-$manifest.PTTInputBridgeBuild=$pttInputBridgeBuild
-$manifest.FakeCaptureBuildHelperSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/voice-agent/Fake-BuildCopy.Core.ps1").Hash
-$manifest.FakeCaptureTransformedSourceHashes=@(@('paris_voice.cpp','voice_relay.cpp','paris_test_fixture.cpp')|ForEach-Object{
-    @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $root ('src/client/component/'+$_))).Hash}
-})
 $manifest.CapacityWatchBuild = $capacityWatchBuild
 $manifest.Capacity64Capability=[bool]$capacityWatchBuild.Compiled
 $manifest.Capacity64Production=[bool]($Capacity64 -and !$IsolatedLab -and !$Debugger)
@@ -626,12 +516,10 @@ $manifest.CutsceneOverlay = $cutsceneOverlay
 $manifest.RigAssetsProbeCapability = [bool]($ServerModules -and $IsolatedLab)
 $manifest.RigSceneProbeCapability = [bool]($ServerModules -and $IsolatedLab)
 $manifest.RigSceneStockWitnessCapability = [bool]($ServerModules -and $IsolatedLab)
-$manifest.BuildProfile = if ($VoiceTrace) { 'isolated-voice-trace' } elseif ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } elseif ($RhinoExperiment -or $EnemyExperiment) { 'experimental' } elseif ($IsolatedLab) { 'isolated-lab' } else { 'native-helper' }
-$manifest.VoiceTrace = [bool]$VoiceTrace
+$manifest.BuildProfile = if ($ServerModules -and $IsolatedLab) { 'isolated-modules' } elseif ($ServerModules) { 'server-only' } else { 'experimental' }
 $manifest.TestKickHookSHA256 = (Get-FileHash -LiteralPath $botsPath).Hash
 $manifest.TestHeapHookSHA256 = (Get-FileHash -LiteralPath $arxanPath).Hash
 $manifest.DvarMetadataOverlaySHA256 = (Get-FileHash -LiteralPath $dvarsPath).Hash
-$manifest.PlayerFlagsOverlaySHA256 = (Get-FileHash -LiteralPath $flagsPath).Hash
 $manifest.PlayerChatOverlaySHA256 = (Get-FileHash -LiteralPath (Join-Path $root 'src/client/component/logprint.cpp')).Hash
 $manifest.ExperimentalAssets = [bool]($RhinoExperiment -or $EnemyExperiment)
 $manifest.ModuleProfile = if ($ServerModules) { 'server-only; Rhino assets and spawns excluded' } else { $manifest.BuildProfile }
@@ -648,10 +536,6 @@ $manifest.VoiceRelayOverlay = $voiceState.VoiceRelayOverlay
 $manifest.VoiceCertify = $voiceState.VoiceCertify
 $manifest.VoiceCertifyOverlay = $voiceState.VoiceCertifyOverlay
 $manifest.VoiceOverlayHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/Voice-RelayOverlay.Core.ps1").Hash
-$manifest.VoiceCaptureSelectorBuild = [bool]$IsolatedLab
-$manifest.VoiceCopiedSourceSHA256 = (Get-FileHash -LiteralPath $copiedVoice).Hash
-$manifest.VoiceSourceTransformation = if ($IsolatedLab) { 'insert IW7_PARIS_ISOLATED_VOICE_CAPTURE=1 immediately after exact leading PCH include; explicit startup admission still required' } else { 'none; selector code excluded' }
-$manifest.VoiceSourceTransformationHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/voice-agent/Build-Copy.Core.ps1").Hash
 if ($IsolatedLab) {
     $manifest.LabPropertiesSHA256 = (Get-FileHash -LiteralPath $properties).Hash
     $manifest.LabAuthSHA256 = (Get-FileHash -LiteralPath $authPath).Hash
