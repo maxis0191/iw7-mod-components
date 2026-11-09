@@ -33,6 +33,11 @@ the repository's existing upstream license. Profile/copy controls pass 63 cases.
 
 ## Speech fixture correction
 
+Retired 2026-11-09 with the old voice bench: `ops/voice-agent/Speech-Cache.Core.ps1`
+and `tests/ops/voice_speech_cache_test.ps1` remain readable with
+`git show 5b3524b:<path>`. See [VOICE.md](VOICE.md). The rest of this section
+describes them as they were.
+
 The earlier hosted SAPI repeatability failure is real and remains in PR2 history.
 Fixed text/token/settings did not establish byte-identical independent synthesis.
 The generator now freezes the first original two-stimulus synthesis under an
