@@ -6,8 +6,9 @@
   `paris_voice.cpp`, the v2 `voice_relay.cpp` family, the fake capture, the PCM
   witness, the push-to-talk input bridge, the voice-agent bench and the 36f7afe
   player-client build profile). The old relay never carried speech between real
-  players. The server repository retires its own voice tooling separately; its
-  `docs/VOICE-STATUS.md` is the server-side record.
+  players. The server repository retires its own voice tooling in its PR #414
+  (branch `codex/voice-cleanup`); the `docs/VOICE-STATUS.md` it adds is the
+  server-side record.
 - Its replacement is an upstream-shaped component: the local commit
   `fbf17531a4be72a31f1637dba38091c74f49cde0` on branch `feature/voice-chat`,
   based on auroramod `develop` `85ada7c61e2b8722e9d3a704db490b909bb23ccb`. It is
@@ -139,12 +140,12 @@ Do none of this before the owner has tested and accepted the new relay in game
    `runtime/voice-relay-images`). Keep Protocol=1 until the server stops
    requiring it.
 4. In the server repository, follow the production swap checklist in its
-   `docs/VOICE-STATUS.md`. It owns every server step (deploy guards, GSC voice
-   module, Main and Canada). For its pin bump: its `iw7-mod-components` `files`
-   list names 63 paths that no longer exist here, and every `Build-Voice.ps1` and
-   `Build-StandardClient.ps1` run now loads `ops/Voice-RelayOverlay.Core.ps1`.
-   Add the patch with `-VoiceRelay` and `src/native/voice_test.cpp` with
-   `-VoiceCertify`.
+   `docs/VOICE-STATUS.md` (added by server PR #414). It owns every server step
+   (deploy guards, GSC voice module, Main and Canada). For its pin bump: its
+   `iw7-mod-components` `files` list names 63 paths that no longer exist here, and
+   every `Build-Voice.ps1` and `Build-StandardClient.ps1` run now loads
+   `ops/Voice-RelayOverlay.Core.ps1`. Add the patch with `-VoiceRelay` and
+   `src/native/voice_test.cpp` with `-VoiceCertify`.
 5. Other products pin retired files at older revisions (x64-zt-extensions and
    iw7-creator-sdk list the old voice closure). At their next pin bump they drop
    those entries; a product that runs Build-Voice from prepared inputs also adds
@@ -156,6 +157,8 @@ Do none of this before the owner has tested and accepted the new relay in game
    Nothing here uses them since the old voice tests went. Changing that list needs
    a regenerated `dependencies.zip`, so they are dropped at this repository's next
    server pin bump.
+6. The owner updates the voice wording of this repository's AGENTS.md (line 10,
+   "voice protocol"); agents do not edit it.
 
 ## Lab flags that remain
 

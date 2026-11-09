@@ -171,13 +171,13 @@ Use `ops/Isolated-Lab.ps1` for the test dedicated. New sessions use the base gam
 client under [INSTANCE-WORKFLOW.md](INSTANCE-WORKFLOW.md); separate clients
 require a documented necessity or risk. Historical base-instance
 entry points now refuse new launches before reading machine settings or changing
-files: Voice-BaseTest Prepare/StartServer/StartClient/TrimMemory,
-Module-ClientProbe Start, Rhino-ClientProbe agent Start/Spawn and every
+files: Module-ClientProbe Start, Rhino-ClientProbe agent Start/Spawn and every
 Rhino-Rounds Deploy action. Their diagnostic/owned Stop/Restore paths remain;
 Rhino-Test Deploy was already parked. The explicit stock OwnerPreview and normal
 Server.ps1 operations retain their existing owner/session guards. Neither is an
 agent shortcut around resource admission. No existing process is stopped by this
-retirement. Eleven real command-entry refusal cases run in CI.
+retirement. Seven real command-entry refusal cases run in the server's CI; its
+voice cleanup (server PR #414) removed Voice-BaseTest and its four cases.
 
 The Voice-BaseTest GenericRelay switch, the isolated VoiceNative profile and its
 VoiceMode Relay/Player/Native variants belong to the retired voice relay (see
