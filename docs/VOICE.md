@@ -1,77 +1,257 @@
-# Native Zombies voice
+# Voice chat
 
-## Current two-player beta preparation - 2026-10-04
+## Status - 2026-11-09
 
-The current bounded local candidate is generic protocol 2. Create its private
-player package with `ops/Package-Voice.ps1 -GenericRelay`; the package declares the
-selected protocol and binds its launcher hash. Follow [VOICE-PLAYER.md](VOICE-PLAYER.md).
-The test uses server-mediated UDP on the existing game socket. Local synthetic
-evidence is separate from real microphone/LAN/WAN acceptance and the official
-contribution gate.
+- The old private Paris voice relay is retired from this repository (v1
+  `paris_voice.cpp`, the v2 `voice_relay.cpp` family, the fake capture, the PCM
+  witness, the push-to-talk input bridge, the voice-agent bench and the player
+  kit tools). It never carried speech between real players.
+- Its replacement is an upstream-shaped component: the local commit
+  `fbf17531a4be72a31f1637dba38091c74f49cde0` on branch `feature/voice-chat`,
+  based on auroramod `develop` `85ada7c61e2b8722e9d3a704db490b909bb23ccb`. It is
+  not pushed anywhere. Its durable copy here is
+  `ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch`.
+- The new relay builds (Release and Debug, upstream tree). It has **not been
+  tested in game**. The owner has not accepted it.
+- Main (UDP 27016) and Canada still run native image `0577712C`, which contains
+  the old relay. Nothing in this change deploys anything. Their deployment
+  pipeline in the server repository is unchanged and still pins this repository
+  at `447c1ad`.
+- Server issue #4 (voice) stays open.
 
-`ops/Server.ps1 -Action DeployVoice -GenericRelay -KeepCurrentScripts` activates
-the checked native build after thirty seconds of valid zero-client UDP. It backs
-up custom/ordinary launchers, the earlier executable and bank data, preserves the
-currently deployed GSC/configuration and writes a separate generic server launcher.
-It never stops the owner's client. Subsequent `-Action Start -Binary Voice` uses
-the selected protocol in the local activation manifest. `-Action RollbackVoice`
-returns to the original server after the same occupancy gate. Keep raw process
-records, logs and private hashes outside Git.
+## Why the old relay never worked
 
-No agent protection or synthetic capture flag belongs in this player profile.
-The known historical heap incident and the full [release matrix](VOICE-CONTRIBUTION.md)
-remain open. [The current delivery record](deployments/2026-10-04-voice-player-beta.json)
-proves normal v2 startup, preserved base files and a 126.344-second idle witness.
-The stock dedicated process required the authorized fatal-process recovery
-exception after a matching crash dump, read-only native zero-occupancy inspection
-and diagnostic/bank backups. Its null-write cause remains unknown. This incident
-did not pass the ordinary UDP gate; that gate refused before deployment changes.
-Keep the owner client running until the owner chooses to use the player launcher.
-Earlier protocol-1 descriptions below are historical research.
+IW7 sends voice peer to peer. Each listener is reached through a Demonware
+address handle, and iw7-mod has no Demonware. `CL_ShouldSendVoiceTo`
+(`0x14099E210`) therefore rejects every player at its address-reference getter
+call (`0x14099E349`), so the stock client never finds anyone to send voice to.
 
-The owner requested implementing unsupported voice, prioritizing Zombies. This authorizes native client/server work beyond the earlier GSC maintenance scope. Custom source is in `src/native/`; immutable originals and the four gameplay scripts are preserved.
+The old Paris relay worked around this with its own wire protocol, a private
+client (`iw7-paris-voice.exe`) and the launch flag `-iw7-voice-relay`:
 
-Aurora administrator m jkzy confirmed missing support on [6 January 2026](https://discord.com/channels/945420505157083208/1208634261213552750/1458029166417936476). The [June 2025 configuration discussion](https://discord.com/channels/945420505157083208/1208634295296462858/1388596410395660339) includes a user's `sv_voice` setting, which is not evidence that transport exists. Authenticated Discord searches and official source were inspected without posting messages.
+- v1 (`parisvoice`) and v2 (`iw7voice`) were incompatible, and nothing told a
+  player which one the other side spoke.
+- Every player needed the private client and a player kit with a firewall rule.
+- Multiplayer was never implemented; the code was guarded to Zombies only.
+- On Main with real players the server relayed zero frames: on 2026-10-05 both
+  local processes ran build `63888751...` with `-iw7-voice-relay`, and the second
+  participant never negotiated a voice session. The remote cause was never found.
 
-## Implementation
+## New design
 
-Voice remains unaccepted. The current forwarding investigation and corrected
-protected base-game harness are in [VOICE-NATIVE-TRACE.md](VOICE-NATIVE-TRACE.md).
-Protocol 1 below is an experimental fallback with an unresolved speaker reconnect/
-slot-generation defect; it is not established as the final architecture.
+The relay keeps the game's own capture and listener rules and only replaces the
+transport. It is one client and server component, `src/client/component/voice.cpp`,
+plus a few entries in `src/client/game/symbols.hpp` and `structs.hpp`.
 
-IW7 contains DirectSound capture/playback and Speex. Legacy sending depends on online party/session connections. Empty Steam voice methods in the mod are not sufficient to identify the cause: this engine uses its own audio chain. The experimental overlay intercepts encoded local frames and relays them through the existing game UDP socket.
+- The client hooks the voice flush (`0x14037D5C0`). It computes the listeners with
+  the native rules: `CL_ShouldSendVoiceTo` with the loopback test (call
+  `0x14099E2DE`) and the address-reference getter (call `0x14099E349`) answered
+  by the relay, the scoreboard mute (`CL_IsPlayerMuted`) and `Voice_ShareChannel`.
+- It sends the frames to the server as an out-of-band `voice` packet. The server
+  forwards them to those listeners as `voiceData`. The client receive call
+  (`0x1409B0714`) is hooked so the frames reach the native decoder.
+- The server dvar `sv_voice` (default 1) turns relaying on or off. Native
+  `+talk`/`-talk`, `cl_voice`, `cl_pushToTalk` and `winvoice_mic_threshold` work as
+  in the stock game.
+- No launch flag and no protocol negotiation. Both the client and the server need
+  the component. It is not limited to Zombies; Multiplayer follows the native
+  recipient rules. Neither mode has been tested in game.
 
-- Protocol 1 negotiates a random challenge and server-issued endpoint capability. Only active Zombies clients may negotiate/send/receive. The server derives each speaker from the exact connected endpoint and validates its claimed slot.
-- Frames send promptly. Limits: 1200 bytes/datagram, ten frames, 254 bytes/frame, bounded inbox, replay protection and frame/byte rate limits. Engine calls run on server/main pipelines.
-- Native PTT, mic settings, threshold, `cl_voice`, scoreboard mute lookup and privacy checks are retained. Their complete gameplay behavior still requires owner acceptance.
-- Endpoint/identity changes, disconnects and timeouts invalidate capabilities. Every speaking/listening participant needs the custom build. Stock clients retain gameplay but do not speak this protocol.
-- Scope: Zombies only. Multiplayer's team/dead/spectator routing is deferred. UDP voice is not encrypted; no confidentiality guarantee is claimed.
-- Synthetic calibration returns only to its connected sender, subject to capability, replay and rate checks. It never transmits a test tone to other players or echoes to unconnected endpoints.
-- During a connected Zombies map load, stale captured frames are discarded rather than added to the unroutable legacy party queue. A new active connection negotiates again.
+Reverse-engineering references: `ops/ghidra/voice-functions.csv` (retail
+addresses) and `ops/Invoke-VoiceAnalysis.ps1` (Ghidra decompilation of them).
+`ops/voice-certify/verify_engine_addresses.py` checks every address the relay uses
+against an unpacked retail dump without starting the game.
 
-## Build and operation
+## Building the opt-in relay and the certification images
 
-`ops/Install-Tools.ps1 -IncludeNativeVoice` installs the necessary Microsoft tools. `ops/Build-Voice.ps1` builds pinned Aurora source with our component overlay. `-TestsOnly` runs the standalone protocol checks. Provenance is in TOOLS.md. Ignored `runtime/voice-package` holds the executable and SHA-256/source manifest. Never commit game assets, reference dumps, binaries or private logs.
+The relay is opt-in until the owner accepts it. Build from prepared inputs
+(`bootstrap.ps1`), never from the editing checkout. All three switches need
+`-ServerModules` (native pin `cfca45b`).
 
-`ops/Package-Voice.ps1` creates a fresh private player ZIP, including complete pinned upstream source/submodules, the two modified component files and GPL/dependency licenses. No game assets or supplied Paris GSC scripts are bundled. `ops/Install-VoiceClient.ps1` checks the binary hash, preserves previous custom files and installs alongside the official launcher. It refuses to replace a running different build. The player launcher contains only `-noupdate -nosteam -cpMode`; no server IO or development flags. See VOICE-PLAYER.md.
+| Command | Result |
+| --- | --- |
+| `ops/Build-Voice.ps1 -ServerModules -OwnerCheats` | Main's profile. No relay, no probe. Writes `runtime/voice-package` as before; manifest `VoiceRelay=false`. |
+| `ops/Build-Voice.ps1 -ServerModules -VoiceRelay` | Adds the relay. Writes `runtime/voice-relay-images/<SHA256>/`. |
+| `ops/Build-Voice.ps1 -ServerModules -IsolatedLab -VoiceCertify` | Lab image with the certification probe and no relay: the "before" image. Writes `runtime/voice-certify-images/<SHA256>/`. |
+| `ops/Build-Voice.ps1 -ServerModules -IsolatedLab -VoiceCertify -VoiceRelay` | Lab image with the probe and the relay: the "after" image. Writes `runtime/voice-certify-images/<SHA256>/`. |
 
-`ops/Server.ps1 -Action DeployVoice` validates hashes, requires at least 30 seconds of zero-client live responses, backs up managed files/launchers and bank data, then installs `iw7-paris-voice.exe` alongside the official launcher. Custom builds use `-noupdate`; `iw7-mod.exe` stays intact. `-Action RollbackVoice` safely returns to the official server without touching bank/scripts. `-Binary Stock` or `-Binary Voice` explicitly selects a start; otherwise the local activation manifest selects it.
+An opt-in image never goes to `runtime/voice-package`, which Main, the labs and
+other tools read. Its folder holds `iw7-mod.exe`, `iw7-mod.pdb` and
+`build-manifest.json`. A certification image also gets `voice-certify-build.json`,
+the record `ops/voice-certify/Invoke-VoiceCertify.ps1` checks before a run
+(`overlays.voiceRelay` is `false` for the before image). An existing folder is
+never overwritten.
 
-No router change or extra public port: UDP 27016 remains in use. `ops/Set-VoiceFirewall.ps1` allows only this native executable's server UDP 27016. Windows created an explicit Public-profile UDP deny when the new executable started; that exact executable's UDP deny was disabled because deny overrides allow. Official launcher/TCP/router rules are preserved. Changes are recorded locally. UAC may be required.
+How the overlays work (`ops/Voice-RelayOverlay.Core.ps1`):
 
-## Diagnostics
+- The patch is pinned by SHA-256 (`C705EC49...`), together with the LF hashes of
+  the two headers before and after, and of `voice.cpp`. It applies only to native
+  pin `cfca45b11ee14641945b9a264a95638387f48a4a`.
+- It is applied in a fresh temporary repository with `core.autocrlf` off, and the
+  results must match the pinned hashes. Native checkouts made with
+  `core.autocrlf=true` hold CRLF headers; they are compared after CRLF to LF
+  normalisation.
+- A receipt in the native root (`voice-relay-overlay.local.json`,
+  `voice-certify-overlay.local.json`) records the original bytes before any
+  source changes. Every build first restores those exact bytes. A changed file is
+  preserved and the build stops.
+- Without a receipt, a build stops when `voice.cpp` or `voice_test.cpp` exists or
+  when `structs.hpp`/`symbols.hpp` differ from the pinned commit.
+- The manifest fields `VoiceRelay` and `VoiceCertify` come from the verified
+  receipts, not from the switches.
+- A rebase of `feature/voice-chat` (for example for the Aurora PR), a new relay
+  commit or a ServerModules pin bump changes every pinned constant. Regenerate the
+  patch with `git format-patch -1 <commit> --no-signature`, update
+  `Get-IW7VoiceRelayPin` and run `tests/ops/voice_relay_overlay_test.ps1
+  -ReferenceRepo <iw7-mod clone>`.
+- `ops/Build-StandardClient.ps1` has no relay switch. It refuses a `voice_test`
+  translation unit, so the lab probe never reaches the players' client.
 
-- `paris_voice_status`: readiness, captured/sent/relayed/decoded counts, actual PCM/DirectSound queued bytes, queue errors, native capture callbacks, registered-session count and rejected/muted counts. No names, credentials or audio content.
-- `paris_voice_selftest`: twenty synthetic frames through the actual engine codec; verifies output size and signal energy, without microphone/network transmission.
-- `paris_voice_network_test`: twenty synthetic frames via the server back into this client's native incoming/playback path. A brief local tone may be audible. Requires a ready Zombies connection and voice enabled.
-- `-paris-voice-diagnostics`: status every ten seconds during technical tests.
-- `-paris-voice-local-test`: development-only fixture connects to 127.0.0.1:27016 after initialization, runs one network calibration once ready, and exits its test client after 300 seconds. Never add this to normal player launchers.
-- With that local fixture only, `-paris-voice-relay-test` sends 1000 synthetic frames after a 60-second joining window. It sends to other connected voice clients. Run only in an owner-free development session.
-- `-paris-voice-capture-test` makes that relay fixture inject synthetic PCM after the device, through native gain/threshold/encoding and the real queue hook. PTT is temporarily changed only for each synchronous test call and restored. This proves the post-device chain, not intelligible live speech.
-- `-paris-voice-gate-test` checks native voice-disable, released PTT and remote mute/unmute APIs on both local clients; temporary settings/mute state are restored. Actual scoreboard UI and owner settings still need acceptance.
-- `tests/native/audio_output_probe.cpp` measures Windows WASAPI loopback RMS and matched 400..480 Hz signal energy to account for native adaptive playback frequency. It saves metrics only, with no recording.
+Certification on these images is evidence for the Paris build (`cfca45b` plus
+the Paris overlays). It is not evidence for the upstream PR head; upstream before
+and after rows need an upstream build.
 
-Calibration uses signed 16-bit PCM and the engine's actual 8192 Hz playback rate. Early float-input/8000 Hz test assumptions were corrected before recording final audio-output evidence. Dedicated servers never initialize an audio device.
+## Certification
 
-Codec tests, protocol tests, startup and network tests are distinct. None alone proves real microphone-to-other-player intelligibility, remote Internet delivery, mute UI, device routing or map transitions. The owner performs final two-player acceptance. No first-attempt guarantee is asserted.
+See [VOICE-CERTIFY.md](VOICE-CERTIFY.md). It needs the owner's permission for
+in-game tests; until then only its dry run and offline tests run.
+
+## Production swap checklist
+
+Do none of this before the owner has tested and accepted the new relay in game
+(owner rule: approval after testing, then both servers).
+
+1. Owner accepts the relay in game, with relay-enabled clients (the certification
+   images, an upstream iw7-mod release that contains it, or a deliberate
+   standard-client opt-in; `Build-StandardClient.ps1` has none today).
+2. If the relay commit changed, re-record the pin (see above) and rerun the
+   overlay test with `-ReferenceRepo`.
+3. In this repository, make the relay part of Main's build: a reviewed change so
+   that `Build-Voice.ps1 -ServerModules -OwnerCheats` includes the relay and writes
+   `runtime/voice-package` (today `-VoiceRelay` writes only
+   `runtime/voice-relay-images`). Keep Protocol=1 until the server stops
+   requiring it.
+4. In the server repository (`iw7-paris-server`), in one coordinated change:
+   - `ops/Server.ps1` `Assert-ServerModuleBuild`: the expected source list still
+     names `paris_voice.cpp` and `paris_voice_protocol.hpp` (and the `voice_relay`
+     family when present). Accept the new source list while still accepting the
+     currently activated old manifest during the transition. Allow
+     `VoiceRelay=true` only with an explicit owner-approval switch.
+   - `ops/Test-Startup.ps1`: drop the `[paris-voice] ... v1 installed` and
+     `[voice-relay] ... v2 installed` markers. When the manifest says
+     `VoiceRelay=true`, require a neutral marker such as the `sv_voice` dvar.
+   - Retire the GSC voice module (`config/modules.json` "voice",
+     `config/server_modules.cfg` `paris_mod_voice 1`,
+     `src/custom_scripts/cp/paris_modules.gsc` `paris_voice_available`) or map it
+     to `sv_voice`, then re-record the canonical budget.
+   - Retire `ops/Package-Voice.ps1`, `ops/Install-VoiceClient.ps1`,
+     `ops/Set-VoiceFirewall.ps1` and its firewall rule for `iw7-paris-voice.exe`,
+     `config/Start-IW7-Zombies-Voice.bat`, `ops/Voice-BaseTest.ps1`,
+     `ops/Voice-Pair-Lab.ps1`, `ops/Test-VoiceControls.ps1`,
+     `ops/Test-VoiceNativeSoak.ps1`, the `VoiceNative` profile and the
+     `Get-IW7LabVoiceArguments` call in `ops/Isolated-Lab.ps1`, the voice entries
+     of `ops/modding/Agent-NativePackage.Core.ps1`, `Install-Tools.ps1
+     -IncludeVoiceASR`, and their tests (`voice_package_test`,
+     `voice_client_install_test`, `server_configuration_preservation_test`).
+   - Keep the `iw7-paris-voice.exe` name until a separate coordinated rename.
+   - Bump the `iw7-mod-components` pin from `447c1ad` in `product.json` and publish
+     the regenerated `dependencies.zip` release asset.
+   - Tell players that the 2026-11-01 private player kit is retired.
+   - The owner updates the voice lines of AGENTS.md (server and components).
+5. Deploy the relay-enabled build to BOTH servers, Main (UDP 27016) and Canada,
+   with the normal guarded procedure and backups, and record both deployments.
+6. Other products pin retired files at older revisions (x64-zt-extensions and
+   iw7-creator-sdk list the old voice closure). At their next pin bump they drop
+   those entries; a product that runs Build-Voice from prepared inputs also adds
+   `ops/Voice-RelayOverlay.Core.ps1`, plus the patch and `src/native/voice_test.cpp`
+   when it uses `-VoiceRelay` or `-VoiceCertify`.
+
+## Lab flags that remain
+
+- `-paris-voice-local-test` (client, with `-paris-isolated-lab`): one loopback
+  join to the isolated lab dedicated on UDP 27116. The server's
+  `ops/Isolated-Lab.ps1` Baseline and Slasher profiles use it. It now lives in
+  `src/native/paris_test_fixture.cpp`. The old 300-second self-quit, the 27016
+  path and the voice self-tests are gone. The name is historical.
+- `-paris-voice-base-test` (dedicated): enables the fixture's protected map
+  requests (`ops/agent-capacity/Watch-Server.ps1`, the server's
+  `Test-GameplayDrop.ps1`). The name is historical.
+- `-paris-pageheap` with `-paris-isolated-lab`: when Windows PageHeap is active,
+  the anti-debug helper in `arxan.cpp` leaves the PageHeap headers alone. Without
+  it, full PageHeap stopped a build before game start (2026-10-04, `0xC0000005`).
+  The fix was never retested under PageHeap. The retired
+  `-paris-voice-native-trace` still enables it while the server's Voice-BaseTest
+  passes that flag.
+- `agent_scenario.hpp` keeps its `talk` button (native `+talk`). The lab fixture
+  rejects it today.
+
+## History of the retired implementation
+
+- 2026-01-06: an Aurora administrator confirmed that iw7-mod has no voice support.
+- 2026-10-04: player beta of the v2 relay on Main. The stock dedicated process
+  crashed during that work (a heap incident with a null write); the cause was
+  never found. A PageHeap trace profile was added for diagnosis.
+- 2026-10-05: live diagnosis on Main: zero relayed frames, the second participant
+  never negotiated. Launch ambiguities of the private player client were fixed the
+  same day.
+- 2026-10-11: protected synthetic two-client witness (Run19 A to B, Run20 B to A)
+  with fake capture and the push-to-talk bridge. The decoded PCM held all four
+  words of the test phrase in both directions. The final mixed output was not
+  accepted as intelligible. No human speech and no second PC.
+- VB-CABLE was downloaded but never installed; its render helper never ran.
+- 2026-10-12: the Multiplayer audit confirmed the relay was Zombies-only.
+- 2026-10-19: transactional uplink quotas in the v2 transport.
+- 2026-11-01: a fresh player kit was built and packaged; never live-tested.
+- Engine facts recorded on the way: IW7 uses Speex with DirectSound capture and
+  playback, and the engine reported a playback rate of 8192 Hz.
+
+## Evidence index
+
+Deployment and test records stay in the server repository (never delete them):
+
+- `docs/deployments/2026-10-04-voice-bounded-native.json`
+- `docs/deployments/2026-10-04-voice-codec-null-mode.json`
+- `docs/deployments/2026-10-04-voice-fixed-mode-controls.json`
+- `docs/deployments/2026-10-04-voice-hardened-deploy.json`
+- `docs/deployments/2026-10-04-voice-heap-diagnostic.json`
+- `docs/deployments/2026-10-04-voice-native-controls.json`
+- `docs/deployments/2026-10-04-voice-native-trace.json`
+- `docs/deployments/2026-10-04-voice-paced-playback.json`
+- `docs/deployments/2026-10-04-voice-playback-witness.json`
+- `docs/deployments/2026-10-04-voice-player-beta.json`
+- `docs/deployments/2026-10-04-voice-production-audit.json`
+- `docs/deployments/2026-10-04-voice-quality-cache-failure.json`
+- `docs/deployments/2026-10-04-voice-quick-guide.json`
+- `docs/deployments/2026-10-04-voice-registration.json`
+- `docs/deployments/2026-10-04-voice-resource-soak.json`
+- `docs/deployments/2026-10-04-voice-simple-package.json`
+- `docs/deployments/2026-10-04-voice-v2-first-pair.json`
+- `docs/deployments/2026-10-05-voice-player-startup.json`
+- `docs/deployments/2026-10-05-voice-startup-recovery.json`
+- `docs/deployments/2026-11-01-voice-player-kit.json`
+- `docs/voice-evidence.json`
+
+Retained ignored evidence of the 2026-10-11 witness, as recorded by the
+2026-10-12 inventory:
+
+- Run19 (A to B): `C:/Users/ezvalo/.codex/worktrees/voice-e2e/IW7-Paris-Server/runtime/voice-pair/20261011-054037-977-4ae1da46`
+- Run20 (B to A): `C:/Users/ezvalo/.codex/worktrees/voice-e2e/IW7-Paris-Server/runtime/voice-pair/20261011-054913-317-08054c08`
+- Witness package `iw7-paris-voice.exe` SHA-256
+  `A3A2147EDF966313A842134CC046540390BCA646829A1DD729D7799408108287`, in
+  `.../voice-e2e/IW7-Paris-Server/runtime/voice-package`.
+- Final WAV SHA-256: Run19 `D15C75C6...79E8`, Run20 `30B44131...2FD`.
+- The inventory's own record:
+  `C:/Users/ezvalo/.codex/worktrees/voice-resume-inventory/IW7-Paris-Server/runtime/voice-resume-inventory.local.json`.
+
+On 2026-11-09 none of these paths exists any more: the `voice-e2e` and
+`voice-resume-inventory` worktree folders are empty. The full identities (32
+hash links, WAV headers, tool pins) are in the retired inventory document.
+
+The retired documents are in Git history. Read them with
+`git show 5b3524b:docs/<name>`: `VOICE-AGENT-PLAN.md`, `VOICE-BASE-RUNBOOK.md`,
+`VOICE-CONTRIBUTION.md`, `VOICE-E2E-RECOVERY.md`,
+`VOICE-LIVE-DIAGNOSIS-2026-10-05.md`, `VOICE-MP-READINESS.md`,
+`VOICE-NATIVE-TRACE.md`, `VOICE-PLAYER-STARTUP.md`, `VOICE-PLAYER.md`,
+`VOICE-RELAY.md`, `VOICE-RESUME-INVENTORY.md`,
+`VOICE-SPEECH-WITNESS-2026-10-11.md`, `VOICE-TRANSPORT.md`, and the earlier
+`VOICE.md`. The retired code is at the same commit.

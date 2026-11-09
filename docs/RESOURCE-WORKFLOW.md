@@ -179,12 +179,12 @@ Server.ps1 operations retain their existing owner/session guards. Neither is an
 agent shortcut around resource admission. No existing process is stopped by this
 retirement. Eleven real command-entry refusal cases run in CI.
 
-The old Voice-BaseTest GenericRelay switch is historical v2 evidence, not a current
-launch recipe. Use isolated VoiceNative Install with VoiceMode Relay for explicit
-v2 plus private audio tracing, or Player for v2 without private capture/decode/codec
-hooks. Native retains the original investigation profile. Player refuses synthetic
-VoiceProbe; one-client readiness does not prove two-client speech. The complete
-planned scenario still needs admission before launch.
+The Voice-BaseTest GenericRelay switch, the isolated VoiceNative profile and its
+VoiceMode Relay/Player/Native variants belong to the retired voice relay (see
+[VOICE.md](VOICE.md)); this repository no longer builds or supports them. Voice
+certification uses `ops/voice-certify/Invoke-VoiceCertify.ps1`
+([VOICE-CERTIFY.md](VOICE-CERTIFY.md)): one Runtime reservation for the test
+dedicated plus two clients, admitted before launch.
 
 ## Build, extraction and analysis
 
@@ -322,7 +322,7 @@ job queue or an OS limit on arbitrary direct executable launches.
 | Protocol, parser, counters, data transformations | Unit tests and offline source/asset checks | Starting a full renderer for every edit |
 | GSC linkage, server initialization | Dedicated logs and exact hashes | Claiming player behavior from startup |
 | AI, combat, Rush, connection state | One protected low-cost client with telemetry | Removing actors required by the scenario |
-| Native voice transport/output | Reduced textures, actual audio, per-receiver loopback | Muting sound or confusing injected tones with human speech |
+| Voice relay (routing, mute, teams) | `ops/voice-certify`: known speech injected at native capture, decoded PCM per talker at the receiver; reduced textures | Muting game audio or treating injected speech as human speech |
 | Textures, shaders, animations, FX | Full-quality client, native frames and observation | Fullbright, missing mip detail, disabled FX or hidden required assets |
 | Frametime/performance acceptance | Normal intended settings, defined scenario, frame timings and soak | 720p/30fps reduced test as a claim about normal gameplay |
 

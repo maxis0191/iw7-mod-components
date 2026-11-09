@@ -45,7 +45,7 @@ output with WASAPI process loopback.
 | `tests/voice-certify/test_voicecertify.ps1` | Offline orchestrator tests and a dry run that must start nothing and write nothing |
 | `ops/voice-certify/verify_engine_addresses.py` | Static address checks (owned by the test component work) |
 
-The old voice lab tooling (`ops/voice-agent/*`, `Voice-Pair-Lab.ps1`) is not used.
+The old voice lab tooling was retired on 2026-11-09 (see [VOICE.md](VOICE.md)).
 The harness reuses only these small shared pieces: the resource scheduler, the
 base-client backup and restore transaction, `LabProcess.cs` (owned process on a
 private desktop), `Invoke-IW7OwnedStop` and `Get-ServerInfo.ps1`.
@@ -53,21 +53,37 @@ private desktop), `Invoke-IW7OwnedStop` and `Get-ServerInfo.ps1`.
 ## Prerequisites
 
 1. **Owner permission for in-game tests.** Without it, run only `-DryRun` and the offline tests.
-2. **Lab build.** Build the candidate checkout with three private overlays:
-   * the test component `voice_test.cpp`, which is inert without `-voicetest <dir>`;
+2. **Lab images.** Build both from prepared inputs (`bootstrap.ps1`) under the
+   shared scheduler:
+   ```powershell
+   ops\Build-Voice.ps1 -ServerModules -IsolatedLab -VoiceCertify              # base image (no relay)
+   ops\Build-Voice.ps1 -ServerModules -IsolatedLab -VoiceCertify -VoiceRelay  # relay image
+   ```
+   Each build writes `runtime\voice-certify-images\<SHA256>\` with `iw7-mod.exe`,
+   `iw7-mod.pdb`, `build-manifest.json` and `voice-certify-build.json`. Pass that
+   `iw7-mod.exe` as `-LabImage`; the orchestrator reads the record beside it. The
+   images carry three private overlays:
+   * the test component `voice_test.cpp` (added through its own receipt), which is
+     inert without `-voicetest <dir>`;
    * the isolated AppData overlay. `paris_lab_properties.cpp` moves AppData to
      `<cwd>\iw7-mod\lab-appdata` under `-paris-isolated-lab`, and the key-entropy line
      from `Build-Voice.ps1` gives each root its own identity;
    * the test privacy overlay (`Apply-TestPrivacyOverlay.ps1`). It suppresses the
      master heartbeat under `-paris-server-test` and `-paris-isolated-lab`.
 
-   Next to the image, write `voice-certify-build.json`:
+   The record looks like this (`overlays.voiceRelay` is `false` for the base image):
    ```json
-   { "schema": "iw7.voice-certify-build/1", "sha256": "<image SHA-256>",
-     "overlays": { "voiceTest": true, "voiceRelay": true, "isolatedAppData": true, "testPrivacy": true } }
+   { "schema": "iw7.voice-certify-build/1", "sha256": "<image SHA-256>", "image": "iw7-mod.exe",
+     "overlays": { "voiceTest": true, "voiceRelay": true, "isolatedAppData": true, "testPrivacy": true },
+     "upstream": "<native pin>", "relay": { "upstreamCommit": "...", "patchSHA256": "...", "files": [] },
+     "voiceTestSHA256": "...", "projectCommit": "...", "projectDirty": false, "builtUtc": "..." }
    ```
-   The orchestrator refuses an image whose hash or overlays differ. The base image
-   for the `-Baseline` run is the same build with `"voiceRelay": false`.
+   The orchestrator refuses an image whose hash or overlays differ. Use the base
+   image with `-Baseline`.
+
+   These images are the Paris fork (`cfca45b` plus the Paris overlays). Their
+   results are evidence for the Paris build, not for the upstream PR head; upstream
+   before and after rows need an upstream build.
 3. **Test dedicated.** A retained, marked, stopped test root, for example
    `%USERPROFILE%\Documents\IW7-Runtime\private-test-server`. It must have
    `iw7-mod\paris-isolated-lab.marker`, game files, and `cp_zmb.ff`, `cp_rave.ff` and
@@ -97,7 +113,7 @@ private desktop), `Invoke-IW7OwnedStop` and `Get-ServerInfo.ps1`.
 pwsh -NoProfile -File ops\voice-certify\Invoke-VoiceCertify.ps1 -DryRun `
   -ServerRoot $env:USERPROFILE\Documents\IW7-Runtime\private-test-server `
   -ClientARoot $env:USERPROFILE\Desktop\iw_game_files `
-  -LabImage <dir>\iw7-mod.exe -CandidateSource ..\iw7-mod-voice -IncludeEndOfGame
+  -LabImage runtime\voice-certify-images\<SHA256>\iw7-mod.exe -IncludeEndOfGame
 
 # 2. Only with the owner's permission: the same command without -DryRun.
 ```
@@ -285,7 +301,9 @@ never reaches the pipeline.
 
 ## Test component
 
-`src/native/voice_test.cpp` is copied next to `voice.cpp` in lab builds only. Without
+`Build-Voice.ps1 -VoiceCertify` copies `src/native/voice_test.cpp` into `src/client/component`,
+through a receipt that every later build removes by exact hash. Ordinary builds
+never contain it, and the standard client build refuses it. Without
 `-voicetest <absolute dir>` it does nothing. On start it compares every engine
 address it uses with the retail bytes in its table (`check_voice_test_bytes.py`
 re-checks the table against the dump offline); on any mismatch it logs `error` and
@@ -337,9 +355,10 @@ reaches the expected mode, or switch to `cpMode` through `commands.txt`.
 ## Known limits
 
 * The GSC fixtures give script-level protection: the player damage callback is
-  replaced and zombies are paused. This is not the native engine godmode witness of
-  the older Paris labs, because the upstream lab build has no `paris_test_protect`
-  builtin.
+  replaced and zombies are paused. The Build-Voice lab images also contain the
+  Paris fixture's `paris_test_protect` (native engine godmode), but it works only in
+  Zombies (its private fixture check requires CP) and the harness fixtures do not
+  call it yet.
 * MP team control simulates nothing on the client. It calls the retail
   `scripts\mp\menus::setteam` on the server, which kills the player and lets the
   retail respawn path run. This is valid only with `scr_skipclasschoice 1`.

@@ -695,6 +695,13 @@ for one serialized CDB/ETW operation within its preplanned diagnostic budget;
 Ghidra requires its separate heavy slot. WPR needs elevation; the current desktop
 session cannot silently provide it.
 
+PageHeap (2026-11-09): every Build-Voice image carries an `arxan.cpp` overlay that
+leaves Windows PageHeap headers alone when the process has `-paris-pageheap` and
+`-paris-isolated-lab` and PageHeap is really active. Without it, full PageHeap
+stopped a build before game start (2026-10-04, `0xC0000005`). It has not been
+retested under PageHeap. The retired `-paris-voice-native-trace` flag still
+enables it while the server's Voice-BaseTest passes it. See docs/VOICE.md.
+
 ## Evidence and optimization discipline
 
 Use exact hashes, source commit, process creation, fresh phases and a defined
