@@ -699,8 +699,8 @@ PageHeap (2026-11-09): every Build-Voice image carries an `arxan.cpp` overlay th
 leaves Windows PageHeap headers alone when the process has `-paris-pageheap` and
 `-paris-isolated-lab` and PageHeap is really active. Without it, full PageHeap
 stopped a build before game start (2026-10-04, `0xC0000005`). It has not been
-retested under PageHeap. The retired `-paris-voice-native-trace` flag still
-enables it while the server's Voice-BaseTest passes it. See docs/VOICE.md.
+retested under PageHeap. The retired `-paris-voice-native-trace` flag no longer
+enables it. See docs/VOICE.md.
 
 ## Evidence and optimization discipline
 

@@ -295,9 +295,10 @@ if ($currentBots -ne $baseBots -and $currentBots -ne $legacyTestBots -and $curre
 # The pinned anti-debug helper writes legacy heap-header offsets. PageHeap uses
 # a different layout; preserve its verifier state only when a lab process asks
 # for it with -paris-pageheap -paris-isolated-lab and PageHeap is really active.
-# -paris-voice-native-trace is the retired voice trace flag; the server's
-# Voice-BaseTest still passes it, so it stays accepted until that script goes.
-# Ordinary launches keep the pinned upstream behavior.
+# Only that flag pair enables it. Ordinary launches keep the pinned upstream
+# behavior. The retired -paris-voice-native-trace condition no longer enables
+# it; its two older forms below are only recognised as the current state of a
+# reused checkout, then replaced.
 $arxanPath = Join-Path $root 'src/client/component/arxan/arxan.cpp'
 $baseArxan = (((git -C $root show ($commit + ':src/client/component/arxan/arxan.cpp')) -join "`n").TrimEnd()) + "`n"
 $heapMarker = "void hide_being_debugged()`n`t`t{`n`t`t`tauto* const peb = PPEB(__readgsqword(0x60));"
@@ -306,12 +307,16 @@ $flagsArxan = $baseArxan.Replace('#include <utils/string.hpp>', "#include <utils
 $legacyTestArxan = $flagsArxan.Replace($heapMarker,
     $heapMarker + "`n`t`t`t// Keep Windows PageHeap headers and flags intact during the private trace.`n`t`t`t" +
     'if (utils::flags::has_flag("paris-voice-native-trace") && (*reinterpret_cast<PDWORD>(LPSTR(peb) + 0xBC) & 0x02000000)) return;')
-$testArxan = $flagsArxan.Replace($heapMarker,
+$aliasTestArxan = $flagsArxan.Replace($heapMarker,
     $heapMarker + "`n`t`t`t// Keep Windows PageHeap headers and flags intact for a private PageHeap diagnostic.`n`t`t`t" +
     'if (((utils::flags::has_flag("paris-pageheap") && utils::flags::has_flag("paris-isolated-lab")) || utils::flags::has_flag("paris-voice-native-trace")) &&' + "`n`t`t`t`t" +
     '(*reinterpret_cast<PDWORD>(LPSTR(peb) + 0xBC) & 0x02000000)) return;')
+$testArxan = $flagsArxan.Replace($heapMarker,
+    $heapMarker + "`n`t`t`t// Keep Windows PageHeap headers and flags intact for a private PageHeap diagnostic.`n`t`t`t" +
+    'if (utils::flags::has_flag("paris-pageheap") && utils::flags::has_flag("paris-isolated-lab") &&' + "`n`t`t`t`t" +
+    '(*reinterpret_cast<PDWORD>(LPSTR(peb) + 0xBC) & 0x02000000)) return;')
 $currentArxan = [IO.File]::ReadAllText($arxanPath).Replace("`r`n", "`n").TrimEnd() + "`n"
-if ($currentArxan -cne $baseArxan -and $currentArxan -cne $testArxan -and $currentArxan -cne $legacyTestArxan) { throw 'Unowned anti-debug helper edits; preserve them.' }
+if ($currentArxan -cne $baseArxan -and $currentArxan -cne $testArxan -and $currentArxan -cne $legacyTestArxan -and $currentArxan -cne $aliasTestArxan) { throw 'Unowned anti-debug helper edits; preserve them.' }
 [IO.File]::WriteAllText($arxanPath,$testArxan,[Text.UTF8Encoding]::new($false))
 $rhinoOverlay = Join-Path $root 'src/client/component/paris_rhino.cpp'
 $rhinoScriptInclude = Join-Path $root 'src/client/component/paris_rhino_scripts.inc'

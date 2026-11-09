@@ -179,9 +179,8 @@ Do none of this before the owner has tested and accepted the new relay in game
 - `-paris-pageheap` with `-paris-isolated-lab`: when Windows PageHeap is active,
   the anti-debug helper in `arxan.cpp` leaves the PageHeap headers alone. Without
   it, full PageHeap stopped a build before game start (2026-10-04, `0xC0000005`).
-  The fix was never retested under PageHeap. The retired
-  `-paris-voice-native-trace` still enables it while the server's Voice-BaseTest
-  passes that flag.
+  The fix was never retested under PageHeap. Only this flag pair enables it; the
+  retired `-paris-voice-native-trace` no longer does.
 - `agent_scenario.hpp` keeps its `talk` button (native `+talk`). The lab fixture
   rejects it today.
 
