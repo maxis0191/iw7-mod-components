@@ -4,8 +4,9 @@
 
 - The old private Paris voice relay is retired from this repository (v1
   `paris_voice.cpp`, the v2 `voice_relay.cpp` family, the fake capture, the PCM
-  witness, the push-to-talk input bridge, the voice-agent bench and the player
-  kit tools). It never carried speech between real players.
+  witness, the push-to-talk input bridge, the voice-agent bench and the 36f7afe
+  player-client build profile). The player kit tools in the server repository
+  stay until the swap. It never carried speech between real players.
 - Its replacement is an upstream-shaped component: the local commit
   `fbf17531a4be72a31f1637dba38091c74f49cde0` on branch `feature/voice-chat`,
   based on auroramod `develop` `85ada7c61e2b8722e9d3a704db490b909bb23ccb`. It is
@@ -27,7 +28,9 @@ address handle, and iw7-mod has no Demonware. `CL_ShouldSendVoiceTo`
 call (`0x14099E349`), so the stock client never finds anyone to send voice to.
 
 The old Paris relay worked around this with its own wire protocol, a private
-client (`iw7-paris-voice.exe`) and the launch flag `-iw7-voice-relay`:
+client (`iw7-paris-voice.exe`), and for v2 the launch flag `-iw7-voice-relay`
+(v1 ran without it, and did not start when it was set unless the native trace
+was on):
 
 - v1 (`parisvoice`) and v2 (`iw7voice`) were incompatible, and nothing told a
   player which one the other side spoke.
@@ -284,12 +287,15 @@ Retained ignored evidence of the 2026-10-11 witness, as recorded by the
 - Witness package `iw7-paris-voice.exe` SHA-256
   `A3A2147EDF966313A842134CC046540390BCA646829A1DD729D7799408108287`, in
   `.../voice-e2e/IW7-Paris-Server/runtime/voice-package`.
-- Final WAV SHA-256: Run19 `D15C75C6...79E8`, Run20 `30B44131...2FD`.
+- Final WAV SHA-256: Run19
+  `D15C75C691A63AEA9116EDD2433B23A7371E7CC70856441DC785975A128679E8`, Run20
+  `30B44131FE93F06364FFBC188539AA54254DF42D95D5052458A77D85D5BAC2FD`.
 - The inventory's own record:
   `C:/Users/ezvalo/.codex/worktrees/voice-resume-inventory/IW7-Paris-Server/runtime/voice-resume-inventory.local.json`.
 
 On 2026-11-09 none of these paths exists any more: the `voice-e2e` and
-`voice-resume-inventory` worktree folders are empty. The full identities (32
+`voice-resume-inventory` worktree folders hold only an empty
+`.codex-worktree-name` marker. The full identities (32
 hash links, WAV headers, tool pins) are in the retired inventory document.
 
 The retired documents are in Git history. Read them with
