@@ -770,6 +770,17 @@
         "-File",
         "tests/voice-certify/test_voicecertify.ps1"
       ]
+    },
+    {
+      "id": "voice_relay_overlay_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/voice_relay_overlay_test.ps1"
+      ]
     }
   ],
   "retained_checks": [

@@ -380,7 +380,10 @@
     "ops/voice-certify/fixtures/voicecert_mp.gsc",
     "tests/voice-certify/test_analyze_voice.py",
     "tests/voice-certify/test_voicecertify.ps1",
-    "docs/VOICE-CERTIFY.md"
+    "docs/VOICE-CERTIFY.md",
+    "ops/Voice-RelayOverlay.Core.ps1",
+    "ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch",
+    "tests/ops/voice_relay_overlay_test.ps1"
   ],
   "dependencies": [
     {
@@ -464,6 +467,6 @@
   "upstream": {
     "repository": "maxis0191/iw7-mod",
     "revision": "cfca45b11ee14641945b9a264a95638387f48a4a",
-    "usage": "ServerModules retains Aurora develop 37abcb260408ce7cdef0dde831bbfcad594510e3 and Paris generic fixes, with the shared voice-client map-transition correction; historical experiment and legacy pins remain explicit."
+    "usage": "ServerModules retains Aurora develop 37abcb260408ce7cdef0dde831bbfcad594510e3 and Paris generic fixes, including the generic five-byte loading-new-map continuation fix; historical experiment and legacy pins remain explicit. The opt-in upstream-shaped voice relay (local feature/voice-chat commit fbf17531a4be72a31f1637dba38091c74f49cde0 on auroramod develop 85ada7c61e2b8722e9d3a704db490b909bb23ccb) is applied only by Build-Voice -VoiceRelay; ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch is its durable copy."
   }
 }

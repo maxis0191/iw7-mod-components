@@ -1,4 +1,4 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$VoiceTrace, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
@@ -27,6 +27,8 @@ function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
 }
 if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requires ServerModules and IsolatedLab.' }
 if ($Capacity64 -and !$ServerModules) { throw 'Capacity64 requires the current ServerModules profile.' }
+if ($VoiceRelay -and !$ServerModules) { throw 'VoiceRelay requires ServerModules (native pin cfca45b).' }
+if ($VoiceCertify -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceCertify requires ServerModules and IsolatedLab.' }
 if ($VoiceTrace -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceTrace requires ServerModules and IsolatedLab.' }
 if ($CollisionProvider -and (!$ServerModules -or !$IsolatedLab)) { throw 'CollisionProvider requires ServerModules and IsolatedLab.' }
 if ($WordProvenance -and (!$ServerModules -or !$IsolatedLab -or !$Debugger)) { throw 'WordProvenance requires ServerModules, IsolatedLab and Debugger.' }
@@ -37,6 +39,7 @@ $repo = Split-Path $PSScriptRoot -Parent
 $root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
 if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current ServerModules native profile.' }
 . "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
+. "$PSScriptRoot/Voice-RelayOverlay.Core.ps1"
 . "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
 . "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
@@ -44,6 +47,9 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 # native sources. TestsOnly uses the same admission and final release path.
 Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
+# The opt-in voice overlays are added last, so they are removed first.
+Remove-IW7VoiceCertifyOverlay $root
+Remove-IW7VoiceRelayOverlay $root
 Remove-IW7CapacityPeerOverlay $root
 Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
@@ -63,6 +69,8 @@ $null = Resolve-IW7VoiceBuildNativeRoot $root
 if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
 git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
+# Without receipts, no relay or probe source may remain from a manual overlay.
+Assert-IW7VoiceOverlayAbsent -NativeRoot $root -Commit $commit
 }
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (!(Test-Path -LiteralPath $vswhere)) { throw 'Install Microsoft VS 2022 Build Tools with VCTools and ATL; see docs/TOOLS.md.' }
@@ -532,6 +540,10 @@ if ($OwnerCheats) {
     $nativeSources += @('owner_cheats.cpp','owner_cheats.hpp','owner_cheats_policy.hpp','owner_cheats_crypto.hpp')
 }
 if($capacityWatchBuild.Compiled){$capacityPeerOverlay=Add-IW7CapacityPeerOverlay $root}
+# Opt-in only: the upstream-shaped relay (pinned patch) and the lab-only
+# certification probe. Each owns its files through a receipt.
+if ($VoiceRelay) { $null = Add-IW7VoiceRelayOverlay -NativeRoot $root -SourceRoot $repo -Commit $commit }
+if ($VoiceCertify) { $null = Add-IW7VoiceCertifyOverlay -NativeRoot $root -SourceRoot $repo }
 Push-Location $root
 try {
     & ./tools/premake5.exe vs2022
@@ -539,12 +551,26 @@ try {
     & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
     if ($LASTEXITCODE) { throw 'Voice build failed.' }
 } finally { Pop-Location }
-$output = Join-Path $runtime 'voice-package'
-New-Item -ItemType Directory -Path $output -Force | Out-Null
-Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.exe" -Destination "$output/iw7-paris-voice.exe"
+$voiceState = Get-IW7VoiceOverlayState $root
+if ($voiceState.VoiceRelay -ne [bool]$VoiceRelay -or $voiceState.VoiceCertify -ne [bool]$VoiceCertify) { throw 'Voice overlay receipts differ from the requested build.' }
+$voiceOptIn = [bool]($voiceState.VoiceRelay -or $voiceState.VoiceCertify)
+$builtExe = "$root/build/bin/x64/Release/iw7-mod.exe"
+$optInImage = $null
+if ($voiceOptIn) {
+    # Opt-in images never replace runtime/voice-package, which Main and lab tools read.
+    $optInImage = Publish-IW7VoiceOptInImage -Runtime $runtime -Executable $builtExe -Symbols "$root/build/bin/x64/Release/iw7-mod.pdb" -Certify:$voiceState.VoiceCertify
+    $output = $optInImage.Folder
+    $packagedExe = $optInImage.Image
+} else {
+    $output = Join-Path $runtime 'voice-package'
+    New-Item -ItemType Directory -Path $output -Force | Out-Null
+    Copy-Item -LiteralPath $builtExe -Destination "$output/iw7-paris-voice.exe"
+    $packagedExe = "$output/iw7-paris-voice.exe"
+}
 $manifestSources = @($nativeSources)
 if ($IsolatedLab) { $manifestSources += 'paris_lab_properties.cpp' }
-$manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash "$output/iw7-paris-voice.exe").Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
+if ($voiceState.VoiceCertify) { $manifestSources += 'voice_test.cpp' }
+$manifest = [ordered]@{ Upstream=$commit; Protocol=1; SHA256=(Get-FileHash $packagedExe).Hash; BuiltUtc=[datetime]::UtcNow.ToString('o'); GameplayAcceptance='Pending owner testing'; SourceHashes=@($manifestSources | ForEach-Object { @{File=$_;SHA256=(Get-FileHash -LiteralPath (Join-Path $repo ('src/native/' + $_))).Hash} }) }
 $sourceIdentity = & (Join-Path $repo 'ops/Get-SourceIdentity.ps1') -Root $repo
 $manifest.OfficialUpstream = if ($ServerModules) { '37abcb260408ce7cdef0dde831bbfcad594510e3' } else { $null }
 $manifest.VoiceRelayProtocol = 2
@@ -559,11 +585,16 @@ $manifest.DownloadCacheOverlay = $downloadCacheOverlay
 $manifest.ProjectDirty = $sourceIdentity.Dirty
 # Retain matching symbols before the next rebuild replaces them. These local
 # files enable reliable crash stacks and must never be added to Git.
-$symbols = Join-Path $runtime ('voice-symbols/' + $manifest.SHA256)
-New-Item -ItemType Directory -Path $symbols -Force | Out-Null
-Copy-Item -LiteralPath "$output/iw7-paris-voice.exe" -Destination (Join-Path $symbols 'iw7-paris-native-trace.exe') -Force
-Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.pdb" -Destination (Join-Path $symbols 'iw7-mod.pdb') -Force
-$manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
+# Opt-in images keep their symbols in their own image folder.
+$symbols = $null
+if ($voiceOptIn) { $manifest.SymbolsSHA256 = $optInImage.SymbolsSHA256 }
+else {
+    $symbols = Join-Path $runtime ('voice-symbols/' + $manifest.SHA256)
+    New-Item -ItemType Directory -Path $symbols -Force | Out-Null
+    Copy-Item -LiteralPath $packagedExe -Destination (Join-Path $symbols 'iw7-paris-native-trace.exe') -Force
+    Copy-Item -LiteralPath "$root/build/bin/x64/Release/iw7-mod.pdb" -Destination (Join-Path $symbols 'iw7-mod.pdb') -Force
+    $manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
+}
 $manifest.Debugger = [bool]$Debugger
 $manifest.CollisionProvider = [bool]$CollisionProvider
 $manifest.FakeCaptureBuild=$fakeCaptureBuild
@@ -587,7 +618,7 @@ $manifest.WordProvenanceLifecycle=$wordProvenanceLifecycle
 $manifest.WordProvenanceBuildHelperSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Provenance-BuildCopy.Core.ps1").Hash
 $manifest.WordProvenanceLifecycleHelperSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Apply-ProvenanceLifecycleOverlay.ps1").Hash
 $manifest.WordProvenanceLifecycleCoreSHA256=(Get-FileHash -LiteralPath "$PSScriptRoot/agent-capacity/Provenance-LifecycleOverlay.Core.ps1").Hash
-if ((Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')).Hash -ne $manifest.SHA256) { throw 'Archived diagnostic executable mismatch.' }
+if ($symbols -and (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-paris-native-trace.exe')).Hash -ne $manifest.SHA256) { throw 'Archived diagnostic executable mismatch.' }
 $manifest.ServerModules = [bool]$ServerModules
 $manifest.OwnerCheatsEnabled = [bool]$OwnerCheats
 $manifest.OwnerCheatsOverlay = $ownerCheatsOverlay
@@ -612,6 +643,11 @@ $manifest.TestPrivacyOverlaySHA256 = $testPrivacyOverlay.SHA256
 $manifest.TestHeartbeatSuppressed = $testPrivacyOverlay.TestHeartbeatSuppressed
 $manifest.IncidentRecorder = 'Explicit dedicated paris-incident-log flag; no packet retries or protocol changes'
 $manifest.IsolatedLab = [bool]$IsolatedLab
+$manifest.VoiceRelay = $voiceState.VoiceRelay
+$manifest.VoiceRelayOverlay = $voiceState.VoiceRelayOverlay
+$manifest.VoiceCertify = $voiceState.VoiceCertify
+$manifest.VoiceCertifyOverlay = $voiceState.VoiceCertifyOverlay
+$manifest.VoiceOverlayHelperSHA256 = (Get-FileHash -LiteralPath "$PSScriptRoot/Voice-RelayOverlay.Core.ps1").Hash
 $manifest.VoiceCaptureSelectorBuild = [bool]$IsolatedLab
 $manifest.VoiceCopiedSourceSHA256 = (Get-FileHash -LiteralPath $copiedVoice).Hash
 $manifest.VoiceSourceTransformation = if ($IsolatedLab) { 'insert IW7_PARIS_ISOLATED_VOICE_CAPTURE=1 immediately after exact leading PCH include; explicit startup admission still required' } else { 'none; selector code excluded' }
@@ -635,7 +671,12 @@ if ($EnemyExperiment) {
     $manifest.EnemyAddonScriptSHA256 = (Get-FileHash -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_enemy_ports.gsc").Hash
     $manifest.EnemyAddonNativeSHA256 = (Get-FileHash -LiteralPath "$repo/src/custom_scripts/cp/experiments/paris_rhino.cpp").Hash
 }
-$manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$output/build-manifest.json" -Encoding UTF8
-Copy-Item -LiteralPath "$output/build-manifest.json" -Destination (Join-Path $symbols 'build-manifest.json') -Force
+$manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$output/build-manifest.json" -Encoding UTF8
+if ($symbols) { Copy-Item -LiteralPath "$output/build-manifest.json" -Destination (Join-Path $symbols 'build-manifest.json') -Force }
+if ($voiceState.VoiceCertify) {
+    # The record ops/voice-certify/Invoke-VoiceCertify.ps1 checks before a run.
+    $certifyRecord = New-IW7VoiceCertifyBuildRecord -Image $packagedExe -State $voiceState -IsolatedAppData ([bool]$IsolatedLab) -TestPrivacy ([bool]$testPrivacyOverlay.TestHeartbeatSuppressed) -Upstream $commit -ProjectCommit $sourceIdentity.Commit -ProjectDirty $sourceIdentity.Dirty
+    $certifyRecord | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$output/voice-certify-build.json" -Encoding UTF8
+}
 Write-Output "Prepared private client/server build: $output"
 }

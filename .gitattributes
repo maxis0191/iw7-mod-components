@@ -7,3 +7,5 @@
 originals/*.gsc -text
 # Exact pinned Aurora input.cpp fixture; its upstream trailing tabs are hashed.
 ops/voice-agent/PTT-InputBase.inc whitespace=-blank-at-eol
+# Exact upstream patch bytes (hash-pinned); its context lines keep upstream whitespace.
+ops/voice-relay/*.patch -text -whitespace
