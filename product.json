@@ -368,7 +368,19 @@
     "docs/FRAME-EVIDENCE.md",
     "docs/RUNTIME-PROBE-DESIGN.md",
     "ops/iw7_frame_evidence.py",
-    "tests/ops/iw7_frame_evidence_test.py"
+    "tests/ops/iw7_frame_evidence_test.py",
+    "src/native/voice_test.cpp",
+    "ops/voice-certify/Invoke-VoiceCertify.ps1",
+    "ops/voice-certify/VoiceCertify.Core.ps1",
+    "ops/voice-certify/analyze_voice.py",
+    "ops/voice-certify/check_voice_test_bytes.py",
+    "ops/voice-certify/verify_engine_addresses.py",
+    "ops/voice-certify/phrases.json",
+    "ops/voice-certify/fixtures/voicecert_cp.gsc",
+    "ops/voice-certify/fixtures/voicecert_mp.gsc",
+    "tests/voice-certify/test_analyze_voice.py",
+    "tests/voice-certify/test_voicecertify.ps1",
+    "docs/VOICE-CERTIFY.md"
   ],
   "dependencies": [
     {

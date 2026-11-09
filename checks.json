@@ -759,6 +759,17 @@
         "--java",
         "java"
       ]
+    },
+    {
+      "id": "voicecertify_offline_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/voice-certify/test_voicecertify.ps1"
+      ]
     }
   ],
   "retained_checks": [
@@ -773,6 +784,38 @@
         "tests/ops/voice_pair_recorder_test.ps1"
       ],
       "reason": "Requires an explicitly qualified native WorkerPath; not part of the previous source-only CI and not run by this refactoring."
+    },
+    {
+      "id": "voicecertify_analyzer_test",
+      "command": [
+        "python",
+        "-I",
+        "tests/voice-certify/test_analyze_voice.py",
+        "-v"
+      ],
+      "reason": "Needs numpy and an installed en-US SAPI voice; faster-whisper is optional. These are not installed on the source CI runner. Run locally."
+    },
+    {
+      "id": "voice_test_bytes",
+      "command": [
+        "python",
+        "-I",
+        "ops/voice-certify/check_voice_test_bytes.py",
+        "src/native/voice_test.cpp",
+        "<unpacked retail dump dir>"
+      ],
+      "reason": "Needs capstone and a local unpacked retail code dump (unpacked-text.bin), which never enters Git. Run locally."
+    },
+    {
+      "id": "voice_engine_addresses",
+      "command": [
+        "python",
+        "-I",
+        "ops/voice-certify/verify_engine_addresses.py",
+        "<iw7-mod checkout with the voice relay>",
+        "<unpacked retail dump dir>"
+      ],
+      "reason": "Needs capstone, a native checkout carrying the relay and a local unpacked retail code dump (unpacked-text.bin, unpacked-pdata.bin). Run locally."
     }
   ]
 }

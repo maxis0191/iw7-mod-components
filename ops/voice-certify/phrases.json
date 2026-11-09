@@ -1,0 +1,20 @@
+{
+  "schema": "iw7.voice-certify.phrases/1",
+  "note": "Each phrase uses words no other phrase uses, so a wrong phrase can never score as the right one.",
+  "phrases": [
+    { "id": "P01", "text": "purple elephant dancing slowly" },
+    { "id": "P02", "text": "copper lantern burning brightly" },
+    { "id": "P03", "text": "silver rocket flying north" },
+    { "id": "P04", "text": "orange tiger sleeping quietly" },
+    { "id": "P05", "text": "frozen castle behind green hills" },
+    { "id": "P06", "text": "wooden bridge across wide canyon" },
+    { "id": "P07", "text": "marble statue holding heavy sword" },
+    { "id": "P08", "text": "crystal window facing eastern garden" },
+    { "id": "P09", "text": "thunder storm over desert road" },
+    { "id": "P10", "text": "velvet curtain hiding secret door" },
+    { "id": "P11", "text": "broken compass pointing south" },
+    { "id": "P12", "text": "hungry pelican chasing yellow fish" },
+    { "id": "P13", "text": "ancient library smells like dust" },
+    { "id": "P14", "text": "rusty tractor parked near barn" }
+  ]
+}
