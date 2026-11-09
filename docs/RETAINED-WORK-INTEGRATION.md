@@ -18,6 +18,10 @@ their two changed tests appears in current source. The provider has since added
 explicit sender direction and server-handle support; keep that newer interface.
 The source-bound recorder helper and its cleanup tests already match exactly.
 Do not overwrite these implementations with their older copies.
+Retired 2026-11-09 with the old voice bench: `Recorder.Core.ps1`,
+`Providers.Core.ps1` and the voice recorder tests remain readable with
+`git show 5b3524b:<path>`. `Recorder-Probe.cs` stays because
+`ops/Resource-RecorderOwnedProcess.Core.ps1` loads it. See VOICE.md.
 
 The bounded STARTUP writer-provenance component, predicate test, profile/overlay
 helpers and source fixture are retained with their tests. They are diagnostic

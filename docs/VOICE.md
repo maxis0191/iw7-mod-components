@@ -5,8 +5,9 @@
 - The old private Paris voice relay is retired from this repository (v1
   `paris_voice.cpp`, the v2 `voice_relay.cpp` family, the fake capture, the PCM
   witness, the push-to-talk input bridge, the voice-agent bench and the 36f7afe
-  player-client build profile). The player kit tools in the server repository
-  stay until the swap. It never carried speech between real players.
+  player-client build profile). The old relay never carried speech between real
+  players. The server repository retires its own voice tooling separately; its
+  `docs/VOICE-STATUS.md` is the server-side record.
 - Its replacement is an upstream-shaped component: the local commit
   `fbf17531a4be72a31f1637dba38091c74f49cde0` on branch `feature/voice-chat`,
   based on auroramod `develop` `85ada7c61e2b8722e9d3a704db490b909bb23ccb`. It is
@@ -137,68 +138,14 @@ Do none of this before the owner has tested and accepted the new relay in game
    `runtime/voice-package` (today `-VoiceRelay` writes only
    `runtime/voice-relay-images`). Keep Protocol=1 until the server stops
    requiring it.
-4. In the server repository (`iw7-paris-server`), in one coordinated change:
-   - `ops/Server.ps1` `Assert-ServerModuleBuild`: the expected source list still
-     names `paris_voice.cpp` and `paris_voice_protocol.hpp` (and the `voice_relay`
-     family when present). Accept the new source list while still accepting the
-     currently activated old manifest during the transition. Allow
-     `VoiceRelay=true` only with an explicit owner-approval switch.
-   - Main was activated with `DeployVoice -GenericRelay` (`SelectedVoiceProtocol`
-     2): the 2026-10-27 Main deployment record of `0577712C` has
-     `-iw7-voice-relay -voice-relay-diagnostics` in its command line. Check
-     Canada's launch line the same way. `ops/Server.ps1` refuses `-GenericRelay`,
-     and protocol 2, for a manifest without `voice_relay.cpp` ("Generic voice
-     requires the checked generation transport"). Deploy the relay build without
-     `-GenericRelay`, so `SelectedVoiceProtocol` becomes 1 and those two launch
-     flags go away. Then retire `-GenericRelay` and the `SelectedVoiceProtocol`
-     branches of `ops/Server.ps1` (server `ef28a933`: lines 28, 70, 243-248,
-     325-326, 353, 433 and 448).
-   - `ops/Test-Startup.ps1`: drop the `[paris-voice] ... v1 installed` and
-     `[voice-relay] ... v2 installed` markers. When the manifest says
-     `VoiceRelay=true`, require a neutral marker such as the `sv_voice` dvar.
-   - Retire the GSC voice module (`config/modules.json` "voice",
-     `config/server_modules.cfg` `paris_mod_voice 1`,
-     `src/custom_scripts/cp/paris_modules.gsc` `paris_voice_available`) or map it
-     to `sv_voice`, then re-record the canonical budget.
-   - Retire `ops/Package-Voice.ps1`, `ops/Install-VoiceClient.ps1`,
-     `ops/Set-VoiceFirewall.ps1` and its firewall rule for `iw7-paris-voice.exe`,
-     `config/Start-IW7-Zombies-Voice.bat`, `ops/Voice-BaseTest.ps1`,
-     `ops/Voice-Pair-Lab.ps1`, `ops/Test-VoiceControls.ps1`,
-     `ops/Test-VoiceNativeSoak.ps1`, the `VoiceNative` profile and the
-     `Get-IW7LabVoiceArguments` call in `ops/Isolated-Lab.ps1`, the voice entries
-     of `ops/modding/Agent-NativePackage.Core.ps1`, `Install-Tools.ps1
-     -IncludeVoiceASR`, and their tests (`voice_package_test`,
-     `voice_client_install_test`, `server_configuration_preservation_test`).
-   - Also retire `ops/Test-VoiceServer.ps1`, `ops/Test-VoiceMalformedInput.ps1`,
-     `ops/Test-VoicePairIdle.ps1`, `tests/fixtures/voice_native.gsc`,
-     `ops/fixtures/agent_voice_pair_fixture.gsc` and
-     `docs/AGENT-VOICE-SCENARIO.md`. `ops/Package-Voice.ps1` still expects
-     `BuildProfile` `native-helper` for a build without ServerModules; Build-Voice
-     no longer produces that profile, so the check goes with the script.
-   - Drop `-paris-voice-local-test` from the retired launch paths of
-     `ops/Module-ClientProbe.ps1` (line 70 at `ef28a933`) and
-     `ops/Rhino-ClientProbe.ps1` (lines 175 and 179). Without `-paris-isolated-lab`
-     the flag does nothing now.
-   - Keep the `iw7-paris-voice.exe` name until a separate coordinated rename.
-   - In `product.json`, the `iw7-mod-components` `files` list still names 63
-     paths that do not exist after this change, for example
-     `docs/VOICE-PLAYER.md`, `docs/VOICE-RELAY.md`,
-     `ops/Measure-VoiceOutput.ps1`, `ops/voice-agent/*` (except
-     `Recorder-Probe.cs`), `src/native/paris_voice*`, `voice_relay.cpp`,
-     `voice_test_capture.cpp` and the old `src/native/voice_*.hpp` headers,
-     `tests/native/voice_*_test.cpp` and the old `tests/ops/voice_pair_*`,
-     `voice_agent_*` and `voice_fake_source` tests. Remove every path that is
-     missing at the new pin. Add `ops/Voice-RelayOverlay.Core.ps1`,
-     which `Build-Voice.ps1` and `Build-StandardClient.ps1` now load on every run.
-     Add `ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch` if the
-     server builds with `-VoiceRelay`, and `src/native/voice_test.cpp` if it builds
-     with `-VoiceCertify`. Then bump the pin from `447c1ad` and publish the
-     regenerated `dependencies.zip` release asset.
-   - Tell players that the 2026-11-01 private player kit is retired.
-   - The owner updates the voice lines of AGENTS.md (server and components).
-5. Deploy the relay-enabled build to BOTH servers, Main (UDP 27016) and Canada,
-   with the normal guarded procedure and backups, and record both deployments.
-6. Other products pin retired files at older revisions (x64-zt-extensions and
+4. In the server repository, follow the production swap checklist in its
+   `docs/VOICE-STATUS.md`. It owns every server step (deploy guards, GSC voice
+   module, Main and Canada). For its pin bump: its `iw7-mod-components` `files`
+   list names 63 paths that no longer exist here, and every `Build-Voice.ps1` and
+   `Build-StandardClient.ps1` run now loads `ops/Voice-RelayOverlay.Core.ps1`.
+   Add the patch with `-VoiceRelay` and `src/native/voice_test.cpp` with
+   `-VoiceCertify`.
+5. Other products pin retired files at older revisions (x64-zt-extensions and
    iw7-creator-sdk list the old voice closure). At their next pin bump they drop
    those entries; a product that runs Build-Voice from prepared inputs also adds
    `ops/Voice-RelayOverlay.Core.ps1`, plus the patch and `src/native/voice_test.cpp`
@@ -255,29 +202,8 @@ Do none of this before the owner has tested and accepted the new relay in game
 
 ## Evidence index
 
-Deployment and test records stay in the server repository (never delete them):
-
-- `docs/deployments/2026-10-04-voice-bounded-native.json`
-- `docs/deployments/2026-10-04-voice-codec-null-mode.json`
-- `docs/deployments/2026-10-04-voice-fixed-mode-controls.json`
-- `docs/deployments/2026-10-04-voice-hardened-deploy.json`
-- `docs/deployments/2026-10-04-voice-heap-diagnostic.json`
-- `docs/deployments/2026-10-04-voice-native-controls.json`
-- `docs/deployments/2026-10-04-voice-native-trace.json`
-- `docs/deployments/2026-10-04-voice-paced-playback.json`
-- `docs/deployments/2026-10-04-voice-playback-witness.json`
-- `docs/deployments/2026-10-04-voice-player-beta.json`
-- `docs/deployments/2026-10-04-voice-production-audit.json`
-- `docs/deployments/2026-10-04-voice-quality-cache-failure.json`
-- `docs/deployments/2026-10-04-voice-quick-guide.json`
-- `docs/deployments/2026-10-04-voice-registration.json`
-- `docs/deployments/2026-10-04-voice-resource-soak.json`
-- `docs/deployments/2026-10-04-voice-simple-package.json`
-- `docs/deployments/2026-10-04-voice-v2-first-pair.json`
-- `docs/deployments/2026-10-05-voice-player-startup.json`
-- `docs/deployments/2026-10-05-voice-startup-recovery.json`
-- `docs/deployments/2026-11-01-voice-player-kit.json`
-- `docs/voice-evidence.json`
+Deployment and test records stay in the server repository (never delete them);
+its `docs/VOICE-STATUS.md` lists them under "Evidence index".
 
 Retained ignored evidence of the 2026-10-11 witness, as recorded by the
 2026-10-12 inventory:
