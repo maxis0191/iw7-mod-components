@@ -4,6 +4,7 @@ $repo=Split-Path $PSScriptRoot -Parent
 $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw | ConvertFrom-Json).Standard
 . "$PSScriptRoot/standard-client/Loading-NewMap.Core.ps1"
 . "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
+. "$PSScriptRoot/Voice-RelayOverlay.Core.ps1"
 . "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
 . "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
 . "$PSScriptRoot/agent-capacity/Build-Copy.Core.ps1"
@@ -16,6 +17,8 @@ while($cursor){
 }
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
+    Remove-IW7VoiceCertifyOverlay $root
+    Remove-IW7VoiceRelayOverlay $root
     Remove-IW7CapacityPeerOverlay $root
     Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
@@ -71,7 +74,7 @@ Remove-IW7OwnerCheatsOverlay $root
         [xml]$generatedProject=$projectText
         $postBuildNodes=@($generatedProject.SelectNodes("//*[local-name()='PostBuildEvent']/*[local-name()='Command']")|Where-Object{![string]::IsNullOrWhiteSpace($_.InnerText)})
         if($postBuildNodes.Count){throw 'Automatic upstream copy/deployment post-build events refused before MSBuild.'}
-        if($projectText -match '(?:paris_voice|voice_relay|paris_test_fixture|player_movement)\.cpp'){throw 'Unexpected private or duplicate translation unit in regenerated client project.'}
+        if($projectText -match '(?:paris_voice|voice_relay|voice_test|paris_test_fixture|player_movement)\.cpp'){throw 'Unexpected private or duplicate translation unit in regenerated client project.'}
         & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false /p:PostBuildEventUseInBuild=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"
         if($LASTEXITCODE){throw 'Standard client native build failed.'}
     } finally {Pop-Location}

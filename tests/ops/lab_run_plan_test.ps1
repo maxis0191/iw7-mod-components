@@ -1,12 +1,6 @@
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/../../ops/Lab-RunPlan.ps1"
 . "$PSScriptRoot/../../ops/Lab-Evidence.ps1"
-foreach ($mode in @('Native','Relay','Player')) {
-    $arguments = Get-IW7LabVoiceArguments $mode
-    if (($arguments.Contains('-iw7-voice-relay')) -ne ($mode -ne 'Native') -or
-        ($arguments.Contains('-paris-voice-native-trace')) -ne ($mode -ne 'Player') -or
-        !$arguments.Contains('-paris-voice-audio-lab')) { throw 'Voice profile selection changed its audio path.' }
-}
 foreach ($expected in @(@('Full',0,4,0),@('Reduced',0,4,2),@('Full',1,16,0),@('Reduced',1,12,2),@('Full',2,28,0),@('Reduced',2,20,2))) {
     $plan = Get-IW7LabRunPlan $expected[0] $expected[1]
     if ($plan.PhysicalBytes -ne ($expected[2] * 1GB) -or $plan.CommitBytes -ne ($expected[2] * 1GB) -or
@@ -24,7 +18,7 @@ foreach ($case in @(@(0,'A',$false),@(0,'B',$false),@(1,'A',$true),@(1,'B',$fals
     if ($accepted -ne $case[2]) { throw 'Unreserved client admission differs from the complete plan.' }
 }
 $sample = '[Paris lab graphics] picmip=0; bump=0; spec=0; tick_ms=100000'
-foreach ($case in @(@('Modules','StartupOnly',0,$true),@('Modules','StartupOnly',1,$false),@('Modules','StartupOnly',2,$false),@('Modules','CrossMap',1,$true),@('VoiceNative','CrossMap',2,$true))) {
+foreach ($case in @(@('Modules','StartupOnly',0,$true),@('Modules','StartupOnly',1,$false),@('Modules','StartupOnly',2,$false),@('Modules','CrossMap',1,$true),@('Enemy','CrossMap',2,$true))) {
     $accepted = $true
     try { Assert-IW7LabFixturePlan $case[0] $case[1] $case[2] } catch { $accepted = $false }
     if ($accepted -ne $case[3]) { throw 'Startup-only witness admitted an unprotected player plan.' }

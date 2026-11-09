@@ -12,12 +12,15 @@ stays TelemetryOnly, with the shared lock, exact ownership and checked teardown.
 
 The formerly unpublished strict startup owner and suspended-tool registration
 are now canonical source. The synthetic admission suite passes 64 controls and
-the C# owner declarations compile. Existing recorder changes are already present:
-every substantive added line from the retained Recorder-Probe, Recorder.Core and
-their two changed tests appears in current source. The provider has since added
-explicit sender direction and server-handle support; keep that newer interface.
-The source-bound recorder helper and its cleanup tests already match exactly.
-Do not overwrite these implementations with their older copies.
+the C# owner declarations compile. Until 2026-11-09 the retained recorder
+changes were already present: every substantive added line from the retained
+Recorder-Probe, Recorder.Core and their two changed tests appeared in source, and
+the provider had added explicit sender direction and server-handle support.
+On 2026-11-09 the old voice bench was retired: `Recorder.Core.ps1`,
+`Providers.Core.ps1` and the voice recorder tests remain readable with
+`git show 5b3524b:<path>`. Only `Recorder-Probe.cs` stays, because
+`ops/Resource-RecorderOwnedProcess.Core.ps1` loads it; do not overwrite it with an
+older copy.
 
 The bounded STARTUP writer-provenance component, predicate test, profile/overlay
 helpers and source fixture are retained with their tests. They are diagnostic
@@ -32,6 +35,11 @@ byte-pinned copy of the owner's IW7-Mod fork main.cpp at
 the repository's existing upstream license. Profile/copy controls pass 63 cases.
 
 ## Speech fixture correction
+
+Retired 2026-11-09 with the old voice bench: `ops/voice-agent/Speech-Cache.Core.ps1`
+and `tests/ops/voice_speech_cache_test.ps1` remain readable with
+`git show 5b3524b:<path>`. See [VOICE.md](VOICE.md). The rest of this section
+describes them as they were.
 
 The earlier hosted SAPI repeatability failure is real and remains in PR2 history.
 Fixed text/token/settings did not establish byte-identical independent synthesis.

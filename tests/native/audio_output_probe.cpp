@@ -69,8 +69,8 @@ ComPtr<IAudioClient> activate_process(DWORD pid, std::uint64_t expected_creation
     CloseHandle(process);
     const auto actual = (static_cast<std::uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
     const auto delta = actual > expected_creation ? actual - expected_creation : expected_creation - actual;
-    const auto* leaf = wcsrchr(image, L'\\');
-    if (!readable || delta > 10 || !leaf || _wcsicmp(leaf + 1, L"iw7-paris-native-trace.exe"))
+    // The PID and its creation time bind the observed process, whatever its image name.
+    if (!readable || delta > 10)
         throw std::runtime_error("Owned observation process identity mismatch");
     }
 

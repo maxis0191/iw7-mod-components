@@ -1,11 +1,3 @@
-function Get-IW7LabVoiceArguments {
-    param([ValidateSet('Native','Relay','Player')][string]$Mode = 'Native')
-    $result = '-paris-voice-audio-lab '
-    if ($Mode -ne 'Player') { $result += '-paris-voice-native-trace ' }
-    if ($Mode -ne 'Native') { $result += '-iw7-voice-relay -voice-relay-diagnostics ' }
-    $result
-}
-
 function Get-IW7LabRunPlan {
     param([ValidateSet('Full','Reduced')][string]$GraphicsProfile = 'Full',
         [ValidateRange(0,2)][int]$PlannedClients = 1, [switch]$EnableAudio, [switch]$Debugger)

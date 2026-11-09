@@ -35,11 +35,7 @@ jobs:
           git diff --check HEAD^ HEAD
           if ($LASTEXITCODE) { throw 'Committed whitespace errors' }
           ./checks.ps1 -Workspace "$PWD/runtime/ci sources" -Output "$PWD/runtime/ci checks"
-      - name: Compile pure native protocol and sanitizer checks
+      - name: Compile native unit and sanitizer checks
         shell: pwsh
         run: |
           & './runtime/ci sources/ops/Build-Voice.ps1' -TestsOnly -Sanitizers
-          . './runtime/ci sources/ops/Resource-Scheduler.Core.ps1'
-          Invoke-IW7ResourceJob -Scope "$PWD/runtime/ci sources" -Owner 'Pure render helper CI' -PhysicalBytes 1GB -CommitBytes 2GB -Body {
-            & './runtime/ci sources/ops/voice-agent/Build-Render.ps1' -OutputRoot "$PWD/runtime/ci sources/runtime/render tools"
-          }

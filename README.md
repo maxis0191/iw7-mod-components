@@ -7,7 +7,7 @@ the standard console commands. Source/build/runtime qualification is separate.
 Private agent input includes a protected [secondary-offhand binding](docs/AGENT-OFFHAND.md)
 for real scanner input tests, retaining the existing identity and release gates.
 
-Private engine/client components, voice protocol, native diagnostics, scoped test hooks and shared process/resource helpers. Server gameplay rules and asset serializers have other owners.
+Private engine/client components, the opt-in upstream voice relay overlay and its certification harness ([VOICE.md](docs/VOICE.md)), native diagnostics, scoped test hooks and shared process/resource helpers. Server gameplay rules and asset serializers have other owners.
 
 This repository is private. It complements the public owner forks; it does not
 publish private project code into them. See `product.json` for exact source

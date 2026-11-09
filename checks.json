@@ -63,17 +63,6 @@
       ]
     },
     {
-      "id": "voice_speech_cache_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_speech_cache_test.ps1"
-      ]
-    },
-    {
       "id": "resource_owned_process_test",
       "command": [
         "pwsh",
@@ -516,182 +505,6 @@
       ]
     },
     {
-      "id": "voice_agent_build_copy_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_agent_build_copy_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_agent_cable_execute_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_agent_cable_execute_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_agent_cable_transaction_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_agent_cable_transaction_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_agent_capture_route_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_agent_capture_route_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_agent_fixture_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_agent_fixture_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_agent_ptt_contract_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_agent_ptt_contract_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_agent_recorder_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_agent_recorder_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_agent_render_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_agent_render_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_fake_source_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_fake_source_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_pair_arm_pin_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_pair_arm_pin_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_pair_envelope_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_pair_envelope_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_pair_provider_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_pair_provider_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_pair_recorder_cleanup_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_pair_recorder_cleanup_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_pair_source_options_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_pair_source_options_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_pair_witness_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_pair_witness_test.ps1"
-      ]
-    },
-    {
-      "id": "voice_received_pcm_test",
-      "command": [
-        "pwsh",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        "tests/ops/voice_received_pcm_test.ps1"
-      ]
-    },
-    {
       "id": "Test-HarnessPolicies",
       "command": [
         "pwsh",
@@ -759,20 +572,62 @@
         "--java",
         "java"
       ]
-    }
-  ],
-  "retained_checks": [
+    },
     {
-      "id": "voice_pair_recorder_test",
+      "id": "voicecertify_offline_test",
       "command": [
         "pwsh",
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",
         "-File",
-        "tests/ops/voice_pair_recorder_test.ps1"
+        "tests/voice-certify/test_voicecertify.ps1"
+      ]
+    },
+    {
+      "id": "voice_relay_overlay_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/voice_relay_overlay_test.ps1"
+      ]
+    }
+  ],
+  "retained_checks": [
+    {
+      "id": "voicecertify_analyzer_test",
+      "command": [
+        "python",
+        "-I",
+        "tests/voice-certify/test_analyze_voice.py",
+        "-v"
       ],
-      "reason": "Requires an explicitly qualified native WorkerPath; not part of the previous source-only CI and not run by this refactoring."
+      "reason": "Needs numpy and an installed en-US SAPI voice; faster-whisper is optional. These are not installed on the source CI runner. Run locally."
+    },
+    {
+      "id": "voice_test_bytes",
+      "command": [
+        "python",
+        "-I",
+        "ops/voice-certify/check_voice_test_bytes.py",
+        "src/native/voice_test.cpp",
+        "<unpacked retail dump dir>"
+      ],
+      "reason": "Needs capstone and a local unpacked retail code dump (unpacked-text.bin), which never enters Git. Run locally."
+    },
+    {
+      "id": "voice_engine_addresses",
+      "command": [
+        "python",
+        "-I",
+        "ops/voice-certify/verify_engine_addresses.py",
+        "<iw7-mod checkout with the voice relay>",
+        "<unpacked retail dump dir>"
+      ],
+      "reason": "Needs capstone, a native checkout carrying the relay and a local unpacked retail code dump (unpacked-text.bin, unpacked-pdata.bin). Run locally."
     }
   ]
 }
