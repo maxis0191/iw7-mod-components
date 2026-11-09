@@ -29,6 +29,9 @@ function Get-IW7VoiceRelayPin {
 
 $script:IW7VoiceRelayPaths=@('src/client/component/voice.cpp','src/client/game/structs.hpp','src/client/game/symbols.hpp')
 $script:IW7VoiceCertifyPath='src/client/component/voice_test.cpp'
+# Files the overlays create. Every other overlay path is a tracked engine header,
+# and its receipt row must hold the original bytes.
+$script:IW7VoiceCreatedPaths=@('src/client/component/voice.cpp',$script:IW7VoiceCertifyPath)
 
 function Get-IW7VoiceHash([byte[]]$Bytes) { [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)) }
 
@@ -93,6 +96,9 @@ function Add-IW7VoiceRelayOverlay {
     if(Test-Path -LiteralPath $receiptPath){throw 'Remove the voice relay overlay before reapplying.'}
     if($Commit -cne $Pin.NativeCommit){throw "The voice relay patch is qualified only for native pin $($Pin.NativeCommit)."}
     if(@($Pin.Files.Path|Sort-Object) -join ',' -cne (@($script:IW7VoiceRelayPaths|Sort-Object) -join ',')){throw 'Voice relay pin covers unexpected paths.'}
+    foreach($file in $Pin.Files){
+        if(($null -eq $file.BaseSHA256) -ne ($file.Path -cin $script:IW7VoiceCreatedPaths)){throw "Voice relay pin marks $($file.Path) wrongly as new or existing."}
+    }
     $patchFile=Join-Path $SourceRoot $Pin.PatchPath
     if((Get-IW7VoiceHash ([IO.File]::ReadAllBytes($patchFile))) -cne $Pin.PatchSHA256){throw 'Voice relay patch differs from its pin.'}
     # Validate every input before the first write.
@@ -135,7 +141,10 @@ function ConvertTo-IW7VoiceOverlaySummary($Receipt) {
     [pscustomobject]$summary
 }
 
-function Read-IW7VoiceOverlayReceipt([string]$NativeRoot,[string]$Name,[string]$Schema,[string[]]$Paths) {
+function Read-IW7VoiceOverlayReceipt([string]$NativeRoot,[string]$Name,[string]$Schema,[string[]]$Paths,[switch]$AllowRestored) {
+    # Every row must hold its pinned result. With -AllowRestored (removal only),
+    # a row already back in its original state is also accepted and listed in
+    # Restored, so an interrupted apply or removal can finish.
     $root=[IO.Path]::GetFullPath($NativeRoot)
     $receiptPath=Join-Path $root $Name
     if(!(Test-Path -LiteralPath $receiptPath)){return $null}
@@ -143,28 +152,37 @@ function Read-IW7VoiceOverlayReceipt([string]$NativeRoot,[string]$Name,[string]$
     if($receipt.Schema -cne $Schema -or $receipt.Root -cne $root){throw "Invalid voice overlay receipt $Name."}
     $files=@($receipt.Files)
     if($files.Count -ne $Paths.Count -or (@($files.Path|Sort-Object) -join ',') -cne (@($Paths|Sort-Object) -join ',')){throw "Incomplete voice overlay receipt $Name."}
+    $restored=@()
     foreach($row in $files){
+        $created=$row.Path -cin $script:IW7VoiceCreatedPaths
+        if($created -and ($null -ne $row.Before -or $null -ne $row.BeforeSHA256)){throw "Unexpected original bytes for $($row.Path) in $Name."}
+        if(!$created -and ($null -eq $row.Before -or $null -eq $row.BeforeSHA256)){throw "Missing original bytes for $($row.Path) in $Name."}
+        if(!$created -and (Get-IW7VoiceHash ([Convert]::FromBase64String($row.Before))) -cne $row.BeforeSHA256){throw "Corrupt original bytes in $Name."}
         $target=Join-Path $root $row.Path
-        if(!(Test-Path -LiteralPath $target -PathType Leaf) -or (Get-FileHash -LiteralPath $target).Hash -cne $row.AfterSHA256){
-            throw "Changed voice overlay file $($row.Path); preserve source and receipt."
-        }
-        if($null -ne $row.Before -and (Get-IW7VoiceHash ([Convert]::FromBase64String($row.Before))) -cne $row.BeforeSHA256){throw "Corrupt original bytes in $Name."}
-        if($null -eq $row.Before -and $null -ne $row.BeforeSHA256){throw "Missing original bytes in $Name."}
+        $hash=if(Test-Path -LiteralPath $target -PathType Leaf){(Get-FileHash -LiteralPath $target).Hash}else{$null}
+        if($null -ne $hash -and $hash -ceq $row.AfterSHA256){continue}
+        $original=if($created){!(Test-Path -LiteralPath $target)}else{$null -ne $hash -and $hash -ceq $row.BeforeSHA256}
+        if($AllowRestored -and $original){$restored+=$row.Path;continue}
+        throw "Changed voice overlay file $($row.Path); preserve source and receipt."
     }
-    [pscustomobject]@{Path=$receiptPath;Receipt=$receipt;Root=$root}
+    [pscustomobject]@{Path=$receiptPath;Receipt=$receipt;Root=$root;Restored=$restored}
 }
 
 function Remove-IW7VoiceOverlayFromReceipt($Read) {
     if(!$Read){return}
     foreach($row in @($Read.Receipt.Files)){
+        if($row.Path -cin @($Read.Restored)){continue}
         $target=Join-Path $Read.Root $row.Path
-        if($null -ne $row.Before){[IO.File]::WriteAllBytes($target,[Convert]::FromBase64String($row.Before))}else{Remove-Item -LiteralPath $target}
+        if($null -ne $row.Before){
+            [IO.File]::WriteAllBytes($target,[Convert]::FromBase64String($row.Before))
+            if((Get-FileHash -LiteralPath $target).Hash -cne $row.BeforeSHA256){throw "Restored $($row.Path) differs from its original bytes."}
+        } else {Remove-Item -LiteralPath $target}
     }
     Remove-Item -LiteralPath $Read.Path
 }
 
 function Remove-IW7VoiceRelayOverlay([string]$NativeRoot) {
-    Remove-IW7VoiceOverlayFromReceipt (Read-IW7VoiceOverlayReceipt $NativeRoot 'voice-relay-overlay.local.json' 'iw7.voice-relay-overlay/1' $script:IW7VoiceRelayPaths)
+    Remove-IW7VoiceOverlayFromReceipt (Read-IW7VoiceOverlayReceipt $NativeRoot 'voice-relay-overlay.local.json' 'iw7.voice-relay-overlay/1' $script:IW7VoiceRelayPaths -AllowRestored)
 }
 
 function Add-IW7VoiceCertifyOverlay {
@@ -185,7 +203,7 @@ function Add-IW7VoiceCertifyOverlay {
 }
 
 function Remove-IW7VoiceCertifyOverlay([string]$NativeRoot) {
-    Remove-IW7VoiceOverlayFromReceipt (Read-IW7VoiceOverlayReceipt $NativeRoot 'voice-certify-overlay.local.json' 'iw7.voice-certify-overlay/1' @($script:IW7VoiceCertifyPath))
+    Remove-IW7VoiceOverlayFromReceipt (Read-IW7VoiceOverlayReceipt $NativeRoot 'voice-certify-overlay.local.json' 'iw7.voice-certify-overlay/1' @($script:IW7VoiceCertifyPath) -AllowRestored)
 }
 
 function Assert-IW7VoiceOverlayAbsent {

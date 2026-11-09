@@ -1,5 +1,6 @@
-# Offline test of ops/Voice-RelayOverlay.Core.ps1: apply, exact removal, refusal of
-# tampering and of leftovers, the certification probe overlay, the image folder, the
+# Offline test of ops/Voice-RelayOverlay.Core.ps1: apply, exact removal, resumed
+# removal, refusal of tampering, of leftovers and of receipt rows without the original
+# header bytes, the certification probe overlay, the image folder, the
 # voice-certify-build.json contract read by ops/voice-certify/Invoke-VoiceCertify.ps1
 # and the refusal of checkouts that still carry the retired private voice relay.
 # It builds nothing and starts no game. -ReferenceRepo (an iw7-mod clone containing
@@ -137,10 +138,52 @@ try {
     try { Refuses { Add-IW7VoiceRelayOverlay -NativeRoot $native -SourceRoot $source -Commit $base -Pin $pin } 'denied|read-only|access' 'A failed write was ignored.' }
     finally { (Get-Item -LiteralPath $symbols).IsReadOnly = $false }
     Assert (Test-Path $receipt) 'The receipt must exist before the first source write.'
-    Refuses { Remove-IW7VoiceRelayOverlay $native } 'Changed voice overlay file src/client/game/symbols.hpp' 'A partial overlay was removed blindly.'
-    [IO.File]::WriteAllBytes($symbols, $relayedSymbols)
+    Refuses { Get-IW7VoiceOverlayState $native } 'Changed voice overlay file src/client/game/symbols.hpp' 'A partial overlay was reported as owned.'
+    # symbols.hpp still holds its original bytes, so removal skips it and restores the rest.
     Remove-IW7VoiceRelayOverlay $native
     Assert (& $untouched) 'The receipt of an interrupted apply did not restore the original bytes.'
+    $null = Add-IW7VoiceRelayOverlay -NativeRoot $native -SourceRoot $source -Commit $base -Pin $pin
+    [IO.File]::WriteAllBytes($symbols, $relayedSymbols)
+    [IO.File]::AppendAllText($symbols, "// local change`r`n")
+    Refuses { Remove-IW7VoiceRelayOverlay $native } 'Changed voice overlay file src/client/game/symbols.hpp' 'A header in neither the result nor the original state was overwritten.'
+    Assert ((Test-Path $receipt) -and (Test-Path $voice)) 'A refused removal changed other files.'
+    [IO.File]::WriteAllBytes($symbols, $relayedSymbols)
+    Remove-IW7VoiceRelayOverlay $native
+    Assert (& $untouched) 'Recovery after a changed header did not restore the original bytes.'
+
+    # ---- an interrupted removal resumes: rows already restored are skipped
+    $null = Add-IW7VoiceRelayOverlay -NativeRoot $native -SourceRoot $source -Commit $base -Pin $pin
+    (Get-Item -LiteralPath $structs).IsReadOnly = $true
+    try { Refuses { Remove-IW7VoiceRelayOverlay $native } 'denied|read-only|access' 'A failed restore was ignored.' }
+    finally { (Get-Item -LiteralPath $structs).IsReadOnly = $false }
+    Assert ((Test-Path $receipt) -and !(Test-Path $voice) -and (Get-Hash $structs) -ceq $pin.Files[1].AfterSHA256) 'The interrupted removal left an unexpected state.'
+    Refuses { Get-IW7VoiceOverlayState $native } 'Changed voice overlay file src/client/component/voice.cpp' 'A half-removed overlay was reported as owned.'
+    Remove-IW7VoiceRelayOverlay $native
+    Assert (& $untouched) 'The resumed removal did not restore the original bytes.'
+
+    # ---- receipt rows must match the kind of file: headers keep their original bytes
+    $null = Add-IW7VoiceRelayOverlay -NativeRoot $native -SourceRoot $source -Commit $base -Pin $pin
+    $text = Get-Content -LiteralPath $receipt -Raw
+    foreach ($path in @('src/client/game/structs.hpp', 'src/client/game/symbols.hpp')) {
+        $json = $text | ConvertFrom-Json
+        $row = @($json.Files | Where-Object Path -ceq $path)[0]; $row.Before = $null; $row.BeforeSHA256 = $null
+        $json | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receipt
+        Refuses { Remove-IW7VoiceRelayOverlay $native } "Missing original bytes for $([regex]::Escape($path))" "A $path row without original bytes was trusted."
+        Refuses { Get-IW7VoiceOverlayState $native } 'Missing original bytes' "State trusted a $path row without original bytes."
+        Assert ((Test-Path $structs) -and (Test-Path $symbols) -and (Test-Path $voice)) "A refused $path row deleted a file."
+    }
+    $json = $text | ConvertFrom-Json
+    $row = @($json.Files | Where-Object Path -ceq 'src/client/component/voice.cpp')[0]
+    $row.Before = [Convert]::ToBase64String([byte[]](1, 2)); $row.BeforeSHA256 = Get-IW7VoiceHash ([byte[]](1, 2))
+    $json | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receipt
+    Refuses { Remove-IW7VoiceRelayOverlay $native } 'Unexpected original bytes for src/client/component/voice\.cpp' 'A created file row with original bytes was trusted.'
+    Assert ((Get-Hash $voice) -ceq $pin.Files[0].AfterSHA256) 'A refused voice.cpp row changed the file.'
+    Set-Content -LiteralPath $receipt -Value $text -NoNewline
+    Remove-IW7VoiceRelayOverlay $native
+    Assert (& $untouched) 'Recovery after invalid receipt rows did not restore the original bytes.'
+    $wrongKind = $pin.PSObject.Copy(); $wrongKind.Files = @($pin.Files | ForEach-Object { $_.PSObject.Copy() }); $wrongKind.Files[1].BaseSHA256 = $null
+    Refuses { Add-IW7VoiceRelayOverlay -NativeRoot $native -SourceRoot $source -Commit $base -Pin $wrongKind } 'wrongly as new or existing' 'A pin that treats a header as new was accepted.'
+    Assert (& $untouched) 'A refused pin wrote files.'
 
     # ---- certification probe overlay
     [IO.Directory]::CreateDirectory((Join-Path $source 'src/native')) | Out-Null
@@ -153,6 +196,11 @@ try {
     [IO.File]::WriteAllText($probe, "// lab-only probe`n")
     Remove-IW7VoiceCertifyOverlay $native
     Assert (!(Test-Path $probe) -and !(Test-Path (Join-Path $native 'voice-certify-overlay.local.json'))) 'The probe overlay was not removed.'
+    $null = Add-IW7VoiceCertifyOverlay -NativeRoot $native -SourceRoot $source
+    Remove-Item -LiteralPath $probe   # as if a removal stopped after deleting the probe
+    Refuses { Get-IW7VoiceOverlayState $native } 'Changed voice overlay file' 'A receipt without its probe was reported as owned.'
+    Remove-IW7VoiceCertifyOverlay $native
+    Assert (!(Test-Path $probe) -and !(Test-Path (Join-Path $native 'voice-certify-overlay.local.json'))) 'The probe receipt removal did not resume.'
     [IO.File]::WriteAllText($probe, '// leftover')
     Refuses { Add-IW7VoiceCertifyOverlay -NativeRoot $native -SourceRoot $source } 'Unowned voice_test.cpp' 'A leftover probe was overwritten.'
     Refuses { Assert-IW7VoiceOverlayAbsent -NativeRoot $native -Commit $base } 'voice_test.cpp is not part of' 'A leftover probe passed the leftover check.'

@@ -94,7 +94,10 @@ How the overlays work (`ops/Voice-RelayOverlay.Core.ps1`):
 - A receipt in the native root (`voice-relay-overlay.local.json`,
   `voice-certify-overlay.local.json`) records the original bytes before any
   source changes. Every build first restores those exact bytes. A changed file is
-  preserved and the build stops.
+  preserved and the build stops. The `structs.hpp` and `symbols.hpp` rows must
+  hold the original bytes; the `voice.cpp` and `voice_test.cpp` rows must not.
+  Removal skips a file that is already back to its original state (absent, or
+  equal to its original hash), so an interrupted apply or removal can finish.
 - Without a receipt, a build stops when `voice.cpp` or `voice_test.cpp` exists or
   when `structs.hpp`/`symbols.hpp` differ from the pinned commit.
 - The manifest fields `VoiceRelay` and `VoiceCertify` come from the verified
