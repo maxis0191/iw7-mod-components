@@ -1,8 +1,9 @@
 #Requires -Version 7
 <#
 .SYNOPSIS
-Voice certification: proves the upstream voice component on real game processes,
+Voice certification: tests the upstream voice component on real game processes,
 in Zombies and Multiplayer, including the cases where a player must NOT hear.
+Not yet run against a game process.
 
 .DESCRIPTION
 Known speech is injected at the start of client A's (or B's) native capture

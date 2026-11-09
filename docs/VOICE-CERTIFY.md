@@ -9,14 +9,17 @@ are not owner gameplay acceptance.
 
 ## Overview
 
-The harness proves, with recorded evidence, that the upstream-shaped voice component
-(`iw7-mod` branch `feature/voice-chat`: `src/client/component/voice.cpp` plus a few
-`symbols.hpp`/`structs.hpp` entries) carries speech between two real clients in
-Zombies and in Multiplayer. It also proves the cases where a player must not hear.
+The harness is designed to show, with recorded evidence, whether the upstream-shaped
+voice component (`iw7-mod` branch `feature/voice-chat`: `src/client/component/voice.cpp`
+plus a few `symbols.hpp`/`structs.hpp` entries) carries speech between two real
+clients in Zombies and in Multiplayer. It also checks the cases where a player must
+not hear.
 
-Every run is an A/B pair: the same matrix first on a **base** image (the same lab
-build without the relay), where every "heard" window must come out silent, then on
-the **fixed** image. The base run is the "before" row of the upstream PR evidence.
+A certification is two runs: the same matrix first on the **base** image (the same
+lab build without the relay, run with `-Baseline`), where every "heard" window must
+come out silent, then on the **fixed** image with the relay. Each call of
+`Invoke-VoiceCertify.ps1` runs one image. On these Paris images the base run is the
+Paris "before" row; it is not upstream PR evidence (see Prerequisites).
 
 Known speech enters at the start of the talker's native pipeline. The decoded audio
 is recorded at the end of the listener's pipeline. All the code in between is
@@ -294,10 +297,10 @@ window boundary. The analyzer also tolerates a stale header. While no phrase pla
 the component must feed silence instead of the real microphone. Otherwise the idle
 controls fail by design.
 
-As of 2026-11-09 the `src/native/voice_test.cpp` draft matches this contract: `start`
-carries `rate`; the snapshot carries `client_num`, `encoded` and `recv`, and flushes
-the recordings; a virtual microphone feeds silence or the phrase, and the real device
-never reaches the pipeline.
+As of 2026-11-09 the `src/native/voice_test.cpp` draft is written to this contract
+(not yet run): `start` carries `rate`; the snapshot carries `client_num`, `encoded`
+and `recv`, and flushes the recordings; a virtual microphone feeds silence or the
+phrase, and the real device is meant never to reach the pipeline.
 
 ## Test component
 
