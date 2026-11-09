@@ -144,6 +144,16 @@ records the remaining projected growth as telemetry. There is no kernel memory
 cap or projected-headroom gate. Unregistered labs, compilers, ZoneTool and Java analysis also block
 new heavy admission. Existing owner processes are never stopped by this API.
 
+Only the lease's owner may re-enter while that owner is alive: the owner process
+itself, or a descendant whose parent chain reaches it, each link matched by PID,
+creation time and image (a parent created after its child is a reused PID, not an
+ancestor). Any other caller on the same scope, or any caller while the owner's
+identity is unreadable, gets the ordinary `Resource busy:` refusal, so retry loops
+wait instead of staging into another run's lab (2026-11-09: a second session's
+retry loop joined a live witness lease). A dead or PID-reused owner keeps the
+earlier handling: its lease is reclaimed when nothing in it is alive, otherwise a
+later step (such as `StartClient` after `StartServer`) may re-enter it.
+
 For a separate dedicated using the base client, declare the exact absolute client
 executable with `Enter-IW7ResourceLease -BaseClientImage` on the initial runtime
 reservation. Budget server plus client together. Only that image with both

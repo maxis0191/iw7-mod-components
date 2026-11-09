@@ -138,6 +138,26 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes) {
         !($lease.Kind -eq 'Runtime' -and !$ownerAlive -and !$ownerUnknown -and !$live.Count -and !$inScope.Count)
     })
 }
+function Get-IW7RuntimeLeaseCaller($Lease, $Processes, [int]$CallerPid) {
+    # Caller: the caller is the lease's live owner or descends from it.
+    # Dead: the owner PID is gone or reused. Unknown: owner unreadable. Foreign: anyone else.
+    $owner = @($Processes | Where-Object PID -EQ $Lease.OwnerIdentity.PID)
+    if (!$owner.Count) { return 'Dead' }
+    if (!$owner[0].Image -or !$owner[0].CreatedUtc) { return 'Unknown' }
+    if (!(Test-IW7ResourceIdentity $Lease.OwnerIdentity $owner[0])) { return 'Dead' }
+    $current = @($Processes | Where-Object PID -EQ $CallerPid)[0]
+    for ($depth = 0; $current -and $depth -lt 64; $depth++) {
+        if (!$current.Image -or !$current.CreatedUtc) { break }
+        if (Test-IW7ResourceIdentity $Lease.OwnerIdentity $current) { return 'Caller' }
+        if (!$current.ParentPID -or $current.ParentPID -eq $current.PID) { break }
+        $parent = @($Processes | Where-Object PID -EQ $current.ParentPID)[0]
+        # A parent created after its child is a reused PID, not an ancestor.
+        if (!$parent -or !$parent.CreatedUtc -or
+            ([datetimeoffset]$parent.CreatedUtc).UtcDateTime -gt ([datetimeoffset]$current.CreatedUtc).UtcDateTime) { break }
+        $current = $parent
+    }
+    'Foreign'
+}
 function Enter-IW7ResourceLease {
     param([Parameter(Mandatory)][string]$Scope,
         [ValidateSet('Runtime','Build','Extract','Analysis')][string]$Kind,
@@ -164,6 +184,10 @@ function Enter-IW7ResourceLease {
         if ($same.Count -gt 1) { throw 'Duplicate lease; registry requires investigation.' }
         # Runtime re-entry is a lab transaction; builds must never nest/share a lease.
         if ($same.Count -and $Kind -ne 'Runtime') { throw 'Heavy job already reserved, including this worktree.' }
+        # Only the owner process or its descendants may re-enter a live owner's lease.
+        if ($same.Count -and (Get-IW7RuntimeLeaseCaller $same[0] $processes $PID) -in @('Foreign','Unknown')) {
+            throw "Resource busy: Runtime owned by $($same[0].Owner). Continue light work; retry when released."
+        }
         if ($same.Count -and $BaseClientImage -and $same[0].BaseClientImage -ne $BaseClientImage) { throw 'Base client declaration cannot change after reservation.' }
         $foreignLabs = @($processes | Where-Object { ($_.Lab -or $_.Name -eq 'iw7-paris-lab.exe') -and
             !(Test-IW7ProcessInScope $_ $canonical) -and !($same.Count -and (Test-IW7ReservedProcess $_ $same[0])) })

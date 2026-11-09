@@ -5,7 +5,7 @@ if ($InitialAdmissionSourceOnly) {
     $tokens=$null;$parseErrors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../../ops/Resource-Scheduler.Core.ps1'),[ref]$tokens,[ref]$parseErrors)
     if($parseErrors.Count){throw 'Production Source parse failed.'}
-    $definitions=@(foreach($name in @('Get-IW7CanonicalScope','Read-IW7ResourceState','Enter-IW7ResourceLease')){
+    $definitions=@(foreach($name in @('Get-IW7CanonicalScope','Read-IW7ResourceState','Test-IW7ResourceIdentity','Get-IW7RuntimeLeaseCaller','Enter-IW7ResourceLease')){
         $matches=@($ast.FindAll({param($n)$n-is[Management.Automation.Language.FunctionDefinitionAst]-and$n.Name-ceq$name},$true))
         if($matches.Count-ne1){throw ('One actual Source function required: '+$name)}
         $matches[0].Extent.Text
@@ -501,6 +501,69 @@ $rogue.Lab=$false; $rogue.Name='MSBuild.exe'; $rogue.Image='C:\tools\MSBuild.exe
 $rejected=$false; try { Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 14GB -CommitBytes 16GB -Owner 'blocked' } catch { $rejected=$true }
 Assert $rejected 'Unregistered compiler must block.'
 $script:fakeProcesses=@($script:fakeProcesses | Where-Object PID -EQ $PID)
+# Runtime re-entry belongs to the lease owner's process tree only. 2026-11-09:
+# another session's retry loop joined a live witness lease on the same scope.
+$selfCreated=$self.StartTime.ToUniversalTime().ToString('o')
+function New-ReentryProcess([int]$Id,[int]$Parent,[string]$Created,[string]$Image,[string]$Name='pwsh.exe',[switch]$Lab) {
+    [pscustomobject]@{PID=$Id;ParentPID=$Parent;CreatedUtc=$Created;Image=$Image;Name=$Name;Lab=[bool]$Lab;Heavy=[bool]$Lab;WorkingSet=1MB;PrivateBytes=1MB}
+}
+function New-ReentryIdentity([int]$Id,[string]$Created,[string]$Image) { [pscustomobject]@{PID=$Id;Image=$Image;CreatedUtc=$Created} }
+function Set-ReentryLease($Identity,[object[]]$Processes) {
+    $script:fakeProcesses=$Processes
+    Save-IW7ResourceState ([pscustomobject]@{Version=1;Leases=@([pscustomobject]@{Token='feedfacefeedfacefeedfacefeedface';
+        Scope=(Get-IW7CanonicalScope $scope);Kind='Runtime';Owner='session A witness';OwnerIdentity=$Identity;
+        CreatedUtc='2026-11-09T14:01:09Z';Phase='Running';PhysicalBytes=16GB;CommitBytes=18GB;BaseClientImage=$null;Processes=@()})})
+    (Get-Content -LiteralPath (Join-Path (Get-IW7ResourceRoot) 'leases.json') -Raw)
+}
+function Invoke-Reentry { try { Enter-IW7ResourceLease -Scope $scope -Kind Runtime -PhysicalBytes 8GB -CommitBytes 10GB -Owner 'session B e2e' } catch { $_.Exception.Message } }
+function Assert-ReentryRefused($Before,[string]$Message) {
+    $outcome=Invoke-Reentry
+    Assert ($outcome -is [string] -and $outcome -like 'Resource busy: Runtime owned by session A witness.*') ($Message+' Got: '+$outcome)
+    Assert ((Get-Content -LiteralPath (Join-Path (Get-IW7ResourceRoot) 'leases.json') -Raw) -ceq $Before) ($Message+' Registry changed.')
+}
+function Assert-ReentryJoined([string]$Message) {
+    $outcome=Invoke-Reentry
+    Assert ($outcome -isnot [string] -and $outcome.Token -eq 'feedfacefeedfacefeedfacefeedface' -and $outcome.PhysicalBytes -eq 16GB) ($Message+' Got: '+$outcome)
+    Assert (@((Read-IW7ResourceState).Leases).Count -eq 1) ($Message+' Lease duplicated.')
+}
+$sessionA='C:\sessions\a\pwsh.exe'; $early='2000-01-01T00:00:00.0000000Z'
+$labInScope=New-ReentryProcess 40900 1 $early (Join-Path $scope 'iw7-paris-lab.exe') 'iw7-paris-lab.exe' -Lab
+# Same owner: the lease's own process re-enters.
+$null=Set-ReentryLease (New-ReentryIdentity $PID $selfCreated $self.Path) @((New-ReentryProcess $PID 0 $selfCreated $self.Path))
+Assert-ReentryJoined 'The owner process must re-enter its own lease.'
+# Descendants: a child and a grandchild of the live owner re-enter.
+$owner=New-ReentryProcess 40001 0 $early $sessionA
+$null=Set-ReentryLease (New-ReentryIdentity 40001 $early $sessionA) @((New-ReentryProcess $PID 40001 $selfCreated $self.Path),$owner)
+Assert-ReentryJoined 'A child of the live owner must re-enter.'
+$null=Set-ReentryLease (New-ReentryIdentity 40001 $early $sessionA) @((New-ReentryProcess $PID 40002 $selfCreated $self.Path),(New-ReentryProcess 40002 40001 $early $self.Path),$owner)
+Assert-ReentryJoined 'A grandchild of the live owner must re-enter.'
+# Foreign: a live owner in another process tree, same Scope.
+$before=Set-ReentryLease (New-ReentryIdentity 40001 $early $sessionA) @((New-ReentryProcess $PID 0 $selfCreated $self.Path),$owner,$labInScope)
+Assert-ReentryRefused $before 'A foreign session must not join a live owner''s lease.'
+$before=Set-ReentryLease (New-ReentryIdentity 40001 $early $sessionA) @((New-ReentryProcess $PID 40003 $selfCreated $self.Path),(New-ReentryProcess 40003 0 $early $sessionA),$owner)
+Assert-ReentryRefused $before 'A sibling launched by another shell must not join.'
+# A parent PID created after its child was reused; it is not an ancestor.
+$late='2099-01-01T00:00:00.0000000Z'
+$before=Set-ReentryLease (New-ReentryIdentity 40001 $late $sessionA) @((New-ReentryProcess $PID 40001 $selfCreated $self.Path),(New-ReentryProcess 40001 0 $late $sessionA))
+Assert-ReentryRefused $before 'A reused parent PID must not grant ownership.'
+# An unreadable link in the caller chain cannot prove descent.
+$before=Set-ReentryLease (New-ReentryIdentity 40001 $early $sessionA) @((New-ReentryProcess $PID 40002 $selfCreated $self.Path),(New-ReentryProcess 40002 40001 $null $null),$owner)
+Assert-ReentryRefused $before 'An unreadable intermediate process must not grant ownership.'
+# An unreadable owner is ambiguous, not dead.
+$before=Set-ReentryLease (New-ReentryIdentity 40001 $early $sessionA) @((New-ReentryProcess $PID 0 $selfCreated $self.Path),(New-ReentryProcess 40001 0 $null $null))
+Assert-ReentryRefused $before 'An unreadable owner must refuse re-entry.'
+# Dead or stale owners keep the existing handling: a running lab keeps the
+# lease and a later step adopts it; with nothing alive the lease is reclaimed.
+$null=Set-ReentryLease (New-ReentryIdentity 40001 $early $sessionA) @((New-ReentryProcess $PID 0 $selfCreated $self.Path),$labInScope)
+Assert-ReentryJoined 'A dead owner''s retained lab lease keeps the existing re-entry.'
+$null=Set-ReentryLease (New-ReentryIdentity 40001 $early $sessionA) @((New-ReentryProcess $PID 0 $selfCreated $self.Path),(New-ReentryProcess 40001 0 '2026-11-09T15:00:00.0000000Z' $sessionA),$labInScope)
+Assert-ReentryJoined 'A reused owner PID counts as a dead owner.'
+$null=Set-ReentryLease (New-ReentryIdentity 40001 $early $sessionA) @((New-ReentryProcess $PID 0 $selfCreated $self.Path))
+$fresh=Invoke-Reentry
+Assert ($fresh -isnot [string] -and $fresh.Token -ne 'feedfacefeedfacefeedfacefeedface' -and $fresh.OwnerIdentity.PID -eq $PID) 'A finished dead-owner lease must still be reclaimed.'
+Assert (@((Read-IW7ResourceState).Leases).Count -eq 1) 'Reclaim must leave exactly the new lease.'
+Save-IW7ResourceState ([pscustomobject]@{Version=1;Leases=@()})
+$script:fakeProcesses=@((New-ReentryProcess $PID 0 $selfCreated $self.Path))
 $failed=$false
 try { Invoke-IW7ResourceJob -Scope $scope -Owner 'intentional error' -Body { throw 'body failure' } } catch { $failed=$true }
 Assert $failed 'Workload exception must propagate.'
