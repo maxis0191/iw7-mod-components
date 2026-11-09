@@ -140,6 +140,16 @@ Do none of this before the owner has tested and accepted the new relay in game
      family when present). Accept the new source list while still accepting the
      currently activated old manifest during the transition. Allow
      `VoiceRelay=true` only with an explicit owner-approval switch.
+   - Main was activated with `DeployVoice -GenericRelay` (`SelectedVoiceProtocol`
+     2): the 2026-10-27 Main deployment record of `0577712C` has
+     `-iw7-voice-relay -voice-relay-diagnostics` in its command line. Check
+     Canada's launch line the same way. `ops/Server.ps1` refuses `-GenericRelay`,
+     and protocol 2, for a manifest without `voice_relay.cpp` ("Generic voice
+     requires the checked generation transport"). Deploy the relay build without
+     `-GenericRelay`, so `SelectedVoiceProtocol` becomes 1 and those two launch
+     flags go away. Then retire `-GenericRelay` and the `SelectedVoiceProtocol`
+     branches of `ops/Server.ps1` (server `ef28a933`: lines 28, 70, 243-248,
+     325-326, 353, 433 and 448).
    - `ops/Test-Startup.ps1`: drop the `[paris-voice] ... v1 installed` and
      `[voice-relay] ... v2 installed` markers. When the manifest says
      `VoiceRelay=true`, require a neutral marker such as the `sv_voice` dvar.
@@ -156,9 +166,31 @@ Do none of this before the owner has tested and accepted the new relay in game
      of `ops/modding/Agent-NativePackage.Core.ps1`, `Install-Tools.ps1
      -IncludeVoiceASR`, and their tests (`voice_package_test`,
      `voice_client_install_test`, `server_configuration_preservation_test`).
+   - Also retire `ops/Test-VoiceServer.ps1`, `ops/Test-VoiceMalformedInput.ps1`,
+     `ops/Test-VoicePairIdle.ps1`, `tests/fixtures/voice_native.gsc`,
+     `ops/fixtures/agent_voice_pair_fixture.gsc` and
+     `docs/AGENT-VOICE-SCENARIO.md`. `ops/Package-Voice.ps1` still expects
+     `BuildProfile` `native-helper` for a build without ServerModules; Build-Voice
+     no longer produces that profile, so the check goes with the script.
+   - Drop `-paris-voice-local-test` from the retired launch paths of
+     `ops/Module-ClientProbe.ps1` (line 70 at `ef28a933`) and
+     `ops/Rhino-ClientProbe.ps1` (lines 175 and 179). Without `-paris-isolated-lab`
+     the flag does nothing now.
    - Keep the `iw7-paris-voice.exe` name until a separate coordinated rename.
-   - Bump the `iw7-mod-components` pin from `447c1ad` in `product.json` and publish
-     the regenerated `dependencies.zip` release asset.
+   - In `product.json`, the `iw7-mod-components` `files` list still names 63
+     paths that do not exist after this change, for example
+     `docs/VOICE-PLAYER.md`, `docs/VOICE-RELAY.md`,
+     `ops/Measure-VoiceOutput.ps1`, `ops/voice-agent/*` (except
+     `Recorder-Probe.cs`), `src/native/paris_voice*`, `voice_relay.cpp`,
+     `voice_test_capture.cpp` and the old `src/native/voice_*.hpp` headers,
+     `tests/native/voice_*_test.cpp` and the old `tests/ops/voice_pair_*`,
+     `voice_agent_*` and `voice_fake_source` tests. Remove every path that is
+     missing at the new pin. Add `ops/Voice-RelayOverlay.Core.ps1`,
+     which `Build-Voice.ps1` and `Build-StandardClient.ps1` now load on every run.
+     Add `ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch` if the
+     server builds with `-VoiceRelay`, and `src/native/voice_test.cpp` if it builds
+     with `-VoiceCertify`. Then bump the pin from `447c1ad` and publish the
+     regenerated `dependencies.zip` release asset.
    - Tell players that the 2026-11-01 private player kit is retired.
    - The owner updates the voice lines of AGENTS.md (server and components).
 5. Deploy the relay-enabled build to BOTH servers, Main (UDP 27016) and Canada,
@@ -167,7 +199,13 @@ Do none of this before the owner has tested and accepted the new relay in game
    iw7-creator-sdk list the old voice closure). At their next pin bump they drop
    those entries; a product that runs Build-Voice from prepared inputs also adds
    `ops/Voice-RelayOverlay.Core.ps1`, plus the patch and `src/native/voice_test.cpp`
-   when it uses `-VoiceRelay` or `-VoiceCertify`.
+   when it uses `-VoiceRelay` or `-VoiceCertify`. This repository's own
+   `iw7-paris-server` dependency in `product.json` still imports
+   `ops/Agent-Pair.Core.ps1`, `ops/Voice-BaseTest.ps1`, `ops/Voice-Pair-Lab.ps1`,
+   `ops/fixtures/agent_voice_pair_fixture.gsc` and `tests/fixtures/voice_native.gsc`.
+   Nothing here uses them since the old voice tests went. Changing that list needs
+   a regenerated `dependencies.zip`, so they are dropped at this repository's next
+   server pin bump.
 
 ## Lab flags that remain
 
@@ -175,7 +213,12 @@ Do none of this before the owner has tested and accepted the new relay in game
   join to the isolated lab dedicated on UDP 27116. The server's
   `ops/Isolated-Lab.ps1` Baseline and Slasher profiles use it. It now lives in
   `src/native/paris_test_fixture.cpp`. The old 300-second self-quit, the 27016
-  path and the voice self-tests are gone. The name is historical.
+  path and the voice self-tests are gone. The name is historical. Without
+  `-paris-isolated-lab` the flag now does nothing: `ops/RenderDoc-Fixture.py` and
+  the server's `Module-ClientProbe.ps1` and `Rhino-ClientProbe.ps1` (retired
+  Main-port helpers) pass it without that flag and no longer auto-join.
+  `ops/RenderDoc-Fixture.py` is retired with them; its only caller is the
+  RenderDoc path of `Rhino-ClientProbe.ps1`, whose launch actions refuse to run.
 - `-paris-voice-base-test` (dedicated): enables the fixture's protected map
   requests (`ops/agent-capacity/Watch-Server.ps1`, the server's
   `Test-GameplayDrop.ps1`). The name is historical.
