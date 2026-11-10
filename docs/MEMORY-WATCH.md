@@ -1,6 +1,6 @@
 # Memory watch
 
-Status: written, not yet built or run live. The reviewer updates this line.
+Status: run live on 10 Nov 2026 in the lab client (build 4aeb6e1df4 and the one before it), through the network lab runner (`-Watch`). Recordings of 1,040,040, 890,000, 262,144 and 131,072 bytes were written and read; a 267 MB file (890,000 bytes, 300 copies) read in under a second. Tool notes from that run are in "Worked example".
 
 ## What it is for
 
@@ -112,6 +112,20 @@ Options: `--hex`, `--float`, `--json`. Use it to read the neighbourhood of a can
 3. Read the neighbours with `show`: a real snapshot or time field sits next to other fields of the same structure.
 4. Confirm with a second recording under a different condition (another map, paused, a different rate) and `diff`. A candidate that follows the expected change is the field. One that does not is a coincidence.
 5. Record the confirmed field in the structure declaration only after that second recording agrees.
+
+## Worked example
+
+How the counters of `docs/NET.md` were found on 10 Nov 2026, with the network lab runner (`-Watch "<address>:<size>:10:300"`):
+
+1. The loader declares the client state `cg` at 0x141FA6C88; its snapshot fields never changed. Recording 890,000 bytes from there (10 ms, 300 copies) showed only two frame clocks and a frame counter (62 a second), no counter at 20 or 30 a second.
+2. The copies were 16.6 ms apart, not 10: a copy waits for a pass of the main loop, so one copy per frame at 60 frames a second. An update every 48 ms therefore shows as a step every third copy.
+3. A pointer at 0x141FE58B8 (`cl_con_data`) held 0x26D90C7B0, the same in two sessions. Recording 262,144 bytes from that address: `find --kind counter --step-min 1 --step-max 3 --rate-min 20 --rate-max 40` listed one field, +0x2014C: 99 changes in 4.94 s, steps of 1, 20.02 a second.
+4. `find --kind counter --step-min 15 --step-max 120 --rate-min 800 --rate-max 1200` listed +0x20024 (server time: 99 changes, jumps of 48 to 64) and +0x2003C (a frame clock). `show` at 0x20020 showed the counter and the time change in the same copy.
+5. Under ping 300, jitter 30, loss 5 percent the proxy dropped 147 of 2,026 packets (7 percent); the counter still rose 20.22 a second, with 10 steps of 2: it follows the server's sequence.
+6. The same clock was found at a fixed address by comparing each field minus the wall clock (the copies carry real time): 0x141FE5EAC matched +0x2003C within 1 ms.
+7. The proxy's 30 packets a second did not match the 20 a second of the counter; its median gap of 47.6 ms did.
+
+Notes on the tools: the 4 MB windows of the planned coarse pass were not needed. `find` has no filter on the number of changes, and no way to follow a pointer: the heap block was recorded at an address read from an earlier recording, which worked only because the address was the same in every session. A scratch numpy script listed fields by number of changes (about 140 float fields change at the update rate).
 
 ## Tests
 
