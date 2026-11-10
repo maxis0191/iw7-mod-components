@@ -339,6 +339,14 @@
       ]
     },
     {
+      "id": "net_report_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/net_report_test.py"
+      ]
+    },
+    {
       "id": "download_cache_overlay_test",
       "command": [
         "pwsh",

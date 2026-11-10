@@ -289,7 +289,10 @@ namespace paris_incident
                         row += ",\"oldest_pending_time\":" + std::to_string(field(client, 0x4C4 + index * 0x408));
                     }
                     if (client->header.state == 5 && client->gentity == &game::g_entities[i] && client->gentity->client)
+                    {
                         row += ",\"ps_command_time\":" + std::to_string(client->gentity->client->ps.commandTime);
+                        row += ",\"ping\":" + std::to_string(game::SV_ClientMP_GetClientPing(static_cast<int>(i)));
+                    }
                     row += ",\"opcodes\":{";
                     bool first = true;
                     for (unsigned op = 0; op < 256; ++op)
