@@ -494,6 +494,17 @@
       ]
     },
     {
+      "id": "resource_scheduler_shareable_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_shareable_test.ps1"
+      ]
+    },
+    {
       "id": "test_privacy_overlay_test",
       "command": [
         "pwsh",
