@@ -65,7 +65,7 @@ class WorldLiveTest(unittest.TestCase):
             path.unlink()
         con = sqlite3.connect(path)
         con.execute("CREATE TABLE smodels (%s)" % columns)
-        con.executemany("INSERT INTO smodels VALUES (?,?,?,?,?)", rows)
+        con.executemany("INSERT INTO smodels VALUES (%s)" % ",".join("?" * len(columns.split(","))), rows)
         con.commit()
         con.close()
         return str(path)
@@ -174,6 +174,19 @@ class WorldLiveTest(unittest.TestCase):
         code, _, err = run("compare", self.file, "--db", db)
         self.assertEqual(code, 2)
         self.assertIn("smodels has columns", err)
+
+    def test_compare_checks_the_extra_fields_the_database_has(self):
+        columns = "i integer, model text, x real, y real, z real, scale real, cullDist integer, flags integer"
+        rows = [(n, m, x, y, z, 1.0, 100, 9) for n, (m, x, y, z) in enumerate(PROPS)]
+        code, out, _ = run("compare", self.file, "--db", self.database(rows, columns))
+        self.assertEqual(code, 0, out)
+        self.assertIn("also compared cull (0 differ), flags (0 differ), scale (0 differ)", out)
+        rows[2] = (2, "lamp", 0.0, 30.0, 40.0, 0.0, 100, 9)  # a hidden prop: scale 0 in the live dump's view of the world
+        rows[4] = (4, "crate_small", -100.0, -100.0, -5.0, 1.0, 99, 9)
+        code, out, _ = run("compare", self.file, "--db", self.database(rows, columns))
+        self.assertEqual(code, 1)
+        self.assertIn("scale (1 differ)", out)
+        self.assertIn("cull (1 differ)", out)
 
     def test_compare_without_table_or_database(self):
         path = self.dir / "empty.sqlite"

@@ -89,6 +89,13 @@ def cmd_models(args):
     return 0
 
 
+EXTRA_FIELDS = (
+    ('cull', lambda p: [p.get('cull')], ['cullDist'], 0),
+    ('flags', lambda p: [p.get('flags')], ['flags'], 0),
+    ('scale', lambda p: [p.get('scale')], ['scale'], 1e-4),
+    ('axis', lambda p: p.get('axis') or [None] * 9, ['a00', 'a01', 'a02', 'a10', 'a11', 'a12', 'a20', 'a21', 'a22'], 1e-4),
+    ('bounds', lambda p: p.get('bounds') or [None] * 6, ['bmid_x', 'bmid_y', 'bmid_z', 'bhalf_x', 'bhalf_y', 'bhalf_z'], POSITION_TOLERANCE),
+)
 INDEX_NAMES = ('idx', 'index', 'i', 'smodel_index', 'smodel_idx', 'id')
 MODEL_NAMES = ('model', 'model_name', 'name', 'xmodel')
 
@@ -119,8 +126,12 @@ def cmd_compare(args):
         con.close()
         print('smodels has columns %s; need an index, a model name, x, y and z' % ', '.join(cols), file=sys.stderr)
         return 2
+    # Fields that are compared when the database has them too: label, how to read the dump, database columns, tolerance.
+    extras = [(label, getter, [pick(cols, (c.lower(),)) for c in names], tol) for label, getter, names, tol in EXTRA_FIELDS]
+    extras = [e for e in extras if None not in e[2]]
+    select = [ci, cm, cx, cy, cz] + [c for e in extras for c in e[2]]
     try:
-        rows = {r[0]: r[1:] for r in con.execute('SELECT "%s","%s","%s","%s","%s" FROM smodels' % (ci, cm, cx, cy, cz))}
+        rows = {r[0]: r[1:] for r in con.execute('SELECT %s FROM smodels' % ','.join('"%s"' % c for c in select))}
     finally:
         con.close()
     live = {p.get('i', n): p for n, p in enumerate(doc['props'])}
@@ -130,6 +141,7 @@ def cmd_compare(args):
         issues.append('count: live %d, database %d' % (len(live), len(rows)))
     names = positions = 0
     worst = 0.0
+    extra_bad = {e[0]: 0 for e in extras}
     for i, p in live.items():
         r = rows.get(i)
         if r is None:
@@ -146,11 +158,21 @@ def cmd_compare(args):
             positions += 1
             if positions <= 5:
                 issues.append('index %d origin differs by %.4f' % (i, d))
+        at = 4
+        for label, getter, columns, tol in extras:
+            live_values, db_values = getter(p), r[at:at + len(columns)]
+            at += len(columns)
+            if any(a is None or b is None or abs(a - b) > tol for a, b in zip(live_values, db_values)):
+                extra_bad[label] += 1
+                if extra_bad[label] <= 2:
+                    issues.append('index %d %s: live %s, database %s' % (i, label, live_values, list(db_values)))
     print('compare: %d live props, %d database rows, %d model names differ, %d positions beyond %g (largest %.5f)' %
           (len(live), len(rows), names, positions, POSITION_TOLERANCE, worst))
+    if extras:
+        print('compare: also compared %s' % ', '.join('%s (%d differ)' % (k, v) for k, v in extra_bad.items()))
     for line in issues:
         print('  ' + line)
-    return 1 if bad or names or positions else 0
+    return 1 if bad or names or positions or any(extra_bad.values()) else 0
 
 
 def main(argv=None):
