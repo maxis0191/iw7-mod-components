@@ -1,4 +1,7 @@
 #pragma once
+// Marks a debugger that has the present listener below. paris_see.cpp builds to nothing without it, so a kept build
+// tree that still holds that file can serve a build from an older checkout.
+#define PARIS_DEBUGGER_PRESENT_LISTENER 1
 #include <cstdint>
 #include <cstddef>
 struct IDXGISwapChain;

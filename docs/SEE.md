@@ -18,6 +18,10 @@ engine loop's switches, server repository docs/ENGINELAB.md). It is active in a 
 `-paris-isolated-lab` (a bench root made with `-IsolatedLab`). A dedicated server never registers it. On start the
 console prints `[Paris see] ready` and the dvar `paris_see_ready` is `1`.
 
+The present callback comes from the debugger component (`paris_debugger.hpp` defines
+`PARIS_DEBUGGER_PRESENT_LISTENER`). Without that definition `paris_see.cpp` builds to nothing: a kept native build tree
+that still holds the file can serve a build from an older checkout, whose debugger has no listener.
+
 ## Commands
 
 | Command | What it does |
