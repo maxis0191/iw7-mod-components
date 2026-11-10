@@ -251,6 +251,10 @@ foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp')) {
     if ($Perf) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$perfFile") -Destination $perfTarget -Force; $nativeSources += @($perfFile) }
     elseif (Test-Path -LiteralPath $perfTarget) { Remove-Item -LiteralPath $perfTarget -Force }
 }
+# Frame facts (camera and depth with each capture) hang on the debugger's present callback: compiled only with it.
+$seeTarget = Join-Path $root 'src/client/component/paris_see.cpp'
+if ($Debugger -and $IsolatedLab) { Copy-Item -LiteralPath (Join-Path $repo 'src/native/paris_see.cpp') -Destination $seeTarget -Force; $nativeSources += @('paris_see.cpp') }
+elseif (Test-Path -LiteralPath $seeTarget) { Remove-Item -LiteralPath $seeTarget -Force }
 . "$PSScriptRoot/agent-capacity/Provenance-BuildCopy.Core.ps1"
 $wordProvenanceBuild=Set-IW7WordProvenanceBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]$WordProvenance) -IsolatedLab:([bool]$IsolatedLab) -ServerModules:([bool]$ServerModules) -Debugger:([bool]$Debugger) -Mode STARTUP -Apply
 if($wordProvenanceBuild.Compiled){$nativeSources+=$wordProvenanceBuild.Files}
