@@ -144,6 +144,69 @@ the meantime is refused (`Capture already pending`), and the frame shows the wor
 moment it was asked. A plan that changes the world less than 4 seconds after a capture can get a frame of the new state.
 The plans here ask for a capture, then wait 4 seconds.
 
+## Example plan: the final proof (`world_proof3`)
+
+The plan of the passing run, as a gamelab plan (docs/GAMELAB.md in the server repository). The repository has no folder
+for plans, so it is reproduced here. `expect` steps are at the end. A hidden-box frame must differ from `before` by more
+than 0.02 (framediff), a restored frame by less than 0.02; the noise of two captures is about 0.006.
+
+```json
+{"schema":"iw7.gamelab-plan/1","name":"world_proof3","map":"cp_zmb","steps":[
+    {"do":"waves","on":false},
+    {"do":"tp","at":[467,3677,0],"yaw":0,"pitch":0},
+    {"do":"freeze","on":true},
+    {"do":"look","yaw":0,"pitch":0},
+    {"do":"wait","s":3},
+    {"do":"cmd","text":"paris_world_stats"},
+    {"do":"capture","name":"n1","pause":4.0},
+    {"do":"capture","name":"n2","pause":4.0},
+    {"do":"capture","name":"before","pause":4.0},
+    {"do":"cmd","text":"paris_world_dump collect orig"},
+    {"do":"wait","s":1},
+    {"do":"cmd","text":"paris_world_hide_box 1300 4500 600 -300 2900 -100"},
+    {"do":"wait","s":1},
+    {"do":"cmd","text":"paris_world_stats"},
+    {"do":"capture","name":"hidden","pause":4.0},
+    {"do":"cmd","text":"paris_world_dump collect hidden"},
+    {"do":"wait","s":1},
+    {"do":"cmd","text":"paris_world_hide_box 1300 4500 600 -300 2900 -100"},
+    {"do":"wait","s":0.5},
+    {"do":"cmd","text":"paris_world_restore"},
+    {"do":"wait","s":1},
+    {"do":"capture","name":"restored","pause":4.0},
+    {"do":"cmd","text":"paris_world_stats"},
+    {"do":"cmd","text":"paris_world_hide_box 100000 100000 100000 -100000 -100000 -100000"},
+    {"do":"wait","s":1},
+    {"do":"cmd","text":"paris_world_stats"},
+    {"do":"capture","name":"all_hidden","pause":4.0},
+    {"do":"cmd","text":"paris_world_restore"},
+    {"do":"wait","s":1},
+    {"do":"capture","name":"restored_all","pause":4.0},
+    {"do":"cmd","text":"paris_world_dump collect restored_all"},
+    {"do":"wait","s":1},
+    {"do":"cmd","text":"paris_world_stats"},
+    {"do":"cmd","text":"paris_world_hide_model employee_door 581 3638 1 100"},
+    {"do":"wait","s":1},
+    {"do":"capture","name":"door_hidden","pause":4.0},
+    {"do":"walk","to":[700,3665,0],"s":6},
+    {"do":"mark","name":"walk_hidden"},
+    {"do":"cmd","text":"paris_world_restore"},
+    {"do":"wait","s":1},
+    {"do":"tp","at":[467,3677,0],"yaw":0,"pitch":0},
+    {"do":"walk","to":[700,3665,0],"s":6},
+    {"do":"mark","name":"walk_solid"},
+    {"do":"cmd","text":"paris_world_stats"},
+    {"do":"wait","s":1},
+    {"do":"expect","that":"framediff(n1,n2)","lt":0.02,"why":"noise of two captures of an unchanged view"},
+    {"do":"expect","that":"framediff(before,n1)","lt":0.02,"why":"noise before vs n1"},
+    {"do":"expect","that":"framediff(before,hidden)","gt":0.02,"why":"hidden differs"},
+    {"do":"expect","that":"framediff(before,restored)","lt":0.02,"why":"restored same"},
+    {"do":"expect","that":"framediff(before,all_hidden)","gt":0.02,"why":"all props hidden differs"},
+    {"do":"expect","that":"framediff(before,restored_all)","lt":0.02,"why":"restored after hiding everything"},
+    {"do":"expect","that":"framediff(before,door_hidden)","gt":0.01,"why":"one door hidden differs"}
+]}
+```
+
 ## Limits
 
 - Client only. Other players do not see anything; the server's world is unchanged.
@@ -154,8 +217,10 @@ The plans here ask for a capture, then wait 4 seconds.
   props) and does not edit lights.
 - Props only: 17,010 rows on Spaceland. Dynamic entities, script-moved models and effects are not in this list.
 - A rebuilt map is still needed to ship a change. This shows what the change would look like.
-- Not tested live: a map change with props hidden (the state is dropped by the pointer check; reasoned, not run), a
-  dedicated server (not registered there), maps other than Spaceland.
+- Frames: `capture_frame` can take several seconds; leave 4 seconds between a capture and the next change of the world or
+  the next capture, or the frame shows the new state or is refused (`Capture already pending`).
+- Tested only on Spaceland (`cp_zmb`) and only in the client. Not tested live: a map change with props hidden (the state is dropped by the pointer check: reasoned, not run) and a
+  dedicated server (the commands are not registered there).
 
 ## Files
 
