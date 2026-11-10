@@ -400,12 +400,12 @@ return table.concat(out)
 
         // Lua: paris_ui_material(handle) -> the name of the material behind an element's image handle, "" when it
         // cannot be read. A plain C function of the Lua state: the first argument sits at the base of the call's stack.
-        int material_name(game::hks::lua_State* state)
+        int material_name(game::hks::lua_State* vm)
         {
             std::string name;
-            if (state && state->m_apistack.top > state->m_apistack.base)
+            if (vm && vm->m_apistack.top > vm->m_apistack.base)
             {
-                const auto& argument = state->m_apistack.base[0];
+                const auto& argument = vm->m_apistack.base[0];
                 if (argument.t == game::hks::TLIGHTUSERDATA && argument.v.ptr && readable(argument.v.ptr, sizeof(const char*)))
                 {
                     const char* text{};
