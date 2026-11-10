@@ -251,10 +251,9 @@ namespace paris_world
                 out += '}';
             }
             out += "\n]}\n";
-            const std::string file = std::string(collect ? collect_directory : output_directory) + "/" + safe_file_part(map) + "-props.json";
-            const bool written = utils::io::write_file(file, out);
-            console::info("[Paris world] dumped props=%u file=%s written=%d bytes=%zu\n", v.count, (safe_file_part(map) + "-props.json").c_str(),
-                static_cast<int>(written), out.size());
+            const std::string name = safe_file_part(map) + "-props" + (tag.empty() ? "" : "-" + safe_file_part(tag)) + ".json";
+            const bool written = utils::io::write_file(std::string(collect ? collect_directory : output_directory) + "/" + name, out);
+            console::info("[Paris world] dumped props=%u file=%s written=%d bytes=%zu\n", v.count, name.c_str(), static_cast<int>(written), out.size());
         }
 
         bool hide_one(const view& v, const std::uint32_t index)
