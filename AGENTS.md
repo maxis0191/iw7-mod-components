@@ -1,3 +1,7 @@
+Read this first: the first section below is shared word for word with the other IW7 products. Most tools it
+names (`ops/bench`, `ops/gamelab`, `ops/enginelab`, `ops/netlab`, `ops/soak`, `ops/atlas`, `ops/quality`) are in
+the server repository, not here; "What this repository is" says what is here.
+
 ## Current workflow for every agent - owner rule 2026-11-10
 
 This section replaces older test, build and delegation instructions wherever they differ (they are kept below
@@ -91,7 +95,12 @@ waiting for GitHub checks; per-test game copies; launching once per question.
 
 ## How to work here
 
-- Tool first. Real work in the game is also the test of the tools. Whenever a tool, the workflow or the environment is seen to be slow, unoptimized, buggy or blind, or a new tool would be a real jump, fix or build that FIRST, prove it with a measured run, document it, then return to the job. Never grind: the same build or launch repeated more than about three times for one question, a cause that is guessed instead of read from data, minutes of waiting for what a file check answers in seconds, a result judged by looking at a picture, a manual step done twice: each of these means stop and improve the tool.
+- Tool first. Real work in the game is also the test of the tools. Whenever a tool, the workflow or the environment
+  is seen to be slow, unoptimized, buggy or blind, or a new tool would be a real jump, fix or build that FIRST,
+  prove it with a measured run, document it, then return to the job. Never grind: the same build or launch repeated
+  more than about three times for one question, a cause that is guessed instead of read from data, minutes of
+  waiting for what a file check answers in seconds, a result judged by looking at a picture, a manual step done
+  twice: each of these means stop and improve the tool.
   (Owner rule, 2026-11-10.)
 - Edit the canonical tracked file; never a generated source workspace (`runtime/...`).
 - A task does not change agent memory or instruction files (this file, a tool's memory) on its own initiative;
@@ -119,7 +128,7 @@ waiting for GitHub checks; per-test game copies; launching once per question.
 - Merge only when the full run on that exact head has zero failed checks; a failing check is fixed (or moved to
   `retained_checks` with its measured reason), never merged over. A pass is the last line of the run reporting
   every check passed and none failed, plus one `RETAINED` line for each check that was not run. The run takes
-  about eight minutes, and up to seven more when another session holds the Build slot. Prerequisites are in
+  three to eight minutes (measured 190 s and 448 s), and up to seven more when another session holds the Build slot. Prerequisites are in
   `README.md`.
 - GitHub's own checks are ignored: they do not start, and their workflow runs only when asked by hand.
 - Report source, build, live run and owner acceptance separately.

@@ -38,7 +38,7 @@ Where each old rule went. "Safety n" is rule n of "Safety rules that never chang
 | Do not change visibility, billing, protection or credentials (75) | kept | Safety 2; "What needs the owner" |
 | Return clean synchronized main; report source/build/runtime/owner validation separately (76-77) | kept | "How to land" |
 | No upstream PRs (77) | changed: a contribution may be prepared here, but nothing is sent to the public project without the owner | "What needs the owner" |
-| No automatic Codex memory changes (77) | not carried over (it concerned the automatic memory of the Codex tool) | none (history only) |
+| No automatic Codex memory changes (77) | kept in general form: a task does not change agent memory or instruction files on its own initiative | AGENTS.md, "How to work here" ("A task does not change agent memory or instruction files on its own initiative") |
 
 Rules that were not in the old file and are in the current one: private test servers (Safety 5), owner-only
 console keys (Safety 9), voice not accepted (Safety 11), game instances started by another application (Safety 7),
