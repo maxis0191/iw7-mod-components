@@ -1,80 +1,78 @@
 # IW7-Mod components
 
-Optional [owner-only native console access](docs/OWNER-CHEATS.md) keeps public
-`sv_cheats=0`, authenticates the owner and server with pinned keys, and retains
-the standard console commands. Source/build/runtime qualification is separate.
+The private native side of the IW7 products. It holds the engine and client components that are added to the
+IW7-Mod source at build time (owner-only console access, cooperative cutscene skipping, test privacy and safety
+hooks, the diagnostics and recorders), the machine-wide scheduler that admits live sessions and builds, the tools
+that answer questions about the engine (engine map, memory watch, performance recorder, freeze reporter, crash
+reader, network measurement, live world editor), the supervised debugger, and the server-relayed voice chat patch
+with its certification harness. Voice has not been tested in game and is not accepted.
 
-Private agent input includes a protected [secondary-offhand binding](docs/AGENT-OFFHAND.md)
-for real scanner input tests, retaining the existing identity and release gates.
+Server gameplay rules live in iw7-paris-server, asset serializers in x64-zt-extensions and creator tooling in
+iw7-creator-sdk. This repository owns exactly the paths listed in `product.json` under `exports`; the other
+products take some of them by exact path through their own dependency lists.
 
-Private engine/client components, the opt-in upstream voice relay overlay and its certification harness ([VOICE.md](docs/VOICE.md)), native diagnostics, scoped test hooks and shared process/resource helpers. Server gameplay rules and asset serializers have other owners.
+## Where to look
 
-This repository is private. It complements the public owner forks; it does not
-publish private project code into them. See `product.json` for exact source
-revisions and explicit file dependencies. Source extraction preserved authors
-and commit messages; `migration/import.json` and `migration/commit-map.txt` map
-the original server paths/commits to this history.
+- [docs/INDEX.md](docs/INDEX.md): which tool answers which question, how to run and build, which paths other
+  products take, and which documents are history.
+- [AGENTS.md](AGENTS.md): the rules for agents working here.
+- The server repository's `docs/DEVKIT.md` and `docs/TOOLS-INDEX.md`: every tool of every product.
 
-## Editing and source preparation
+## Run the local judge
 
-Edit the canonical tracked file here. Do not edit generated source workspaces.
-The existing relative source layout is an explicit compatibility contract used
-by hash-sensitive tools. Dependencies contribute only their listed files to a
-fresh, bounded source package; they are not vendored into this repository.
-The composition receipt records every owner, commit, Git blob and checkout-byte
-hash. It does not qualify a native build or inherit an older runtime receipt.
+The judge of a commit is the local check run on that exact commit. The hosted workflow in `.github/` starts only
+by hand and is not the judge.
 
-Run the pinned IW7-Mod `ops/source_workspace.py` with `--project`, exact
-`--revision`, one `--source PRODUCT=CHECKOUT` per dependency, and a fresh `--output`.
-Each source checkout must match the manifest revision and have clean tracked
-files. Paths with spaces are supported. Missing, different, dirty, redirected,
-oversized, binary and overlapping sources are refused before output creation.
-Then run `checks.ps1 -Workspace <output>` from this canonical checkout.
+```powershell
+./bootstrap.ps1 -Output runtime/<short>
+./checks.ps1 -Workspace runtime/<short>
+./checks.ps1 -Workspace runtime/<short> -Only <check id>   # re-run one check after a fix
+```
 
-Source export requires Git supporting `--attr-source=<tree-ish>`. Both filtered
-export and checkout-byte validation read versioned attributes from each owner's
-exact pinned commit, including sparse checkouts without a physical
-`.gitattributes`. Declared LF/CRLF/filter semantics remain in force; this does not
-export raw blobs or force all files to one line ending. Git blob identity and
-the exported-byte SHA remain separate receipt fields. Existing Source packages,
-dependency archives and native writer receipts are immutable; corrections use
-fresh packages and reviewed dependency pins, never retroactive normalization.
+Prerequisites: Git (with `--attr-source` support), PowerShell 7.4 or later and Python 3.12. `bootstrap.ps1` needs
+the GitHub CLI signed in with read access to this repository, to download the dependency archive once (or pass
+`-DependencyArchive <file>`). The two checks that compile (`cutscene_test`, `owner_cheats_test`) need the Visual
+Studio 2022 C++ tools and take the machine's build slot; they wait up to seven minutes for it. Checks that need a
+tool absent from the working machine (a Java 21 runtime, numpy and a speech voice, an unpacked retail executable)
+are listed in `checks.json` under `retained_checks` with the reason, and the run prints one `RETAINED` line for
+each: they were not run, they did not pass.
 
-The 1MiB per-file and manifest limits and 32MiB composition limit remain. One
-reviewed finite constexpr Source table has a closed qualification in the shared
-helper: owner `x64-zt-extensions`, path
-`tools-source/asset-bridge/weapon-export/native_pair_body_schema.hpp`, Git blob
-`8eac8f40be1a306f48d30c0bdfdcbfdc45e0f666`, exactly 1073140 LF bytes and SHA-256
-`dbedd4632d8bb20686c8c1355d4b0200fc2c6149ba141897007f41252f555b75`.
-That path and its case variants are reserved even below 1MiB; another owner,
-blob or byte identity is refused. Boundary, composition, archive import,
-verification and each packing read share this qualification. It is neither a
-configurable size exception nor permission to consume runtime inputs. Existing
-generated packages and dependency pins are not changed by this helper update.
+`bootstrap.ps1` refuses uncommitted changes, and composes a fresh source workspace from this commit plus the
+files named in `dependencies`, taken from the archive pinned by SHA-256 in `dependency-package.json`. The archive
+holds selected text sources only, never tools, game data or binaries; a missing archive fails, no other version
+is chosen. The checks do not install a game, copy game assets, start a game process, deploy or publish anything.
 
-The command does not install a game, copy retail assets, build native code,
-launch a process fixture, deploy, publish, or change Main. Build/run entrypoints
-inside the package retain their own input, identity, resource and authorization
-gates. Feature experiments remain paused until the owner's explicit GO.
+## Editing and source workspaces
 
-## Evidence and rollback
+- Edit the canonical tracked file here, never a generated workspace under `runtime/`.
+- Every tracked file must be declared in `product.json` `exports`; `ops/check_boundaries.py`, the first step of
+  `checks.ps1`, refuses the rest.
+- The relative layout is a contract: other products and hash-sensitive tools name these paths. See "Paths other
+  products take" in the index before renaming anything.
+- A source workspace records each owner, commit, Git blob and byte hash. It does not qualify a native build and
+  never inherits an older runtime receipt. Existing packages, dependency archives and receipts are immutable:
+  a correction is a new package and a reviewed pin, never a change in place.
+- `ops/source_workspace.py` limits each file to 1 MiB and a composition to 32 MiB, with one closed, exact
+  exception for a table owned by x64-zt-extensions (path, blob and byte hash are fixed in that file). It is not
+  a configurable size exception.
+- To run an operation that needs another product's files, run it from a generated workspace or with
+  `bootstrap.ps1 -Entry ops/<entry>.ps1 -Arguments @(...)`. Entry points keep their own input, identity,
+  resource and authorization gates.
 
-The base-client lifecycle handles a missing PID lookup by waiting at most one
-second on its already retained, ID-correlated original process handle. Only a
-signaled handle establishes exit; a timeout, unavailable handle, identity
-conflict or other lookup error keeps restoration blocked. Live image, creation
-and executable-hash checks remain in force. Vacancy and transaction checks still
-precede restoration and disposal. The source regression injects a missing lookup
-before a real owned PowerShell child signals, then verifies profile restoration;
-negative controls retain unknown, occupied and conflicting states. This hardens
-cleanup timing and does not identify the cause of a preceding game crash.
+## How other products take these files
 
-Historical documents and pinned plans retain their original bytes and claims.
-Use the recorded original checkout/commit for a frozen experiment. A moved or
-rebuilt source needs a new plan and qualification. Failed results remain failed.
-To roll back an integration, restore its earlier dependency revision in a new
-reviewed commit, generate a fresh source package, and rerun the relevant tests.
-This never restores or deploys game data, banks or binaries automatically.
+A consumer names a commit of this repository and a list of paths in its own `product.json`, then regenerates its
+source inputs. Today the three consumers pin the branch `pin/server-447c1ad-shareable` (`9a3d30b`), not `main`;
+that branch must never be deleted or rewritten. Details and counts are in [docs/INDEX.md](docs/INDEX.md).
+To roll an integration back, restore the earlier pin in a new reviewed commit and regenerate; this never
+restores or deploys game data, banks or binaries.
+
+## History and evidence
+
+Dated documents and frozen plans keep their original bytes and claims; a failed result stays recorded as
+failed. A moved or rebuilt source needs a new plan and a new qualification. Older rules and the earlier README
+are in `docs/archive/`; `migration/` maps the original server paths and commits to this history (authors and
+commit messages were preserved by the extraction).
 
 ## Licensing
 
@@ -83,48 +81,6 @@ to all private adaptations by this extraction. Public distribution requires its
 own license/privacy review and owner decision. Commercial game assets, dumps,
 installed SDKs, PDBs, executables, credentials and player data are excluded.
 
-## Reproduce the source checks
-
-Prerequisites: Git, authenticated GitHub CLI with read access to this private
-repository, PowerShell 7.4+, Python 3.12 and Node.js 22. Native source checks also
-use Java 21; pure native compilation requires the existing VS2022 C++ toolchain.
-Asset image tests use the hash-pinned Pillow requirement in ops/doom-textures.
-
-```powershell
-./bootstrap.ps1 -Output "$PWD/runtime/source inputs"
-./checks.ps1 -Workspace "$PWD/runtime/source inputs"
-```
-
-Bootstrap downloads only the immutable source dependency archive named in
-`dependency-package.json` from this repository's private release. Its SHA-256,
-length, members, owners and commits are checked. It needs no cross-repository
-CI secret. Offline use: supply `-DependencyArchive <downloaded dependencies.zip>`.
-The archive contains selected text sources, never tools, game data or binaries.
-A missing archive fails clearly; no fallback version is selected.
-
-Run an authorized operation from the generated package, or use
-`bootstrap.ps1 -Entry ops/<entry>.ps1 -Arguments @(...)`. Canonical repositories
-are editing locations; operations requiring another product must use prepared
-inputs. Older commands in dated documents refer to their original frozen layout.
-Do not reuse an old runtime receipt for a newly composed input.
-
-## Owner policy and gameplay fixture update - 2026-10-13
-
-The initial removal of artificial commit headroom and the 85% stop rule is
-superseded by the merged telemetry-only policy in PR3. Estimates and fresh
-RAM/commit observations remain visible; they do not refuse admission or stop
-work based on capacity or percentages. Exclusive leases, live process identity,
-invalid-telemetry checks and occupied owner-client protections remain. See
-docs/RESOURCE-WORKFLOW.md. The cross-API regression matrix also covers zero
-available capacity and estimates larger than the machine without allocating them.
-
-The private gameplay fixture can protect and clean up engine test bots only
-while a protected local player is present on an explicitly isolated, private,
-LAN-only CP dedicated with cheats disabled. It exposes no admin chat commands,
-owner authentication, identity overrides or ban storage. The owner cancelled
-all admin commands; do not reintroduce them. The helper enabled a protected
-Spaceland shared-weapon witness, independently of owner gameplay acceptance.
-
-The canonical implementations are these exports. Consumers must advance their
-explicit dependency pin and regenerate source inputs to adopt this revision;
-retained pre-migration copies do not automatically inherit the current policy.
+This repository is private. Nothing private goes into a public fork, and nothing is sent to the public game-client
+project (no issue, pull request or message) without the owner. Admin chat commands were cancelled by the owner
+and are not to be reintroduced.
