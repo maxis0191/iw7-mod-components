@@ -19,21 +19,28 @@
 #include <mutex>
 
 // Frame facts for isolated lab clients (-paris-isolated-lab, a client built with the debugger switch). With every frame
-// capture it writes the exact camera of that frame, and on request the engine's own depth buffer of the same present,
-// so that tools can answer "what is at this pixel" from numbers (ops/engine-map/iw7_see.py, docs/SEE.md).
+// capture it records the exact camera of that frame, and on request the engine's own depth buffer of the same present,
+// so that tools can answer "what is at this pixel" from numbers (the creator SDK's iw7_see.py; docs/SEE.md).
 //
 //   capture_frame <name>       replaced in a lab client: the same colour frame (iw7-mod/screenshots/<name>.bmp), plus
-//                              iw7-mod/paris-perf/see-<name>.json (schema iw7.see-camera/1)
+//                              iw7-mod/paris-perf/see-<name>.json (schema iw7.see-camera/2). When both are written the
+//                              dvar paris_see_done holds <name>, so a script can wait for the frame
 //   paris_see_depth            arm the next capture: also write the depth buffer as iw7-mod/screenshots/<name>__z.bmp
 //                              (32-bit top-down BMP whose 4 bytes per pixel are one float: the raw device depth)
 //   paris_see_target <text>    choose the depth target by a part of its name ("auto" = the default, "Frontend Depth")
 //   paris_see_targets          write iw7-mod/paris-perf/see-targets.json: every engine render target (name, size, format)
 //   paris_see_listen 0|1       measurement switch: take the present listener away and put it back
 //
-// The colour copy, the depth copy and the camera read all happen in one present callback on the renderer thread, under
-// the engine's render mutex, so the three belong to the same presented frame. The camera is also read when the capture
-// is asked (main thread); a tool can see whether it moved in between. Nothing runs when no capture is pending except one
-// atomic load per present.
+// The camera. The engine keeps the view of a frame in its client globals, and the pointer to those is stored encrypted
+// (the engine decrypts it inline wherever it is used), so the view cannot be read as a structure. It is recorded
+// instead through the engine's own projection routine, CG_WorldPosToScreenPosReal: a few hundred world points and the
+// screen position the engine gives each of them. Those pairs determine the camera (position, axes, field of view)
+// exactly; the tool solves it. The points are taken on the main thread when the capture is asked and again right after
+// the frame was taken, so a tool can see whether the camera moved in between.
+//
+// The colour copy and the depth copy happen in one present callback on the renderer thread, under the engine's render
+// mutex. Nothing runs when no capture is pending except one atomic increment and two atomic loads per present, and one
+// atomic load per main-thread frame.
 namespace paris_see
 {
     namespace
@@ -43,41 +50,29 @@ namespace paris_see
         constexpr std::uintptr_t render_target_pool = 0x149B3F248; // GfxImage of entry 0; entries are 288 bytes
         constexpr int render_target_count = 2048;
         constexpr std::size_t render_target_stride = 288;
-        constexpr std::uintptr_t client_globals_pointer = 0x141FA6C88; // cg_s*: the engine loads it with a mov and tests it for null
-        constexpr std::size_t client_globals_size = sizeof(game::cg_s);
         constexpr const char* default_depth_target = "frontend depth";
         constexpr const char* camera_directory = "iw7-mod/paris-perf";
         constexpr const char* frame_directory = "iw7-mod/screenshots";
-
-        struct camera
-        {
-            float tan_half_fov[2]{};
-            float origin[3]{};
-            float axis[9]{};
-            float z_near{};
-            float unknown[2]{};
-            unsigned viewport[4]{};
-            float view_offset[3]{};
-            int offset{-1};   // byte offset of the view inside the client globals; -1 = no camera
-            int scanned{};    // 1 when the offset was found by a search, not taken from the structure definition
-        };
-
-        struct probe
-        {
-            float world[3]{};
-            float screen[2]{};
-            int ok{};
-        };
+        constexpr std::size_t max_probes = 320;
 
         struct request
         {
             std::string name;
-            int depth{}; // 0 none, 1 the depth target
-            camera at_request{};
-            probe probes[3]{};
-            int probe_count{};
+            int depth{};                   // 0 none, 1 the depth target
+            std::vector<float> probes;     // x, y, z, screen x, screen y: the engine's projection when the capture was asked
             LARGE_INTEGER asked{};
             std::uint64_t asked_present{};
+        };
+
+        struct outcome
+        {
+            bool colour{};
+            unsigned width{}, height{}, format{};
+            std::string why;
+            std::string depth_row;         // JSON object of the depth file, or empty
+            std::string candidates;        // JSON objects of the scene-sized depth targets
+            double wait_ms{}, colour_ms{}, depth_ms{};
+            std::uint64_t taken_present{};
         };
 
         struct target
@@ -89,14 +84,16 @@ namespace paris_see
             ID3D11Texture2D* texture{};
         };
 
-        std::atomic<bool> pending{false};
+        std::atomic<bool> pending{false};     // a capture was asked and its files are not all written
+        std::atomic<bool> taken{false};       // the renderer has copied the frame; the main thread finishes
         std::atomic<bool> want_targets{false};
         std::atomic<int> armed_depth{0};
         std::atomic<std::uint64_t> presents{0};
         std::mutex state_mutex;
         request current;
+        outcome result;
         std::string forced_target;
-        std::atomic<int> view_offset_found{-1};
+        int depth_index{-1};                  // the pool entry used last time; renderer thread only
 
         bool readable(const void* pointer, const std::size_t size)
         {
@@ -106,71 +103,6 @@ namespace paris_see
             if (info.State != MEM_COMMIT || (info.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return false;
             const auto end = reinterpret_cast<std::uintptr_t>(info.BaseAddress) + info.RegionSize;
             return reinterpret_cast<std::uintptr_t>(pointer) + size <= end;
-        }
-
-        // A view is two tangents, an origin, three orthonormal axes and a near plane. Anything else is not a camera.
-        bool sane_view(const game::RefdefView& v)
-        {
-            const float values[15] = {v.tanHalfFovX, v.tanHalfFovY, v.org[0], v.org[1], v.org[2], v.axis[0][0], v.axis[0][1], v.axis[0][2],
-                v.axis[1][0], v.axis[1][1], v.axis[1][2], v.axis[2][0], v.axis[2][1], v.axis[2][2], v.zNear};
-            for (const float value : values) if (!std::isfinite(value)) return false;
-            if (v.tanHalfFovX < 0.05f || v.tanHalfFovX > 5.0f || v.tanHalfFovY < 0.05f || v.tanHalfFovY > 5.0f) return false;
-            if (v.zNear < 0.001f || v.zNear > 1000.0f) return false;
-            if (std::fabs(v.org[0]) > 1.0e6f || std::fabs(v.org[1]) > 1.0e6f || std::fabs(v.org[2]) > 1.0e6f) return false;
-            const auto dot = [&](const int a, const int b) { return v.axis[a][0] * v.axis[b][0] + v.axis[a][1] * v.axis[b][1] + v.axis[a][2] * v.axis[b][2]; };
-            if (std::fabs(dot(0, 0) - 1.0f) > 1e-3f || std::fabs(dot(1, 1) - 1.0f) > 1e-3f || std::fabs(dot(2, 2) - 1.0f) > 1e-3f) return false;
-            if (std::fabs(dot(0, 1)) > 1e-3f || std::fabs(dot(0, 2)) > 1e-3f || std::fabs(dot(1, 2)) > 1e-3f) return false;
-            // right-handed with left as the second axis: forward x left = up
-            const float cx = v.axis[0][1] * v.axis[1][2] - v.axis[0][2] * v.axis[1][1];
-            const float cy = v.axis[0][2] * v.axis[1][0] - v.axis[0][0] * v.axis[1][2];
-            const float cz = v.axis[0][0] * v.axis[1][1] - v.axis[0][1] * v.axis[1][0];
-            return cx * v.axis[2][0] + cy * v.axis[2][1] + cz * v.axis[2][2] > 0.99f;
-        }
-
-        const std::uint8_t* client_globals()
-        {
-            const auto* base = *reinterpret_cast<const std::uint8_t* const*>(client_globals_pointer);
-            return base && readable(base, client_globals_size) ? base : nullptr;
-        }
-
-        // The view of the frame being drawn: cg->refdef.view. The offset comes from the structure definition; when what
-        // lies there is not a camera, the client globals are searched once for one and the offset found is reported.
-        camera read_camera()
-        {
-            camera c{};
-            const auto* base = client_globals();
-            if (!base) return c;
-            const int declared = static_cast<int>(offsetof(game::cg_s, refdef) + offsetof(game::refdef_t, view));
-            int offset = view_offset_found.load();
-            if (offset < 0) offset = declared;
-            const auto* view = reinterpret_cast<const game::RefdefView*>(base + offset);
-            if (!sane_view(*view))
-            {
-                offset = -1;
-                for (std::size_t at = 16; at + sizeof(game::refdef_t) < client_globals_size; at += 4)
-                {
-                    if (sane_view(*reinterpret_cast<const game::RefdefView*>(base + at))) { offset = static_cast<int>(at); break; }
-                }
-                if (offset < 0) return c;
-                view_offset_found.store(offset);
-                view = reinterpret_cast<const game::RefdefView*>(base + offset);
-            }
-            c.offset = offset;
-            c.scanned = offset != declared;
-            c.tan_half_fov[0] = view->tanHalfFovX;
-            c.tan_half_fov[1] = view->tanHalfFovY;
-            std::memcpy(c.origin, view->org, sizeof(c.origin));
-            std::memcpy(c.axis, view->axis, sizeof(c.axis));
-            c.z_near = view->zNear;
-            c.unknown[0] = view->unk[0];
-            c.unknown[1] = view->unk[1];
-            const auto* refdef = reinterpret_cast<const game::refdef_t*>(reinterpret_cast<const std::uint8_t*>(view) - offsetof(game::refdef_t, view));
-            c.viewport[0] = refdef->displayViewport.x;
-            c.viewport[1] = refdef->displayViewport.y;
-            c.viewport[2] = refdef->displayViewport.width;
-            c.viewport[3] = refdef->displayViewport.height;
-            std::memcpy(c.view_offset, refdef->viewOffset, sizeof(c.view_offset));
-            return c;
         }
 
         double number(const float value) { return std::isfinite(value) ? static_cast<double>(value) : 0.0; }
@@ -185,17 +117,6 @@ namespace paris_see
             out += buffer;
         }
 
-        void append_camera(std::string& out, const char* key, const camera& c)
-        {
-            append(out, "\"%s\":{\"tan_half_fov\":[%.9g,%.9g],\"origin\":[%.9g,%.9g,%.9g],", key, number(c.tan_half_fov[0]), number(c.tan_half_fov[1]),
-                number(c.origin[0]), number(c.origin[1]), number(c.origin[2]));
-            append(out, "\"axis\":[[%.9g,%.9g,%.9g],[%.9g,%.9g,%.9g],[%.9g,%.9g,%.9g]],", number(c.axis[0]), number(c.axis[1]), number(c.axis[2]),
-                number(c.axis[3]), number(c.axis[4]), number(c.axis[5]), number(c.axis[6]), number(c.axis[7]), number(c.axis[8]));
-            append(out, "\"z_near\":%.9g,\"unknown\":[%.9g,%.9g],\"viewport\":[%u,%u,%u,%u],\"view_offset\":[%.9g,%.9g,%.9g],\"found_at\":%d,\"found_by_search\":%d}", number(c.z_near),
-                number(c.unknown[0]), number(c.unknown[1]), c.viewport[0], c.viewport[1], c.viewport[2], c.viewport[3], number(c.view_offset[0]),
-                number(c.view_offset[1]), number(c.view_offset[2]), c.offset, c.scanned);
-        }
-
         void append_name(std::string& out, const std::string& text)
         {
             for (const auto raw : text)
@@ -207,26 +128,120 @@ namespace paris_see
             }
         }
 
-        // Every engine render target that is a plain 2D texture. Renderer thread only.
+        double milliseconds(const LARGE_INTEGER from, const LARGE_INTEGER to)
+        {
+            LARGE_INTEGER frequency{};
+            QueryPerformanceFrequency(&frequency);
+            return static_cast<double>(to.QuadPart - from.QuadPart) * 1000.0 / static_cast<double>(frequency.QuadPart);
+        }
+
+        std::string lower(std::string text)
+        {
+            for (auto& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return text;
+        }
+
+        // ---------------------------------------------------------------- the camera, through the engine's projection
+        void probe_lattice(std::vector<float>& out, const float low[3], const float high[3], const int counts[3], float bounds_low[3], float bounds_high[3])
+        {
+            const auto* placement = game::ScrPlace_GetActivePlacement();
+            for (int ix = 0; ix < counts[0]; ++ix)
+            {
+                for (int iy = 0; iy < counts[1]; ++iy)
+                {
+                    for (int iz = 0; iz < counts[2]; ++iz)
+                    {
+                        const int index[3] = {ix, iy, iz};
+                        float world[3];
+                        for (int k = 0; k < 3; ++k) world[k] = counts[k] > 1 ? low[k] + (high[k] - low[k]) * static_cast<float>(index[k]) / static_cast<float>(counts[k] - 1) : low[k];
+                        float screen[2]{};
+                        if (!game::CG_WorldPosToScreenPosReal(0, placement, world, screen)) continue;
+                        if (!std::isfinite(screen[0]) || !std::isfinite(screen[1])) continue;
+                        out.insert(out.end(), {world[0], world[1], world[2], screen[0], screen[1]});
+                        for (int k = 0; k < 3; ++k)
+                        {
+                            if (world[k] < bounds_low[k]) bounds_low[k] = world[k];
+                            if (world[k] > bounds_high[k]) bounds_high[k] = world[k];
+                        }
+                    }
+                }
+            }
+        }
+
+        // World points the engine says are on the screen, with where it puts them. A coarse lattice over the whole map,
+        // then a finer one inside the box of the points that were on the screen (so near points are there too). Main thread.
+        std::vector<float> take_probes()
+        {
+            std::vector<float> all;
+            if (!*game::g_world) return all;
+            const float low[3] = {-16384.0f, -16384.0f, -4096.0f};
+            const float high[3] = {16384.0f, 16384.0f, 8192.0f};
+            const int coarse[3] = {17, 17, 7};
+            float seen_low[3] = {1e30f, 1e30f, 1e30f};
+            float seen_high[3] = {-1e30f, -1e30f, -1e30f};
+            probe_lattice(all, low, high, coarse, seen_low, seen_high);
+            if (all.size() >= 5 * 4)
+            {
+                // a little inside the box, so the fine points do not repeat the coarse ones
+                float fine_low[3], fine_high[3], unused_low[3] = {1e30f, 1e30f, 1e30f}, unused_high[3] = {-1e30f, -1e30f, -1e30f};
+                for (int k = 0; k < 3; ++k)
+                {
+                    const float span = seen_high[k] - seen_low[k];
+                    fine_low[k] = seen_low[k] + span * 0.031f + 13.0f;
+                    fine_high[k] = seen_high[k] - span * 0.017f - 7.0f;
+                }
+                const int fine[3] = {13, 13, 9};
+                probe_lattice(all, fine_low, fine_high, fine, unused_low, unused_high);
+            }
+            const std::size_t count = all.size() / 5;
+            if (count <= max_probes) return all;
+            std::vector<float> kept;
+            kept.reserve(max_probes * 5);
+            for (std::size_t i = 0; i < max_probes; ++i)
+            {
+                const std::size_t at = i * count / max_probes;
+                kept.insert(kept.end(), all.begin() + static_cast<std::ptrdiff_t>(at * 5), all.begin() + static_cast<std::ptrdiff_t>(at * 5 + 5));
+            }
+            return kept;
+        }
+
+        void append_probes(std::string& out, const char* key, const std::vector<float>& probes)
+        {
+            out += "\"";
+            out += key;
+            out += "\":[";
+            for (std::size_t i = 0; i + 4 < probes.size(); i += 5)
+                append(out, "%s[%.9g,%.9g,%.9g,%.9g,%.9g]", i ? "," : "", number(probes[i]), number(probes[i + 1]), number(probes[i + 2]), number(probes[i + 3]), number(probes[i + 4]));
+            out += "]";
+        }
+
+        // ---------------------------------------------------------------- render targets
+        bool read_target(const int index, target& t)
+        {
+            const auto* image = reinterpret_cast<const game::GfxImage*>(render_target_pool + render_target_stride * index);
+            if (!image->name || !image->texture.map) return false;
+            if (!readable(image->name, 1) || !readable(image->texture.map, sizeof(void*))) return false;
+            auto* resource = reinterpret_cast<ID3D11Resource*>(image->texture.map);
+            D3D11_RESOURCE_DIMENSION dimension{};
+            resource->GetType(&dimension);
+            if (dimension != D3D11_RESOURCE_DIMENSION_TEXTURE2D) return false;
+            t.index = index;
+            t.name.assign(image->name, strnlen(image->name, 96));
+            t.image_format = static_cast<unsigned>(image->imageFormat);
+            t.texture = static_cast<ID3D11Texture2D*>(resource);
+            t.texture->GetDesc(&t.desc);
+            return true;
+        }
+
+        // Every engine render target that is a plain 2D texture. Renderer thread only. Slow (it asks the system about
+        // every entry's memory): used for the listing and the first depth capture, then the entry is remembered.
         std::vector<target> list_targets()
         {
             std::vector<target> out;
             for (int i = 0; i < render_target_count; ++i)
             {
-                const auto* image = reinterpret_cast<const game::GfxImage*>(render_target_pool + render_target_stride * i);
-                if (!image->name || !image->texture.map) continue;
-                if (!readable(image->name, 1) || !readable(image->texture.map, sizeof(void*))) continue;
-                auto* resource = reinterpret_cast<ID3D11Resource*>(image->texture.map);
-                D3D11_RESOURCE_DIMENSION dimension{};
-                resource->GetType(&dimension);
-                if (dimension != D3D11_RESOURCE_DIMENSION_TEXTURE2D) continue;
                 target t;
-                t.index = i;
-                t.name.assign(image->name, strnlen(image->name, 96));
-                t.image_format = static_cast<unsigned>(image->imageFormat);
-                t.texture = static_cast<ID3D11Texture2D*>(resource);
-                t.texture->GetDesc(&t.desc);
-                out.push_back(std::move(t));
+                if (read_target(i, t)) out.push_back(std::move(t));
             }
             return out;
         }
@@ -265,9 +280,11 @@ namespace paris_see
             }
         }
 
-        bool is_depth_candidate(const target& t)
+        bool is_depth_candidate(const target& t, const unsigned width, const unsigned height)
         {
-            return (t.desc.BindFlags & D3D11_BIND_DEPTH_STENCIL) && t.desc.SampleDesc.Count == 1 && t.desc.ArraySize == 1 && bytes_per_pixel(t.desc.Format) != 0;
+            if (!(t.desc.BindFlags & D3D11_BIND_DEPTH_STENCIL) || t.desc.SampleDesc.Count != 1 || t.desc.ArraySize != 1 || bytes_per_pixel(t.desc.Format) == 0) return false;
+            const auto* vid = game::vidConfig.get();
+            return (t.desc.Width == vid->sceneWidth && t.desc.Height == vid->sceneHeight) || (t.desc.Width == width && t.desc.Height == height);
         }
 
         void write_bmp_header(std::string& bytes, const unsigned width, const unsigned height)
@@ -286,13 +303,6 @@ namespace paris_see
             bytes.assign(file.bfSize, '\0');
             std::memcpy(bytes.data(), &file, sizeof(file));
             std::memcpy(bytes.data() + sizeof(file), &info, sizeof(info));
-        }
-
-        double milliseconds(const LARGE_INTEGER from, const LARGE_INTEGER to)
-        {
-            LARGE_INTEGER frequency{};
-            QueryPerformanceFrequency(&frequency);
-            return static_cast<double>(to.QuadPart - from.QuadPart) * 1000.0 / static_cast<double>(frequency.QuadPart);
         }
 
         // The depth texture as one float per pixel inside a 32-bit BMP. Fills the facts of the JSON row.
@@ -328,7 +338,7 @@ namespace paris_see
                     if (plain) std::memcpy(&v, line + static_cast<std::size_t>(x) * step, 4);
                     else v = decode(line + static_cast<std::size_t>(x) * step, desc.Format);
                     out_line[x] = v;
-                    zeros += v == 0.0f;
+                    if (v == 0.0f) ++zeros;
                     if (v < lowest) lowest = v;
                     if (v > highest) highest = v;
                 }
@@ -399,12 +409,6 @@ namespace paris_see
             return true;
         }
 
-        std::string lower(std::string text)
-        {
-            for (auto& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            return text;
-        }
-
         void write_targets()
         {
             const auto targets = list_targets();
@@ -423,75 +427,72 @@ namespace paris_see
             console::info("[Paris see] targets=%zu written=%d\n", targets.size(), static_cast<int>(written));
         }
 
+        // The depth target: the entry used last time when it still fits, else the first scene-sized depth target whose
+        // name contains the wanted text (default "Frontend Depth"), else, with no text given, the first scene-sized one.
+        bool find_depth_target(const std::string& forced, const unsigned width, const unsigned height, target& chosen, std::string& candidates)
+        {
+            const std::string wanted = forced.empty() ? default_depth_target : forced;
+            if (depth_index >= 0)
+            {
+                target t;
+                if (read_target(depth_index, t) && is_depth_candidate(t, width, height) && lower(t.name).find(wanted) != std::string::npos)
+                {
+                    chosen = t;
+                    return true;
+                }
+                depth_index = -1;
+            }
+            bool found = false, have_fallback = false;
+            target fallback;
+            for (const auto& t : list_targets())
+            {
+                if (!is_depth_candidate(t, width, height)) continue;
+                candidates += candidates.empty() ? "{\"index\":" : ",{\"index\":";
+                candidates += std::to_string(t.index) + ",\"name\":\"";
+                append_name(candidates, t.name);
+                candidates += "\",\"dxgi_format\":" + std::to_string(static_cast<unsigned>(t.desc.Format)) + "}";
+                if (!have_fallback) { fallback = t; have_fallback = true; }
+                if (!found && lower(t.name).find(wanted) != std::string::npos) { chosen = t; found = true; }
+            }
+            if (!found && forced.empty() && have_fallback) { chosen = fallback; found = true; }
+            if (found) depth_index = chosen.index;
+            return found;
+        }
+
+        // Renderer thread: copy the picture and, when asked, the depth. The main thread writes the camera file.
         void capture(IDXGISwapChain* swap_chain)
         {
-            request r;
-            std::string forced;
+            std::string name, forced;
+            int depth = 0;
+            LARGE_INTEGER asked{};
             {
                 std::lock_guard lock(state_mutex);
-                r = current;
+                name = current.name;
+                depth = current.depth;
+                asked = current.asked;
                 forced = forced_target;
             }
-            LARGE_INTEGER t0{}, t1{}, t2{}, t3{};
+            outcome o;
+            LARGE_INTEGER t0{}, t1{}, t2{};
             QueryPerformanceCounter(&t0);
-            const auto at_present = read_camera();
-            unsigned width = 0, height = 0, format = 0;
             const char* why = "";
-            const bool colour = write_colour(swap_chain, r.name, width, height, format, why);
+            o.colour = write_colour(swap_chain, name, o.width, o.height, o.format, why);
+            o.why = why;
             QueryPerformanceCounter(&t1);
-
-            std::string depth_rows, candidates;
-            int depth_written = 0;
-            const auto* vid = game::vidConfig.get();
-            if (r.depth)
+            if (depth)
             {
-                const auto targets = list_targets();
-                const std::string wanted = forced.empty() ? default_depth_target : forced;
-                const target* chosen = nullptr;
-                const target* fallback = nullptr;
-                for (const auto& t : targets)
-                {
-                    if (!is_depth_candidate(t)) continue;
-                    const bool scene_sized = (t.desc.Width == vid->sceneWidth && t.desc.Height == vid->sceneHeight) || (t.desc.Width == width && t.desc.Height == height);
-                    if (!scene_sized) continue;
-                    candidates += candidates.empty() ? "{\"index\":" : ",{\"index\":";
-                    candidates += std::to_string(t.index) + ",\"name\":\"";
-                    append_name(candidates, t.name);
-                    candidates += "\",\"dxgi_format\":" + std::to_string(static_cast<unsigned>(t.desc.Format)) + "}";
-                    if (!fallback) fallback = &t;
-                    if (!chosen && lower(t.name).find(wanted) != std::string::npos) chosen = &t;
-                }
-                if (!chosen && forced.empty()) chosen = fallback;
-                if (chosen)
-                {
-                    std::string row;
-                    if (write_depth(*chosen, r.name + "__z.bmp", row)) { depth_rows = row; depth_written = 1; }
-                }
+                target chosen;
+                if (find_depth_target(forced, o.width, o.height, chosen, o.candidates)) write_depth(chosen, name + "__z.bmp", o.depth_row);
             }
             QueryPerformanceCounter(&t2);
-
-            std::string out = "{\"schema\":\"iw7.see-camera/1\",\"name\":\"";
-            append_name(out, r.name);
-            append(out, "\",\"frame\":{\"file\":\"%s.bmp\",\"written\":%s,\"width\":%u,\"height\":%u,\"dxgi_format\":%u},\n", r.name.c_str(), colour ? "true" : "false", width, height, format);
-            append(out, "\"scene\":{\"width\":%u,\"height\":%u,\"display_width\":%u,\"display_height\":%u,\"scene_aspect\":%.9g,\"display_aspect\":%.9g},\n", vid->sceneWidth,
-                vid->sceneHeight, vid->displayWidth, vid->displayHeight, number(vid->sceneAspectRatio), number(vid->displayAspectRatio));
-            append_camera(out, "camera", at_present);
-            out += ",\n";
-            append_camera(out, "camera_at_request", r.at_request);
-            out += ",\n\"probes\":[";
-            for (int i = 0; i < r.probe_count; ++i)
-                append(out, "%s{\"world\":[%.9g,%.9g,%.9g],\"screen\":[%.9g,%.9g],\"ok\":%d}", i ? "," : "", number(r.probes[i].world[0]), number(r.probes[i].world[1]),
-                    number(r.probes[i].world[2]), number(r.probes[i].screen[0]), number(r.probes[i].screen[1]), r.probes[i].ok);
-            out += "],\n\"depth_asked\":" + std::to_string(r.depth) + ",\"depth\":[" + depth_rows + "],\n\"depth_candidates\":[" + candidates + "],\n";
-            QueryPerformanceCounter(&t3);
-            append(out, "\"presents\":{\"asked\":%llu,\"taken\":%llu},\"ms\":{\"asked_to_present\":%.3f,\"colour\":%.3f,\"depth\":%.3f},\n", r.asked_present, presents.load(),
-                milliseconds(r.asked, t0), milliseconds(t0, t1), milliseconds(t1, t2));
-            out += "\"conventions\":\"axis rows are forward, left, up in world space; depth files hold the raw device depth as one float per pixel, top row first\"}\n";
-            const bool json = utils::io::write_file(std::string(camera_directory) + "/see-" + r.name + ".json", out);
-            if (colour) console::info("[capture_frame] Saved %s/%s.bmp (%ux%u, format=%u).\n", frame_directory, r.name.c_str(), width, height, format);
-            else console::error("[capture_frame] %s\n", why);
-            console::info("[Paris see] frame=%s camera=%d depth=%d colour_ms=%.2f depth_ms=%.2f wait_ms=%.1f\n", r.name.c_str(), static_cast<int>(json), depth_written,
-                milliseconds(t0, t1), milliseconds(t1, t2), milliseconds(r.asked, t0));
+            o.wait_ms = milliseconds(asked, t0);
+            o.colour_ms = milliseconds(t0, t1);
+            o.depth_ms = milliseconds(t1, t2);
+            o.taken_present = presents.load();
+            {
+                std::lock_guard lock(state_mutex);
+                result = std::move(o);
+            }
         }
 
         // Renderer thread, under the render mutex, at every present.
@@ -503,9 +504,49 @@ namespace paris_see
             try
             {
                 if (want_targets.exchange(false)) write_targets();
-                if (pending.load(std::memory_order_acquire)) capture(swap_chain);
+                if (pending.load(std::memory_order_acquire) && !taken.load(std::memory_order_acquire))
+                {
+                    capture(swap_chain);
+                    taken.store(true, std::memory_order_release);
+                }
             }
             catch (...) {}
+        }
+
+        // Main thread, every frame: when the renderer has taken the frame, read the camera again, write the camera file
+        // and tell scripts the frame is there.
+        void finish()
+        {
+            if (!taken.load(std::memory_order_acquire)) return;
+            request r;
+            outcome o;
+            {
+                std::lock_guard lock(state_mutex);
+                r = current;
+                o = result;
+            }
+            const auto after = take_probes();
+            const auto* vid = game::vidConfig.get();
+            std::string out = "{\"schema\":\"iw7.see-camera/2\",\"name\":\"";
+            append_name(out, r.name);
+            append(out, "\",\"frame\":{\"file\":\"%s.bmp\",\"written\":%s,\"width\":%u,\"height\":%u,\"dxgi_format\":%u},\n", r.name.c_str(), o.colour ? "true" : "false", o.width, o.height, o.format);
+            append(out, "\"scene\":{\"width\":%u,\"height\":%u,\"display_width\":%u,\"display_height\":%u,\"scene_aspect\":%.9g,\"display_aspect\":%.9g},\n", vid->sceneWidth,
+                vid->sceneHeight, vid->displayWidth, vid->displayHeight, number(vid->sceneAspectRatio), number(vid->displayAspectRatio));
+            out += "\"camera\":\"the engine's own projection (CG_WorldPosToScreenPosReal) of world points: [x, y, z, screen x, screen y], in frame pixels\",\n";
+            append_probes(out, "projection_at_request", r.probes);
+            out += ",\n";
+            append_probes(out, "projection_after", after);
+            out += ",\n\"depth_asked\":" + std::to_string(r.depth) + ",\"depth\":[" + o.depth_row + "],\n\"depth_candidates\":[" + o.candidates + "],\n";
+            append(out, "\"presents\":{\"asked\":%llu,\"taken\":%llu},\"ms\":{\"asked_to_present\":%.3f,\"colour\":%.3f,\"depth\":%.3f},\n", r.asked_present, o.taken_present,
+                o.wait_ms, o.colour_ms, o.depth_ms);
+            out += "\"conventions\":\"depth files hold the raw device depth as one float per pixel, top row first\"}\n";
+            const bool json = utils::io::write_file(std::string(camera_directory) + "/see-" + r.name + ".json", out);
+            if (o.colour) console::info("[capture_frame] Saved %s/%s.bmp (%ux%u, format=%u).\n", frame_directory, r.name.c_str(), o.width, o.height, o.format);
+            else console::error("[capture_frame] %s\n", o.why.c_str());
+            console::info("[Paris see] frame=%s camera=%d points=%zu/%zu depth=%d colour_ms=%.2f depth_ms=%.2f wait_ms=%.1f\n", r.name.c_str(), static_cast<int>(json),
+                r.probes.size() / 5, after.size() / 5, static_cast<int>(!o.depth_row.empty()), o.colour_ms, o.depth_ms, o.wait_ms);
+            command::execute("set paris_see_done " + r.name, false);
+            taken.store(false, std::memory_order_release);
             pending.store(false, std::memory_order_release);
         }
 
@@ -521,26 +562,14 @@ namespace paris_see
             request r;
             r.name = name;
             r.depth = armed_depth.exchange(0);
-            r.at_request = read_camera();
+            r.probes = take_probes();
             QueryPerformanceCounter(&r.asked);
             r.asked_present = presents.load();
-            // The engine's own projection of three points in front of the camera: an independent check of the camera read.
-            if (*game::g_world && r.at_request.offset >= 0)
-            {
-                const auto& c = r.at_request;
-                const float offsets[3][3] = {{300.0f, 0.0f, 0.0f}, {300.0f, 100.0f, 50.0f}, {500.0f, -150.0f, -80.0f}};
-                for (int i = 0; i < 3; ++i)
-                {
-                    auto& p = r.probes[i];
-                    for (int k = 0; k < 3; ++k) p.world[k] = c.origin[k] + offsets[i][0] * c.axis[k] + offsets[i][1] * c.axis[3 + k] + offsets[i][2] * c.axis[6 + k];
-                    p.ok = game::CG_WorldPosToScreenPosReal(0, game::ScrPlace_GetActivePlacement(), p.world, p.screen) ? 1 : 0;
-                }
-                r.probe_count = 3;
-            }
             {
                 std::lock_guard lock(state_mutex);
                 current = std::move(r);
             }
+            taken.store(false, std::memory_order_release);
             pending.store(true, std::memory_order_release);
         }
     }
@@ -553,10 +582,12 @@ namespace paris_see
             if (game::environment::is_dedi()) return;
             if (!utils::flags::has_flag("paris-isolated-lab")) return;
             paris_debugger::set_present_listener(on_present);
-            // After every component registered its commands: the lab client's capture_frame also writes the camera.
+            scheduler::loop(finish, scheduler::main);
+            // After every component registered its commands: the lab client's capture_frame also records the camera.
             scheduler::once([]
             {
                 command::add("capture_frame", [](const command::params& args) { ask(args); });
+                command::execute("set paris_see_ready 1", false);
             }, scheduler::main);
             command::add("paris_see_depth", [] { armed_depth.store(1); });
             command::add("paris_see_target", [](const command::params& args)
@@ -566,14 +597,12 @@ namespace paris_see
                 console::info("[Paris see] target=%s\n", forced_target.empty() ? "auto" : forced_target.c_str());
             });
             command::add("paris_see_targets", [] { want_targets.store(true); });
-            // Measurement switch: 0 takes the present listener away (no capture can complete), 1 puts it back.
             command::add("paris_see_listen", [](const command::params& args)
             {
                 const bool on = args.size() < 2 || std::strcmp(args.get(1), "0") != 0;
                 if (on) paris_debugger::set_present_listener(on_present);
                 else paris_debugger::set_present_listener(nullptr);
-                console::info("[Paris see] listen=%d
-", static_cast<int>(on));
+                console::info("[Paris see] listen=%d\n", static_cast<int>(on));
             });
             console::info("[Paris see] ready\n");
         }
