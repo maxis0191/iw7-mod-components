@@ -639,16 +639,6 @@
       ]
     },
     {
-      "id": "decompile_owner_ranges",
-      "command": [
-        "python",
-        "-B",
-        "ops/agent-capacity/test_decompile_owner_ranges.py",
-        "--java",
-        "java"
-      ]
-    },
-    {
       "id": "voicecertify_offline_test",
       "command": [
         "pwsh",
@@ -672,6 +662,17 @@
     }
   ],
   "retained_checks": [
+    {
+      "id": "decompile_owner_ranges",
+      "command": [
+        "python",
+        "-B",
+        "ops/agent-capacity/test_decompile_owner_ranges.py",
+        "--java",
+        "<path to a Java 21 java.exe>"
+      ],
+      "reason": "Needs a Java 21 runtime (the test runs a single-file Java 21 program). None is on PATH on the working machine and ops/Install-ReTools.ps1 takes an existing Java root, it does not install one. Run locally with --java after installing it."
+    },
     {
       "id": "voicecertify_analyzer_test",
       "command": [

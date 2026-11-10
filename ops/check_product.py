@@ -42,10 +42,14 @@ def main():
         (args.output / 'results.json').write_text(json.dumps(dict(product=config['product'], revisions=sources['revisions'],
             runtime_qualified=False, results=results), indent=2)+'\n', encoding='utf-8')
     verify(args.workspace)
+    # Declared but not run here: say so in the log, with the reason, instead of staying silent.
+    for check in config.get('retained_checks', []):
+        if not args.only:
+            print('RETAINED ' + check['id'] + ': ' + check.get('reason', 'no reason recorded'), flush=True)
     if not results:
         raise ValueError('No selected checks executed')
     failed = [r['id'] for r in results if r['exit_code']]
-    print(json.dumps(dict(checks=len(results), failed=failed, runtime_qualified=False)))
+    print(json.dumps(dict(checks=len(results), failed=failed, retained=0 if args.only else len(config.get('retained_checks', [])), runtime_qualified=False)))
     return 1 if failed else 0
 
 if __name__ == '__main__':
