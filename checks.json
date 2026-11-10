@@ -331,6 +331,14 @@
       ]
     },
     {
+      "id": "crash_stack_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/crash_stack_test.py"
+      ]
+    },
+    {
       "id": "perf_window_test",
       "command": [
         "python",
