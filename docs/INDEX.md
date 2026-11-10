@@ -15,7 +15,7 @@ server repository (`docs/DEVKIT.md`, `docs/TOOLS-INDEX.md`). Paths are relative 
 | Network update timing | `ops/engine-map/iw7_net.py` with `src/native/paris_net.cpp` | [NET.md](NET.md) | `tests/ops/net_report_test.py` |
 | Change the live world of a lab client | `ops/engine-map/iw7_world_live.py` with `src/native/paris_world.cpp` | [WORLD-LIVE.md](WORLD-LIVE.md) | `tests/ops/world_live_test.py` |
 | Is a capture valid, did two frames differ | `ops/iw7_frame_evidence.py` | [FRAME-EVIDENCE.md](FRAME-EVIDENCE.md) | `tests/ops/iw7_frame_evidence_test.py` |
-| Ghidra project, scoped reads | `ops/Install-ReTools.ps1`, `ops/re-tools/` | [RE-TOOLS.md](RE-TOOLS.md) | `tests/ops/re_tools_sdk_test.py` (not run by the judge: needs the installed tools) |
+| Ghidra project, scoped reads | `ops/Install-ReTools.ps1`, `ops/re-tools/` | [RE-TOOLS.md](RE-TOOLS.md) | `tests/ops/re_tools_sdk_test.py` (retained check: needs the Python environment made by `ops/Install-ReTools.ps1`) |
 
 The Python readers are covered by source tests. The native side of these tools (`paris_perf.cpp`, `paris_net.cpp`,
 `paris_hang.cpp`, `paris_world.cpp`, `paris_stack.hpp`, `paris_lab_properties.cpp`, `paris_debugger.cpp`) has no
@@ -31,6 +31,7 @@ source test of its own: it is proven by live runs in the server repository's eng
 | Standard client build and Aurora updates | [STANDARD-CLIENT-UPDATE.md](STANDARD-CLIENT-UPDATE.md), `client-profiles.json`, `ops/Build-StandardClient.ps1`, `ops/standard-client/` |
 | Private test server overlay (password, LAN only, no master heartbeat) | `ops/Apply-TestPrivacyOverlay.ps1`, `src/native/paris_test_safety.hpp`, `tests/ops/test_privacy_overlay_test.ps1` |
 | Source workspace and the local judge | `bootstrap.ps1`, `checks.ps1`, `checks.json`, `ops/source_workspace.py`, `ops/check_boundaries.py`, `ops/check_product.py` |
+| Native C++ unit tests | `tests/native/`, compiled and run by `ops/Build-Voice.ps1 -TestsOnly`; in the judge as `native_unit_tests` (`tests/ops/native_unit_tests.ps1`, about 40 s, takes the Build slot) |
 
 ## 3. Voice
 

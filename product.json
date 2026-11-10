@@ -317,7 +317,8 @@
     "docs/archive/RESOURCE-WORKFLOW-HISTORY-2026-10.md",
     "docs/archive/VOICE-HISTORY-2026-10.md",
     "docs/archive/README-2026-10.md",
-    "docs/archive/AGENTS-HISTORY-2026-10.md"
+    "docs/archive/AGENTS-HISTORY-2026-10.md",
+    "tests/ops/native_unit_tests.ps1"
   ],
   "dependencies": [
     {

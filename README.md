@@ -31,8 +31,9 @@ by hand and is not the judge.
 
 Prerequisites: Git (with `--attr-source` support), PowerShell 7.4 or later and Python 3.12. `bootstrap.ps1` needs
 the GitHub CLI signed in with read access to this repository, to download the dependency archive once (or pass
-`-DependencyArchive <file>`). The two checks that compile (`cutscene_test`, `owner_cheats_test`) need the Visual
-Studio 2022 C++ tools and take the machine's build slot; they wait up to seven minutes for it. Checks that need a
+`-DependencyArchive <file>`). The three checks that compile (`cutscene_test`, `owner_cheats_test`,
+`native_unit_tests`) need the Visual Studio 2022 C++ tools and take the machine's build slot; they wait up to
+seven minutes for it. Checks that need a
 tool absent from the working machine (a Java 21 runtime, numpy and a speech voice, an unpacked retail executable)
 are listed in `checks.json` under `retained_checks` with the reason, and the run prints one `RETAINED` line for
 each: they were not run, they did not pass.

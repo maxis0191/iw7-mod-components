@@ -659,6 +659,17 @@
         "-File",
         "tests/ops/voice_relay_overlay_test.ps1"
       ]
+    },
+    {
+      "id": "native_unit_tests",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/native_unit_tests.ps1"
+      ]
     }
   ],
   "retained_checks": [
@@ -704,6 +715,15 @@
         "<unpacked retail dump dir>"
       ],
       "reason": "Needs capstone, a native checkout carrying the relay and a local unpacked retail code dump (unpacked-text.bin, unpacked-pdata.bin). Run locally."
+    },
+    {
+      "id": "re_tools_sdk_test",
+      "command": [
+        "<python.exe of the environment made by ops/Install-ReTools.ps1>",
+        "-B",
+        "tests/ops/re_tools_sdk_test.py"
+      ],
+      "reason": "Needs the pinned mcp package of ops/re-tools/requirements.lock.txt, which ops/Install-ReTools.ps1 installs into its own Python environment (it also needs existing Ghidra and Java roots). The system Python that runs the checks does not have it. Run with that environment's python."
     }
   ]
 }
