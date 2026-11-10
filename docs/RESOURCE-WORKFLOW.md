@@ -9,8 +9,8 @@ commit reserve, 80%/85% stop thresholds and dated workload minima. Other fixed
 test; their implementation belongs to their own consumer, outside this scheduler.
 
 Fresh RAM/commit and process telemetry remains required, along with the atomic
-lock, lease ownership, exact identities, one heavy workload group (except up to
-two shareable runtime leases, see below) and guarded teardown. Missing/impossible telemetry and unknown identities require diagnosis;
+lock, lease ownership, exact identities, one heavy workload group (except shareable
+runtime leases admitted by memory, see below) and guarded teardown. Missing/impossible telemetry and unknown identities require diagnosis;
 they are not a memory-capacity refusal. Successful admission does not establish
 safe unlimited allocation. On observed real exhaustion, reduce the valid scenario
 or close only its own identified processes. Do not replace the removed policy
@@ -36,8 +36,8 @@ supersedes older systematic client-copy requirements and launch recipes below.
 Dated test results remain historical evidence.
 
 Agents may develop, review and run light tests in parallel. Preserve the account-wide
-**one heavy workload group at a time** policy, except up to two shareable runtime
-leases ([Shareable runtime leases](#shareable-runtime-leases---2026-11-10)):
+**one heavy workload group at a time** policy, except shareable runtime
+leases, admitted by memory ([Shareable runtime leases](#shareable-runtime-leases---2026-11-10)):
 one isolated gameplay scenario (server and its explicitly declared client(s)),
 one native build, one asset extraction, or one reverse-engineering analysis.
 Each chat keeps its own sources, files and test identity. A private desktop or a
@@ -189,65 +189,120 @@ planned scenario still needs admission before launch.
 
 ## Shareable runtime leases - 2026-11-10
 
-Decision delegated by the owner to the working agent, 2026-11-10.
+Admission by memory. Decision delegated by the owner to the working agent,
+2026-11-10, after he asked for ten to twenty agents to run instances at once. It
+replaces the earlier fixed count of two shareable leases.
 
-Rule: a Runtime lease may declare itself shareable. Up to two shareable Runtime
-leases may be held at the same time. Everything else stays exclusive, as before.
+Rule, in four points:
 
-Reason: the exclusive rule refused about 2,370 requests across the project,
-79% of local game-session attempts. Two game clients side by side left 6.1 GB
-free of 31.8 GB. Two clients fit; a third does not. The limit is the constant
-`Get-IW7ShareableRuntimeLeaseLimit` (2 leases in total).
+1. A Runtime lease may declare itself shareable (`-Shareable`). Every other lease
+   must then be a shareable Runtime lease, and bench scopes must not overlap.
+2. `-PhysicalBytes` of a shareable lease is the memory its whole session needs,
+   all its processes together (a lease may now hold several game processes).
+3. Declared budget: the `PhysicalBytes` of all shareable leases plus the new
+   request must stay within total physical memory minus the reserve.
+4. Measured memory: the available physical memory, minus the part of the existing
+   shareable leases' declared memory that their registered live processes have not
+   yet taken (declared minus working set, never below zero, per lease), must be at
+   least the request. This stops two sessions admitted seconds apart, before
+   either has loaded, from both counting the same free memory. A hard cap of 24
+   shareable leases (`Get-IW7ShareableRuntimeLeaseLimit`) guards against runaway
+   requests; it is not the real limit, memory is.
 
-Who may opt in: only launches from an isolated bench root, one game client each,
-in a private loopback session. Never Main. Never the base client. Each bench
-root is its own lease scope; overlapping (nested) scopes are refused.
+Why memory and not a count. Measured: a full game client is about 9 GB private
+and 3.7 GB working set; a headless dedicated server with three bots is about
+1.2 GB. Two full clients side by side left about 6 GB free of 31.8 GB, so a count
+of two was right for clients and wasteful for servers: fifteen servers fit where
+two clients do. The exclusive rule had refused about 2,370 requests (79% of local
+game-session attempts).
+
+The reserve is `Get-IW7ShareableReserveBytes`: 8 GB by default, kept for the
+owner's desktop and his own game. Set the environment variable
+`IW7_SHAREABLE_RESERVE_GB` to a number from 2 to 64 to change it (decimal point,
+for example `12.5`); anything else is ignored. It is read at each admission.
+
+What callers must declare: the measured session need, not a guess upward, for
+example 2.5 GB for a headless server session, 10 GB for a full client, 12.5 GB for
+a server plus a client. Under-declaring is caught by the measured-memory check
+only at admission time; once admitted, nothing re-checks a session that grows
+beyond its declaration, and it then silently eats the margin of the others.
+Declare honestly and keep margin.
+
+Who may opt in: launches from an isolated bench root in a private loopback session.
+Never Main. Never the base client. Each bench root is its own lease scope.
 
 ```powershell
 $lease = Enter-IW7ResourceLease -Scope $absoluteBenchRoot -Kind Runtime `
-    -PhysicalBytes 12GB -CommitBytes 12GB -Owner 'bench a' -Shareable
+    -PhysicalBytes 2.5GB -CommitBytes 3GB -Owner 'bench a' -Shareable
 ```
 
 What the scheduler enforces:
 
 - `-Shareable` is valid only with `-Kind Runtime` and without `-BaseClientImage`.
-- A shareable request is admitted only if every other lease is a shareable
-  Runtime lease and fewer than two exist. Otherwise it gets `Resource busy:`.
-  At the limit, the message says the shareable limit is reached and names the owners.
+- A shareable request that fails any condition gets a message beginning
+  `Resource busy:` (callers match that text) that names the failed condition with
+  numbers in GB. Examples:
+  - `Resource busy: shareable declared memory budget exceeded: existing shareable leases declare 20.0 GB and this request needs 10.0 GB, above the budget of 24.0 GB (32.0 GB total minus a 8.0 GB reserve). ...`
+  - `Resource busy: not enough measured free memory: 21.0 GB available minus 20.0 GB still to be taken by existing shareable sessions leaves 1.0 GB, and this request needs 2.5 GB. ...`
+  - `Resource busy: shareable Runtime cap of 24 leases reached; owned by ... and 19 more. ...`
+  - A non-shareable lease in the way: `Resource busy: <Kind> owned by <Owner>`, as before.
 - A request without `-Shareable` is refused by any other lease, exactly as before,
-  with the same `Resource busy: <Kind> owned by <Owner>` message.
-- Re-entry on the same scope and kind cannot change the flag.
+  and is not subject to the memory rule.
+- Re-entry on the same scope and kind cannot change the flag. The lease keeps the
+  larger of the old and new declared bytes. A re-entry that grows the declaration
+  is checked against the budget and measured memory (counting what the lease has
+  already taken); if it does not fit it is refused with `Resource busy:` and the
+  lease and the registry are left unchanged. A re-entry that does not grow adds no
+  demand and is not refused.
 - `-RequireNewLease` still refuses any existing lease, shareable or not. Do not
   combine it with `-Shareable` if the second bench must be admitted.
 - A lab process inside another shareable lease's scope, or registered to it, is
   not foreign for a shareable request. For any other request it still is. A lab
   process that no lease covers still refuses.
 - Running compilers, ZoneTool, MSBuild, cl, link or Java still refuse.
-- `Add-IW7ResourceProcess` refuses a second live `iw7*.exe` process on a
-  shareable lease. A dead earlier client does not count. A dedicated server is
-  also an `iw7*.exe` process, so a shareable lease cannot hold a server and a client.
+- `Add-IW7ResourceProcess` accepts several game processes on a shareable lease
+  (for example a dedicated server and a client). Its other checks are unchanged:
+  the process must be inside the reserved lab and have a verifiable identity.
 - Release, finished-lease cleanup and Status work per lease. Releasing or cleaning
-  one lease never removes or changes the other. Status shows `Shareable` (false
-  for a lease without the property) and `ShareableRuntimeLimit`.
+  one lease never removes or changes another.
+- Status shows `Shareable` per lease (false for a lease without the property),
+  `ShareableRuntimeLimit` (the cap), and, so that a waiting caller can print why it
+  waits: `ShareableReserveBytes`, `ShareableDeclaredBytes`,
+  `ShareableRemainingDeclaredBytes`, `ShareableAvailableBytes` (measured) and
+  `ShareableUnloadedBytes` (declared but not yet taken; null if process identities
+  were ambiguous).
 - `Invoke-IW7ResourceJob` only takes Build, Extract and Analysis, so it has no
   `-Shareable` switch.
 
 What stays exclusive: Build, Extract and Analysis leases, Runtime leases without
-the flag, base-client leases, and any lease written by an older copy of the core.
+the flag, base-client leases, and any lease written by an older copy of the core
+without the flag.
 
-Mixed versions: a lease record without `Shareable`, or with a non-Boolean value,
-is exclusive. An older copy of the core refuses any second lease, so it refuses
-beside a shareable lease with `Resource busy`. An older copy that rewrites the
-registry keeps the property: the reader is `ConvertFrom-Json` and the writer
-`ConvertTo-Json -Depth 10`, which keep unknown properties. An older copy does
-not enforce the one-client limit on `Add-IW7ResourceProcess`. Callers must take
-`-Shareable` from the new core only.
+Mixed versions (an older copy of this file has a fixed limit of 2 shareable
+leases and one game process per lease; both copies read the same registry):
 
-Not yet verified: no live run of two independent leases has been done at the
-time of writing. Evidence is the synthetic suite
-`tests/ops/resource_scheduler_shareable_test.ps1` (temporary registry, synthetic
-process list). The reviewer will do the live run.
+- Older copy reading leases admitted by a newer copy: with two or more other
+  leases it refuses a new shareable lease (limit of 2), and it refuses a second
+  game process on a lease. It is stricter, never looser. It may also refuse the
+  re-entry of an existing lease when three or more leases are held; that is a
+  refusal, not an overrun.
+- Newer copy reading leases of an older copy: it counts their declared bytes
+  (older callers declared 12 GB per client) and their live working sets, and admits
+  by memory. It is stricter than before for big declarations and looser by count.
+- An older copy that rewrites the registry keeps the `Shareable` property
+  (`ConvertFrom-Json` and `ConvertTo-Json -Depth 10` keep unknown properties).
+- The one unsafe-looking case: an older copy never checks memory. Beside one large
+  lease admitted by a newer copy (for example 12.5 GB), an older copy admits a
+  second lease (it sees only one other lease), so the declared total may exceed the
+  newer copy's budget. It is not worse than the old accepted envelope of two
+  clients (about 18 GB working set) because the older copy still refuses a third,
+  and newer admissions afterwards see the declared and measured memory. It only
+  matters if an older copy keeps running; callers must take `-Shareable` from the
+  newest core only.
 
+Not verified: a live run of more than two sessions at once (the reviewer will do
+it). Evidence is the synthetic suite `tests/ops/resource_scheduler_shareable_test.ps1`
+(temporary registry, synthetic process list and synthetic 32 GB memory snapshot).
 ## Build, extraction and analysis
 
 ### Inactive retained-release opt-in (Source only)
