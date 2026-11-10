@@ -196,6 +196,7 @@
     "src/native/paris_watch.cpp",
     "src/native/paris_watch.hpp",
     "src/native/paris_hang.cpp",
+    "src/native/paris_world.cpp",
     "src/native/paris_stack.hpp",
     "src/native/paris_debugger.hpp",
     "src/native/paris_incident.cpp",
