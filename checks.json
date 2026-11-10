@@ -323,6 +323,14 @@
       ]
     },
     {
+      "id": "perf_window_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/perf_window_test.py"
+      ]
+    },
+    {
       "id": "download_cache_overlay_test",
       "command": [
         "pwsh",
