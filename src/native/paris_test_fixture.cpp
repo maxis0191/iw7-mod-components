@@ -647,6 +647,26 @@ namespace paris_test_fixture
             }
             console::error("[Paris vote input] Missing pinned retail binding %s.\n", binding_name.c_str());
         }
+        // Generic lab key request: "keydown:<name>" / "keyup:<name>" for any retail
+        // "+name" binding (forward, reload, gostand, speed_throw, ...). The retail
+        // binding table decides what exists; nothing outside it can be dispatched.
+        bool key_binding(const std::string& base, bool down)
+        {
+            if (base.size() < 2 || base.size() > 24 || base.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_") != std::string::npos) return false;
+            const std::string binding_name = (down ? "+" : "-") + base;
+            for (int binding = 0; binding < 118; ++binding)
+            {
+                if (!game::command_whitelist[binding] || binding_name != game::command_whitelist[binding]) continue;
+                // One fixed key id: it only identifies the holder inside that binding's own button state.
+                utils::hook::invoke<void>(0x14032A3B0, 0, binding, 222, game::Sys_Milliseconds());
+                console::info("[Paris key input] binding=%s catchers=%d tick_ms=%llu
+", binding_name.c_str(), *game::keyCatchers, GetTickCount64());
+                return true;
+            }
+            console::error("[Paris key input] no retail binding %s
+", binding_name.c_str());
+            return false;
+        }
         void vote_buttons(bool attack, bool ads, bool hold = false)
         {
             vote_binding("+attack", false);
@@ -755,6 +775,7 @@ namespace paris_test_fixture
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
             const bool vote_input = action == "votenext" || action == "voteprevious" || action == "voteboth" || action == "voteholdnext" || action == "voterelease" || action == "votewitness";
+            const bool key_input = action.rfind("keydown:", 0) == 0 || action.rfind("keyup:", 0) == 0;
             const bool afk_input = action == "afk";
             const bool teleport_input = action == "owner_tphere" || action == "owner_tp";
             const bool cutscene_input = action == "cutscene_space" || action == "cutscene_enter" || action == "cutscene_mouse" || action == "cutscene_release";
@@ -768,9 +789,11 @@ namespace paris_test_fixture
             }
             if (afk_input && !utils::flags::has_flag("paris-isolated-lab")) return;
             if (vote_input && !utils::flags::has_flag("paris-isolated-lab")) return;
+            if (key_input && (!utils::flags::has_flag("paris-isolated-lab") || vote_witness_running)) return;
+            if (key_input && agent_runtime.client && agent_runtime.client->active()) return;
             if (vote_input && vote_witness_running) return;
             if (vote_input && agent_runtime.client && agent_runtime.client->active()) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "rejoin_immediate" && !vote_input && !afk_input && !teleport_input && !cutscene_input) return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "rejoin_immediate" && !vote_input && !key_input && !afk_input && !teleport_input && !cutscene_input) return;
             if (action == "rejoin" || action == "rejoin_immediate")
             {
                 const auto* connection = party::get_server_connection_state();
@@ -808,6 +831,11 @@ namespace paris_test_fixture
             }
             else if (cutscene_input)
                 command::execute("paris_cutscene_test_key " + action.substr(9),true);
+            else if (key_input)
+            {
+                const bool down = action[3] == 'd';
+                if (!key_binding(action.substr(down ? 8 : 6), down)) return; // no response: the requester sees the refusal as a timeout
+            }
             else if (vote_input)
             {
                 // Fixed client usercmd buttons only, scoped to the independent lab.
