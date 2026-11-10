@@ -34,7 +34,8 @@ the GitHub CLI signed in with read access to this repository, to download the de
 `-DependencyArchive <file>`). The three checks that compile (`cutscene_test`, `owner_cheats_test`,
 `native_unit_tests`) need the Visual Studio 2022 C++ tools and take the machine's build slot; they wait up to
 seven minutes for it. Checks that need a
-tool absent from the working machine (a Java 21 runtime, numpy and a speech voice, an unpacked retail executable)
+tool absent from the working machine (a Java 21 runtime; numpy and a speech voice; capstone and an unpacked
+retail executable; the Python environment that `ops/Install-ReTools.ps1` makes from existing Ghidra and Java roots)
 are listed in `checks.json` under `retained_checks` with the reason, and the run prints one `RETAINED` line for
 each: they were not run, they did not pass.
 

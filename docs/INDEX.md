@@ -86,7 +86,8 @@ Three other products take files from this repository by exact path, listed in th
 | File | Note |
 |---|---|
 | `ops/RenderDoc-Capture.py` | last used October 2026; called by nothing; no check |
-| `ops/RenderDoc-Fixture.py`, `ops/Send-ServerCommand.py`, `ops/Get-ServerInfo.ps1`, `ops/Get-SourceIdentity.ps1`, `ops/Install-ReTools.ps1` | helpers called by other scripts here; no check of their own |
+| `ops/Get-ServerInfo.ps1`, `ops/Get-SourceIdentity.ps1` | helpers called by other scripts here; no check of their own |
+| `ops/RenderDoc-Fixture.py`, `ops/Send-ServerCommand.py`, `ops/Install-ReTools.ps1` | run by hand (named only by documents: `VOICE.md`, `COLLISION-PROVIDER.md`, `RE-TOOLS.md`); called by no script; no check |
 | `ops/New-OwnerCheatsKit.ps1` | makes key files; the judge runs it only inside `tests/ops/owner_cheats_test.ps1`, in a scratch folder. Never add a check that prints or makes real keys |
 | `ops/Test-CollisionProvider.ps1` | the only caller of `tests/native/collision_provider_test.cpp` outside the native build |
 | `ops/Package-CapacityClient.ps1`, `ops/agent-capacity/Smoke-Normal.ps1`, `config/Launch-IW7-Paris48.bat` | capacity 48/64 effort (October 2026), still the subject of open pull requests |

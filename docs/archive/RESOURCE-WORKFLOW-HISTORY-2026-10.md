@@ -43,7 +43,7 @@ export/artifact guard is changed by this resource policy update.
 
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
-Client clones require a concrete necessity or risk. [Instance workflow](../INSTANCE-WORKFLOW.md)
+Client clones require a concrete necessity or risk. Instance workflow (`docs/INSTANCE-WORKFLOW.md`, server repository)
 supersedes older systematic client-copy requirements and launch recipes below.
 Dated test results remain historical evidence.
 
@@ -124,7 +124,7 @@ but does not make SSD access as fast as RAM. Leave it system-managed here. Free
 disk was about 34.9 GiB during this inventory: do not make another 84 GiB stock
 copy on this volume. Inventory and reuse an existing suitable test dedicated;
 a new chat/worktree does not justify another snapshot. Follow
-[STORAGE-WORKFLOW.md](../STORAGE-WORKFLOW.md) for retained and retired stock. At that
+`docs/STORAGE-WORKFLOW.md` (server repository) for retained and retired stock. At that
 original checkpoint, lab server/client roots linked only their internal read-only
 stock copy. The 2026-10-06 inventory records two candidate dedicateds also using
 their retained parent lab's stock, with separate mutable state.
@@ -213,6 +213,6 @@ The first implementation merged in [PR #50](https://github.com/bigmangeekf/iw7-p
 after both CI jobs passed for its exact head. A real second build request was
 refused while the voice chat held its lease; a 30-second build observation peaked
 at 50.43% physical and 52.89% committed use. The registry was observed empty after
-the build released it. See the [sanitized measurements](../deployments/2026-10-04-resource-admission.json)
+the build released it. See the sanitized measurements (`docs/deployments/2026-10-04-resource-admission.json`, server repository)
 and retain [capacity issue #49](https://github.com/bigmangeekf/iw7-paris-server/issues/49)
 for the remaining runtime and sustained-load gates.

@@ -261,7 +261,7 @@ launching another unrelated application afterwards. There is no fixed RAM/commit
 use percentage that stops or invalidates a run. Record both as telemetry.
 
 Use `ops/Isolated-Lab.ps1` for the test dedicated. New sessions use the base game
-client under [INSTANCE-WORKFLOW.md](INSTANCE-WORKFLOW.md); separate clients
+client under `docs/INSTANCE-WORKFLOW.md` of the server repository; separate clients
 require a documented necessity or risk. Historical base-instance
 entry points now refuse new launches before reading machine settings or changing
 files: Module-ClientProbe Start, Rhino-ClientProbe agent Start/Spawn and every
@@ -419,6 +419,12 @@ telemetry, an unreserved laboratory or a duplicate lease is thrown at once. It h
 waits for another session's build instead of failing. `Invoke-IW7ResourceJob` itself is unchanged and still
 refuses at once. Evidence: the cases under "Invoke-IW7QueuedResourceJob" in `tests/ops/resource_scheduler_test.ps1`
 (temporary registry, synthetic processes); no live contention run is claimed.
+
+One named exception to "never write a retry loop around a refusal": `tests/ops/native_unit_tests.ps1`.
+`ops/Build-Voice.ps1 -TestsOnly` takes the Build slot itself and refuses at once, before anything is compiled, so
+that check asks again every five seconds, for at most 420 seconds, and only on the busy refusal; any other error
+is thrown at once. It is the same wait as the two tests above, written around the build entry because that entry
+has no queued form. Do not copy the pattern elsewhere: use `Invoke-IW7QueuedResourceJob`.
 
 ## Choose the least expensive valid witness
 

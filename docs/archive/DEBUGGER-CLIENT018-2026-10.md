@@ -510,7 +510,7 @@ is authorized by this checkpoint.
 
 Current instance policy (2026-10-06): use the base game client for ordinary
 in-game and sequential A/B tests; stage server changes on a separate test dedicated.
-Client clones require a concrete necessity or risk. [Instance workflow](../INSTANCE-WORKFLOW.md)
+Client clones require a concrete necessity or risk. Instance workflow (`docs/INSTANCE-WORKFLOW.md`, server repository)
 supersedes older systematic client-copy requirements and launch recipes below.
 Dated test results remain historical evidence.
 

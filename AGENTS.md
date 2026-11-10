@@ -46,6 +46,10 @@ waiting for GitHub checks; per-test game copies; launching once per question.
   serializers in x64-zt-extensions, creator tooling in iw7-creator-sdk. Extend an interface or a dependency;
   never copy another product's tree or put server gameplay logic here.
 - Where to look: `docs/INDEX.md` (this repository), then the server's `docs/DEVKIT.md`.
+- About the first section, which is shared word for word with the other products and is not edited here: the
+  tools it names under `ops/bench`, `ops/gamelab`, `ops/enginelab`, `ops/netlab`, `ops/soak`, `ops/atlas` and
+  `ops/quality` are in the server repository (iw7-paris-server), none of them is here; the history it says is
+  "kept below" is now in `docs/archive/AGENTS-HISTORY-2026-10.md`; the server's `docs/TOOLS-INDEX.md` has landed.
 - Read `origin/main` from your own worktree. The main checkout on the working machine can be many commits
   behind; never take its files as the current state, and never change it for a task.
 
@@ -67,10 +71,12 @@ waiting for GitHub checks; per-test game copies; launching once per question.
    remover (point 2 of the first section).
 7. Other sessions' work is not yours: never stop a game process you did not start; never touch a game instance
    another application started; never delete another holder's lease; never adopt an occupied client; never
-   archive or remove a live worktree. Preserve unrelated work, ignored evidence and frozen plans.
-8. Queue through the scheduler (`-WaitForSlotSeconds`), no retry loops. Establish exact process identity and
+   archive or remove a live worktree. Preserve unrelated work, ignored evidence and frozen plans. Respect each
+   task's scope: do only what your task covers and leave the rest to its owner.
+8. Queue through the scheduler (`-WaitForSlotSeconds`), no retry loops. Keep the account-wide lock and the
+   one-at-a-time serialization of builds, extractions and analyses. Establish exact process identity and
    ownership before any teardown, and close only your own identified processes. On real memory exhaustion reduce
-   the scenario: no RAM cleaner, arbitrary process kill, oversized swap or kernel change. An unknown identity or
+   the scenario: no new numeric barrier, RAM cleaner, arbitrary process kill, oversized swap or kernel change. An unknown identity or
    invalid telemetry is diagnosed, not worked around. The rule itself is `docs/RESOURCE-WORKFLOW.md`.
 9. Owner-only console access (`docs/OWNER-CHEATS.md`): the owner and server trust files and private keys are
    never regenerated, published, copied to other players, printed or removed. A native update must not silently
@@ -88,6 +94,8 @@ waiting for GitHub checks; per-test game copies; launching once per question.
 - Tool first. Real work in the game is also the test of the tools. Whenever a tool, the workflow or the environment is seen to be slow, unoptimized, buggy or blind, or a new tool would be a real jump, fix or build that FIRST, prove it with a measured run, document it, then return to the job. Never grind: the same build or launch repeated more than about three times for one question, a cause that is guessed instead of read from data, minutes of waiting for what a file check answers in seconds, a result judged by looking at a picture, a manual step done twice: each of these means stop and improve the tool.
   (Owner rule, 2026-11-10.)
 - Edit the canonical tracked file; never a generated source workspace (`runtime/...`).
+- A task does not change agent memory or instruction files (this file, a tool's memory) on its own initiative;
+  it changes them only when that is the task.
 - Every tracked file is declared in `product.json` `exports`; the ownership gate refuses the rest. A new tool
   comes with its test, its `checks.json` entry, its document and a line in `docs/INDEX.md`. A check that needs a
   tool absent from the working machine goes under `retained_checks` with the reason; a real test is never
@@ -108,6 +116,11 @@ waiting for GitHub checks; per-test game copies; launching once per question.
   head, in the background. Post the result on the pull request, merge with a merge commit, return to a clean
   `main`. `./checks.ps1 -Workspace runtime/<short> -Only <id>` re-runs one check after a fix; the head is still
   judged by a full run.
+- Merge only when the full run on that exact head has zero failed checks; a failing check is fixed (or moved to
+  `retained_checks` with its measured reason), never merged over. A pass is the last line of the run reporting
+  every check passed and none failed, plus one `RETAINED` line for each check that was not run. The run takes
+  about eight minutes, and up to seven more when another session holds the Build slot. Prerequisites are in
+  `README.md`.
 - GitHub's own checks are ignored: they do not start, and their workflow runs only when asked by hand.
 - Report source, build, live run and owner acceptance separately.
 - Consumers adopt a change only by moving their pin and regenerating their source inputs. They pin a branch
@@ -120,7 +133,12 @@ waiting for GitHub checks; per-test game copies; launching once per question.
 - Public distribution or licensing of private code.
 - Anything sent to the public game-client project (upstream IW7-Mod): nothing is sent to that project, no issue,
   no pull request and no message, without the owner. A contribution is prepared and proven here, following the
-  Aurora pull request rules, and waits for his decision.
+  Aurora pull request rules (the `Aurora-PR-Rules` skill on the working machine, not a file of this repository:
+  minimal diff, no explanatory comments, short human text, real before/after evidence), and waits for his
+  decision.
+- The relay patch `ops/voice-relay/0001-*.patch` carries a personal e-mail address in its `From:` header. The
+  file keeps its exact bytes; sending it upstream as it is would publish that address. The owner decides the
+  author identity before any such contribution.
 - Resuming a retired effort (rule 12), admin chat commands, an extra `sv_cheats` lock.
 
 ## History
