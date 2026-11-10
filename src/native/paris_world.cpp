@@ -19,7 +19,7 @@
 // models) straight from the game's memory and hides them inside a box, so a change to a map can be tried in seconds.
 //
 //   paris_world_stats                          map, props, surfaces, lights, hidden
-//   paris_world_dump [collect]                 iw7-mod/paris-world/<map>-props.json (schema iw7.world-live/1);
+//   paris_world_dump [collect] [tag]           iw7-mod/paris-world/<map>-props[-tag].json (schema iw7.world-live/1);
 //                                              "collect" writes iw7-mod/paris-perf/ instead, which session runners keep
 //   paris_world_method <names>                 how to hide: cull, scale, axis, origin, bounds (joined with +), or all
 //   paris_world_hide_box x1 y1 z1 x2 y2 z2     hide every prop whose origin is inside the box (corner order is free)
@@ -61,7 +61,7 @@ namespace paris_world
         };
 
         bool enabled{};
-        unsigned method{method_cull};
+        unsigned method{method_scale};
         const void* tracked_world{};
         const void* tracked_insts{};
         std::uint32_t tracked_count{};
@@ -215,7 +215,7 @@ namespace paris_world
                 world->dpvs.staticSurfaceCount, com_lights, method);
         }
 
-        void dump(const bool collect)
+        void dump(const bool collect, const std::string& tag)
         {
             view v;
             const char* why = "";
@@ -435,7 +435,17 @@ namespace paris_world
             enabled = true;
             scheduler::loop(tick, scheduler::main);
             command::add("paris_world_stats", [] { stats(); });
-            command::add("paris_world_dump", [](const command::params& params) { dump(params.size() > 1 && std::strcmp(params.get(1), "collect") == 0); });
+            command::add("paris_world_dump", [](const command::params& params)
+            {
+                bool collect = false;
+                std::string tag;
+                for (int i = 1; i < params.size() && i < 3; ++i)
+                {
+                    if (std::strcmp(params.get(i), "collect") == 0) collect = true;
+                    else tag = params.get(i);
+                }
+                dump(collect, tag);
+            });
             command::add("paris_world_method", [](const command::params& params) { set_method(params); });
             command::add("paris_world_hide_box", [](const command::params& params) { hide_box(params); });
             command::add("paris_world_hide_model", [](const command::params& params) { hide_model(params); });
