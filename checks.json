@@ -315,6 +315,14 @@
       ]
     },
     {
+      "id": "engine_map_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_map_test.py"
+      ]
+    },
+    {
       "id": "download_cache_overlay_test",
       "command": [
         "pwsh",
