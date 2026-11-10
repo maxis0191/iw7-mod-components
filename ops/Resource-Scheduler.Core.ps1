@@ -78,10 +78,52 @@ function Test-IW7ReservedProcess($Process, $Lease) {
         $Process.Image -and [IO.Path]::GetFullPath($Process.Image) -eq $declared.Value
 }
 function Get-IW7ShareableRuntimeLeaseLimit {
-    # Decision 2026-11-10: total shareable Runtime leases held at once. Measured:
-    # two game clients side by side left 6.1 GB free of 31.8 GB; a third does not
-    # fit. The exclusive rule refused ~2,370 requests (79% of local game sessions).
-    2
+    # Decision 2026-11-10 (admission by memory): a guard against runaway requests,
+    # not the real limit. The real limit is memory (Get-IW7ShareableMemoryPlan).
+    24
+}
+function Get-IW7ShareableReserveBytes {
+    # Memory kept free for the owner's desktop and own game. IW7_SHAREABLE_RESERVE_GB
+    # overrides it when it is a number from 2 to 64; anything else is ignored.
+    $raw=[Environment]::GetEnvironmentVariable('IW7_SHAREABLE_RESERVE_GB')
+    $gb=0.0
+    if ($raw -and [double]::TryParse($raw.Trim(),[Globalization.NumberStyles]::AllowDecimalPoint,[Globalization.CultureInfo]::InvariantCulture,[ref]$gb) -and
+        $gb -ge 2 -and $gb -le 64) { return [long]($gb*1GB) }
+    [long]8GB
+}
+function Format-IW7Gb([long]$Bytes) {
+    ($Bytes/1GB).ToString('0.0',[Globalization.CultureInfo]::InvariantCulture)+' GB'
+}
+function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes) {
+    # $Leases: the shareable leases already held. Declared = what their sessions need
+    # in total. Unloaded = the part of that their registered live processes have not
+    # taken yet (declared minus working set, never below zero, per lease): free memory
+    # that is already promised. A lease without live processes counts all of it.
+    $declared=0L; $unloaded=0L
+    foreach ($l in @($Leases | Where-Object { Test-IW7ShareableRuntimeLease $_ })) {
+        $declared += [long]$l.PhysicalBytes
+        $taken=0L
+        foreach ($p in @(Get-IW7LeaseLiveProcesses $l $Processes)) { $taken += [long]$p.WorkingSet }
+        $unloaded += [math]::Max(0L,[long]$l.PhysicalBytes-$taken)
+    }
+    $reserve=Get-IW7ShareableReserveBytes
+    [pscustomobject]@{Reserve=$reserve;Total=[long]$Snapshot.PhysicalTotal;Budget=([long]$Snapshot.PhysicalTotal-$reserve);
+        Declared=$declared;Unloaded=$unloaded;Available=[long]$Snapshot.PhysicalAvailable}
+}
+function Assert-IW7ShareableMemoryAdmission($Plan, [long]$RequestBytes, [long]$NeedBytes) {
+    # RequestBytes: the lease's whole declared session memory. NeedBytes: the part
+    # not yet taken by its own live processes (the whole request for a new lease).
+    if ($Plan.Declared + $RequestBytes -gt $Plan.Budget) {
+        throw ("Resource busy: shareable declared memory budget exceeded: existing shareable leases declare $(Format-IW7Gb $Plan.Declared) " +
+            "and this request needs $(Format-IW7Gb $RequestBytes), above the budget of $(Format-IW7Gb $Plan.Budget) " +
+            "($(Format-IW7Gb $Plan.Total) total minus a $(Format-IW7Gb $Plan.Reserve) reserve). Continue light work; retry when released.")
+    }
+    $free=$Plan.Available-$Plan.Unloaded
+    if ($free -lt $NeedBytes) {
+        throw ("Resource busy: not enough measured free memory: $(Format-IW7Gb $Plan.Available) available minus $(Format-IW7Gb $Plan.Unloaded) " +
+            "still to be taken by existing shareable sessions leaves $(Format-IW7Gb ([math]::Max(0L,$free))), and this request needs $(Format-IW7Gb $NeedBytes). " +
+            "Continue light work; retry when memory is free.")
+    }
 }
 function Test-IW7ShareableRuntimeLease($Lease) {
     # Fail safe: a missing, non-Boolean or inconsistent flag is exclusive.
@@ -196,7 +238,10 @@ function Enter-IW7ResourceLease {
             }
             $limit = Get-IW7ShareableRuntimeLeaseLimit
             if ($other.Count -ge $limit) {
-                throw "Resource busy: shareable Runtime limit of $limit reached; owned by $(@($other | ForEach-Object Owner) -join ', '). Continue light work; retry when released."
+                $names=@($other | ForEach-Object Owner)
+                $shown=($names | Select-Object -First 5) -join ', '
+                if ($names.Count -gt 5) { $shown += " and $($names.Count-5) more" }
+                throw "Resource busy: shareable Runtime cap of $limit leases reached; owned by $shown. Continue light work; retry when released."
             }
             $overlap = @($other | Where-Object { Test-IW7ScopeOverlap $_.Scope $canonical })
             if ($overlap.Count) {
@@ -232,6 +277,12 @@ function Enter-IW7ResourceLease {
         }
         $snapshot = Get-IW7ResourceSnapshot
         $budget = Test-IW7ResourceBudget $snapshot ([math]::Max(0L,$PhysicalBytes-$resident)) ([math]::Max(0L,$CommitBytes-$committed))
+        # Admission by memory (decision 2026-11-10). A re-entry that does not grow the
+        # declaration adds no demand and is never refused here; nothing is saved on refusal.
+        if ($Shareable -and (!$same.Count -or $PhysicalBytes -gt [long]$same[0].PhysicalBytes)) {
+            $plan = Get-IW7ShareableMemoryPlan $snapshot $otherShareable $processes
+            Assert-IW7ShareableMemoryAdmission $plan $PhysicalBytes ([math]::Max(0L,$PhysicalBytes-$resident))
+        }
         if (!$same.Count) {
             $identity = @($processes | Where-Object PID -EQ $PID)[0]
             if (!$identity.Image -or !$identity.CreatedUtc) { throw 'Launcher identity unavailable.' }
@@ -259,11 +310,7 @@ function Add-IW7ResourceProcess {
         if ($lease[0].Kind -eq 'Runtime' -and !(Test-IW7ReservedProcess $identity[0] $lease[0])) {
             throw 'Runtime child is outside its reserved lab.'
         }
-        # A shareable lease budgets exactly one game client; a dead earlier one does not count.
-        if ((Test-IW7ShareableRuntimeLease $lease[0]) -and $identity[0].Name -match '^iw7.*\.exe$') {
-            $clients=@(Get-IW7LeaseLiveProcesses $lease[0] $processes | Where-Object { $_.PID -ne $ProcessId -and $_.Name -match '^iw7.*\.exe$' })
-            if ($clients.Count) { throw "A shareable Runtime lease holds one game client; PID $($clients[0].PID) is still registered and alive." }
-        }
+
         $lease[0].Processes=@($lease[0].Processes | Where-Object PID -NE $ProcessId) + $identity[0]
         $lease[0].Phase='Running'
         Save-IW7ResourceState $state
@@ -297,8 +344,16 @@ function Get-IW7ResourceStatus {
         foreach ($lease in @($state.Leases)) {
             if (!$lease.PSObject.Properties['Shareable']) { Add-Member -InputObject $lease -NotePropertyName Shareable -NotePropertyValue $false }
         }
+        # Why a shareable caller waits: reserve, declared total, remaining declared
+        # budget, measured available memory and the promised-but-untaken part.
+        $plan=$null; $unloaded=$null
+        try { $plan=Get-IW7ShareableMemoryPlan $snapshot @($state.Leases) @(Get-IW7ResourceProcesses); $unloaded=$plan.Unloaded }
+        catch { $plan=Get-IW7ShareableMemoryPlan $snapshot @($state.Leases) @() }
         [pscustomobject]@{Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases);
-            ShareableRuntimeLimit=(Get-IW7ShareableRuntimeLeaseLimit)}
+            ShareableRuntimeLimit=(Get-IW7ShareableRuntimeLeaseLimit);
+            ShareableReserveBytes=$plan.Reserve;ShareableDeclaredBytes=$plan.Declared;
+            ShareableRemainingDeclaredBytes=[math]::Max(0L,$plan.Budget-$plan.Declared);
+            ShareableAvailableBytes=$plan.Available;ShareableUnloadedBytes=$unloaded}
     }
 }
 function Invoke-IW7ResourceJob {
