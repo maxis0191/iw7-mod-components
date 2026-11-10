@@ -1,6 +1,14 @@
 # Freeze reporter
 
-Status: written, not yet built or run live.
+Status: built and run live on 10 Nov 2026 (see "Run live, 10 Nov 2026").
+
+## Run live, 10 Nov 2026
+
+The reporter compiled at the first build (65.5 s) and ran in 12 private loopback sessions. In every session the client and the server each wrote one report, for the map load: the main thread makes no progress for more than 2 seconds while loading. So a normal map load produces a report, and reports during loading are expected.
+
+Example, client: a freeze of 6,055 ms with 8 samples. 75 % of the samples are on one stack that waits in the system library below a chain of six game functions. One sample is inside `DB_FindXAssetHeader`. 80 other threads are listed.
+
+The absence of a report is information too. A join stall (about one lab join in three stops after the server's info reply) was captured with the reporter on and no freeze report was written; the client still answered a later `stop` request. So that stall is not a frozen thread.
 
 ## What it is for
 
