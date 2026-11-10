@@ -1,3 +1,5 @@
+> History (dated 2026-10-16). Not current instructions. Current entry point: [docs/INDEX.md](../INDEX.md). Paths in the text are relative to the repository root as it was on that date.
+
 # Source-guard root candidate: pure managed data derivation
 
 `ops/diagnostics/SourceGuardRootCandidate.cs` implements one bounded Source

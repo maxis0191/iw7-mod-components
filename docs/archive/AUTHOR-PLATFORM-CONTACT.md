@@ -1,3 +1,5 @@
+> History (dated 2026-10-15). Not current instructions. Current entry point: [docs/INDEX.md](../INDEX.md). Paths in the text are relative to the repository root as it was on that date.
+
 # Source Author platform contact adapter
 
 ## Typed DisplayOnly phase

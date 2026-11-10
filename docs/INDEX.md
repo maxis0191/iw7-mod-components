@@ -99,6 +99,16 @@ Three other products take files from this repository by exact path, listed in th
 Dated documents are records, not instructions. A document was left in place when another product names its path
 or an open pull request edits it; it then starts with a line saying it is history.
 
+Archived in `docs/archive/`:
+
+| Document | What it records |
+|---|---|
+| `AUTHOR-PLATFORM-CONTACT.md` | source adapter for author platform contact, October 2026 |
+| `RETAINED-WORK-INTEGRATION.md` | how retained October work was integrated after the extraction |
+| `RUNTIME-PROBE-DESIGN.md` | a proposal, never built; see MEMORY-WATCH and WORLD-LIVE |
+| `DIA-PROVIDER-QUALIFICATION.md`, `SOURCE-GUARD-ROOT-CANDIDATE.md` | plan and candidate of the refused debugger symbol-provider qualification |
+| `IW7-NEUTRAL-CLONE.md` | neutral clone source profile of the Ray Gun prototype |
+
 History left in place in `docs/`: `AGENT-CAPACITY.md` (in French), `MODDING-ENGINE-RE.md`,
 `AURORA-OCTOBER-UPDATE.md`, `BO3-ZOMBIES-HUD.md`, `RAYGUN-WEAPON.md`, `COLLISION-PROVIDER.md`,
 `COLLISION-PLAYER-CONTACT.md`. Evidence files (`docs/evidence/*.json`,

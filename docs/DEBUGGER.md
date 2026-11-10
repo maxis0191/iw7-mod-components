@@ -496,7 +496,7 @@ diagnostic causals remain separate from this real native observation; older
 suites were carried without rerun. All H/H1/H2/H3 sources and results stay frozen.
 
 The current follow-up is a [pure managed snapshot/cursor model and DIA provider
-qualification plan](DIA-PROVIDER-QUALIFICATION.md). Its Source tests do not
+qualification plan](archive/DIA-PROVIDER-QUALIFICATION.md). Its Source tests do not
 qualify a provider, real guard, COM lifecycle or native retry. H4 remains stopped
 and H3 remains Refused. Provider metadata, complete ABI/method review and any
 native access each need separate review/GO. No flag/type/ABI/acceptance relaxation
