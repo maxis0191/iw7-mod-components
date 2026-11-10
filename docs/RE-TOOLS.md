@@ -155,3 +155,10 @@ confirmed reader closure precede the normal client/profile restoration. Main
 and unrelated clients are never capture targets. The initial out-of-scope AppX
 reader was refused and closed; the later scoped offline smoke is tool evidence,
 not a successful full live-fatal capture or a gameplay result.
+
+## Engine map
+
+`ops/engine-map/iw7_engine_map.py` is a separate, offline tool. It builds a
+SQLite map of the game executable's functions, calls, strings and names from
+machine-local section files and turns profiler or crash addresses into function
+names. It needs no Ghidra project. See [ENGINE-MAP.md](ENGINE-MAP.md).

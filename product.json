@@ -282,7 +282,10 @@
     "docs/VOICE-CERTIFY.md",
     "ops/Voice-RelayOverlay.Core.ps1",
     "ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch",
-    "tests/ops/voice_relay_overlay_test.ps1"
+    "tests/ops/voice_relay_overlay_test.ps1",
+    "docs/ENGINE-MAP.md",
+    "ops/engine-map/iw7_engine_map.py",
+    "tests/ops/engine_map_test.py"
   ],
   "dependencies": [
     {
