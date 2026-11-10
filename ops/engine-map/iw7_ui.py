@@ -545,9 +545,10 @@ def _box(r, grow, w, h):
     return max(0, int(round(r[0])) - grow), max(0, int(round(r[1])) - grow), min(w, int(round(r[2])) + grow), min(h, int(round(r[3])) + grow)
 
 
-def frame_measure(rect, w, h, pixel, base=None, ring=4, gap=2, threshold=40):
+def frame_measure(rect, w, h, pixel, base=None, ring=4, gap=2, threshold=40, others=()):
     """Shares of pixels, inside the rectangle and in a ring just outside it. "ink": pixels that differ from the ring's own
-    median colour in the same frame (text on a flat panel). "changed": pixels that differ from the base frame."""
+    median colour in the same frame (text on a flat panel). "changed": pixels that differ from the base frame. The ring
+    leaves out every pixel that lies in one of the other rectangles (the neighbours)."""
     ix0, iy0, ix1, iy1 = _box(rect, 0, w, h)
     ox0, oy0, ox1, oy1 = _box(rect, gap + ring, w, h)
     gx0, gy0, gx1, gy1 = _box(rect, gap, w, h)
@@ -557,10 +558,10 @@ def frame_measure(rect, w, h, pixel, base=None, ring=4, gap=2, threshold=40):
         for x in range(ox0, ox1, step):
             if ix0 <= x < ix1 and iy0 <= y < iy1:
                 inside.append((x, y))
-            elif not (gx0 <= x < gx1 and gy0 <= y < gy1):
+            elif not (gx0 <= x < gx1 and gy0 <= y < gy1) and not any(o[0] - 1 <= x < o[2] + 1 and o[1] - 1 <= y < o[3] + 1 for o in others):
                 around.append((x, y))
     out = {'inside_pixels': len(inside), 'ring_pixels': len(around)}
-    if not inside or not around:
+    if not inside or len(around) < 12:
         return out
     ring_colors = [pixel(x, y) for x, y in around]
     median = tuple(sorted(c[k] for c in ring_colors)[len(ring_colors) // 2] for k in range(3))
@@ -578,8 +579,9 @@ def frame_measure(rect, w, h, pixel, base=None, ring=4, gap=2, threshold=40):
 def frame_rows(data, frame, base=None, text=None, layer=None, threshold=40):
     """One row per visible element with a text or an image: the measures and whether the rectangle agrees with the frame.
     It agrees when the frame has ink inside and none around (a text on a flat panel), or when the inside changed against
-    the base frame and the ring did not (a panel or a text over the world). An element that touches another one cannot
-    agree by either measure: its ring holds the neighbour."""
+    the base frame and the ring did not (a panel or a text over the world). The ring leaves out the pixels of the element's
+    neighbours; it is tried with and without the pixels of an element that contains this one (its background). An element
+    wholly surrounded by others cannot be judged."""
     w, h, pixel = read_bmp(frame)
     s = data['screen']
     if (w, h) != (s['width'], s['height']):
@@ -591,14 +593,23 @@ def frame_rows(data, frame, base=None, text=None, layer=None, threshold=40):
             raise DumpError('the two frames have different sizes')
     els = elements(data)
     out = []
+    drawn = [i for i, e in enumerate(els) if e['visible'] and has_content(e) and not e.get('world') and area(e['rect']) > 0]
     for i in matches(els, text, None, layer, True):
         e = els[i]
         if not has_content(e) or e.get('world') or area(e['rect']) <= 0:
             continue
-        m = frame_measure(e['rect'], w, h, pixel, base_pixel, threshold=threshold)
-        by_ink = m.get('ink_inside', 0) >= 0.02 and m.get('ink_ring', 1) <= 0.02
-        by_change = m.get('changed_inside', 0) >= 0.02 and m.get('changed_ring', 1) <= 0.02
-        m.update(element=i, name=label(els, i), rect=fmt_rect(e['rect']), agrees=bool(by_ink or by_change), by='ink' if by_ink else ('change' if by_change else ''))
+        # Two rings. First without the neighbours but with an element that lies behind this one (it contains it): a text
+        # on a flat panel. Then without any other element: a text on a textured backing, against the base frame.
+        r = e['rect']
+        rest = [o for o in (els[j]['rect'] for j in drawn if j != i) if o != r]
+        for others in ([o for o in rest if not (o[0] <= r[0] + 2 and o[1] <= r[1] + 2 and o[2] >= r[2] - 2 and o[3] >= r[3] - 2)], rest):
+            m = frame_measure(r, w, h, pixel, base_pixel, threshold=threshold, others=others)
+            by_ink = m.get('ink_inside', 0) >= 0.02 and m.get('ink_ring', 1) <= 0.02
+            by_change = m.get('changed_inside', 0) >= 0.02 and m.get('changed_ring', 1) <= 0.02
+            if by_ink or by_change:
+                break
+        m.update(element=i, name=label(els, i), rect=fmt_rect(e['rect']), agrees=bool(by_ink or by_change), by='ink' if by_ink else ('change' if by_change else ''),
+                 judged='ink_inside' in m)
         out.append(m)
     return out
 
@@ -606,13 +617,17 @@ def frame_rows(data, frame, base=None, text=None, layer=None, threshold=40):
 def cmd_frame(args):
     rows = frame_rows(load(args.dump), args.frame, args.base, args.text, None if args.layer == 'all' else args.layer, args.threshold)
     for m in rows:
+        if not m['judged']:
+            print('%-6s %-18s its surroundings are all inside other elements  %s' % ('-', m['rect'], m['name']))
+            continue
         parts = ['ink inside %.1f%% ring %.1f%%' % (100 * m.get('ink_inside', 0), 100 * m.get('ink_ring', 0))]
         if 'changed_inside' in m:
             parts.append('changed inside %.1f%% ring %.1f%%' % (100 * m['changed_inside'], 100 * m['changed_ring']))
         print('%-6s %-18s %s  %s' % ('agrees' if m['agrees'] else 'NO', m['rect'], '; '.join(parts), m['name']))
-    good = sum(1 for m in rows if m['agrees'])
-    print('frame: %d of %d rectangles agree with the frame' % (good, len(rows)))
-    return 0 if rows and good == len(rows) else 1
+    judged = [m for m in rows if m['judged']]
+    good = sum(1 for m in judged if m['agrees'])
+    print('frame: %d of %d rectangles agree with the frame (%d could not be judged)' % (good, len(judged), len(rows) - len(judged)))
+    return 0 if judged and good == len(judged) else 1
 
 
 def main(argv=None):

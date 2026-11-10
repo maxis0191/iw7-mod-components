@@ -49,7 +49,8 @@ namespace paris_ui
         // Default walker. It returns one JSON object. Every engine call is protected: a method the element type does not
         // have gives no field, never an error. Rectangles are what the engine reports, in screen pixels. The engine's Lua
         // methods used: getFirstChild, getNextSibling, getRect, getLocalRect, getCurrentRGBA, getText, getElementTextDims,
-        // getCurrentAlignment, GetImage, getUseStencil, IsInWorld. paris_ui_material (below) names a material handle.
+        // getCurrentAlignment, GetImage, getUseStencil, IsInWorld. A picture is written as "@" and the address of its
+        // material handle; name_pictures (below) replaces that by the material's name.
         const char* const default_walker = R"LUA(
 local out, n = {}, 0
 local function put(s) n = n + 1; out[n] = s end
@@ -104,7 +105,6 @@ local function class_of(e)
     end
     return nil
 end
-local material = type(paris_ui_material) == 'function' and paris_ui_material or nil
 local root = Engine.GetLuiRoot and Engine.GetLuiRoot() or nil
 local count, limit, truncated = 0, 20000, false
 -- an element with no picture holds the same default material as the root
@@ -138,13 +138,12 @@ local function walk(e, parent, depth, world)
         if a and type(a[1]) == 'number' then f[#f + 1] = '"align":' .. num(a[1]) end
     end
     local h = call(e, 'GetImage')
-    if h and h[1] ~= nil and tostring(h[1]) ~= default_image then
-        local name = '?'
-        if material then
-            local ok, got = pcall(material, h[1])
-            if ok and type(got) == 'string' and got ~= '' then name = got end
+    if h and h[1] ~= nil then
+        local handle = tostring(h[1])
+        if handle ~= default_image then
+            -- "@" and the handle's address: the native side replaces it by the material's name
+            f[#f + 1] = '"image":"@' .. (handle:match('(%x+)$') or '') .. '"'
         end
-        f[#f + 1] = '"image":"' .. esc(name) .. '"'
     end
     local s = call(e, 'getUseStencil')
     if s and s[1] == true then f[#f + 1] = '"clips":true' end
@@ -168,7 +167,7 @@ if type(LUI) == 'table' and type(LUI.Alignment) == 'table' then
     end
     table.sort(al)
 end
-put('{"walker":"default/2","alignment":{' .. table.concat(al, ',') .. '},"elements":[\n')
+put('{"walker":"default/3","alignment":{' .. table.concat(al, ',') .. '},"elements":[\n')
 if root then walk(root, -1, 0, false) end
 put('\n],"count":' .. count .. ',"truncated":' .. tostring(truncated) .. ',"root":' .. tostring(root ~= nil) .. '}')
 return table.concat(out)
@@ -222,7 +221,6 @@ return table.concat(out)
         unsigned observed_draws{};
         unsigned observed_layouts{};
         unsigned observed_pictures{};
-        std::uint64_t helper_generation{~0ull};
 
         std::int64_t now_us()
         {
@@ -398,23 +396,37 @@ return table.concat(out)
             return bounded_string(dvar->current.string, 64);
         }
 
-        // Lua: paris_ui_material(handle) -> the name of the material behind an element's image handle, "" when it
-        // cannot be read. A plain C function of the Lua state: the first argument sits at the base of the call's stack.
-        int material_name(game::hks::lua_State* vm)
+        // The walker writes "image":"@<address of the material handle>". Replace each by the material's name ("?" when it
+        // cannot be read). A material starts with the pointer to its name.
+        void name_pictures(std::string& json)
         {
-            std::string name;
-            if (vm && vm->m_apistack.top > vm->m_apistack.base)
+            static const std::string marker = "\"image\":\"@";
+            std::string out;
+            out.reserve(json.size() + 4096);
+            std::size_t at = 0;
+            for (;;)
             {
-                const auto& argument = vm->m_apistack.base[0];
-                if (argument.t == game::hks::TLIGHTUSERDATA && argument.v.ptr && readable(argument.v.ptr, sizeof(const char*)))
+                const auto found = json.find(marker, at);
+                if (found == std::string::npos) break;
+                const auto digits = found + marker.size();
+                const auto end = json.find('"', digits);
+                if (end == std::string::npos || end - digits > 16) break;
+                out.append(json, at, digits - 1 - at); // up to and including the opening quote of the value
+                std::string name = "?";
+                const auto address = std::strtoull(json.substr(digits, end - digits).c_str(), nullptr, 16);
+                const auto* material = reinterpret_cast<const void*>(address);
+                if (address && readable(material, sizeof(const char*)))
                 {
                     const char* text{};
-                    std::memcpy(&text, argument.v.ptr, sizeof(text));
-                    name = bounded_string(text, 96);
+                    std::memcpy(&text, material, sizeof(text));
+                    const auto read = bounded_string(text, 96);
+                    if (!read.empty()) name = read;
                 }
+                json_escape(out, name);
+                at = end;
             }
-            ui_scripting::push_value(name);
-            return 1;
+            out.append(json, at, std::string::npos);
+            json.swap(out);
         }
 
         void run_lua(const std::string& code, const char* chunk, std::string& result, std::string& error)
@@ -423,11 +435,6 @@ return table.concat(out)
             {
                 if (!ui_scripting::lui_running()) { error = "the UI's Lua state is not running"; return; }
                 const auto lua = ui_scripting::get_globals();
-                if (helper_generation != ui_scripting::lua_generation())
-                {
-                    lua["paris_ui_material"] = ui_scripting::function(material_name);
-                    helper_generation = ui_scripting::lua_generation();
-                }
                 const auto loaded = lua["loadstring"](code, std::string(chunk));
                 if (!loaded[0].is<ui_scripting::function>())
                 {
@@ -574,6 +581,7 @@ return table.concat(out)
                     if (serial != dump_serial || state != phase::wait_lui || lui_done) return;
                     const auto start = now_us();
                     run_lua(walker_code(), "paris_ui_walker", lui_json, lui_error);
+                    if (lui_error.empty()) name_pictures(lui_json);
                     lui_walk_us = now_us() - start;
                     lui_done = true;
                 }, scheduler::lui);

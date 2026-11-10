@@ -314,7 +314,8 @@
     "docs/NET.md",
     "docs/MEMORY-WATCH.md",
     "docs/HANG.md",
-    "docs/WORLD-LIVE.md"
+    "docs/WORLD-LIVE.md",
+    "docs/UI-DUMP.md"
   ],
   "dependencies": [
     {
