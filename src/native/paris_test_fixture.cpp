@@ -659,12 +659,10 @@ namespace paris_test_fixture
                 if (!game::command_whitelist[binding] || binding_name != game::command_whitelist[binding]) continue;
                 // One fixed key id: it only identifies the holder inside that binding's own button state.
                 utils::hook::invoke<void>(0x14032A3B0, 0, binding, 222, game::Sys_Milliseconds());
-                console::info("[Paris key input] binding=%s catchers=%d tick_ms=%llu
-", binding_name.c_str(), *game::keyCatchers, GetTickCount64());
+                console::info("[Paris key input] binding=%s catchers=%d tick_ms=%llu\n", binding_name.c_str(), *game::keyCatchers, GetTickCount64());
                 return true;
             }
-            console::error("[Paris key input] no retail binding %s
-", binding_name.c_str());
+            console::error("[Paris key input] no retail binding %s\n", binding_name.c_str());
             return false;
         }
         void vote_buttons(bool attack, bool ads, bool hold = false)
