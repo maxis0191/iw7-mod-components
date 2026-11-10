@@ -5,7 +5,12 @@
 #include "command.hpp"
 #include "console/console.hpp"
 #include "directx.hpp"
+// The present callback comes from the debugger component. A kept native build tree can still hold this file when a
+// build is made from an older checkout (no debugger, or one without the listener): then this file builds to nothing.
+#if __has_include("paris_debugger.hpp")
 #include "paris_debugger.hpp"
+#endif
+#ifdef PARIS_DEBUGGER_PRESENT_LISTENER
 #include <utils/flags.hpp>
 #include <utils/io.hpp>
 #include <d3d11.h>
@@ -610,3 +615,4 @@ namespace paris_see
 }
 
 REGISTER_COMPONENT(paris_see::component)
+#endif
