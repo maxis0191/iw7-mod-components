@@ -9,8 +9,8 @@ commit reserve, 80%/85% stop thresholds and dated workload minima. Other fixed
 test; their implementation belongs to their own consumer, outside this scheduler.
 
 Fresh RAM/commit and process telemetry remains required, along with the atomic
-lock, lease ownership, exact identities, one heavy workload group and guarded
-teardown. Missing/impossible telemetry and unknown identities require diagnosis;
+lock, lease ownership, exact identities, one heavy workload group (except up to
+two shareable runtime leases, see below) and guarded teardown. Missing/impossible telemetry and unknown identities require diagnosis;
 they are not a memory-capacity refusal. Successful admission does not establish
 safe unlimited allocation. On observed real exhaustion, reduce the valid scenario
 or close only its own identified processes. Do not replace the removed policy
@@ -36,7 +36,8 @@ supersedes older systematic client-copy requirements and launch recipes below.
 Dated test results remain historical evidence.
 
 Agents may develop, review and run light tests in parallel. Preserve the account-wide
-**one heavy workload group at a time** policy:
+**one heavy workload group at a time** policy, except up to two shareable runtime
+leases ([Shareable runtime leases](#shareable-runtime-leases---2026-11-10)):
 one isolated gameplay scenario (server and its explicitly declared client(s)),
 one native build, one asset extraction, or one reverse-engineering analysis.
 Each chat keeps its own sources, files and test identity. A private desktop or a
@@ -185,6 +186,67 @@ v2 plus private audio tracing, or Player for v2 without private capture/decode/c
 hooks. Native retains the original investigation profile. Player refuses synthetic
 VoiceProbe; one-client readiness does not prove two-client speech. The complete
 planned scenario still needs admission before launch.
+
+## Shareable runtime leases - 2026-11-10
+
+Decision delegated by the owner to the working agent, 2026-11-10.
+
+Rule: a Runtime lease may declare itself shareable. Up to two shareable Runtime
+leases may be held at the same time. Everything else stays exclusive, as before.
+
+Reason: the exclusive rule refused about 2,370 requests across the project,
+79% of local game-session attempts. Two game clients side by side left 6.1 GB
+free of 31.8 GB. Two clients fit; a third does not. The limit is the constant
+`Get-IW7ShareableRuntimeLeaseLimit` (2 leases in total).
+
+Who may opt in: only launches from an isolated bench root, one game client each,
+in a private loopback session. Never Main. Never the base client. Each bench
+root is its own lease scope; overlapping (nested) scopes are refused.
+
+```powershell
+$lease = Enter-IW7ResourceLease -Scope $absoluteBenchRoot -Kind Runtime `
+    -PhysicalBytes 12GB -CommitBytes 12GB -Owner 'bench a' -Shareable
+```
+
+What the scheduler enforces:
+
+- `-Shareable` is valid only with `-Kind Runtime` and without `-BaseClientImage`.
+- A shareable request is admitted only if every other lease is a shareable
+  Runtime lease and fewer than two exist. Otherwise it gets `Resource busy:`.
+  At the limit, the message says the shareable limit is reached and names the owners.
+- A request without `-Shareable` is refused by any other lease, exactly as before,
+  with the same `Resource busy: <Kind> owned by <Owner>` message.
+- Re-entry on the same scope and kind cannot change the flag.
+- `-RequireNewLease` still refuses any existing lease, shareable or not. Do not
+  combine it with `-Shareable` if the second bench must be admitted.
+- A lab process inside another shareable lease's scope, or registered to it, is
+  not foreign for a shareable request. For any other request it still is. A lab
+  process that no lease covers still refuses.
+- Running compilers, ZoneTool, MSBuild, cl, link or Java still refuse.
+- `Add-IW7ResourceProcess` refuses a second live `iw7*.exe` process on a
+  shareable lease. A dead earlier client does not count. A dedicated server is
+  also an `iw7*.exe` process, so a shareable lease cannot hold a server and a client.
+- Release, finished-lease cleanup and Status work per lease. Releasing or cleaning
+  one lease never removes or changes the other. Status shows `Shareable` (false
+  for a lease without the property) and `ShareableRuntimeLimit`.
+- `Invoke-IW7ResourceJob` only takes Build, Extract and Analysis, so it has no
+  `-Shareable` switch.
+
+What stays exclusive: Build, Extract and Analysis leases, Runtime leases without
+the flag, base-client leases, and any lease written by an older copy of the core.
+
+Mixed versions: a lease record without `Shareable`, or with a non-Boolean value,
+is exclusive. An older copy of the core refuses any second lease, so it refuses
+beside a shareable lease with `Resource busy`. An older copy that rewrites the
+registry keeps the property: the reader is `ConvertFrom-Json` and the writer
+`ConvertTo-Json -Depth 10`, which keep unknown properties. An older copy does
+not enforce the one-client limit on `Add-IW7ResourceProcess`. Callers must take
+`-Shareable` from the new core only.
+
+Not yet verified: no live run of two independent leases has been done at the
+time of writing. Evidence is the synthetic suite
+`tests/ops/resource_scheduler_shareable_test.ps1` (temporary registry, synthetic
+process list). The reviewer will do the live run.
 
 ## Build, extraction and analysis
 
