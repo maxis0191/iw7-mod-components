@@ -347,6 +347,14 @@
       ]
     },
     {
+      "id": "memory_watch_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/memory_watch_test.py"
+      ]
+    },
+    {
       "id": "download_cache_overlay_test",
       "command": [
         "pwsh",

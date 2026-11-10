@@ -193,6 +193,8 @@
     "src/native/paris_debugger.cpp",
     "src/native/paris_perf.cpp",
     "src/native/paris_net.cpp",
+    "src/native/paris_watch.cpp",
+    "src/native/paris_watch.hpp",
     "src/native/paris_debugger.hpp",
     "src/native/paris_incident.cpp",
     "src/native/paris_incident.hpp",
@@ -291,10 +293,13 @@
     "tests/ops/engine_map_names_test.py",
     "ops/engine-map/iw7_perf.py",
     "ops/engine-map/iw7_net.py",
+    "ops/engine-map/iw7_watch.py",
     "tests/ops/perf_window_test.py",
     "tests/ops/net_report_test.py",
+    "tests/ops/memory_watch_test.py",
     "docs/PERF.md",
-    "docs/NET.md"
+    "docs/NET.md",
+    "docs/MEMORY-WATCH.md"
   ],
   "dependencies": [
     {

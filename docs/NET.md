@@ -85,3 +85,5 @@ Names found in the engine. The loader sets some of them (`src/client/component/n
 ## Tests
 
 `tests/ops/net_report_test.py` runs the reader on synthetic client documents and synthetic trace lines. It uses no recorded data. It does not test the native code.
+
+To find where the game keeps a value by watching how it changes, record a block of memory with the memory watch: see `docs/MEMORY-WATCH.md`.
