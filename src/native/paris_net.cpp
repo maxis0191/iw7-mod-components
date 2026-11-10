@@ -9,10 +9,15 @@
 // Client-side network update recorder for isolated lab clients (-paris-net with -paris-isolated-lab).
 //
 // While the client is in the active state, every pass of the engine's main pipeline looks at three values of the
-// client game state (cg): latestSnapshotNum, latestSnapshotTime and predictedPlayerState.commandTime. Each time
-// latestSnapshotNum changes it keeps the wall-clock gap since the previous change, the difference in snapshot number
-// (above 1 means updates were skipped), the difference in server time, and how far the predicted time is ahead of the
-// latest server time. It writes iw7-mod/paris-net/client.json every 5 seconds and when the client shuts down.
+// client connection data: the update counter, the server time carried by the latest update, and the client's own
+// frame clock (a fixed address). Each time the update counter changes it keeps the wall-clock gap since the previous change, the
+// difference in the counter (above 1 means updates were skipped), the difference in server time, and how far the
+// client clock is ahead of the server time. It writes iw7-mod/paris-net/client.json every 5 seconds and when the client
+// shuts down.
+//
+// Where the three values are (10 Nov 2026, found with memory-watch recordings, see docs/NET.md): the game image keeps a
+// pointer to its client connection data at a fixed address; the counter and the server time are at fixed offsets inside
+// that data; the client clock is a static global of the game image.
 //
 // Rules: the main thread only reads the three values and stores numbers into arrays sized at start. It never allocates,
 // never formats and never touches a file. A writer thread formats and writes. It reads only array entries below a count
@@ -26,10 +31,24 @@ namespace paris_net
         constexpr std::int64_t write_seconds = 5;
         constexpr const char* output_path = "iw7-mod/paris-net/client.json";
 
-        // The recorder reads these two fields of a partly known structure. The assertion ties them to the one asserted
-        // field in front of them (game/structs.hpp), so an edit of the padding cannot move them silently.
-        static_assert(offsetof(game::cg_s, latestSnapshotNum) == 492896);
-        static_assert(offsetof(game::cg_s, latestSnapshotTime) == 492900);
+        // Addresses, found on 10 Nov 2026 by memory-watch recordings (10 ms apart, 300 copies each) of a lab client joined to
+        // a private dedicated server through the network lab's proxy, and compared with the proxy's packet counts.
+        // Evidence: session folders snap/s04 (no added delay) and snap/s06 (ping 300, jitter 30, loss 5 percent, burst 30).
+        // The pointer value was the same in every session.
+        //  - 0x141FE58B8 holds a pointer to the client connection data (the loader's cl_con_data).
+        //  - +0x2014C: a 32-bit number that rises by 1 for each update of the server's stream (20.02 a second without
+        //    added delay; 20.22 a second with 7 percent of the packets dropped, with steps of 2 in 10 of 100 changes, so
+        //    it follows the server's own sequence, not a count of what arrived).
+        //  - +0x20024: the server time carried by the latest update (a millisecond value that moves in jumps of 48 to 64
+        //    without added delay, about 1000 a second in total).
+        //  - 0x141FE5EAC (fixed): the client's own frame clock in milliseconds (changes in every frame, steps of 16 to 17,
+        //    about 1000 a second). Its value minus the wall clock was equal within 1 ms to the field +0x2003C of the
+        //    connection data in the same session, so that field is the same clock.
+        constexpr std::uintptr_t connection_pointer_address = 0x141FE58B8;
+        constexpr std::uintptr_t client_clock_address = 0x141FE5EAC;
+        constexpr std::size_t update_counter_offset = 0x2014C;
+        constexpr std::size_t server_time_offset = 0x20024;
+        constexpr std::size_t connection_data_bytes = update_counter_offset + sizeof(std::int32_t); // the highest byte read
 
         struct summary
         {
@@ -74,6 +93,41 @@ namespace paris_net
         {
             const auto* ui = game::clientUIActives.get();
             return ui && ui[0].cgameInitialized && ui[0].connectionState == game::CA_ACTIVE;
+        }
+
+        // The three values, read only from memory that is committed and readable. The pointer is checked again whenever its
+        // value changes (a new connection data block).
+        struct values
+        {
+            std::int32_t number, server_time, client_clock;
+        };
+
+        std::uintptr_t checked_pointer{};
+
+        bool readable(const std::uintptr_t pointer)
+        {
+            if (pointer == checked_pointer) return true;
+            if (pointer < 0x10000 || (pointer & 3) != 0) return false;
+            MEMORY_BASIC_INFORMATION info{};
+            if (VirtualQuery(reinterpret_cast<const void*>(pointer), &info, sizeof(info)) != sizeof(info)) return false;
+            if (info.State != MEM_COMMIT || (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0) return false;
+            if ((info.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) == 0) return false;
+            const auto end = reinterpret_cast<std::uintptr_t>(info.BaseAddress) + info.RegionSize;
+            if (end < pointer + connection_data_bytes) return false;
+            checked_pointer = pointer;
+            return true;
+        }
+
+        bool read_values(values& out)
+        {
+            // The slot is a static global of the game image.
+            const auto pointer = *reinterpret_cast<const volatile std::uintptr_t*>(connection_pointer_address);
+            if (!readable(pointer)) return false;
+            const auto* base = reinterpret_cast<const volatile std::uint8_t*>(pointer);
+            out.number = *reinterpret_cast<const volatile std::int32_t*>(base + update_counter_offset);
+            out.server_time = *reinterpret_cast<const volatile std::int32_t*>(base + server_time_offset);
+            out.client_clock = *reinterpret_cast<const volatile std::int32_t*>(client_clock_address);
+            return true;
         }
 
         template <typename Array>
@@ -123,7 +177,7 @@ namespace paris_net
             _snprintf_s(line, sizeof(line), _TRUNCATE,
                 "{\"schema\":\"iw7.net-client/1\",\"pid\":%lld,\"seconds\":%.6f,\"passes\":%llu,\"updates\":%llu,\"skipped_updates\":%llu,"
                 "\"longest_passes_without_update\":%llu,\"discontinuities\":%llu,\"first_snapshot_num\":%d,\"last_snapshot_num\":%d,\"truncated\":%s,"
-                "\"source\":\"cg.latestSnapshotNum, cg.latestSnapshotTime, cg.predictedPlayerState.commandTime\",\n",
+                "\"source\":\"pointer at 0x141FE58B8 to the client connection data; update counter at +0x2014C, server time at +0x20024; client clock at 0x141FE5EAC\",\n",
                 static_cast<long long>(s.pid), s.seconds, static_cast<unsigned long long>(s.passes), static_cast<unsigned long long>(s.updates),
                 static_cast<unsigned long long>(s.skipped), static_cast<unsigned long long>(s.longest_run),
                 static_cast<unsigned long long>(s.discontinuities), s.first_num, s.last_num, s.truncated ? "true" : "false");
@@ -193,16 +247,16 @@ namespace paris_net
         {
             report_done();
             if (!client_active()) { leave_active(); return; }
-            const auto* state = game::cg.get();
-            if (!state) { leave_active(); return; }
+            values now_values{};
+            if (!read_values(now_values)) { leave_active(); return; }
             const auto t = now();
             if (last_pass) active_ticks += t - last_pass;
             last_pass = t;
             ++passes;
 
-            const int number = state->latestSnapshotNum;
-            const int server_time = state->latestSnapshotTime;
-            const int command_time = state->predictedPlayerState.commandTime;
+            const int number = now_values.number;
+            const int server_time = now_values.server_time;
+            const int command_time = now_values.client_clock;
             if (!have_first) { first_num = number; have_first = true; }
             if (!have_baseline)
             {
