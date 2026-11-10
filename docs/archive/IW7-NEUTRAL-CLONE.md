@@ -1,3 +1,5 @@
+> History (dated 2026-10-15). Not current instructions. Current entry point: [docs/INDEX.md](../INDEX.md). Paths in the text are relative to the repository root as it was on that date.
+
 # Explicit IW7 neutral clone Source profile
 
 2026-10-15 current checkpoint: U1d consumed the captured T2 triplet under its own

@@ -1,3 +1,5 @@
+> History (dated 2026-10-14 to 2026-10-18). Not current instructions. Current entry point: [docs/INDEX.md](INDEX.md). Experiment, no longer worked on.
+
 # Protected authoritative player contact
 
 ## Readiness reference retention and console envelope - 2026-10-18

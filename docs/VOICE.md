@@ -6,9 +6,8 @@
   `paris_voice.cpp`, the v2 `voice_relay.cpp` family, the fake capture, the PCM
   witness, the push-to-talk input bridge, the voice-agent bench and the 36f7afe
   player-client build profile). The old relay never carried speech between real
-  players. The server repository retires its own voice tooling in its PR #414
-  (branch `codex/voice-cleanup`); the `docs/VOICE-STATUS.md` it adds is the
-  server-side record.
+  players. The server repository retired its own voice tooling in its PR #414
+  (merged as `dbec8516`); its `docs/VOICE-STATUS.md` is the server-side record.
 - Its replacement is an upstream-shaped component: the local commit
   `fbf17531a4be72a31f1637dba38091c74f49cde0` on branch `feature/voice-chat`,
   based on auroramod `develop` `85ada7c61e2b8722e9d3a704db490b909bb23ccb`. It is
@@ -18,8 +17,9 @@
   tested in game**. The owner has not accepted it.
 - Main (UDP 27016) and Canada still run native image `0577712C`, which contains
   the old relay. Nothing in this change deploys anything. Their deployment
-  pipeline in the server repository is unchanged and still pins this repository
-  at `447c1ad`.
+  pipeline in the server repository is unchanged and pins this repository at the
+  branch `pin/server-447c1ad-shareable` (`9a3d30b`: `447c1ad`, which still has the
+  old relay, plus three scheduler commits), not at `main`.
 - Server issue #4 (voice) stays open.
 
 ## Why the old relay never worked
@@ -183,55 +183,8 @@ Do none of this before the owner has tested and accepted the new relay in game
 - `agent_scenario.hpp` keeps its `talk` button (native `+talk`). The lab fixture
   rejects it today.
 
-## History of the retired implementation
+## History and evidence
 
-- 2026-01-06: an Aurora administrator confirmed that iw7-mod has no voice support.
-- 2026-10-04: player beta of the v2 relay on Main. The stock dedicated process
-  crashed during that work (a heap incident with a null write); the cause was
-  never found. A PageHeap trace profile was added for diagnosis.
-- 2026-10-05: live diagnosis on Main: zero relayed frames, the second participant
-  never negotiated. Launch ambiguities of the private player client were fixed the
-  same day.
-- 2026-10-11: protected synthetic two-client witness (Run19 A to B, Run20 B to A)
-  with fake capture and the push-to-talk bridge. The decoded PCM held all four
-  words of the test phrase in both directions. The final mixed output was not
-  accepted as intelligible. No human speech and no second PC.
-- VB-CABLE was downloaded but never installed; its render helper never ran.
-- 2026-10-12: the Multiplayer audit confirmed the relay was Zombies-only.
-- 2026-10-19: transactional uplink quotas in the v2 transport.
-- 2026-11-01: a fresh player kit was built and packaged; never live-tested.
-- Engine facts recorded on the way: IW7 uses Speex with DirectSound capture and
-  playback, and the engine reported a playback rate of 8192 Hz.
-
-## Evidence index
-
-Deployment and test records stay in the server repository (never delete them);
-its `docs/VOICE-STATUS.md` lists them under "Evidence index".
-
-Retained ignored evidence of the 2026-10-11 witness, as recorded by the
-2026-10-12 inventory:
-
-- Run19 (A to B): `C:/Users/ezvalo/.codex/worktrees/voice-e2e/IW7-Paris-Server/runtime/voice-pair/20261011-054037-977-4ae1da46`
-- Run20 (B to A): `C:/Users/ezvalo/.codex/worktrees/voice-e2e/IW7-Paris-Server/runtime/voice-pair/20261011-054913-317-08054c08`
-- Witness package `iw7-paris-voice.exe` SHA-256
-  `A3A2147EDF966313A842134CC046540390BCA646829A1DD729D7799408108287`, in
-  `.../voice-e2e/IW7-Paris-Server/runtime/voice-package`.
-- Final WAV SHA-256: Run19
-  `D15C75C691A63AEA9116EDD2433B23A7371E7CC70856441DC785975A128679E8`, Run20
-  `30B44131FE93F06364FFBC188539AA54254DF42D95D5052458A77D85D5BAC2FD`.
-- The inventory's own record:
-  `C:/Users/ezvalo/.codex/worktrees/voice-resume-inventory/IW7-Paris-Server/runtime/voice-resume-inventory.local.json`.
-
-On 2026-11-09 none of these paths exists any more: the `voice-e2e` and
-`voice-resume-inventory` worktree folders hold only an empty
-`.codex-worktree-name` marker. The full identities (32
-hash links, WAV headers, tool pins) are in the retired inventory document.
-
-The retired documents are in Git history. Read them with
-`git show 5b3524b:docs/<name>`: `VOICE-AGENT-PLAN.md`, `VOICE-BASE-RUNBOOK.md`,
-`VOICE-CONTRIBUTION.md`, `VOICE-E2E-RECOVERY.md`,
-`VOICE-LIVE-DIAGNOSIS-2026-10-05.md`, `VOICE-MP-READINESS.md`,
-`VOICE-NATIVE-TRACE.md`, `VOICE-PLAYER-STARTUP.md`, `VOICE-PLAYER.md`,
-`VOICE-RELAY.md`, `VOICE-RESUME-INVENTORY.md`,
-`VOICE-SPEECH-WITNESS-2026-10-11.md`, `VOICE-TRANSPORT.md`, and the earlier
-`VOICE.md`. The retired code is at the same commit.
+The history of the retired implementation (2026-01 to 2026-11) and the index of its retained evidence are in
+[archive/VOICE-HISTORY-2026-10.md](archive/VOICE-HISTORY-2026-10.md). Deployment and test records stay in the
+server repository; its `docs/VOICE-STATUS.md` lists them.

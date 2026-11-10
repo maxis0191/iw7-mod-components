@@ -505,6 +505,29 @@ $failed=$false
 try { Invoke-IW7ResourceJob -Scope $scope -Owner 'intentional error' -Body { throw 'body failure' } } catch { $failed=$true }
 Assert $failed 'Workload exception must propagate.'
 Assert (@((Get-IW7ResourceStatus).Leases).Count -eq 0) 'Failed synchronous job must release.'
+# Invoke-IW7QueuedResourceJob queues a plain job behind a temporary holder for a bounded time; Invoke-IW7ResourceJob still refuses at once.
+$waitHolder=Enter-IW7ResourceLease -Scope (Join-Path $TestRoot 'wait-holder') -Kind Runtime -PhysicalBytes 1GB -CommitBytes 1GB -Owner 'temporary holder'
+$waitScope=Join-Path $TestRoot 'wait-job'
+$message='';try { Invoke-IW7ResourceJob -Scope $waitScope -Owner 'no wait' -Body { 'ran' } } catch { $message=$_.Exception.Message }
+Assert ($message -like 'Resource busy: Runtime owned by temporary holder.*') 'Without a wait a busy slot refuses at once.'
+$script:waitSleeps=0
+function Start-Sleep { $script:waitSleeps++ }
+$message='';$clock=[Diagnostics.Stopwatch]::StartNew()
+try { Invoke-IW7QueuedResourceJob -Scope $waitScope -Owner 'bounded wait' -WaitForSlotSeconds 1 -Body { 'ran' } } catch { $message=$_.Exception.Message }
+Assert ($message -like 'Resource busy: Runtime owned by temporary holder.*' -and $script:waitSleeps -ge 1 -and $clock.Elapsed.TotalSeconds -ge 1) 'At the bound the last refusal is thrown, after waiting.'
+Assert (@((Get-IW7ResourceStatus).Leases).Count -eq 1) 'A refused waiter must leave no lease.'
+$script:waitSleeps=0
+function Start-Sleep { $script:waitSleeps++; if ($script:waitSleeps -eq 2) { Exit-IW7ResourceLease -Token $waitHolder.Token } }
+$ran=Invoke-IW7QueuedResourceJob -Scope $waitScope -Owner 'queued job' -WaitForSlotSeconds 600 -Body { 'ran' }
+Assert ($ran -eq 'ran' -and $script:waitSleeps -eq 2) 'The queued job must run once the holder releases.'
+Assert (@((Get-IW7ResourceStatus).Leases).Count -eq 0) 'The queued job must release its lease.'
+$rogueWait=[pscustomobject]@{PID=22223;ParentPID=0;CreatedUtc='2026-10-04T12:00:00Z';Image='C:\foreign\iw7-paris-lab.exe';Name='iw7-paris-lab.exe';Lab=$true;Heavy=$true;WorkingSet=1GB;PrivateBytes=2GB}
+$script:fakeProcesses += $rogueWait
+$script:waitSleeps=0;$message=''
+try { Invoke-IW7QueuedResourceJob -Scope $waitScope -Owner 'not waited' -WaitForSlotSeconds 600 -Body { 'ran' } } catch { $message=$_.Exception.Message }
+Assert ($message -like 'An unreserved or foreign laboratory is running*' -and $script:waitSleeps -eq 0) 'A refusal that is not a temporary holder is never waited for.'
+$script:fakeProcesses=@($script:fakeProcesses | Where-Object PID -EQ $PID)
+Remove-Item Function:\Start-Sleep
 # A real cross-process race on a shared file lock, without heavyweight children.
 $shell=(Get-Process -Id $PID).Path
 $children=@()

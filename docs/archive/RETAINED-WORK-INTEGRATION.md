@@ -1,3 +1,5 @@
+> History (dated 2026-10-15, voice paragraph revised 2026-11-09). Not current instructions. Current entry point: [docs/INDEX.md](../INDEX.md). Paths in the text are relative to the repository root as it was on that date.
+
 # Retained work integration - 2026-10-15
 
 The owner requests integration of the retained non-Rhino work. This product owns
@@ -38,7 +40,7 @@ the repository's existing upstream license. Profile/copy controls pass 63 cases.
 
 Retired 2026-11-09 with the old voice bench: `ops/voice-agent/Speech-Cache.Core.ps1`
 and `tests/ops/voice_speech_cache_test.ps1` remain readable with
-`git show 5b3524b:<path>`. See [VOICE.md](VOICE.md). The rest of this section
+`git show 5b3524b:<path>`. See [VOICE.md](../VOICE.md). The rest of this section
 describes them as they were.
 
 The earlier hosted SAPI repeatability failure is real and remains in PR2 history.

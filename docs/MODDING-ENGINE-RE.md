@@ -1,3 +1,5 @@
+> History (dated 2026-10-12 to 2026-10-14). Not current instructions. Current entry point: [docs/INDEX.md](INDEX.md). The resource limits it quotes are no longer in force: the 20% commit headroom was removed on 2026-10-13, and since 2026-11-10 live sessions on bench roots are admitted by memory, several at once; see [RESOURCE-WORKFLOW.md](RESOURCE-WORKFLOW.md).
+
 # Agent capabilities and the next engine investigation
 
 ## Scene capture admission diagnostics — compiled candidate, 2026-10-14
