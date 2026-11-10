@@ -398,6 +398,25 @@ return table.concat(out)
             return bounded_string(dvar->current.string, 64);
         }
 
+        // Lua: paris_ui_material(handle) -> the name of the material behind an element's image handle, "" when it
+        // cannot be read. A plain C function of the Lua state: the first argument sits at the base of the call's stack.
+        int material_name(game::hks::lua_State* state)
+        {
+            std::string name;
+            if (state && state->m_apistack.top > state->m_apistack.base)
+            {
+                const auto& argument = state->m_apistack.base[0];
+                if (argument.t == game::hks::TLIGHTUSERDATA && argument.v.ptr && readable(argument.v.ptr, sizeof(const char*)))
+                {
+                    const char* text{};
+                    std::memcpy(&text, argument.v.ptr, sizeof(text));
+                    name = bounded_string(text, 96);
+                }
+            }
+            ui_scripting::push_value(name);
+            return 1;
+        }
+
         void run_lua(const std::string& code, const char* chunk, std::string& result, std::string& error)
         {
             try
@@ -406,15 +425,7 @@ return table.concat(out)
                 const auto lua = ui_scripting::get_globals();
                 if (helper_generation != ui_scripting::lua_generation())
                 {
-                    // The name of the material behind an element's image handle ("" when it cannot be read).
-                    lua["paris_ui_material"] = [](const ui_scripting::lightuserdata& handle) -> std::string
-                    {
-                        const void* material = handle.ptr;
-                        if (!material || !readable(material, sizeof(const char*))) return {};
-                        const char* name{};
-                        std::memcpy(&name, material, sizeof(name));
-                        return bounded_string(name, 96);
-                    };
+                    lua["paris_ui_material"] = ui_scripting::function(material_name);
                     helper_generation = ui_scripting::lua_generation();
                 }
                 const auto loaded = lua["loadstring"](code, std::string(chunk));
