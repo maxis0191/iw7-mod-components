@@ -371,6 +371,14 @@
       ]
     },
     {
+      "id": "world_live_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/world_live_test.py"
+      ]
+    },
+    {
       "id": "download_cache_overlay_test",
       "command": [
         "pwsh",
