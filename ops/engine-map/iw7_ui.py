@@ -22,6 +22,8 @@ HUD_TYPES = {0: 'free', 1: 'text', 2: 'value', 3: 'playername', 4: 'material', 5
              8: 'tenths_timer_down', 9: 'tenths_timer_up', 10: 'tenths_timer_static', 11: 'clock_down', 12: 'clock_up', 13: 'waypoint'}
 ALIGN_X = {0: 'left', 1: 'center', 2: 'right'}
 ALIGN_Y = {0: 'top', 1: 'middle', 2: 'bottom'}
+HORZ_ALIGN = {}
+VERT_ALIGN = {}
 # Offsets inside the client's copy of one HUD element (0xB8 bytes), read from the game's own layout and draw code.
 HUD_FIELDS = (('x', 0x04, 'f'), ('y', 0x08, 'f'), ('z', 0x0C, 'f'), ('target_ent', 0x10, 'i'), ('lerp_value', 0x14, 'f'),
               ('lerp_from', 0x18, 'f'), ('lerp_start', 0x1C, 'i'), ('lerp_time', 0x20, 'i'), ('font_scale', 0x24, 'f'),
@@ -33,6 +35,8 @@ HUD_FIELDS = (('x', 0x04, 'f'), ('y', 0x08, 'f'), ('z', 0x0C, 'f'), ('target_ent
               ('move_start', 0x80, 'i'), ('move_time', 0x84, 'i'), ('time', 0x88, 'i'), ('duration', 0x8C, 'i'),
               ('value', 0x90, 'f'), ('text_index', 0x94, 'i'), ('sort', 0x98, 'f'), ('flags', 0xB4, 'I'))
 HUD_COLORS = (('color', 0x40), ('from_color', 0x44), ('glow_color', 0x9C))
+# Lua UI subtrees that are drawn on surfaces of the 3D world, not on the screen: their rectangles are not screen positions.
+WORLD_ROOTS = ('InWorldManager',)
 
 
 class DumpError(Exception):
@@ -57,6 +61,8 @@ def decode_hud_raw(raw_hex):
     out['align_y'] = ALIGN_Y.get(out['align_org'] & 3, '?')
     out['horz_align'] = (out['align_screen'] >> 4) & 15
     out['vert_align'] = out['align_screen'] & 15
+    out['horz_align_name'] = HORZ_ALIGN.get(out['horz_align'], str(out['horz_align']))
+    out['vert_align_name'] = VERT_ALIGN.get(out['vert_align'], str(out['vert_align']))
     return out
 
 
@@ -92,18 +98,23 @@ def elements(data):
             rect = (x, y, x + w, y + h)
         text = (e.get('label') or '') + (e.get('text') or '')
         alpha = e['color'][3] if isinstance(e.get('color'), list) and len(e['color']) == 4 else f['color'][3] / 255.0
-        kind = 'text' if text else ('image' if f['type_name'] == 'material' or e.get('material') else f['type_name'])
+        image = ''
+        if f['type_name'] == 'material' or e.get('material'):
+            image = e.get('material') or 'material %d' % f['material_index']
+        kind = 'text' if text else ('image' if image else f['type_name'])
         out.append({'layer': 'hud', 'index': e.get('i', len(out)), 'parent': None, 'depth': 0, 'name': 'hud%d' % e.get('i', len(out)),
                     'kind': kind, 'rect': rect, 'text': text, 'alpha': alpha, 'visible': bool(e.get('drawn')) and alpha > 0.004 and rect is not None,
-                    'clips': False, 'image': e.get('material') or '', 'sort': f['sort'], 'fields': f,
-                    'text_height': e.get('font_height'), 'font': e.get('font') or ''})
+                    'clips': False, 'image': image, 'sort': f['sort'], 'fields': f, 'world': f['type_name'] == 'waypoint',
+                    'text_height': e.get('font_height') if text else None, 'font': e.get('font') or ''})
     lui = data.get('lui') or {}
     rows = lui.get('elements') or []
     base = len(out)
     alphas = {}
     hidden = {}
+    world = {}
     for e in rows:
         i, p = e.get('i'), e.get('p', -1)
+        world[i] = bool(e.get('world')) or e.get('id') in WORLD_ROOTS or world.get(p, False)
         own = e.get('alpha', 1.0)
         own = 1.0 if not isinstance(own, (int, float)) else float(own)
         alpha = own * alphas.get(p, 1.0)
@@ -119,7 +130,7 @@ def elements(data):
         out.append({'layer': 'lui', 'index': i, 'parent': (base + p) if isinstance(p, int) and p >= 0 else None, 'depth': e.get('d', 0),
                     'name': str(e.get('id', '')), 'kind': kind, 'rect': rect, 'text': text, 'alpha': alpha,
                     'visible': not off and alpha > 0.004 and rect is not None, 'clips': bool(e.get('clips')), 'image': image,
-                    'text_height': e.get('text_height'), 'font': e.get('font') or '', 'children': 0})
+                    'text_height': e.get('text_height'), 'font': e.get('font') or '', 'children': 0, 'world': world[i]})
     for e in out:
         if e['layer'] == 'lui' and e['parent'] is not None:
             out[e['parent']]['children'] += 1
@@ -183,12 +194,13 @@ def cmd_show(args):
     lui = [e for e in els if e['layer'] == 'lui']
     print('%s  map %s  screen %dx%d  hud %d  lui %d' % (data.get('tag') or '-', data.get('map') or '-', s['width'], s['height'], len(hud), len(lui)))
     if args.layer in ('all', 'hud'):
-        print('HUD elements (server-drawn): #  type  rect  sort  alpha  align  text or material')
+        print('HUD elements (server-drawn): #  type  rect  sort  alpha  scale  align  text or material')
         for e in hud:
             f = e['fields']
-            print('  %-3d %-9s %-18s %5g %5.2f  %s/%s %d/%d  %s' % (
-                e['index'], f['type_name'], fmt_rect(e['rect']), f['sort'], e['alpha'], f['align_x'], f['align_y'], f['horz_align'], f['vert_align'],
-                json.dumps(e['text']) if e['text'] else (e['image'] or ('(not drawn)' if e['rect'] is None else ''))))
+            print('  %-3d %-9s %-18s %5g %5.2f %5.2f  %s/%s %s/%s  %s' % (
+                e['index'], f['type_name'], fmt_rect(e['rect']), f['sort'], e['alpha'], f['font_scale'], f['align_x'], f['align_y'],
+                f['horz_align_name'], f['vert_align_name'],
+                json.dumps(e['text']) if e['text'] else ('[%s]' % e['image'] if e['image'] else ('(not drawn)' if e['rect'] is None else '(empty)'))))
     if args.layer in ('all', 'lui'):
         err = (data.get('lui') or {}).get('error')
         if err:
@@ -203,13 +215,15 @@ def cmd_show(args):
                 continue
             if args.content and not has_content(e):
                 continue
+            if e['world'] and not args.world:
+                continue
             if shown >= args.max:
                 print('  ... cut at %d rows (--max)' % args.max)
                 break
             shown += 1
             extra = json.dumps(e['text']) if e['text'] else (('[%s]' % e['image']) if e['image'] else '')
-            print('  %s%s  %s  a=%.2f%s%s  %s' % ('  ' * e['depth'], e['name'] or '*', fmt_rect(e['rect']), e['alpha'],
-                                               '' if e['visible'] else ' hidden', ' clips' if e['clips'] else '', extra))
+            print('  %s%s  %s  a=%.2f%s%s%s  %s' % ('  ' * e['depth'], e['name'] or '*', fmt_rect(e['rect']), e['alpha'],
+                                                 '' if e['visible'] else ' hidden', ' clips' if e['clips'] else '', ' world' if e['world'] else '', extra))
     return 0
 
 
@@ -258,8 +272,7 @@ def check(data, min_text=None, overlap=0.10, tolerance=1.0):
     for i in seen:
         e = els[i]
         r = e['rect']
-        leaf = e['layer'] == 'hud' or has_content(e)
-        if not leaf:
+        if not has_content(e) or e.get('world'):
             continue
         if r[2] - r[0] <= 0 or r[3] - r[1] <= 0:
             out.append({'rule': 'ZERO_SIZE', 'element': i, 'detail': '%s has no area (%s)' % (label(els, i), fmt_rect(r))})
@@ -283,7 +296,7 @@ def check(data, min_text=None, overlap=0.10, tolerance=1.0):
                         label(els, i), path_of(els, p), round(100 * lost), fmt_rect(pe['rect']))})
                     break
             p = pe['parent']
-    texts = [i for i in seen if els[i]['text'] and area(els[i]['rect']) > 0]
+    texts = [i for i in seen if els[i]['text'] and area(els[i]['rect']) > 0 and not els[i].get('world')]
     for k, a in enumerate(texts):
         for b in texts[k + 1:]:
             ea, eb = els[a], els[b]
@@ -486,7 +499,7 @@ def _box(r, grow, w, h):
     return max(0, int(round(r[0])) - grow), max(0, int(round(r[1])) - grow), min(w, int(round(r[2])) + grow), min(h, int(round(r[3])) + grow)
 
 
-def frame_measure(rect, w, h, pixel, base=None, ring=4, gap=1, threshold=40):
+def frame_measure(rect, w, h, pixel, base=None, ring=4, gap=2, threshold=40):
     """Shares of pixels, inside the rectangle and in a ring just outside it. "ink": pixels that differ from the ring's own
     median colour in the same frame (text on a flat panel). "changed": pixels that differ from the base frame."""
     ix0, iy0, ix1, iy1 = _box(rect, 0, w, h)
@@ -536,7 +549,7 @@ def frame_rows(data, frame, base=None, text=None, layer=None, threshold=40):
         if not (has_content(e) or e['layer'] == 'hud') or area(e['rect']) <= 0:
             continue
         m = frame_measure(e['rect'], w, h, pixel, base_pixel, threshold=threshold)
-        by_ink = m.get('ink_inside', 0) >= 0.02 and m.get('ink_ring', 1) <= 0.01
+        by_ink = m.get('ink_inside', 0) >= 0.02 and m.get('ink_ring', 1) <= 0.02
         by_change = m.get('changed_inside', 0) >= 0.5 and m.get('changed_ring', 1) <= 0.1
         m.update(element=i, name=label(els, i), rect=fmt_rect(e['rect']), agrees=bool(by_ink or by_change), by='ink' if by_ink else ('change' if by_change else ''))
         out.append(m)
@@ -565,6 +578,7 @@ def main(argv=None):
     p.add_argument('--max', type=int, default=200)
     p.add_argument('--visible', action='store_true', help='only visible elements')
     p.add_argument('--content', action='store_true', help='only elements with a text or an image')
+    p.add_argument('--world', action='store_true', help='also the Lua UI that is drawn on surfaces of the 3D world')
     p.set_defaults(fn=cmd_show)
     p = sub.add_parser('find')
     p.add_argument('dump')
