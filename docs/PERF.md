@@ -10,6 +10,8 @@ It is for lab clients only. It needs the flags `-paris-perf` and `-paris-isolate
 
 The recorder is `src/native/paris_perf.cpp`. The tool is `ops/engine-map/iw7_perf.py`. Function names come from the engine map (`docs/ENGINE-MAP.md`).
 
+For a freeze, where the main thread makes no progress at all, see `docs/HANG.md`. It shares this recorder's stack capture (`src/native/paris_stack.hpp`).
+
 ## Recording
 
 Two console commands in the client:

@@ -3,6 +3,7 @@
 #include "scheduler.hpp"
 #include "command.hpp"
 #include "console/console.hpp"
+#include "paris_stack.hpp"
 #include <utils/flags.hpp>
 #include <utils/io.hpp>
 #include <tlhelp32.h>
@@ -25,21 +26,21 @@ namespace paris_perf
 {
     namespace
     {
-        constexpr std::uintptr_t image_base = 0x140000000;
+        // The stack capture (image reading, unwind, raw_sample) is shared with the hang reporter: paris_stack.hpp.
+        using paris_stack::capture;
+        using paris_stack::function_count;
+        using paris_stack::image_base;
+        using paris_stack::raw_sample;
+        using paris_stack::read_image;
+        using paris_stack::text_begin;
+        using paris_stack::text_end;
+        using paris_stack::unwind_ready;
+
         constexpr std::size_t max_frames = 1u << 20;
-        constexpr std::size_t max_depth = 16;
-        constexpr std::size_t max_scan = 6;
         constexpr std::size_t max_threads = 200;
         constexpr std::size_t others_per_tick = 3;
         constexpr std::size_t max_stacks = 200000;
 
-        struct raw_sample
-        {
-            std::uint32_t depth{};
-            std::uint32_t scanned{};
-            std::uint64_t pc[max_depth]{};
-            std::uint64_t scan[max_scan]{};
-        };
         struct thread_info
         {
             DWORD id{};
@@ -62,104 +63,11 @@ namespace paris_perf
         std::map<std::string, std::uint32_t> stacks; // key: thread index byte, depth byte, scan byte, then the addresses
         std::uint64_t ticks{}, dropped{};
 
-        const RUNTIME_FUNCTION* function_table{};
-        std::size_t function_count{};
-        std::uintptr_t text_begin{0x140001000}, text_end{0x141428000};
-        bool unwind_ready{};
-
         std::int64_t now()
         {
             LARGE_INTEGER value{};
             QueryPerformanceCounter(&value);
             return value.QuadPart;
-        }
-        bool readable(const void* address, const std::size_t size)
-        {
-            MEMORY_BASIC_INFORMATION info{};
-            if (!VirtualQuery(address, &info, sizeof(info)) || info.State != MEM_COMMIT) return false;
-            if (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-            const auto end = reinterpret_cast<std::uintptr_t>(info.BaseAddress) + info.RegionSize;
-            return reinterpret_cast<std::uintptr_t>(address) + size <= end;
-        }
-        void read_image()
-        {
-            // The game image is mapped at its preferred base. Trust its headers only after checking each field.
-            const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(image_base);
-            if (!readable(dos, sizeof(*dos)) || dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0 || dos->e_lfanew > 0x1000) return;
-            const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(image_base + dos->e_lfanew);
-            if (!readable(nt, sizeof(*nt)) || nt->Signature != IMAGE_NT_SIGNATURE || nt->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64) return;
-            const auto& dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
-            const std::size_t count = dir.Size / sizeof(RUNTIME_FUNCTION);
-            const auto* table = reinterpret_cast<const RUNTIME_FUNCTION*>(image_base + dir.VirtualAddress);
-            if (!dir.VirtualAddress || count < 1000 || count > 400000 || !readable(table, 64)) return;
-            // The whole table must be readable and sorted where we look.
-            for (std::size_t offset = 0; offset < dir.Size; offset += 0x1000)
-                if (!readable(reinterpret_cast<const char*>(table) + offset, 1)) return;
-            for (std::size_t i = 1; i < count; i += 257)
-                if (table[i].BeginAddress < table[i - 1].BeginAddress) return;
-            function_table = table;
-            function_count = count;
-            unwind_ready = true;
-        }
-        const RUNTIME_FUNCTION* find_entry(const std::uint64_t pc)
-        {
-            if (!unwind_ready || pc < image_base) return nullptr;
-            const auto rva = static_cast<std::uint64_t>(pc - image_base);
-            std::size_t low = 0, high = function_count;
-            while (low < high)
-            {
-                const auto middle = (low + high) / 2;
-                if (rva < function_table[middle].BeginAddress) high = middle;
-                else if (rva >= function_table[middle].EndAddress) low = middle + 1;
-                else return &function_table[middle];
-            }
-            return nullptr;
-        }
-        bool in_text(const std::uint64_t pc) { return pc >= text_begin && pc < text_end; }
-
-        // POD only: SEH guards the reads of the suspended thread's stack.
-        __declspec(noinline) bool capture(const HANDLE thread, raw_sample& out)
-        {
-            CONTEXT context{};
-            context.ContextFlags = CONTEXT_FULL;
-            if (!GetThreadContext(thread, &context)) return false;
-            out.depth = 0;
-            out.scanned = 0;
-            __try
-            {
-                out.pc[out.depth++] = context.Rip;
-                if (!in_text(context.Rip))
-                {
-                    // Outside the game image (driver, system): keep the first words of the stack that point into game
-                    // code. The offline tool keeps those that follow a call instruction.
-                    const auto* stack = reinterpret_cast<const std::uint64_t*>(context.Rsp);
-                    for (std::size_t i = 0; i < 96 && out.scanned < max_scan; ++i)
-                        if (in_text(stack[i])) out.scan[out.scanned++] = stack[i];
-                    return true;
-                }
-                while (out.depth < max_depth)
-                {
-                    const auto* entry = find_entry(context.Rip);
-                    if (entry)
-                    {
-                        void* handler_data{};
-                        DWORD64 establisher{};
-                        RtlVirtualUnwind(UNW_FLAG_NHANDLER, image_base, context.Rip, const_cast<PRUNTIME_FUNCTION>(entry), &context, &handler_data, &establisher, nullptr);
-                    }
-                    else
-                    {
-                        context.Rip = *reinterpret_cast<const std::uint64_t*>(context.Rsp); // leaf: the return address is on top
-                        context.Rsp += 8;
-                    }
-                    if (!in_text(context.Rip)) break;
-                    out.pc[out.depth++] = context.Rip;
-                }
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER)
-            {
-                // A stack that could not be read: keep what was captured.
-            }
-            return true;
         }
         void account(const std::size_t index, const raw_sample& sample)
         {
