@@ -14,6 +14,10 @@ The tool uses `capstone` to decode the code.
 
 The tool assumes the image base 0x140000000, the code section at 0x140001000 and the read-only data at 0x141435000.
 
+## Crash dumps
+
+`ops/engine-map/iw7_crash.py` uses the map to name the crash address and the return addresses on the stack of a crash dump. See `docs/CRASH.md`.
+
 ## Build
 
 ```

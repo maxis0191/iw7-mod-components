@@ -288,6 +288,9 @@
     "ops/engine-map/iw7_engine_map.py",
     "tests/ops/engine_map_test.py",
     "tests/ops/engine_map_names_test.py",
+    "ops/engine-map/iw7_crash.py",
+    "tests/ops/crash_stack_test.py",
+    "docs/CRASH.md",
     "ops/engine-map/iw7_perf.py",
     "tests/ops/perf_window_test.py",
     "docs/PERF.md"
