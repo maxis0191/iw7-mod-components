@@ -23,8 +23,9 @@ HUD_TYPES = {0: 'free', 1: 'text', 2: 'value', 3: 'playername', 4: 'material', 5
 ALIGN_X = {0: 'left', 1: 'center', 2: 'right'}
 ALIGN_Y = {0: 'top', 1: 'middle', 2: 'bottom'}
 # Offsets inside the client's copy of one HUD element (0xB8 bytes), read from the game's own layout and draw code.
-HUD_FIELDS = (('x', 0x04, 'f'), ('y', 0x08, 'f'), ('z', 0x0C, 'f'), ('target_ent', 0x10, 'i'), ('font_scale', 0x14, 'f'),
-              ('from_font_scale', 0x18, 'f'), ('font_scale_start', 0x1C, 'i'), ('font_scale_time', 0x20, 'i'), ('font', 0x34, 'i'),
+HUD_FIELDS = (('x', 0x04, 'f'), ('y', 0x08, 'f'), ('z', 0x0C, 'f'), ('target_ent', 0x10, 'i'), ('lerp_value', 0x14, 'f'),
+              ('lerp_from', 0x18, 'f'), ('lerp_start', 0x1C, 'i'), ('lerp_time', 0x20, 'i'), ('font_scale', 0x24, 'f'),
+              ('from_font_scale', 0x28, 'f'), ('font_scale_start', 0x2C, 'i'), ('font_scale_time', 0x30, 'i'), ('font', 0x34, 'i'),
               ('align_org', 0x38, 'i'), ('align_screen', 0x3C, 'i'), ('fade_start', 0x48, 'i'), ('fade_time', 0x4C, 'i'),
               ('label', 0x50, 'i'), ('width', 0x54, 'i'), ('height', 0x58, 'i'), ('material_index', 0x5C, 'i'),
               ('from_width', 0x60, 'i'), ('from_height', 0x64, 'i'), ('scale_start', 0x68, 'i'), ('scale_time', 0x6C, 'i'),

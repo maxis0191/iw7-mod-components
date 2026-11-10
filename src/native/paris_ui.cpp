@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 // The user interface as data, for isolated lab clients (-paris-isolated-lab). A client only.
@@ -20,12 +21,17 @@
 //                           client drew in the next frame (the element as received, plus the rectangle, text, font and
 //                           colour the game computed for it), and the Lua UI element tree from the root
 //   paris_ui_lua <name>     runs iw7-mod/paris-ui/<name>.lua in the UI's Lua state and writes what it returns to
-//                           iw7-mod/paris-perf/ui-lua-<name>.txt (a probe, or a test that plants elements)
+//                           iw7-mod/paris-perf/ui-lua-<name>.json (schema iw7.ui-lua/1; a probe, or a test that plants elements)
+//   paris_ui_observers <0|1>  removes or restores the three observers below (to measure that they cost nothing)
+//   paris_ui_after <ms> <command ...>   runs a console command after a real-time delay (a menu that pauses the game
+//                           also pauses the script that would have asked for the dump)
 //
 // HUD elements: the game's own per-element draw function is observed for one frame. Nothing is recomputed here: the
 // rectangle is the one the game's layout function returned for the element (alignment, scale, safe area and resolution
 // applied by the game). Lua UI: a Lua walker runs in the UI's Lua state and returns the tree as JSON text. The walker
 // is the text below; a file iw7-mod/paris-ui/walker.lua replaces it (to try a change without a build).
+//
+// The picture of a material element is observed at the game's stretched-picture call (position, size, material).
 //
 // When no dump is asked the three observers cost one predictable branch each and the frame tick one compare.
 namespace paris_ui
@@ -121,6 +127,8 @@ return table.concat(out)
             float color[4]{};
             int time{};
             std::string material;
+            bool has_picture{};
+            float picture[4]{};
             unsigned draws{};
         };
 
@@ -128,7 +136,7 @@ return table.concat(out)
 
         utils::hook::detour draw_single_hook;
         utils::hook::detour element_info_hook;
-        utils::hook::detour material_hook;
+        utils::hook::detour stretch_pic_hook;
 
         std::atomic_bool capturing{};
         DWORD capture_thread{};
@@ -146,6 +154,7 @@ return table.concat(out)
         std::int64_t t_capture_end{};
         std::int64_t lui_walk_us{};
         std::uint64_t dump_serial{};
+        bool observers_on{true};
 
         std::int64_t now_us()
         {
@@ -289,11 +298,24 @@ return table.concat(out)
             row.time = read_int(info + 0x840);
         }
 
-        game::Material* material_stub(const char* name, const int track)
+        // The game's stretched picture in screen pixels: (x, y, w, h, s0, t0, s1, t1, colour, material). A material element
+        // of the HUD ends here; the first picture drawn for the current element is kept.
+        void stretch_pic_stub(const float x, const float y, const float w, const float h, const float s0, const float t0, const float s1, const float t1,
+            const float* color, void* material)
         {
-            if (on_capture_thread() && current_row >= 0 && name && rows[current_row].material.empty())
-                rows[current_row].material = bounded_string(name, 96);
-            return material_hook.invoke<game::Material*>(name, track);
+            if (on_capture_thread() && current_row >= 0 && !rows[current_row].has_picture)
+            {
+                auto& row = rows[current_row];
+                row.has_picture = true;
+                row.picture[0] = x; row.picture[1] = y; row.picture[2] = w; row.picture[3] = h;
+                if (material && readable(material, sizeof(const char*)))
+                {
+                    const char* name{};
+                    std::memcpy(&name, material, sizeof(name));
+                    row.material = bounded_string(name, 96);
+                }
+            }
+            stretch_pic_hook.invoke<void>(x, y, w, h, s0, t0, s1, t1, color, material);
         }
 
         std::string dvar_string(const char* name)
@@ -379,6 +401,11 @@ return table.concat(out)
                     out += "\",\"text\":\""; json_escape(out, r.text);
                     out += "\",\"font\":\""; json_escape(out, r.font);
                     out += "\"";
+                }
+                if (r.has_picture)
+                {
+                    _snprintf_s(line, sizeof(line), _TRUNCATE, ",\"picture\":[%.6g,%.6g,%.6g,%.6g]", r.picture[0], r.picture[1], r.picture[2], r.picture[3]);
+                    out += line;
                 }
                 if (!r.material.empty()) { out += ",\"material\":\""; json_escape(out, r.material); out += "\""; }
                 out += ",\"raw\":\"";
@@ -468,6 +495,7 @@ return table.concat(out)
         void request_dump(const command::params& params)
         {
             if (state != phase::idle) { console::info("[Paris ui] dump refused: another dump is in progress\n"); return; }
+            if (!observers_on) { console::info("[Paris ui] dump refused: the observers are off (paris_ui_observers 1)\n"); return; }
             pending_tag = params.size() > 1 ? safe_file_part(params.get(1)) : std::string();
             ++dump_serial;
             t_request = now_us();
@@ -490,8 +518,14 @@ return table.concat(out)
                 const auto start = now_us();
                 run_lua(code, "paris_ui_lua", result, error);
                 const auto ms = (now_us() - start) / 1000.0;
-                const auto text = error.empty() ? result : std::string("ERROR: ") + error + "\n";
-                const bool written = utils::io::write_file(std::string(output_directory) + "/ui-lua-" + name + ".txt", text);
+                std::string text = "{\"schema\":\"iw7.ui-lua/1\",\"name\":\"" + name + "\",\"ok\":" + (error.empty() ? "true" : "false");
+                char number[64];
+                _snprintf_s(number, sizeof(number), _TRUNCATE, ",\"ms\":%.3f,\"", ms);
+                text += number;
+                text += error.empty() ? "text\":\"" : "error\":\"";
+                json_escape(text, error.empty() ? result : error);
+                text += "\"}\n";
+                const bool written = utils::io::write_file(std::string(output_directory) + "/ui-lua-" + name + ".json", text);
                 console::info("[Paris ui] lua %s %s bytes=%zu ms=%.2f %s\n", name.c_str(), error.empty() ? "ok" : "error", text.size(), ms, written ? "written" : "NOT WRITTEN");
             }, scheduler::lui);
         }
@@ -506,10 +540,30 @@ return table.concat(out)
             if (!utils::flags::has_flag("paris-isolated-lab")) return;
             draw_single_hook.create(0x1407E3BD0, draw_single_stub);
             element_info_hook.create(0x1407E3D50, element_info_stub);
-            material_hook.create(game::Material_RegisterHandle, material_stub);
+            stretch_pic_hook.create(0x140313640, stretch_pic_stub);
             scheduler::loop(tick, scheduler::main);
             command::add("paris_ui_dump", [](const command::params& params) { request_dump(params); });
             command::add("paris_ui_lua", [](const command::params& params) { request_lua(params); });
+            command::add("paris_ui_observers", [](const command::params& params)
+            {
+                if (params.size() == 2 && state == phase::idle)
+                {
+                    const bool on = std::atoi(params.get(1)) != 0;
+                    if (on != observers_on)
+                    {
+                        for (auto* hook : {&draw_single_hook, &element_info_hook, &stretch_pic_hook}) { if (on) hook->enable(); else hook->disable(); }
+                        observers_on = on;
+                    }
+                }
+                console::info("[Paris ui] observers=%d\n", observers_on ? 1 : 0);
+            });
+            command::add("paris_ui_after", [](const command::params& params)
+            {
+                const int ms = params.size() > 2 ? std::atoi(params.get(1)) : -1;
+                if (ms < 0 || ms > 600000) { console::info("[Paris ui] usage: paris_ui_after <ms 0..600000> <command ...>\n"); return; }
+                const std::string text = params.join(2);
+                scheduler::once([text] { command::execute(text, true); }, scheduler::main, std::chrono::milliseconds(ms));
+            });
             console::info("[Paris ui] ready\n");
         }
     };

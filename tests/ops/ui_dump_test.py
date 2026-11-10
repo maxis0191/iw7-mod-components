@@ -19,7 +19,7 @@ def hud_raw(kind=1, x=0.0, y=0.0, font_scale=1.0, align_org=0, align_screen=0, c
     raw = bytearray(0xB8)
     struct.pack_into('<i', raw, 0, kind)
     struct.pack_into('<ff', raw, 4, x, y)
-    struct.pack_into('<f', raw, 0x14, font_scale)
+    struct.pack_into('<f', raw, 0x24, font_scale)
     struct.pack_into('<ii', raw, 0x38, align_org, align_screen)
     raw[0x40:0x44] = bytes(color)
     struct.pack_into('<ii', raw, 0x54, width, height)
