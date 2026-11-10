@@ -1,3 +1,5 @@
+> History (dated 2026-10-14 to 2026-10-15). Not current instructions. Current entry point: [docs/INDEX.md](INDEX.md). Weapon ports are now made with the generic port pipeline of the other products; this prototype and its source checks are kept.
+
 # Private Ray Gun weapon authoring
 
 2026-10-14: functional source authoring, not a built or played Ray Gun.

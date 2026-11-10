@@ -108,6 +108,9 @@ Archived in `docs/archive/`:
 | `RUNTIME-PROBE-DESIGN.md` | a proposal, never built; see MEMORY-WATCH and WORLD-LIVE |
 | `DIA-PROVIDER-QUALIFICATION.md`, `SOURCE-GUARD-ROOT-CANDIDATE.md` | plan and candidate of the refused debugger symbol-provider qualification |
 | `IW7-NEUTRAL-CLONE.md` | neutral clone source profile of the Ray Gun prototype |
+| `DEBUGGER-CLIENT018-2026-10.md` | journal of the refused Client018 / symbol-provider attempts, cut from `DEBUGGER.md` |
+| `RESOURCE-WORKFLOW-HISTORY-2026-10.md` | October policy prose, validation and rollout records, cut from `RESOURCE-WORKFLOW.md` |
+| `VOICE-HISTORY-2026-10.md` | history of the retired relay and its evidence index, cut from `VOICE.md` |
 
 History left in place in `docs/`: `AGENT-CAPACITY.md` (in French), `MODDING-ENGINE-RE.md`,
 `AURORA-OCTOBER-UPDATE.md`, `BO3-ZOMBIES-HUD.md`, `RAYGUN-WEAPON.md`, `COLLISION-PROVIDER.md`,

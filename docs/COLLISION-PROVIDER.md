@@ -1,3 +1,5 @@
+> History (dated 2026-10-13 to 2026-10-14). Not current instructions. Current entry point: [docs/INDEX.md](INDEX.md). Experiment, no longer worked on.
+
 # Original convex boxes — experimental native provider
 
 This candidate creates the eight corners of a box in the game's native Havok

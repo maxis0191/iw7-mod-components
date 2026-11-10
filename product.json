@@ -312,7 +312,10 @@
     "docs/MEMORY-WATCH.md",
     "docs/HANG.md",
     "docs/WORLD-LIVE.md",
-    "docs/INDEX.md"
+    "docs/INDEX.md",
+    "docs/archive/DEBUGGER-CLIENT018-2026-10.md",
+    "docs/archive/RESOURCE-WORKFLOW-HISTORY-2026-10.md",
+    "docs/archive/VOICE-HISTORY-2026-10.md"
   ],
   "dependencies": [
     {
