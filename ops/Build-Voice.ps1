@@ -1,4 +1,4 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
@@ -26,6 +26,7 @@ function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
     $full
 }
 if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requires ServerModules and IsolatedLab.' }
+if ($Perf -and (!$ServerModules -or !$IsolatedLab)) { throw 'Perf requires ServerModules and IsolatedLab.' }
 if ($Capacity64 -and !$ServerModules) { throw 'Capacity64 requires the current ServerModules profile.' }
 if ($VoiceRelay -and !$ServerModules) { throw 'VoiceRelay requires ServerModules (native pin cfca45b).' }
 if ($VoiceCertify -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceCertify requires ServerModules and IsolatedLab.' }
@@ -243,6 +244,10 @@ $null = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -Nativ
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
 $capacityCheckpointBuild = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -NativeRoot $root -Commit $commit -Phase AfterDebugger -Enabled:$capacityCheckpointEnabled
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
+# The performance recorder is compiled only when asked: a kept native tree must not carry it into another build.
+$perfTarget = Join-Path $root 'src/client/component/paris_perf.cpp'
+if ($Perf) { Copy-Item -LiteralPath (Join-Path $repo 'src/native/paris_perf.cpp') -Destination $perfTarget -Force; $nativeSources += @('paris_perf.cpp') }
+elseif (Test-Path -LiteralPath $perfTarget) { Remove-Item -LiteralPath $perfTarget -Force }
 . "$PSScriptRoot/agent-capacity/Provenance-BuildCopy.Core.ps1"
 $wordProvenanceBuild=Set-IW7WordProvenanceBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]$WordProvenance) -IsolatedLab:([bool]$IsolatedLab) -ServerModules:([bool]$ServerModules) -Debugger:([bool]$Debugger) -Mode STARTUP -Apply
 if($wordProvenanceBuild.Compiled){$nativeSources+=$wordProvenanceBuild.Files}
@@ -497,6 +502,7 @@ else {
     $manifest.SymbolsSHA256 = (Get-FileHash -LiteralPath (Join-Path $symbols 'iw7-mod.pdb')).Hash
 }
 $manifest.Debugger = [bool]$Debugger
+$manifest.Perf = [bool]$Perf
 $manifest.CollisionProvider = [bool]$CollisionProvider
 $manifest.CapacityWatchBuild = $capacityWatchBuild
 $manifest.Capacity64Capability=[bool]$capacityWatchBuild.Compiled
