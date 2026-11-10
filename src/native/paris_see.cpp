@@ -552,7 +552,7 @@ namespace paris_see
         {
             if (game::environment::is_dedi()) return;
             if (!utils::flags::has_flag("paris-isolated-lab")) return;
-            paris_debugger::set_present_listener([](IDXGISwapChain* swap_chain) { on_present(swap_chain); });
+            paris_debugger::set_present_listener(on_present);
             // After every component registered its commands: the lab client's capture_frame also writes the camera.
             scheduler::once([]
             {
@@ -570,7 +570,8 @@ namespace paris_see
             command::add("paris_see_listen", [](const command::params& args)
             {
                 const bool on = args.size() < 2 || std::strcmp(args.get(1), "0") != 0;
-                paris_debugger::set_present_listener(on ? [](IDXGISwapChain* swap_chain) { on_present(swap_chain); } : static_cast<void (*)(IDXGISwapChain*)>(nullptr));
+                if (on) paris_debugger::set_present_listener(on_present);
+                else paris_debugger::set_present_listener(nullptr);
                 console::info("[Paris see] listen=%d
 ", static_cast<int>(on));
             });
