@@ -112,6 +112,7 @@ Archived in `docs/archive/`:
 | `RESOURCE-WORKFLOW-HISTORY-2026-10.md` | October policy prose, validation and rollout records, cut from `RESOURCE-WORKFLOW.md` |
 | `VOICE-HISTORY-2026-10.md` | history of the retired relay and its evidence index, cut from `VOICE.md` |
 | `README-2026-10.md` | the README as it was until 2026-11-10 |
+| `AGENTS-HISTORY-2026-10.md` | the October rules of `AGENTS.md`, with a table saying what replaced each |
 
 History left in place in `docs/`: `AGENT-CAPACITY.md` (in French), `MODDING-ENGINE-RE.md`,
 `AURORA-OCTOBER-UPDATE.md`, `BO3-ZOMBIES-HUD.md`, `RAYGUN-WEAPON.md`, `COLLISION-PROVIDER.md`,
