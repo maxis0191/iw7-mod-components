@@ -77,6 +77,23 @@ function Test-IW7ReservedProcess($Process, $Lease) {
     return $declared -and $declared.Value -and $fixture -and $fixture.Value -and $Process.Lab -and
         $Process.Image -and [IO.Path]::GetFullPath($Process.Image) -eq $declared.Value
 }
+function Get-IW7ShareableRuntimeLeaseLimit {
+    # Decision 2026-11-10: total shareable Runtime leases held at once. Measured:
+    # two game clients side by side left 6.1 GB free of 31.8 GB; a third does not
+    # fit. The exclusive rule refused ~2,370 requests (79% of local game sessions).
+    2
+}
+function Test-IW7ShareableRuntimeLease($Lease) {
+    # Fail safe: a missing, non-Boolean or inconsistent flag is exclusive.
+    $flag=$Lease.PSObject.Properties['Shareable']
+    $base=$Lease.PSObject.Properties['BaseClientImage']
+    [bool]($flag -and $flag.Value -is [bool] -and $flag.Value -and $Lease.Kind -eq 'Runtime' -and !($base -and $base.Value))
+}
+function Test-IW7ScopeOverlap([string]$Left, [string]$Right) {
+    $sep=[string][IO.Path]::DirectorySeparatorChar
+    $Left -eq $Right -or $Left.StartsWith($Right+$sep, [StringComparison]::OrdinalIgnoreCase) -or
+        $Right.StartsWith($Left+$sep, [StringComparison]::OrdinalIgnoreCase)
+}
 function Invoke-IW7ResourceLock([scriptblock]$Body) {
     $root = Get-IW7ResourceRoot
     [IO.Directory]::CreateDirectory($root) | Out-Null
@@ -143,9 +160,12 @@ function Enter-IW7ResourceLease {
         [ValidateSet('Runtime','Build','Extract','Analysis')][string]$Kind,
         [Parameter(Mandatory)][long]$PhysicalBytes, [Parameter(Mandatory)][long]$CommitBytes,
         [Parameter(Mandatory)][ValidateLength(1,100)][string]$Owner,
-        [string]$BaseClientImage, [switch]$RequireNewLease)
+        [string]$BaseClientImage, [switch]$RequireNewLease, [switch]$Shareable)
     $canonical = Get-IW7CanonicalScope $Scope
     if ($PhysicalBytes -le 0 -or $CommitBytes -le 0) { throw 'A positive full-workload reservation is required.' }
+    if ($Shareable -and ($Kind -ne 'Runtime' -or $BaseClientImage)) {
+        throw 'Shareable is only valid on a Runtime reservation without BaseClientImage.'
+    }
     if ($BaseClientImage) {
         if ($Kind -ne 'Runtime' -or ![IO.Path]::IsPathRooted($BaseClientImage) -or
             [IO.Path]::GetExtension($BaseClientImage) -ne '.exe') { throw 'A base client needs one absolute executable declared on a runtime reservation.' }
@@ -160,15 +180,43 @@ function Enter-IW7ResourceLease {
         Remove-IW7FinishedRuntimeLeases $state $processes
         $same = @($state.Leases | Where-Object { $_.Scope -eq $canonical -and $_.Kind -eq $Kind })
         $other = @($state.Leases | Where-Object { $_.Scope -ne $canonical -or $_.Kind -ne $Kind })
-        if ($other.Count) { throw "Resource busy: $($other[0].Kind) owned by $($other[0].Owner). Continue light work; retry when released." }
+        if ($same.Count) {
+            $sameFlag = $same[0].PSObject.Properties['Shareable']
+            if ($Shareable -or ($sameFlag -and $sameFlag.Value)) {
+                if ([bool]$Shareable -ne (Test-IW7ShareableRuntimeLease $same[0])) { throw 'Shareable declaration cannot change after reservation.' }
+            }
+        }
+        # Only shareable Runtime requests may coexist, and only with shareable Runtime leases.
+        $otherShareable = @()
+        if ($other.Count) {
+            if ($Shareable) { $otherShareable = @($other | Where-Object { Test-IW7ShareableRuntimeLease $_ }) }
+            if (!$Shareable -or $otherShareable.Count -ne $other.Count) {
+                $blocker = @($other | Where-Object { !$Shareable -or !(Test-IW7ShareableRuntimeLease $_) })[0]
+                throw "Resource busy: $($blocker.Kind) owned by $($blocker.Owner). Continue light work; retry when released."
+            }
+            $limit = Get-IW7ShareableRuntimeLeaseLimit
+            if ($other.Count -ge $limit) {
+                throw "Resource busy: shareable Runtime limit of $limit reached; owned by $(@($other | ForEach-Object Owner) -join ', '). Continue light work; retry when released."
+            }
+            $overlap = @($other | Where-Object { Test-IW7ScopeOverlap $_.Scope $canonical })
+            if ($overlap.Count) {
+                throw "Resource busy: shareable Runtime scope overlaps the lease owned by $($overlap[0].Owner). Use a separate bench root."
+            }
+        }
         if ($same.Count -gt 1) { throw 'Duplicate lease; registry requires investigation.' }
         # Runtime re-entry is a lab transaction; builds must never nest/share a lease.
         if ($same.Count -and $Kind -ne 'Runtime') { throw 'Heavy job already reserved, including this worktree.' }
         if ($same.Count -and $BaseClientImage -and $same[0].BaseClientImage -ne $BaseClientImage) { throw 'Base client declaration cannot change after reservation.' }
+        # A lab of another shareable lease is reserved, not foreign, for a shareable request.
+        $sharedLab = { param($p) foreach ($l in $otherShareable) {
+            if ((Test-IW7ReservedProcess $p $l) -or @($l.Processes | Where-Object { Test-IW7ResourceIdentity $_ $p }).Count) { return $true } }
+            return $false }
         $foreignLabs = @($processes | Where-Object { ($_.Lab -or $_.Name -eq 'iw7-paris-lab.exe') -and
-            !(Test-IW7ProcessInScope $_ $canonical) -and !($same.Count -and (Test-IW7ReservedProcess $_ $same[0])) })
+            !(Test-IW7ProcessInScope $_ $canonical) -and !($same.Count -and (Test-IW7ReservedProcess $_ $same[0])) -and
+            !($otherShareable.Count -and (& $sharedLab $_)) })
         if ($foreignLabs.Count) { throw 'An unreserved or foreign laboratory is running; wait for its owner to close it.' }
-        if (!$same.Count -and @($processes | Where-Object { $_.Lab -or $_.Name -eq 'iw7-paris-lab.exe' -or ($BaseClientImage -and $_.Image -eq $BaseClientImage) }).Count) {
+        if (!$same.Count -and @($processes | Where-Object { ($_.Lab -or $_.Name -eq 'iw7-paris-lab.exe' -or ($BaseClientImage -and $_.Image -eq $BaseClientImage)) -and
+            !($otherShareable.Count -and (& $sharedLab $_)) }).Count) {
             throw 'Existing lab has no reservation. Close it through its owner before first admission.'
         }
         $builders = @($processes | Where-Object { $_.Name -match '^(?:zonetool.*|MSBuild|cl|link|java)\.exe$' })
@@ -189,7 +237,7 @@ function Enter-IW7ResourceLease {
             if (!$identity.Image -or !$identity.CreatedUtc) { throw 'Launcher identity unavailable.' }
             $lease = [pscustomobject]@{Token=[guid]::NewGuid().ToString('N');Scope=$canonical;Kind=$Kind;Owner=$Owner;
                 OwnerIdentity=$identity;CreatedUtc=[datetime]::UtcNow.ToString('o');Phase='Pending';
-                PhysicalBytes=$PhysicalBytes;CommitBytes=$CommitBytes;BaseClientImage=$BaseClientImage;Processes=@()}
+                PhysicalBytes=$PhysicalBytes;CommitBytes=$CommitBytes;BaseClientImage=$BaseClientImage;Shareable=[bool]$Shareable;Processes=@()}
             $state.Leases = @($state.Leases) + $lease
         }
         $lease.PhysicalBytes=$PhysicalBytes; $lease.CommitBytes=$CommitBytes
@@ -205,10 +253,16 @@ function Add-IW7ResourceProcess {
         $state=Read-IW7ResourceState
         $lease=@($state.Leases | Where-Object Token -EQ $Token)
         if ($lease.Count -ne 1) { throw 'Resource lease not found.' }
-        $identity=@(Get-IW7ResourceProcesses | Where-Object PID -EQ $ProcessId)
+        $processes=@(Get-IW7ResourceProcesses)
+        $identity=@($processes | Where-Object PID -EQ $ProcessId)
         if ($identity.Count -ne 1 -or !$identity[0].Image -or !$identity[0].CreatedUtc) { throw 'Child identity unavailable; reservation retained.' }
         if ($lease[0].Kind -eq 'Runtime' -and !(Test-IW7ReservedProcess $identity[0] $lease[0])) {
             throw 'Runtime child is outside its reserved lab.'
+        }
+        # A shareable lease budgets exactly one game client; a dead earlier one does not count.
+        if ((Test-IW7ShareableRuntimeLease $lease[0]) -and $identity[0].Name -match '^iw7.*\.exe$') {
+            $clients=@(Get-IW7LeaseLiveProcesses $lease[0] $processes | Where-Object { $_.PID -ne $ProcessId -and $_.Name -match '^iw7.*\.exe$' })
+            if ($clients.Count) { throw "A shareable Runtime lease holds one game client; PID $($clients[0].PID) is still registered and alive." }
         }
         $lease[0].Processes=@($lease[0].Processes | Where-Object PID -NE $ProcessId) + $identity[0]
         $lease[0].Phase='Running'
@@ -239,7 +293,12 @@ function Get-IW7ResourceStatus {
     Invoke-IW7ResourceLock {
         $state=Read-IW7ResourceState
         $snapshot=Get-IW7ResourceSnapshot
-        [pscustomobject]@{Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases)}
+        # Display only (never saved): a lease without the flag is exclusive.
+        foreach ($lease in @($state.Leases)) {
+            if (!$lease.PSObject.Properties['Shareable']) { Add-Member -InputObject $lease -NotePropertyName Shareable -NotePropertyValue $false }
+        }
+        [pscustomobject]@{Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases);
+            ShareableRuntimeLimit=(Get-IW7ShareableRuntimeLeaseLimit)}
     }
 }
 function Invoke-IW7ResourceJob {
