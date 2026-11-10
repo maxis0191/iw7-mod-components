@@ -17,6 +17,7 @@
 #include "paris_test_safety.hpp"
 #include "agent_scenario.hpp"
 #include "paris_model_diagnostics.hpp"
+#include "paris_watch.hpp"
 
 namespace paris_test_fixture
 {
@@ -665,6 +666,32 @@ namespace paris_test_fixture
             console::error("[Paris key input] no retail binding %s\n", binding_name.c_str());
             return false;
         }
+        // Lab memory watch request: "watch:<address hex>:<size>:<interval_ms>:<count>", one token with exactly four fields
+        // (hex without 0x, then three decimal numbers). paris_watch::start checks the ranges; nothing else is read here.
+        bool parse_watch(const std::string& action, std::uintptr_t& address, std::size_t& size, unsigned& interval_ms, unsigned& count)
+        {
+            std::vector<std::string> fields;
+            std::size_t begin = 0;
+            for (;;)
+            {
+                const auto colon = action.find(':', begin);
+                fields.push_back(action.substr(begin, colon == std::string::npos ? std::string::npos : colon - begin));
+                if (colon == std::string::npos) break;
+                begin = colon + 1;
+            }
+            if (fields.size() != 5 || fields[0] != "watch") return false;
+            const auto digits = [](const std::string& text, const char* allowed, std::size_t longest)
+            {
+                return !text.empty() && text.size() <= longest && text.find_first_not_of(allowed) == std::string::npos;
+            };
+            if (!digits(fields[1], "0123456789abcdefABCDEF", 16)) return false;
+            for (std::size_t i = 2; i < 5; ++i) if (!digits(fields[i], "0123456789", 9)) return false;
+            address = static_cast<std::uintptr_t>(std::stoull(fields[1], nullptr, 16));
+            size = static_cast<std::size_t>(std::stoull(fields[2]));
+            interval_ms = static_cast<unsigned>(std::stoull(fields[3]));
+            count = static_cast<unsigned>(std::stoull(fields[4]));
+            return true;
+        }
         void vote_buttons(bool attack, bool ads, bool hold = false)
         {
             vote_binding("+attack", false);
@@ -774,6 +801,7 @@ namespace paris_test_fixture
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
             const bool vote_input = action == "votenext" || action == "voteprevious" || action == "voteboth" || action == "voteholdnext" || action == "voterelease" || action == "votewitness";
             const bool key_input = action.rfind("keydown:", 0) == 0 || action.rfind("keyup:", 0) == 0;
+            const bool watch_input = action.rfind("watch:", 0) == 0;
             const bool afk_input = action == "afk";
             const bool teleport_input = action == "owner_tphere" || action == "owner_tp";
             const bool cutscene_input = action == "cutscene_space" || action == "cutscene_enter" || action == "cutscene_mouse" || action == "cutscene_release";
@@ -789,9 +817,11 @@ namespace paris_test_fixture
             if (vote_input && !utils::flags::has_flag("paris-isolated-lab")) return;
             if (key_input && (!utils::flags::has_flag("paris-isolated-lab") || vote_witness_running)) return;
             if (key_input && agent_runtime.client && agent_runtime.client->active()) return;
+            if (watch_input && (!utils::flags::has_flag("paris-isolated-lab") || vote_witness_running)) return;
+            if (watch_input && agent_runtime.client && agent_runtime.client->active()) return;
             if (vote_input && vote_witness_running) return;
             if (vote_input && agent_runtime.client && agent_runtime.client->active()) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "rejoin_immediate" && !vote_input && !key_input && !afk_input && !teleport_input && !cutscene_input) return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "rejoin_immediate" && !vote_input && !key_input && !watch_input && !afk_input && !teleport_input && !cutscene_input) return;
             if (action == "rejoin" || action == "rejoin_immediate")
             {
                 const auto* connection = party::get_server_connection_state();
@@ -833,6 +863,12 @@ namespace paris_test_fixture
             {
                 const bool down = action[3] == 'd';
                 if (!key_binding(action.substr(down ? 8 : 6), down)) return; // no response: the requester sees the refusal as a timeout
+            }
+            else if (watch_input)
+            {
+                std::uintptr_t address{}; std::size_t size{}; unsigned interval_ms{}, count{};
+                if (!parse_watch(action, address, size, interval_ms, count)) return; // no response: the requester sees the refusal as a timeout
+                if (!paris_watch::start(address, size, interval_ms, count)) return;
             }
             else if (vote_input)
             {

@@ -269,3 +269,5 @@ Measured on the real inputs on 2026-11-10 (names from `symbols.hpp` only):
 - Names exist only for what the listed sources name. Most functions are `sub_<HEX>`.
 - A suggested `~` name rests on one text. Code that prints no such text gets no suggestion.
 - A string is recorded only when it is at least 4 printable ASCII characters in the read-only data and some code refers to it with a rip-relative address.
+
+To locate a value in live memory by its behaviour (a counter, a clock), see `docs/MEMORY-WATCH.md`.
