@@ -29,6 +29,9 @@ HEX = re.compile(r'^0x[0-9a-f]+$')
 SYMBOL = re.compile(r'symbol<(.*?)>\s+(\w+)\s*\{\s*(0x[0-9A-Fa-f]+)', re.S)
 CONST = re.compile(r'0x14[0-9A-Fa-f]{7}\b')
 IDENT = re.compile(r'[A-Za-z_]\w*')
+CODE_NAME = re.compile(r'^([A-Z][A-Za-z0-9]*_[A-Za-z0-9_]+)(?=:|\(| failed)')
+DVAR_NAME = re.compile(r'^[a-z][a-z0-9]{0,8}_[A-Za-z0-9_]{2,40}$')
+LABEL_ORDER = "order by source = 'symbols.hpp' desc, source like 'analyst:%' desc, source like 'auto:%' asc, name"
 
 
 def sha256(path):
@@ -217,7 +220,47 @@ class Resolver:
         return None
 
 
-def build(image, db_path, names, workers=None, inputs=None):
+def suggest_names(db, ignore_existing=False):
+    """Names for unnamed functions from the texts they refer to. Returns {'unique': [...], 'shared': [...], 'ambiguous': n, 'taken': n}.
+
+    A text that starts with a code name (`R_RegisterFont: ...`, `Com_Error(`, `Foo_Bar failed`) names the function that refers to it
+    when that code name appears in the strings of exactly one function (text:unique). With 2 or 3 such functions the code name is only
+    a candidate for each (text:shared). A function whose texts give several different unique code names is left unnamed.
+    ignore_existing=True also covers functions that already have a name and names already in use (only for measuring the rule)."""
+    users, first = {}, {}                                            # code name -> {function}; (code name, function) -> (string address, text)
+    for src, addr, text in db.execute('select distinct r.src, s.addr, s.text from refs r join strings s on s.addr = r.target order by s.addr, r.src'):
+        m = CODE_NAME.match(text)
+        if m:
+            users.setdefault(m.group(1), set()).add(src)
+            first.setdefault((m.group(1), src), (addr, text))
+    named = set() if ignore_existing else {r[0] for r in db.execute('select func from names where off = 0 and func is not null')}
+    used = set() if ignore_existing else {r[0] for r in db.execute('select name from names')}
+    per_func, unique, shared, taken = {}, [], [], 0
+    for ident in sorted(users):
+        funcs = sorted(users[ident])
+        if len(funcs) == 1:
+            if funcs[0] in named:
+                continue
+            if ident in used or '~' + ident in used:
+                taken += 1
+                continue
+            per_func.setdefault(funcs[0], []).append(ident)
+        elif len(funcs) <= 3:
+            left = [f for f in funcs if f not in named]
+            if left:
+                shared.append(dict(name='~' + ident, source='text:shared', functions=left))
+    ambiguous = 0
+    for f in sorted(per_func):
+        if len(per_func[f]) != 1:
+            ambiguous += 1
+            continue
+        ident = per_func[f][0]
+        addr, text = first[(ident, f)]
+        unique.append(dict(function=f, name='~' + ident, source='text:unique', string=addr, text=text))
+    return dict(unique=unique, shared=shared, ambiguous=ambiguous, taken=taken)
+
+
+def build(image, db_path, names, workers=None, inputs=None, auto_names=False):
     t0 = time.time()
     frags, prolog, outside, elsewhere = read_functions(image)
     gaps, padding = find_gaps(image, frags)
@@ -308,6 +351,12 @@ def build(image, db_path, names, workers=None, inputs=None):
         f = res.func(addr)
         rows.append((addr, name, source, sig, f, addr - f if f is not None else None))
     db.executemany('insert into names values(?,?,?,?,?,?)', rows)
+    auto = 0
+    if auto_names:
+        extra = [(x['function'], x['name'], 'auto:' + x['source'], 'string %X: %s' % (x['string'], json.dumps(x['text'][:80])), x['function'], 0) for x in suggest_names(db)['unique']]
+        db.executemany('insert into names values(?,?,?,?,?,?)', extra)
+        rows += extra
+        auto = len(extra)
     covered = sum(e - b for b, e, _r in frags)
     meta = dict(version=VERSION, functions=len(size), fragments=len(frags), unwind_outside=outside, entries_in_other_sections=elsewhere, leaf_functions=leaves, gaps=len(gaps),
                 text_bytes=len(image.text), covered_bytes=covered, padding_bytes=padding, gap_bytes=sum(e - b for b, e in gaps),
@@ -315,6 +364,8 @@ def build(image, db_path, names, workers=None, inputs=None):
                 refs=len(refs), strings=len(strings), names=len(rows), names_at_start=sum(1 for r in rows if r[5] == 0),
                 names_inside=sum(1 for r in rows if r[5]), names_outside=sum(1 for r in rows if r[4] is None),
                 decode_failures=len(failed), partial_functions=len(partial), text_va=image.text_va, rdata_va=image.rdata_va, base=image.base)
+    if auto_names:
+        meta['auto_names'] = auto
     meta.update(inputs or {})
     db.executemany('insert into meta values(?,?)', [(k, str(v)) for k, v in sorted(meta.items())])
     db.commit()
@@ -355,13 +406,13 @@ class Map:
 
     def label(self, va):
         """The best name for an address: a known name, or sub_<function start>+offset."""
-        row = self.db.execute("select name from names where addr = ? order by source = 'symbols.hpp' desc, source like 'analyst:%' desc, name limit 1", (va,)).fetchone()
+        row = self.db.execute("select name from names where addr = ? " + LABEL_ORDER + " limit 1", (va,)).fetchone()
         if row:
             return row[0]
         f = self.func(va)
         if f is None:
             return '%X' % va
-        base = self.db.execute("select name from names where addr = ? order by source = 'symbols.hpp' desc, source like 'analyst:%' desc, name limit 1", (f,)).fetchone()
+        base = self.db.execute("select name from names where addr = ? " + LABEL_ORDER + " limit 1", (f,)).fetchone()
         return (base[0] if base else 'sub_%X' % f) + ('+0x%X' % (va - f) if va != f else '')
 
     def at(self, va):
@@ -422,10 +473,10 @@ def cmd_build(args):
     names = parse_names(args.symbols, args.names or (), args.native_src, args.names_file)
     inputs = {'input_%s_sha256' % k: sha256(p) for k, p in paths.items()}
     os.makedirs(os.path.dirname(os.path.abspath(args.db)), exist_ok=True)
-    meta = build(image, args.db, names, args.workers, inputs)
+    meta = build(image, args.db, names, args.workers, inputs, args.auto_names)
     emit(args, meta, ['%-18s %s' % (k, meta[k]) for k in (
         'functions', 'fragments', 'leaf_functions', 'gaps', 'text_bytes', 'covered_bytes', 'padding_bytes', 'gap_bytes', 'calls', 'tail_calls', 'refs',
-        'strings', 'names', 'names_at_start', 'names_inside', 'names_outside', 'decode_failures', 'partial_functions', 'unwind_outside', 'entries_in_other_sections', 'seconds')])
+        'strings', 'names', 'auto_names', 'names_at_start', 'names_inside', 'names_outside', 'decode_failures', 'partial_functions', 'unwind_outside', 'entries_in_other_sections', 'seconds') if k in meta])
     return 0
 
 
@@ -483,6 +534,41 @@ def cmd_find_string(args):
         lines.append('%X  %s' % (addr, json.dumps(text)))
         lines += ['    %s  at %X' % (m.label(s), a) for s, a in users[:8]] + (['    ... %d more' % (len(users) - 8)] if len(users) > 8 else [])
     emit(args, out, lines + (['... %d more strings' % (len(hits) - args.max)] if len(hits) > args.max else []) or ['no such string is referenced by mapped code'])
+    return 0
+
+
+def cmd_suggest_names(args):
+    m = Map(args.db)
+    res = suggest_names(m.db)
+    counts = {'text:unique': len(res['unique']), 'text:shared': len(res['shared']), 'ambiguous': res['ambiguous'], 'name already used': res['taken']}
+    lines = []
+    for s in res['unique'][:args.max]:
+        lines.append('%X  %-40s  %s' % (s['function'], s['name'], json.dumps(s['text'][:80])))
+    if len(res['unique']) > args.max:
+        lines.append('... %d more text:unique' % (len(res['unique']) - args.max))
+    for s in res['shared'][:args.max]:
+        lines.append('candidate %s  %s' % (s['name'], ', '.join('%X' % f for f in s['functions'])))
+    if len(res['shared']) > args.max:
+        lines.append('... %d more text:shared' % (len(res['shared']) - args.max))
+    lines += ['%-18s %d' % (k, v) for k, v in counts.items()]
+    obj = dict(counts=counts,
+               unique=[dict(function='%X' % s['function'], name=s['name'], source=s['source'], string='%X' % s['string'], text=s['text']) for s in res['unique'][:args.max]],
+               shared=[dict(name=s['name'], source=s['source'], functions=['%X' % f for f in s['functions']]) for s in res['shared'][:args.max]])
+    emit(args, obj, lines)
+    return 0
+
+
+def cmd_dvars(args):
+    m = Map(args.db)
+    hits = [(a, t) for a, t in m.db.execute('select addr, text from strings order by text, addr') if DVAR_NAME.match(t) and (not args.like or args.like.lower() in t.lower())]
+    out, lines = [], []
+    for addr, text in hits[:args.max]:
+        users = m.db.execute('select src, min(site) from refs where target = ? group by src order by src', (addr,)).fetchall()
+        out.append(dict(address='%X' % addr, text=text, count=len(users), users=[dict(function=m.label(s), site='%X' % a) for s, a in users]))
+        lines.append('%X  %-28s %d function(s)' % (addr, text, len(users)))
+        lines += ['    %s  at %X' % (m.label(s), a) for s, a in users[:4]] + (['    ... %d more' % (len(users) - 4)] if len(users) > 4 else [])
+    lines.append('%d name text(s) match%s' % (len(hits), '' if len(hits) <= args.max else ', %d shown' % args.max))
+    emit(args, dict(total=len(hits), dvars=out), lines)
     return 0
 
 
@@ -607,6 +693,7 @@ def main(argv=None):
     s.add_argument('--native-src')
     s.add_argument('--names-file')
     s.add_argument('--workers', type=int)
+    s.add_argument('--auto-names', action='store_true')
     s = add('at', cmd_at)
     s.add_argument('address', nargs='*')
     s.add_argument('--stdin', action='store_true')
@@ -621,6 +708,11 @@ def main(argv=None):
     s.add_argument('text')
     s.add_argument('--regex', action='store_true')
     s.add_argument('--max', type=int, default=20)
+    s = add('suggest-names', cmd_suggest_names)
+    s.add_argument('--max', type=int, default=60)
+    s = add('dvars', cmd_dvars)
+    s.add_argument('--like')
+    s.add_argument('--max', type=int, default=60)
     s = add('refs', cmd_refs)
     s.add_argument('address')
     s.add_argument('--max', type=int, default=60)

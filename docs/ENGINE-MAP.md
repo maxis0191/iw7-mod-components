@@ -26,6 +26,7 @@ Optional inputs:
 - `--native-src <folder>`: every `0x14xxxxxxx` constant in the `.cpp` and `.hpp` files there becomes a `hook:` name.
 - `--names-file <names.json>`: the names file described under "Naming a function".
 - `--workers <n>`: scan processes. The scan is serial for small inputs.
+- `--auto-names`: also store the `text:unique` suggestions of `suggest-names` as names (see "Suggested names"). Without the flag the build is unchanged.
 
 The real build takes about 5 seconds.
 A second build from the same inputs gives identical tables.
@@ -148,6 +149,21 @@ names 588: 398 at a function start, 65 inside a function, 125 not in code
 selftest passed
 ```
 
+`dvars` lists the strings that look like console-variable names and the functions that use them.
+A string counts when it matches `^[a-z][a-z0-9]{0,8}_[A-Za-z0-9_]{2,40}$`, such as `com_maxfps` or `r_vsync`.
+`--like TEXT` filters (any case), `--max N` cuts the output (60 by default).
+This is a list of name texts and their users. It is not proof that each text is a registered variable.
+
+```
+$ dvars --like maxfps
+141509AA0  com_maxfps                   2 function(s)
+    sub_140BB7F90  at 140BB8063
+    sub_140BC3CB0  at 140BC3CFB
+1 name text(s) match
+```
+
+`suggest-names` prints the names it would suggest and writes nothing. See "Suggested names".
+
 `name` and `build` are described in the sections above and below.
 
 ## Joining with a profiler
@@ -191,6 +207,55 @@ The SQLite database is never committed.
 When an address has several names, `symbols.hpp` wins, then names from the names file, then names from lists and hook constants.
 A function without a name is `sub_<HEX>`. An address inside a named function shows as `name+0xOFFSET`.
 
+## Suggested names
+
+`suggest-names [--max N]` proposes a name for an unnamed function from the texts it refers to.
+Many error texts start with the name of the code that prints them, such as `SV_SpawnServer: completed`.
+A text counts when it starts with a code name (a capital letter, an underscore inside, for example `R_RegisterFont`) followed by `:`, `(` or ` failed`.
+Then:
+
+- If that code name starts the strings of exactly one function in the whole map, the function gets the suggestion (source tag `text:unique`).
+- If 2 or 3 functions have it, nothing is named. They are listed as candidates (`text:shared`).
+- A function whose texts give two different unique code names is not named.
+- A function that already has a name at its start, or a code name already used as a name, is never given a suggestion.
+
+A suggested name has the prefix `~`, for example `~SV_SpawnServer`.
+`build --auto-names` stores the `text:unique` suggestions in the names table with source `auto:text:unique`.
+The `signature` column keeps the evidence: the address of the string and its text, cut to 80 characters.
+`at`, `callers`, `disasm` and the profiler join then show the `~` name.
+When an address has several names the label order is `symbols.hpp`, names from the names file, other lists, then `auto:` names.
+
+```
+$ suggest-names --max 2
+140034D00  ~BG_Animation_GetIndexForString           "BG_Animation_GetIndexForString: unknown token '%s'"
+14011D800  ~CG_ParseCinematicCameraCutToken          "CG_ParseCinematicCameraCutToken: unknown camera movement index %d
+"
+... 13 more text:unique
+text:unique        15
+text:shared        0
+ambiguous          1
+name already used  0
+```
+
+A `~` name is a suggestion with its evidence, not a fact.
+It says that a text naming this code is in this function. That is usually the function itself, but not always:
+for example `BD_ASSERT(%s) failed` names a macro, not the function that holds the text.
+
+Measured on the real inputs on 2026-11-10 (names from `symbols.hpp` only):
+
+- 15 `text:unique` suggestions, 0 `text:shared` candidates, 1 function left out because it has two code names.
+  Only 21 code names are found at the start of any text, so the rule reaches few functions.
+  The 5,254 distinct texts that start with a word, an underscore and more are mostly lowercase console-variable names, not code names.
+- Check against known names: 292 functions have a `symbols.hpp` name, and the rule (ignoring the existing name) finds a code name for only 2 of them.
+  Both suggestions equal the existing name (2 agree, 0 differ).
+  Two agreements are too few to say how reliable the rule is. They only show that it did not contradict a known name.
+
+## Console-variable names on the real map
+
+`dvars` finds 3,610 name texts. `--like maxfps` gives `com_maxfps` (2 functions), `--like vsync` gives `r_vsync` and `cl_disableVSyncForCinematic`,
+`--like snaps` gives 7 `sv_*snapshot*` texts used by one function, `--like packet` gives `cl_maxpackets`, `cl_packetdup` and 3 more.
+`--like rate` also matches words that only contain `rate` (for example `bribe_crates_enabled`).
+
 ## What it cannot know
 
 - Calls through registers and tables are not in the map. A function that is only reached that way shows no caller.
@@ -198,4 +263,5 @@ A function without a name is `sub_<HEX>`. An address inside a named function sho
 - About 7,600 functions are only partly decoded, because bytes inside their range do not decode. Their calls and strings after such a byte may be missing.
 - A leaf function has no directory entry. It is found only when some code calls or jumps to it directly. Other leaf functions stay in a gap.
 - Names exist only for what the listed sources name. Most functions are `sub_<HEX>`.
+- A suggested `~` name rests on one text. Code that prints no such text gets no suggestion.
 - A string is recorded only when it is at least 4 printable ASCII characters in the read-only data and some code refers to it with a rip-relative address.

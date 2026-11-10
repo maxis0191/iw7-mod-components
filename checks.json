@@ -323,6 +323,14 @@
       ]
     },
     {
+      "id": "engine_map_names_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_map_names_test.py"
+      ]
+    },
+    {
       "id": "perf_window_test",
       "command": [
         "python",
