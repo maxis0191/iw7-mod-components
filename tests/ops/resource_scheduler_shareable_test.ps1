@@ -310,7 +310,40 @@ Case 're-entry growth counts what the lease has already taken' {
     Add-IW7ResourceProcess -Token $a.Token -ProcessId (Client a -WorkingSet 9GB).PID
     Assert ((Enter-Share a -Bytes 14GB).PhysicalBytes -eq 14GB) 'Need is 14 - 9 = 5 GB <= 12 GB available (nothing else reserved).'
 }
-Case 'exclusive callers ignore the memory rule' {
+Case 'another lease whose process is missing from the list is conservative, not an error' {
+    $a=Enter-Share a -Bytes 10GB
+    $ca=Client a -WorkingSet 9GB
+    Add-IW7ResourceProcess -Token $a.Token -ProcessId $ca.PID
+    Remove-FakeProcess $ca                      # just exited: registered, not in the list
+    $b=Enter-Share b -Bytes 2.5GB
+    Assert ($b.Shareable -and (Leases).Count -eq 2) 'Fits conservatively (30 - 10 >= 2.5): admitted, no exception.'
+    $script:avail=11GB
+    Assert (Refused { Enter-Share c -Bytes 2.5GB } 'Resource busy: not enough measured free memory: 11.0 GB available minus 12.5 GB still to be taken*') 'Does not fit with A and B counted as untaken: Resource busy.'
+}
+# An unreadable process also has an unreadable command line, so it is not classified as a lab.
+function Blind-Process($Process,[string]$Field) { $Process.$Field=$null; $Process.Lab=$false }
+foreach ($field in @('Image','CreatedUtc')) {
+    Case "another lease whose process identity is unreadable ($field) is conservative, not an error" {
+        $a=Enter-Share a -Bytes 10GB
+        $ca=Client a -WorkingSet 9GB
+        Add-IW7ResourceProcess -Token $a.Token -ProcessId $ca.PID
+        Blind-Process $ca $field
+        $aBefore=LeaseJson $a.Token
+        $b=Enter-Share b -Bytes 2.5GB
+        Assert ($b.Shareable -and (Leases).Count -eq 2) 'Fits conservatively (30 - 10 >= 2.5): admitted, no exception.'
+        Assert ((LeaseJson $a.Token) -eq $aBefore) 'The unidentifiable lease is retained unchanged.'
+        $script:avail=11GB
+        Assert (Refused { Enter-Share c -Bytes 2.5GB } 'Resource busy: not enough measured free memory: 11.0 GB available minus 12.5 GB*') 'Does not fit with A and B counted as fully untaken: Resource busy.'
+        Assert ((Leases).Count -eq 2) 'Refusal adds nothing.'
+        $script:avail=30GB
+        # The identity check keeps its force everywhere else.
+        Assert (Refused { Enter-Share a -Bytes 10GB } 'Reserved process identity unavailable*') 'Re-entry of the SAME lease still refuses.'
+        Assert (Refused { Exit-IW7ResourceLease -Token $a.Token } 'Reserved process identity unavailable*') 'Release still refuses.'
+        Assert (Refused { Enter-Share x -Plain -Bytes 1GB } 'Reserved process identity unavailable*') 'An exclusive request keeps the hard identity refusal (strict path unchanged).'
+        $status=Get-IW7ResourceStatus
+        Assert ($status.ShareableUnloadedBytes -eq 12.5GB) 'Status counts the unreadable lease as fully untaken (conservative), no exception.'
+    }
+}Case 'exclusive callers ignore the memory rule' {
     $script:avail=1GB
     $x=Enter-Share x -Plain -Bytes 40GB
     Assert ($x.PhysicalBytes -eq 40GB -and !$x.Shareable) 'An exclusive request is admitted as before, whatever the numbers.'

@@ -103,7 +103,10 @@ function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes) {
     foreach ($l in @($Leases | Where-Object { Test-IW7ShareableRuntimeLease $_ })) {
         $declared += [long]$l.PhysicalBytes
         $taken=0L
-        foreach ($p in @(Get-IW7LeaseLiveProcesses $l $Processes)) { $taken += [long]$p.WorkingSet }
+        # Identities of ANOTHER lease that cannot be read right now (a server just
+        # starting or exiting): count nothing as taken, so all its memory stays reserved.
+        try { foreach ($p in @(Get-IW7LeaseLiveProcesses $l $Processes)) { $taken += [long]$p.WorkingSet } }
+        catch { if ($_.Exception.Message -like 'Reserved process identity unavailable*') { $taken=0L } else { throw } }
         $unloaded += [math]::Max(0L,[long]$l.PhysicalBytes-$taken)
     }
     $reserve=Get-IW7ShareableReserveBytes
@@ -184,9 +187,13 @@ function Get-IW7LeaseLiveProcesses($Lease, $Processes) {
         if ($current.Count -and (Test-IW7ResourceIdentity $record $current[0])) { $current[0] }
     }
 }
-function Remove-IW7FinishedRuntimeLeases($State, $Processes) {
+function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOtherAmbiguity, [string]$ExceptScope, [string]$ExceptKind) {
     $State.Leases = @($State.Leases | Where-Object {
         $lease = $_
+        # Shareable admission only: a lease other than the requested one whose process
+        # identity is unreadable is retained (not finished) instead of failing the request.
+        $lenient = $TolerateOtherAmbiguity -and !($lease.Scope -eq $ExceptScope -and $lease.Kind -eq $ExceptKind)
+        try {
         $owner = @($Processes | Where-Object PID -EQ $lease.OwnerIdentity.PID)
         $ownerAlive = $owner.Count -and (Test-IW7ResourceIdentity $lease.OwnerIdentity $owner[0])
         $ownerUnknown = $owner.Count -and (!$owner[0].Image -or !$owner[0].CreatedUtc)
@@ -195,6 +202,9 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes) {
         # A crashed builder might have detached children outside its root. Keep it
         # quarantined until explicit release; runtime children must be inside scope.
         !($lease.Kind -eq 'Runtime' -and !$ownerAlive -and !$ownerUnknown -and !$live.Count -and !$inScope.Count)
+        } catch {
+            if ($lenient -and $_.Exception.Message -like 'Reserved process identity unavailable*') { $true } else { throw }
+        }
     })
 }
 function Enter-IW7ResourceLease {
@@ -219,7 +229,9 @@ function Enter-IW7ResourceLease {
             throw 'A new resource lease was required; an existing reservation is retained. Do not retry without RequireNewLease.'
         }
         $processes = @(Get-IW7ResourceProcesses)
-        Remove-IW7FinishedRuntimeLeases $state $processes
+        $reclaim = @{}
+        if ($Shareable) { $reclaim = @{TolerateOtherAmbiguity=$true; ExceptScope=$canonical; ExceptKind=$Kind} }
+        Remove-IW7FinishedRuntimeLeases $state $processes @reclaim
         $same = @($state.Leases | Where-Object { $_.Scope -eq $canonical -and $_.Kind -eq $Kind })
         $other = @($state.Leases | Where-Object { $_.Scope -ne $canonical -or $_.Kind -ne $Kind })
         if ($same.Count) {

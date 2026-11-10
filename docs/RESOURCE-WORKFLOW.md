@@ -228,6 +228,16 @@ only at admission time; once admitted, nothing re-checks a session that grows
 beyond its declaration, and it then silently eats the margin of the others.
 Declare honestly and keep margin.
 
+Unreadable identities (found by a live run of 8 sessions on 10 Nov 2026, where one
+waiting request failed with `Reserved process identity unavailable`): when the
+registered processes of ANOTHER lease cannot be identified at that moment (a server
+just starting or exiting), a shareable admission neither throws nor drops that lease:
+it is retained and counted as having taken nothing, so its whole declared memory
+stays reserved, and a request that then does not fit gets the normal
+`Resource busy:` measured-memory refusal. Everything else keeps the strict check:
+re-entry of the same lease, release, `Add-IW7ResourceProcess` and exclusive requests
+still refuse with that identity error.
+
 Who may opt in: launches from an isolated bench root in a private loopback session.
 Never Main. Never the base client. Each bench root is its own lease scope.
 
@@ -269,8 +279,8 @@ What the scheduler enforces:
   `ShareableRuntimeLimit` (the cap), and, so that a waiting caller can print why it
   waits: `ShareableReserveBytes`, `ShareableDeclaredBytes`,
   `ShareableRemainingDeclaredBytes`, `ShareableAvailableBytes` (measured) and
-  `ShareableUnloadedBytes` (declared but not yet taken; null if process identities
-  were ambiguous).
+  `ShareableUnloadedBytes` (declared but not yet taken; a lease whose processes
+  cannot be identified counts as fully untaken).
 - `Invoke-IW7ResourceJob` only takes Build, Extract and Analysis, so it has no
   `-Shareable` switch.
 
