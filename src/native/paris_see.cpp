@@ -28,6 +28,7 @@
 //                              (32-bit top-down BMP whose 4 bytes per pixel are one float: the raw device depth)
 //   paris_see_target <text>    choose the depth target by a part of its name ("auto" = the default, "Frontend Depth")
 //   paris_see_targets          write iw7-mod/paris-perf/see-targets.json: every engine render target (name, size, format)
+//   paris_see_listen 0|1       measurement switch: take the present listener away and put it back
 //
 // The colour copy, the depth copy and the camera read all happen in one present callback on the renderer thread, under
 // the engine's render mutex, so the three belong to the same presented frame. The camera is also read when the capture
@@ -565,6 +566,14 @@ namespace paris_see
                 console::info("[Paris see] target=%s\n", forced_target.empty() ? "auto" : forced_target.c_str());
             });
             command::add("paris_see_targets", [] { want_targets.store(true); });
+            // Measurement switch: 0 takes the present listener away (no capture can complete), 1 puts it back.
+            command::add("paris_see_listen", [](const command::params& args)
+            {
+                const bool on = args.size() < 2 || std::strcmp(args.get(1), "0") != 0;
+                paris_debugger::set_present_listener(on ? [](IDXGISwapChain* swap_chain) { on_present(swap_chain); } : static_cast<void (*)(IDXGISwapChain*)>(nullptr));
+                console::info("[Paris see] listen=%d
+", static_cast<int>(on));
+            });
             console::info("[Paris see] ready\n");
         }
     };
