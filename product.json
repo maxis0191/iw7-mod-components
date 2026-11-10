@@ -286,7 +286,10 @@
     "tests/ops/voice_relay_overlay_test.ps1",
     "docs/ENGINE-MAP.md",
     "ops/engine-map/iw7_engine_map.py",
-    "tests/ops/engine_map_test.py"
+    "tests/ops/engine_map_test.py",
+    "ops/engine-map/iw7_perf.py",
+    "tests/ops/perf_window_test.py",
+    "docs/PERF.md"
   ],
   "dependencies": [
     {
