@@ -12,7 +12,9 @@ $repo=(Resolve-Path -LiteralPath "$PSScriptRoot/../..").Path
 $waited=[Diagnostics.Stopwatch]::StartNew()
 while($true){
     try {
+        $global:LASTEXITCODE=0
         & "$repo/ops/Build-Voice.ps1" -TestsOnly
+        if($LASTEXITCODE){throw "ops/Build-Voice.ps1 -TestsOnly exited with code $LASTEXITCODE."}
         break
     } catch {
         $busy=$_.Exception.Message -like 'Resource busy:*' -or

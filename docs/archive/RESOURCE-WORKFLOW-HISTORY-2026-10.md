@@ -3,7 +3,7 @@
 # Resource workflow: October 2026 policy text and rollout records
 
 Cut from `docs/RESOURCE-WORKFLOW.md` as it was at commit `a60b864`, unchanged except that relative links were
-adjusted to this folder and the first two parts, which had no heading of their own, were given one. Four
+adjusted to this folder or, for files of the server repository, turned into code spans and the first two parts, which had no heading of their own, were given one. Four
 parts, in their original order: the opening policy prose, the dated source
 validation record that opened "Admission, ownership and lifecycle", "Codex auxiliary-process overhead", and
 "Durable project context and rollout". The current rule is in [RESOURCE-WORKFLOW.md](../RESOURCE-WORKFLOW.md).

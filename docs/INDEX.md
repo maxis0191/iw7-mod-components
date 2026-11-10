@@ -32,6 +32,7 @@ source test of its own: it is proven by live runs in the server repository's eng
 | Standard client build and Aurora updates | [STANDARD-CLIENT-UPDATE.md](STANDARD-CLIENT-UPDATE.md), `client-profiles.json`, `ops/Build-StandardClient.ps1`, `ops/standard-client/` |
 | Private test server overlay (password, LAN only, no master heartbeat) | `ops/Apply-TestPrivacyOverlay.ps1`, `src/native/paris_test_safety.hpp`, `tests/ops/test_privacy_overlay_test.ps1` |
 | Source workspace and the local judge | `bootstrap.ps1`, `checks.ps1`, `checks.json`, `ops/source_workspace.py`, `ops/check_boundaries.py`, `ops/check_product.py` |
+| Test and land a change | Commands and prerequisites: `README.md`, "Run the local judge". When a run counts as a pass and when to merge: `AGENTS.md`, "How to land". What never to do (assets, keys, Main and Canada, the owner's game folder, leases): `AGENTS.md`, "Safety rules that never change" |
 | Native C++ unit tests | `tests/native/`, compiled and run by `ops/Build-Voice.ps1 -TestsOnly`; in the judge as `native_unit_tests` (`tests/ops/native_unit_tests.ps1`, about 40 s, takes the Build slot) |
 
 ## 3. Voice

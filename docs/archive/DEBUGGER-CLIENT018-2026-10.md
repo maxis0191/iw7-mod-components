@@ -3,7 +3,7 @@
 # Debugger: journal of the Client018 / symbol-provider qualification attempts
 
 Cut from `docs/DEBUGGER.md` as it was at commit `a60b864` (everything between its title and "Entry points"),
-unchanged except that relative links were adjusted to this folder. Every result recorded here stays as recorded,
+unchanged except that relative links were adjusted to this folder or, for files of the server repository, turned into code spans. Every result recorded here stays as recorded,
 refusals included. The manual of the debugger is [DEBUGGER.md](../DEBUGGER.md).
 
 ## Code sections in an owned private live snapshot (2026-10-26)
