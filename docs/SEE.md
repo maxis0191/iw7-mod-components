@@ -101,11 +101,11 @@ step one atomic load.
 
 | What | Result |
 |---|---|
-| Frame time with the listener, nothing captured | @@LISTEN@@ |
-| A capture without depth | @@NODEPTH@@ |
-| A capture with depth | @@WITHDEPTH@@ |
-| From the request to the present that serves it | @@WAIT@@ |
-| From the script's request to the script seeing the frame done | @@SCRIPT@@ |
+| Frame time with the listener, nothing captured | unchanged within the noise. One session, the same still view, four windows of 15 s with the listener on, off, on, off (`paris_see_listen`): median frame time 7.41, 7.88, 7.80, 7.26 ms. On against off differs by 0.03 ms; two windows of the same state differ by 0.4 to 0.6 ms. (Measured before the main-thread step was added; that step is one atomic load a frame and was not measured apart) |
+| A capture without depth | the picture copy and its file: median 14.4 ms in the renderer (8.0 to 24.6 over 21 captures), the work the game's own `capture_frame` did before. The camera adds two sets of projected points on the main thread (not timed apart) and a 33 KB file |
+| A capture with depth | the depth adds a median of 9.6 ms (8.8 to 14.5; copy 1.8 to 6.3, conversion 2.8 to 3.4, file 2.5 to 2.9). The first depth capture of a session took 182 ms: every render target is examined once to find the depth target, then its place is remembered. So a capture with depth is one long frame of about 25 ms |
+| From the request to the present that serves it | 2 to 7 ms (the next present) on a view that was not just edited; 36 to 44 ms right after a world-editor command |
+| From the script's request to the script seeing the frame done | 50 to 300 ms on a still view, 600 to 1,100 ms right after a world-editor command (`taken_ms` of the gamelab capture step, in script frames of 50 ms). In an earlier session, while a build was compiling on the machine, a frame was taken 5.3 s after it was asked; the step now waits, so the plan cannot run ahead of the picture |
 | Files | picture 3,686,454 bytes; depth 3,686,454 bytes (1280 by 720 floats); camera file 33 KB (two sets of 320 points) |
 
 ## Limits
