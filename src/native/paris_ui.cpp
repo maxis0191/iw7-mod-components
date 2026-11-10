@@ -47,7 +47,9 @@ namespace paris_ui
         constexpr const char* script_directory = "iw7-mod/paris-ui";
 
         // Default walker. It returns one JSON object. Every engine call is protected: a method the element type does not
-        // have gives no field, never an error. Rectangles are what the engine reports, in screen pixels.
+        // have gives no field, never an error. Rectangles are what the engine reports, in screen pixels. The engine's Lua
+        // methods used: getFirstChild, getNextSibling, getRect, getLocalRect, getCurrentRGBA, getText, getElementTextDims,
+        // getCurrentAlignment, GetImage, getUseStencil, IsInWorld. paris_ui_material (below) names a material handle.
         const char* const default_walker = R"LUA(
 local out, n = {}, 0
 local function put(s) n = n + 1; out[n] = s end
@@ -62,12 +64,12 @@ end
 local function num(v)
     if type(v) ~= 'number' or v ~= v or v == math.huge or v == -math.huge then return 'null' end
     if v == math.floor(v) and v > -1e9 and v < 1e9 then return string.format('%d', v) end
-    return string.format('%.3f', v)
+    return string.format('%.2f', v)
 end
-local function call(e, name, ...)
+local function call(e, name)
     local f = e[name]
     if type(f) ~= 'function' then return nil end
-    local r = { pcall(f, e, ...) }
+    local r = { pcall(f, e) }
     if not r[1] then return nil end
     table.remove(r, 1)
     return r
@@ -78,34 +80,96 @@ local function list(r, want)
     for i = 1, want do t[i] = num(r[i]) end
     return '[' .. table.concat(t, ',') .. ']'
 end
+-- the Lua class of an element: the first table of LUI.* found above its own fields
+local classes = {}
+if type(LUI) == 'table' then
+    for name, v in pairs(LUI) do
+        if type(v) == 'table' and type(name) == 'string' then classes[v] = name end
+    end
+end
+local class_cache = {}
+local function class_of(e)
+    local mt = getmetatable(e)
+    local t = mt and mt.__index
+    local hops = 0
+    while type(t) == 'table' and hops < 8 do
+        local m = getmetatable(t)
+        t = m and m.__index
+        if t == nil then return nil end
+        local known = class_cache[t]
+        if known ~= nil then return known or nil end
+        local name = classes[t]
+        if name then class_cache[t] = name; return name end
+        hops = hops + 1
+    end
+    return nil
+end
+local material = type(paris_ui_material) == 'function' and paris_ui_material or nil
 local root = Engine.GetLuiRoot and Engine.GetLuiRoot() or nil
 local count, limit, truncated = 0, 20000, false
-local function walk(e, parent, depth)
+-- an element with no picture holds the same default material as the root
+local default_image = ''
+if root then
+    local h = call(root, 'GetImage')
+    if h and h[1] ~= nil then default_image = tostring(h[1]) end
+end
+local function walk(e, parent, depth, world)
     if count >= limit then truncated = true; return end
     local me = count
     count = count + 1
     local f = { '"i":' .. me, '"p":' .. parent, '"d":' .. depth }
     local id = e.id
     if id ~= nil then f[#f + 1] = '"id":"' .. esc(id) .. '"' end
-    local rect = list(call(e, 'getRect'), 4)
+    local class = class_of(e)
+    if class and class ~= 'UIElement' then f[#f + 1] = '"class":"' .. esc(class) .. '"' end
+    local rect = list(call(e, 'getRect'), 4) or list(call(e, 'getLocalRect'), 4)
     if rect then f[#f + 1] = '"rect":' .. rect end
-    local lr = list(call(e, 'getLocalRect'), 4)
-    if lr then f[#f + 1] = '"local":' .. lr end
-    local a = call(e, 'GetAlpha') or call(e, 'getAlpha')
-    if a and type(a[1]) == 'number' then f[#f + 1] = '"alpha":' .. num(a[1]) end
-    local t = call(e, 'getText') or call(e, 'GetText')
-    if t and t[1] ~= nil then f[#f + 1] = '"text":"' .. esc(t[1]) .. '"' end
-    local c = call(e, 'getFirstChild')
+    local c = call(e, 'getCurrentRGBA')
+    if c and type(c[4]) == 'number' then
+        if c[4] ~= 1 then f[#f + 1] = '"alpha":' .. string.format('%.3f', c[4]) end
+        if c[1] ~= 1 or c[2] ~= 1 or c[3] ~= 1 then f[#f + 1] = '"rgb":' .. string.format('[%.3f,%.3f,%.3f]', c[1] or 0, c[2] or 0, c[3] or 0) end
+    end
+    local t = call(e, 'getText')
+    if t and type(t[1]) == 'string' and t[1] ~= '' then
+        f[#f + 1] = '"text":"' .. esc(t[1]) .. '"'
+        local dims = call(e, 'getElementTextDims')
+        if dims and type(dims[1]) == 'number' then f[#f + 1] = '"text_size":' .. list(dims, 2) end
+        local a = call(e, 'getCurrentAlignment')
+        if a and type(a[1]) == 'number' then f[#f + 1] = '"align":' .. num(a[1]) end
+    end
+    local h = call(e, 'GetImage')
+    if h and h[1] ~= nil and tostring(h[1]) ~= default_image then
+        local name = '?'
+        if material then
+            local ok, got = pcall(material, h[1])
+            if ok and type(got) == 'string' and got ~= '' then name = got end
+        end
+        f[#f + 1] = '"image":"' .. esc(name) .. '"'
+    end
+    local s = call(e, 'getUseStencil')
+    if s and s[1] == true then f[#f + 1] = '"clips":true' end
+    if not world then
+        local w = call(e, 'IsInWorld')
+        if w and w[1] == true then world = true; f[#f + 1] = '"world":true' end
+    end
     put((me > 0 and ',\n' or '') .. '{' .. table.concat(f, ',') .. '}')
-    local child = c and c[1] or nil
+    local first = call(e, 'getFirstChild')
+    local child = first and first[1] or nil
     while child do
-        walk(child, me, depth + 1)
+        walk(child, me, depth + 1, world)
         local nx = call(child, 'getNextSibling')
         child = nx and nx[1] or nil
     end
 end
-put('{"walker":"default/1","elements":[\n')
-if root then walk(root, -1, 0) end
+local al = {}
+if type(LUI) == 'table' and type(LUI.Alignment) == 'table' then
+    for name, v in pairs(LUI.Alignment) do
+        if type(name) == 'string' and type(v) == 'number' then al[#al + 1] = '"' .. esc(name) .. '":' .. num(v) end
+    end
+    table.sort(al)
+end
+put('{"walker":"default/2","alignment":{' .. table.concat(al, ',') .. '},"elements":[\n')
+if root then walk(root, -1, 0, false) end
 put('\n],"count":' .. count .. ',"truncated":' .. tostring(truncated) .. ',"root":' .. tostring(root ~= nil) .. '}')
 return table.concat(out)
 )LUA";
@@ -155,6 +219,10 @@ return table.concat(out)
         std::int64_t lui_walk_us{};
         std::uint64_t dump_serial{};
         bool observers_on{true};
+        unsigned observed_draws{};
+        unsigned observed_layouts{};
+        unsigned observed_pictures{};
+        std::uint64_t helper_generation{~0ull};
 
         std::int64_t now_us()
         {
@@ -250,6 +318,7 @@ return table.concat(out)
                 draw_single_hook.invoke<void>(local_client, element);
                 return;
             }
+            ++observed_draws;
             const auto address = reinterpret_cast<std::uintptr_t>(element);
             int index = -1;
             for (std::size_t i = 0; i < rows.size(); ++i) if (rows[i].address == address) { index = static_cast<int>(i); break; }
@@ -276,7 +345,9 @@ return table.concat(out)
         void element_info_stub(const int local_client, const std::uint8_t* element, std::uint8_t* info, char* scratch)
         {
             element_info_hook.invoke<void>(local_client, element, info, scratch);
-            if (!on_capture_thread() || current_row < 0 || !info) return;
+            if (!on_capture_thread()) return;
+            ++observed_layouts;
+            if (current_row < 0 || !info) return;
             auto& row = rows[current_row];
             if (row.has_info) return;
             row.has_info = true;
@@ -303,7 +374,9 @@ return table.concat(out)
         void stretch_pic_stub(const float x, const float y, const float w, const float h, const float s0, const float t0, const float s1, const float t1,
             const float* color, void* material)
         {
-            if (on_capture_thread() && current_row >= 0 && !rows[current_row].has_picture)
+            const bool watching = on_capture_thread();
+            if (watching) ++observed_pictures;
+            if (watching && current_row >= 0 && !rows[current_row].has_picture)
             {
                 auto& row = rows[current_row];
                 row.has_picture = true;
@@ -331,6 +404,19 @@ return table.concat(out)
             {
                 if (!ui_scripting::lui_running()) { error = "the UI's Lua state is not running"; return; }
                 const auto lua = ui_scripting::get_globals();
+                if (helper_generation != ui_scripting::lua_generation())
+                {
+                    // The name of the material behind an element's image handle ("" when it cannot be read).
+                    lua["paris_ui_material"] = [](const ui_scripting::lightuserdata& handle) -> std::string
+                    {
+                        const void* material = handle.ptr;
+                        if (!material || !readable(material, sizeof(const char*))) return {};
+                        const char* name{};
+                        std::memcpy(&name, material, sizeof(name));
+                        return bounded_string(name, 96);
+                    };
+                    helper_generation = ui_scripting::lua_generation();
+                }
                 const auto loaded = lua["loadstring"](code, std::string(chunk));
                 if (!loaded[0].is<ui_scripting::function>())
                 {
@@ -427,8 +513,10 @@ return table.concat(out)
                 out += "\"}";
             }
             const auto t_end = now_us();
-            _snprintf_s(line, sizeof(line), _TRUNCATE, ",\n\"cost\":{\"request_to_capture_ms\":%.3f,\"lui_walk_ms\":%.3f,\"build_ms\":%.3f,\"request_to_file_ms\":%.3f}}\n",
-                (t_capture_end - t_request) / 1000.0, lui_walk_us / 1000.0, (t_end - t_build) / 1000.0, (t_end - t_request) / 1000.0);
+            _snprintf_s(line, sizeof(line), _TRUNCATE, ",\n\"cost\":{\"request_to_capture_ms\":%.3f,\"lui_walk_ms\":%.3f,\"build_ms\":%.3f,\"request_to_file_ms\":%.3f,"
+                "\"observer_calls_in_the_frame\":{\"element_draw\":%u,\"element_layout\":%u,\"picture\":%u}}}\n",
+                (t_capture_end - t_request) / 1000.0, lui_walk_us / 1000.0, (t_end - t_build) / 1000.0, (t_end - t_request) / 1000.0,
+                observed_draws, observed_layouts, observed_pictures);
             out += line;
             const auto name = std::string("ui-") + (pending_tag.empty() ? std::string("dump") : pending_tag) + ".json";
             const bool written = utils::io::write_file(std::string(output_directory) + "/" + name, out);
@@ -457,6 +545,7 @@ return table.concat(out)
                 rows.clear();
                 rows_overflow = false;
                 current_row = -1;
+                observed_draws = observed_layouts = observed_pictures = 0;
                 capture_thread = GetCurrentThreadId();
                 capturing = true;
                 state = phase::capturing;

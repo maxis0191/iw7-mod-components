@@ -4,7 +4,8 @@
   show    DUMP                 the server-drawn HUD elements as a table and the Lua UI tree, compact
   find    DUMP --text REGEX    elements whose text (or --id REGEX: name) matches
   check   DUMP                 defects that need no picture: off screen, overlapping texts, clipped by the parent,
-                               zero size, text too small. Exit 1 when one is found
+                               zero size, text too small. Exit 1 when one is found. --baseline DUMP leaves out what
+                               the screen already had before a change
   diff    A B                  what appeared, disappeared, moved or changed text between two dumps
   expect  DUMP RULES.json      rules as a verdict: exit 0 when every rule holds, 1 otherwise
   frame   DUMP FRAME.bmp       do the rectangles agree with a frame captured at the same moment (--base: a frame without them)
@@ -22,8 +23,12 @@ HUD_TYPES = {0: 'free', 1: 'text', 2: 'value', 3: 'playername', 4: 'material', 5
              8: 'tenths_timer_down', 9: 'tenths_timer_up', 10: 'tenths_timer_static', 11: 'clock_down', 12: 'clock_up', 13: 'waypoint'}
 ALIGN_X = {0: 'left', 1: 'center', 2: 'right'}
 ALIGN_Y = {0: 'top', 1: 'middle', 2: 'bottom'}
-HORZ_ALIGN = {}
-VERT_ALIGN = {}
+# What a server script wrote in horzalign and vertalign. 0 to 7 were each set by a script and read back from the client in a
+# live run; 8 to 10 follow the order of the names in the game's own list.
+HORZ_ALIGN = dict(enumerate(('subleft', 'left', 'center', 'right', 'fullscreen', 'noscale', 'alignto640', 'center_safearea',
+                             'left_adjustable', 'center_adjustable', 'right_adjustable')))
+VERT_ALIGN = dict(enumerate(('subtop', 'top', 'middle', 'bottom', 'fullscreen', 'noscale', 'alignto480', 'center_safearea',
+                             'top_adjustable', 'middle_adjustable', 'bottom_adjustable')))
 # Offsets inside the client's copy of one HUD element (0xB8 bytes), read from the game's own layout and draw code.
 HUD_FIELDS = (('x', 0x04, 'f'), ('y', 0x08, 'f'), ('z', 0x0C, 'f'), ('target_ent', 0x10, 'i'), ('lerp_value', 0x14, 'f'),
               ('lerp_from', 0x18, 'f'), ('lerp_start', 0x1C, 'i'), ('lerp_time', 0x20, 'i'), ('font_scale', 0x24, 'f'),
@@ -121,20 +126,40 @@ def elements(data):
         alphas[i] = alpha
         off = bool(e.get('hidden')) or hidden.get(p, False)
         hidden[i] = off
-        rect = None
+        rect = box = None
         if isinstance(e.get('rect'), list) and len(e['rect']) == 4 and all(isinstance(v, (int, float)) for v in e['rect']):
-            rect = tuple(float(v) for v in e['rect'])
+            rect = box = tuple(float(v) for v in e['rect'])
         text = e.get('text') or ''
         image = e.get('image') or ''
         kind = e.get('kind') or ('text' if text else ('image' if image else 'element'))
+        size = e.get('text_size')
+        text_height = e.get('text_height')
+        if text and box and isinstance(size, list) and len(size) == 2 and all(isinstance(v, (int, float)) for v in size):
+            # The box is the layout rectangle; the glyphs take text_size inside it, placed by the horizontal alignment.
+            rect = text_rect(box, size[0], size[1], e.get('align'), (lui.get('alignment') or {}))
+            text_height = size[1]
         out.append({'layer': 'lui', 'index': i, 'parent': (base + p) if isinstance(p, int) and p >= 0 else None, 'depth': e.get('d', 0),
                     'name': str(e.get('id', '')), 'kind': kind, 'rect': rect, 'text': text, 'alpha': alpha,
                     'visible': not off and alpha > 0.004 and rect is not None, 'clips': bool(e.get('clips')), 'image': image,
-                    'text_height': e.get('text_height'), 'font': e.get('font') or '', 'children': 0, 'world': world[i]})
+                    'text_height': text_height, 'font': e.get('font') or '', 'children': 0, 'world': world[i], 'box': box,
+                    'class': e.get('class') or ''})
     for e in out:
         if e['layer'] == 'lui' and e['parent'] is not None:
             out[e['parent']]['children'] += 1
     return out
+
+
+def text_rect(box, width, height, align, names):
+    """Where the glyphs of a Lua UI text are: its measured size inside the layout box, by the horizontal alignment."""
+    left, top, right, _ = box
+    center, right_code = names.get('Center', 2), names.get('Right', 3)
+    if align == center:
+        x = (left + right - width) / 2.0
+    elif align == right_code:
+        x = right - width
+    else:
+        x = left
+    return (x, top, x + width, top + height)
 
 
 def path_of(els, i):
@@ -312,16 +337,32 @@ def check(data, min_text=None, overlap=0.10, tolerance=1.0):
     return out
 
 
+def finding_keys(data, found):
+    """A finding as something that can be recognised in another dump: the rule and the elements' stable names."""
+    els = elements(data)
+    names = keyed(els)
+    by_index = {i: key for key, i in names.items()}
+    return [(f['rule'], by_index.get(f['element']), by_index.get(f.get('other'))) for f in found]
+
+
 def cmd_check(args):
     data = load(args.dump)
     ignore = set(x.strip().upper() for x in (args.ignore or '').split(',') if x.strip())
     found = [f for f in check(data, args.min_text, args.overlap) if f['rule'] not in ignore]
+    known = 0
+    if args.baseline:
+        base = load(args.baseline)
+        old = set(finding_keys(base, check(base, args.min_text, args.overlap)))
+        keys = finding_keys(data, found)
+        known = sum(1 for k in keys if k in old)
+        found = [f for f, k in zip(found, keys) if k not in old]
     if args.json:
         print(json.dumps({'schema': 'iw7.ui-check/1', 'dump': args.dump, 'findings': found}, indent=1))
     else:
         for f in found:
             print('%-18s %s' % (f['rule'], f['detail']))
-        print('check: %d finding%s' % (len(found), '' if len(found) == 1 else 's'))
+        print('check: %d finding%s%s' % (len(found), '' if len(found) == 1 else 's',
+                                         ' (%d more are also in the baseline and not counted)' % known if args.baseline else ''))
     return 1 if found else 0
 
 
@@ -331,12 +372,17 @@ def cmd_check(args):
 
 def keyed(els):
     """Elements by a name that survives between two dumps: layer, path (or text for HUD elements), and a counter for repeats."""
-    out, count = {}, {}
+    groups = {}
     for i, e in enumerate(els):
         base = (e['layer'], path_of(els, i) if e['layer'] == 'lui' else (strip_colors(e['text']) or e['image'] or e['kind']))
-        k = count.get(base, 0)
-        count[base] = k + 1
-        out[base + (k,)] = i
+        groups.setdefault(base, []).append(i)
+    out = {}
+    for base, members in groups.items():
+        if base[0] == 'hud':
+            # the client lists HUD elements in drawing order, which changes from frame to frame: order twins by place
+            members = sorted(members, key=lambda i: els[i]['rect'] or (1e9, 1e9, 1e9, 1e9))
+        for k, i in enumerate(members):
+            out[base + (k,)] = i
     return out
 
 
@@ -532,7 +578,8 @@ def frame_measure(rect, w, h, pixel, base=None, ring=4, gap=2, threshold=40):
 def frame_rows(data, frame, base=None, text=None, layer=None, threshold=40):
     """One row per visible element with a text or an image: the measures and whether the rectangle agrees with the frame.
     It agrees when the frame has ink inside and none around (a text on a flat panel), or when the inside changed against
-    the base frame and the ring did not (a panel over the world)."""
+    the base frame and the ring did not (a panel or a text over the world). An element that touches another one cannot
+    agree by either measure: its ring holds the neighbour."""
     w, h, pixel = read_bmp(frame)
     s = data['screen']
     if (w, h) != (s['width'], s['height']):
@@ -546,11 +593,11 @@ def frame_rows(data, frame, base=None, text=None, layer=None, threshold=40):
     out = []
     for i in matches(els, text, None, layer, True):
         e = els[i]
-        if not (has_content(e) or e['layer'] == 'hud') or area(e['rect']) <= 0:
+        if not has_content(e) or e.get('world') or area(e['rect']) <= 0:
             continue
         m = frame_measure(e['rect'], w, h, pixel, base_pixel, threshold=threshold)
         by_ink = m.get('ink_inside', 0) >= 0.02 and m.get('ink_ring', 1) <= 0.02
-        by_change = m.get('changed_inside', 0) >= 0.5 and m.get('changed_ring', 1) <= 0.1
+        by_change = m.get('changed_inside', 0) >= 0.02 and m.get('changed_ring', 1) <= 0.02
         m.update(element=i, name=label(els, i), rect=fmt_rect(e['rect']), agrees=bool(by_ink or by_change), by='ink' if by_ink else ('change' if by_change else ''))
         out.append(m)
     return out
@@ -591,6 +638,7 @@ def main(argv=None):
     p.add_argument('--min-text', type=float, help='smallest readable text height in pixels (default 10 at 720 lines, scaled)')
     p.add_argument('--overlap', type=float, default=0.10, help='share of the smaller text rectangle that counts as an overlap')
     p.add_argument('--ignore', help='rules to leave out, separated by commas')
+    p.add_argument('--baseline', help='a dump of the screen before the change: findings that are also there are not counted')
     p.add_argument('--json', action='store_true')
     p.set_defaults(fn=cmd_check)
     p = sub.add_parser('diff')

@@ -174,6 +174,40 @@ class CommandTests(Files):
         self.assertIn('"cash 500" and hud1 "cash 750" overlap', text)
         self.assertEqual(run(['check', self.write('o.json', cases['TEXT_OVERLAP']), '--ignore', 'text_overlap'])[0], 0)
 
+    def test_a_baseline_leaves_out_what_the_screen_already_had(self):
+        fan = lui(7, 1, 2, (1110, 500, 1281, 841), id='fanCard', image='zm_card_fan')
+        before = dump([], TREE + [fan])
+        after = dump([], TREE + [fan, lui(8, 1, 2, (1250, 300, 1400, 330), id='newLabel', text='NEW', text_size=[150, 30], align=1)])
+        self.assertEqual([f['rule'] for f in ui.check(before)], ['PARTLY_OFF_SCREEN'])
+        a, b = self.write('before.json', before), self.write('after.json', after)
+        code, text = run(['check', b, '--baseline', a])
+        self.assertEqual(code, 1)
+        self.assertIn('newLabel "NEW" is', text)
+        self.assertNotIn('fanCard', text)
+        self.assertIn('check: 1 finding (1 more are also in the baseline and not counted)', text)
+        self.assertEqual(run(['check', a, '--baseline', a])[0], 0)
+
+    def test_a_text_is_where_its_glyphs_are_not_where_its_box_is(self):
+        names = {'Left': 1, 'Center': 2, 'Right': 3}
+        self.assertEqual(ui.text_rect((100, 50, 300, 90), 40, 30, 1, names), (100, 50, 140, 80))
+        self.assertEqual(ui.text_rect((100, 50, 300, 90), 40, 30, 2, names), (180, 50, 220, 80))
+        self.assertEqual(ui.text_rect((100, 50, 300, 90), 40, 30, 3, names), (260, 50, 300, 80))
+        # two wide boxes that overlap, with short texts that do not
+        data = dump([], [lui(0, -1, 0, (0, 0, W, H), id='root'),
+                         lui(1, 0, 1, (100, 100, 500, 130), id='a', text='ONE', text_size=[60, 30], align=1),
+                         lui(2, 0, 1, (300, 100, 700, 130), id='b', text='TWO', text_size=[60, 30], align=3)])
+        data['lui']['alignment'] = names
+        self.assertEqual(ui.check(data), [])
+        els = ui.elements(data)
+        self.assertEqual((els[1]['rect'], els[1]['box'], els[2]['rect']), ((100, 100, 160, 130), (100, 100, 500, 130), (640, 100, 700, 130)))
+
+    def test_world_surfaces_are_not_judged_as_screen_positions(self):
+        data = dump([], [lui(0, -1, 0, (0, 0, W, H), id='root'), lui(1, 0, 1, (0, 0, W, H), id='InWorldManager'),
+                         lui(2, 1, 2, (0, 0, 80, 20), id='arcadeA', text='SCORE'), lui(3, 1, 2, (0, 0, 80, 20), id='arcadeB', text='SCORE'),
+                         lui(4, 0, 1, (0, 0, W, H), id='onEntity', world=True), lui(5, 4, 2, (-50, -50, 10, 10), id='marker', text='X')])
+        self.assertEqual(ui.check(data), [])
+        self.assertTrue(all(e['world'] for e in ui.elements(data)[1:]))
+
     def test_hidden_elements_and_parent_child_texts_are_not_defects(self):
         data = dump([hud(0, (1300, 100, 200, 20), text='gone', alpha=0.0), hud(1, (0, 0, 10, 10), drawn=False)],
                     [lui(0, -1, 0, (0, 0, W, H), id='root'), lui(1, 0, 1, (100, 100, 300, 140), id='label', text='A'),
