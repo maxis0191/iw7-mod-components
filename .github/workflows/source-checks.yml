@@ -1,8 +1,8 @@
 name: Source checks
+# Started by hand only. The hosted jobs do not start on this account; the judge of a head is the local
+# checks.ps1 run (see AGENTS.md). This file stays as the written recipe of the hosted run, including the
+# native sanitizer tests.
 on:
-  push:
-    branches: [main, "codex/**"]
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read
