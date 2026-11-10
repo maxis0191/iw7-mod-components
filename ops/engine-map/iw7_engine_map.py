@@ -39,6 +39,11 @@ def sha256(path):
     return h.hexdigest()
 
 
+def read_bytes(path):
+    with open(path, 'rb') as f:
+        return f.read()
+
+
 class Image:
     """The sections we have, addressed by virtual address."""
 
@@ -413,7 +418,7 @@ def cmd_build(args):
     for p in paths.values():
         if not os.path.isfile(p):
             raise SystemExit('missing input: %s' % p)
-    image = Image(*(open(paths[k], 'rb').read() for k in ('text', 'rdata', 'pdata')))
+    image = Image(*(read_bytes(paths[k]) for k in ('text', 'rdata', 'pdata')))
     names = parse_names(args.symbols, args.names or (), args.native_src, args.names_file)
     inputs = {'input_%s_sha256' % k: sha256(p) for k, p in paths.items()}
     os.makedirs(os.path.dirname(os.path.abspath(args.db)), exist_ok=True)
@@ -496,6 +501,7 @@ def cmd_name(args):
     if os.path.isfile(args.names_file):
         with open(args.names_file, encoding='utf-8') as f:
             doc = json.load(f)
+        doc.setdefault('names', [])
     clash = [r for r in doc['names'] if r['name'] == args.name and int(r['address'], 16) != va]
     known = m.db.execute('select addr from names where name = ? and addr != ?', (args.name, va)).fetchall()
     if (clash or known) and not args.replace:
@@ -525,8 +531,8 @@ def cmd_disasm(args):
     m = Map(args.db)
     f = start_of(m, args.func)
     root = args.reference_root
-    text = open(os.path.join(root, 'unpacked-text.bin'), 'rb').read()
-    rdata = open(os.path.join(root, 'unpacked-rdata.bin'), 'rb').read()
+    text = read_bytes(os.path.join(root, 'unpacked-text.bin'))
+    rdata = read_bytes(os.path.join(root, 'unpacked-rdata.bin'))
     image = Image(text, rdata, b'', int(m.meta['text_va']), int(m.meta['rdata_va']), m.base)
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     lines = ['%s:' % m.label(f)]
