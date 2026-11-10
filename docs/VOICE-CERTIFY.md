@@ -98,6 +98,12 @@ private desktop), `Invoke-IW7OwnedStop` and `Get-ServerInfo.ps1`.
    its own `players2`, `lab-appdata` identity and dcache. Prepare the peer root once
    with the existing reviewed pair preparation (the NTFS hardlink transaction behind
    `Agent-Pair-Prepare.ps1` / `Invoke-IW7AgentPairPrepare` in the server repository).
+   **Changed on 2026-11-10, not yet carried into the harness:** the base installation is the owner's game
+   folder, and no test may run there any more (`AGENTS.md`, first section, point 2). Client A must be a bench
+   root (the server repository's `ops/bench/New-BenchRoot.ps1`). The harness has never been run that way: it
+   replaces `iw7-mod.exe` and writes a marker in the client A root, and a bench root is made of hard links, so
+   whether that replacement leaves the owner's files untouched is **not verified**. Until a dry run and a
+   file-identity check have shown it, do not go beyond `-DryRun`.
    Do not make a new physical retail copy. The harness never creates or deletes stock.
 5. **Tools.** PowerShell 7, an installed en-US SAPI voice (Microsoft David or Zira),
    and Python 3.12 with numpy (scipy is optional). For ASR, `faster-whisper` must be
@@ -115,7 +121,7 @@ private desktop), `Invoke-IW7OwnedStop` and `Get-ServerInfo.ps1`.
 # 1. Always first: prints every process, file change, command and assertion; starts nothing, writes nothing.
 pwsh -NoProfile -File ops\voice-certify\Invoke-VoiceCertify.ps1 -DryRun `
   -ServerRoot $env:USERPROFILE\Documents\IW7-Runtime\private-test-server `
-  -ClientARoot $env:USERPROFILE\Desktop\iw_game_files `
+  -ClientARoot <client A game root: a bench root, never the owner's game folder> `
   -LabImage runtime\voice-certify-images\<SHA256>\iw7-mod.exe -IncludeEndOfGame
 
 # 2. Only with the owner's permission: the same command without -DryRun.

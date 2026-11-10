@@ -1,10 +1,12 @@
+> History (dated 2026-10-16). Not current instructions. Current entry point: [docs/INDEX.md](../INDEX.md). Paths in the text are relative to the repository root as it was on that date.
+
 # DIA Source model and provider qualification plan
 
 Status: **Source only; NativeEligibility=false; Provider=Unknown_Unqualified;
 DbgHelpPdbUnmatched=NotApplicable; H3Outcome=Refused.** This lot neither opens an
 image/PDB nor inventories or activates a provider. H4 remains stopped. Nothing
 here authorizes a native capsule, game run or another route through stopped T7
-work. The prior [H3 observation](DEBUGGER.md) remains unchanged.
+work. The prior [H3 observation](../DEBUGGER.md) remains unchanged.
 
 ## Managed core contract
 

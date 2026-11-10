@@ -1,3 +1,5 @@
+> History (dated 2026-10-14 to 2026-10-15). Not current instructions. Current entry point: [docs/INDEX.md](INDEX.md). The HUD showcase it describes was cancelled by the owner; the source prototype and its check are kept.
+
 # BO3-style Zombies HUD adapted to IW7 — source prototype
 
 This client module is an authored IW7 LUI implementation. It is not a retail BO3

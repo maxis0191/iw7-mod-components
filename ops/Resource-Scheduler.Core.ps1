@@ -600,3 +600,34 @@ function Invoke-IW7ResourceJob {
         Exit-IW7ResourceLease -Token $lease.Token
     }
 }
+# The same plain job as Invoke-IW7ResourceJob, queued: while the slot is held by a temporary holder the
+# admission is asked again every five seconds, up to WaitForSlotSeconds. Only a refusal that names such a
+# holder is waited for; every other refusal (identity, telemetry, an unreserved laboratory, a duplicate
+# lease) is thrown at once, and so is the last refusal at the bound. Invoke-IW7ResourceJob is unchanged.
+function Invoke-IW7QueuedResourceJob {
+    param([Parameter(Mandatory)][scriptblock]$Body,[Parameter(Mandatory)][string]$Scope,
+        [ValidateSet('Build','Extract','Analysis')][string]$Kind='Build',
+        [long]$PhysicalBytes=4GB,[long]$CommitBytes=6GB,[string]$Owner='native build',
+        [Parameter(Mandatory)][ValidateRange(1,86400)][int]$WaitForSlotSeconds)
+    $waited=[Diagnostics.Stopwatch]::StartNew()
+    while ($true) {
+        try {
+            $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+            break
+        } catch {
+            $busy=$_.Exception.Message -like 'Resource busy:*' -or
+                $_.Exception.Message -like 'An existing compiler/extractor/Java analysis is running;*'
+            if (!$busy -or $waited.Elapsed.TotalSeconds -ge $WaitForSlotSeconds) { throw }
+            Start-Sleep -Seconds 5
+        }
+    }
+    $process=Get-Process -Id $PID
+    $priority=$process.PriorityClass
+    try {
+        $process.PriorityClass='BelowNormal'
+        & $Body
+    } finally {
+        $process.PriorityClass=$priority
+        Exit-IW7ResourceLease -Token $lease.Token
+    }
+}

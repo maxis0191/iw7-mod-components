@@ -1,3 +1,5 @@
+> History (dated 2026-10-14 to 2026-10-15). Not current instructions. Current entry point: [docs/INDEX.md](INDEX.md). Weapon ports are now made with the generic port pipeline of the other products; this prototype and its source checks are kept.
+
 # Private Ray Gun weapon authoring
 
 2026-10-14: functional source authoring, not a built or played Ray Gun.
@@ -124,7 +126,7 @@ acceptance or conversion is introduced. The extra synthetic rejection test is
 Source-only; it does not qualify a retail pair or new native profile execution.
 
 The later explicit neutral IW7 clone profile is documented in
-[IW7-NEUTRAL-CLONE.md](IW7-NEUTRAL-CLONE.md). It preserves the observed Shredder
+[IW7-NEUTRAL-CLONE.md](archive/IW7-NEUTRAL-CLONE.md). It preserves the observed Shredder
 base1/PAP0 trees for a separate clone/roundtrip path; this PROJECTILE3/3 author
 remains unchanged. Neither Source implementation qualifies a playable Ray Gun,
 name-specific Shredder callbacks, a native roundtrip or retail PAP purchase.

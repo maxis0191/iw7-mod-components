@@ -639,16 +639,6 @@
       ]
     },
     {
-      "id": "decompile_owner_ranges",
-      "command": [
-        "python",
-        "-B",
-        "ops/agent-capacity/test_decompile_owner_ranges.py",
-        "--java",
-        "java"
-      ]
-    },
-    {
       "id": "voicecertify_offline_test",
       "command": [
         "pwsh",
@@ -669,9 +659,31 @@
         "-File",
         "tests/ops/voice_relay_overlay_test.ps1"
       ]
+    },
+    {
+      "id": "native_unit_tests",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/native_unit_tests.ps1"
+      ]
     }
   ],
   "retained_checks": [
+    {
+      "id": "decompile_owner_ranges",
+      "command": [
+        "python",
+        "-B",
+        "ops/agent-capacity/test_decompile_owner_ranges.py",
+        "--java",
+        "<path to a Java 21 java.exe>"
+      ],
+      "reason": "Needs a Java 21 runtime (the test runs a single-file Java 21 program). None is on PATH on the working machine and ops/Install-ReTools.ps1 takes an existing Java root, it does not install one. Run locally with --java after installing it."
+    },
     {
       "id": "voicecertify_analyzer_test",
       "command": [
@@ -703,6 +715,15 @@
         "<unpacked retail dump dir>"
       ],
       "reason": "Needs capstone, a native checkout carrying the relay and a local unpacked retail code dump (unpacked-text.bin, unpacked-pdata.bin). Run locally."
+    },
+    {
+      "id": "re_tools_sdk_test",
+      "command": [
+        "<python.exe of the environment made by ops/Install-ReTools.ps1>",
+        "-B",
+        "tests/ops/re_tools_sdk_test.py"
+      ],
+      "reason": "Needs the pinned mcp package of ops/re-tools/requirements.lock.txt, which ops/Install-ReTools.ps1 installs into its own Python environment (it also needs existing Ghidra and Java roots). The system Python that runs the checks does not have it. Run with that environment's python."
     }
   ]
 }
