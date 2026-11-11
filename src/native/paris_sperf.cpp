@@ -111,6 +111,7 @@ namespace paris_sperf
         void sampler_loop()
         {
             const HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, 0x00000002, TIMER_ALL_ACCESS);
+            std::uint64_t random = 0x9E3779B97F4A7C15ull ^ static_cast<std::uint64_t>(now());
             while (!sampler_stop.load())
             {
                 ++ticks;
@@ -131,6 +132,13 @@ namespace paris_sperf
                 due.QuadPart = -10000; // 1 ms in 100 ns units
                 if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) WaitForSingleObject(timer, 20);
                 else Sleep(1);
+                // The timer wakes on the system timer's grid, and so does the server's frame wait (50 ms is a whole number
+                // of grid steps): without a random offset every sample falls at the same few instants of a server frame
+                // and a short burst of script is missed or always hit (first live run: 4,000 iterations read 13 ns each,
+                // 70,000 read 170 ns). A random spin of 0 to 1 ms spreads the samples over the frame.
+                random ^= random << 13; random ^= random >> 7; random ^= random << 17;
+                const auto until = now() + static_cast<std::int64_t>(random % 1000) * qpc_hz / 1000000;
+                while (now() < until) YieldProcessor();
             }
             if (timer) CloseHandle(timer);
         }

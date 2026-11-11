@@ -27,7 +27,8 @@ headless runner moves the windows into `<run>/sperf/` before it removes the benc
   module: it takes the level time, stores it, counts the frame, runs the script VM's threads and iw7-mod's server
   scheduler pipeline), measured with the performance counter around the call. A first build timed 0x140B15E20 (the
   call iw7-mod's scheduler wraps): it took 0 us a frame and the script ran outside it, so it is not the frame. This is the time the server spends on a frame, not the 50 ms between frames.
-- A sampling profile of the script VM: about 1,000 times a second the sampler suspends the server thread and reads the
+- A sampling profile of the script VM: about 600 times a second, each tick moved by a random 0 to 1 ms so the samples do
+  not lock to the server frame's timer grid, the sampler suspends the server thread and reads the
   VM's call stack (the frames of `scr_VmPub`, and for the running frame the position kept in `scr_function_stack`).
   A sample is "script" when the VM has at least one frame, "frame without script" when the thread is inside the server
   frame function but no script runs, "idle" otherwise.
