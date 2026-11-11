@@ -23,9 +23,10 @@ headless runner moves the windows into `<run>/sperf/` before it removes the benc
 
 ## What a window holds
 
-- Every server frame: its start and how long the engine's server frame function ran (0x140B15E20, the function
-  iw7-mod's scheduler calls once per server frame; the script VM's threads run inside it), measured with the
-  performance counter around the call. This is the time the server spends on a frame, not the 50 ms between frames.
+- Every server frame: its start and how long the game's frame function ran (0x140B213F0, G_RunFrame of the CP game
+  module: it takes the level time, stores it, counts the frame, runs the script VM's threads and iw7-mod's server
+  scheduler pipeline), measured with the performance counter around the call. A first build timed 0x140B15E20 (the
+  call iw7-mod's scheduler wraps): it took 0 us a frame and the script ran outside it, so it is not the frame. This is the time the server spends on a frame, not the 50 ms between frames.
 - A sampling profile of the script VM: about 1,000 times a second the sampler suspends the server thread and reads the
   VM's call stack (the frames of `scr_VmPub`, and for the running frame the position kept in `scr_function_stack`).
   A sample is "script" when the VM has at least one frame, "frame without script" when the thread is inside the server

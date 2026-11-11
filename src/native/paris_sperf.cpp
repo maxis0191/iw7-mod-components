@@ -15,8 +15,9 @@
 //   paris_sperf_end            stop it and write iw7-mod/paris-sperf/<name>.json
 //
 // A window holds:
-// - every server frame: its start and its duration, timed around the function the engine runs once per server frame
-//   (0x140B15E20, the call iw7-mod's scheduler wraps), with the performance counter;
+// - every server frame: its start and its duration, timed around the game's frame function of the multiplayer/CP game
+//   module (0x140B213F0, G_RunFrame: takes the level time, stores it, counts the frame, runs the script VM's threads and
+//   iw7-mod's server scheduler pipeline), with the performance counter;
 // - a sampling profile of the script VM: about 1000 times a second the server thread is suspended and the VM's call
 //   stack is read (scr_VmPub function frames, the running frame's position from scr_function_stack), outermost first;
 // - the script function table (file, function, start of its code) so the reader names every position offline.
@@ -31,7 +32,7 @@ namespace paris_sperf
         constexpr std::size_t max_frames = 1u << 20;
         constexpr std::size_t max_stacks = 200000;
         constexpr std::size_t max_depth = 32;
-        constexpr std::uintptr_t server_frame_function = 0x140B15E20;
+        constexpr std::uintptr_t server_frame_function = 0x140B213F0; // G_RunFrame (int level_time)
 
         utils::hook::detour server_frame_hook;
         std::atomic<DWORD> server_thread{0};
@@ -55,12 +56,12 @@ namespace paris_sperf
             return value.QuadPart;
         }
 
-        void server_frame_stub()
+        void server_frame_stub(const int level_time)
         {
             if (!server_thread.load(std::memory_order_relaxed)) server_thread = GetCurrentThreadId();
             const auto start = now();
             in_frame.store(true, std::memory_order_relaxed);
-            server_frame_hook.invoke<void>();
+            server_frame_hook.invoke<void>(level_time);
             in_frame.store(false, std::memory_order_relaxed);
             if (!window_open.load(std::memory_order_acquire)) return;
             const auto end = now();
