@@ -379,6 +379,14 @@
       ]
     },
     {
+      "id": "ui_dump_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/ui_dump_test.py"
+      ]
+    },
+    {
       "id": "download_cache_overlay_test",
       "command": [
         "pwsh",

@@ -14,6 +14,7 @@ server repository (`docs/DEVKIT.md`, `docs/TOOLS-INDEX.md`). Paths are relative 
 | A crash | `ops/engine-map/iw7_crash.py` with `src/native/paris_stack.hpp` | [CRASH.md](CRASH.md) | `tests/ops/crash_stack_test.py` |
 | Network update timing | `ops/engine-map/iw7_net.py` with `src/native/paris_net.cpp` | [NET.md](NET.md) | `tests/ops/net_report_test.py` |
 | Change the live world of a lab client | `ops/engine-map/iw7_world_live.py` with `src/native/paris_world.cpp` | [WORLD-LIVE.md](WORLD-LIVE.md) | `tests/ops/world_live_test.py` |
+| What is on the screen, as data: which UI elements, where, how big, which text, visible or not; defects with no picture | `ops/engine-map/iw7_ui.py` with `src/native/paris_ui.cpp` | [UI-DUMP.md](UI-DUMP.md) | `tests/ops/ui_dump_test.py` |
 | Is a capture valid, did two frames differ | `ops/iw7_frame_evidence.py` | [FRAME-EVIDENCE.md](FRAME-EVIDENCE.md) | `tests/ops/iw7_frame_evidence_test.py` |
 | What does a captured frame show, as data: the camera and the depth of the frame | `src/native/paris_see.cpp`; the tool is the creator SDK's `tools-source/worldkit/iw7_see.py` | [SEE.md](SEE.md) | in the creator SDK: `tools-source/worldkit/tests/test_see.py` |
 | Ghidra project, scoped reads | `ops/Install-ReTools.ps1`, `ops/re-tools/` | [RE-TOOLS.md](RE-TOOLS.md) | `tests/ops/re_tools_sdk_test.py` (retained check: needs the Python environment made by `ops/Install-ReTools.ps1`) |
