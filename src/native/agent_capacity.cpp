@@ -129,6 +129,26 @@ void plan_agents() {
         if (d[0] != 0x9C) throw std::runtime_error("agent capacity: clientNum net field differs");
         add(f, 6, 7, 4, false);
     }
+    // three more 6-bit clientNum fields (live .data; map engine-zombie-limits.md 9b): the event-entity list (eType >= 30),
+    // list group2[0] and the agentState list (+0x9C)
+    for (auto f : {0x141BB41E0ull, 0x141BB9AF4ull, 0x141BB7F44ull}) {
+        readable(f - 4, 12);
+        std::uint32_t d[3]{};
+        std::memcpy(d, reinterpret_cast<void*>(f - 4), sizeof(d));
+        if (d[0] != 0x9C) throw std::runtime_error("agent capacity: clientNum net field differs");
+        add(f, 6, 7, 4, false);
+    }
+    // server AI loops over characters by entity byte offset (cmp reg, 42 x 0x3F8): agents past entity 41 were skipped.
+    // 0x1400A9865 is left: its collector fills a 6-int stack array in sub_140B69E20 with no bound (not done).
+    for (auto f : {0x140C22AE3ull, 0x140C29144ull, 0x140C390F8ull, 0x140C3A939ull, 0x140C3CB5Cull, 0x140C3D17Bull, 0x140C481FEull})
+        add(f, stock_characters * 0x3F8, l.characters * 0x3F8);
+    add1(0x140C217CD, 42, l.characters);                     // per-frame round-robin over characters (sub_140C21740)
+    add1(0x140C3F3AA, 42, l.characters);                     // gametype table setup loop (sub_140C3F1E0)
+    // server hunk budget for the snapshot agent rings (sub_140C68880): frames x 24 x 0xC0 as lea [r+r*8] / shl 9
+    block(0x140C68901, std::array<std::uint8_t, 6>{0x8d, 0x04, 0xf6, 0xc1, 0xe0, 0x09},
+          std::array<std::uint8_t, 6>{0x69, 0xc6, static_cast<std::uint8_t>(l.agents * 0xC0), static_cast<std::uint8_t>((l.agents * 0xC0) >> 8), 0, 0});
+    block(0x140C68977, std::array<std::uint8_t, 7>{0x43, 0x8d, 0x04, 0xff, 0xc1, 0xe0, 0x09},
+          std::array<std::uint8_t, 7>{0x41, 0x69, 0xc7, static_cast<std::uint8_t>(l.agents * 0xC0), static_cast<std::uint8_t>((l.agents * 0xC0) >> 8), 0, 0});
     add(0x140007781, stock_agents, l.agents);                // character-reference reset
     for (auto a : {0x140406F77ull, 0x141238588ull, 0x140C14B28ull, 0x140C14BF3ull, 0x140C14C96ull}) add(a, 0x78180, l.agent_bytes());
     rip(0x14C1ED662, 0x145C9E590, agent_pool.data);
