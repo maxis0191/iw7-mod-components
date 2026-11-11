@@ -334,7 +334,9 @@
     "src/native/agent_capacity.hpp",
     "ops/agent-capacity/AgentCap-Peer-Overlay.Core.ps1",
     "ops/engine-map/iw7_decomp.py",
-    "ops/engine-map/iw7_xref32.py"
+    "ops/engine-map/iw7_xref32.py",
+    "docs/AGENT-CAPACITY-ENGINE.md",
+    "ops/engine-map/iw7_dump_spans.py"
   ],
   "dependencies": [
     {
