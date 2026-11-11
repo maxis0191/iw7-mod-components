@@ -58,13 +58,22 @@ def decode_at(md, data, base, field_off, con=None):
                     return ins if field + 4 <= ins.address + ins.size else None
                 if ins.address > field:
                     break
-    for back in range(1, 16):
+    # no function bounds: linear decodes from 32 starting points before the field vote for the covering instruction
+    votes = {}
+    for back in range(1, 33):
         s = field_off - back
         if s < 0:
             break
-        for ins in md.disasm(data[s:s + 16], base + s, count=1):
-            if ins.address + ins.size >= field + 4:
-                return ins
+        for ins in md.disasm(data[s:field_off + 16], base + s):
+            if ins.address <= field < ins.address + ins.size:
+                if field + 4 <= ins.address + ins.size:
+                    key = (ins.address, ins.size)
+                    votes[key] = (votes.get(key, (0, ins))[0] + 1, ins)
+                break
+            if ins.address > field:
+                break
+    if votes:
+        return max(votes.values(), key=lambda v: v[0])[1]
     return None
 
 

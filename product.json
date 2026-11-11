@@ -336,7 +336,8 @@
     "ops/engine-map/iw7_decomp.py",
     "ops/engine-map/iw7_xref32.py",
     "docs/AGENT-CAPACITY-ENGINE.md",
-    "ops/engine-map/iw7_dump_spans.py"
+    "ops/engine-map/iw7_dump_spans.py",
+    "tests/ops/engine_xref32_test.py"
   ],
   "dependencies": [
     {
