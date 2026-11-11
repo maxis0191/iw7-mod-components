@@ -17,7 +17,7 @@ while($true){
         if($LASTEXITCODE){throw "ops/Build-Voice.ps1 -TestsOnly exited with code $LASTEXITCODE."}
         break
     } catch {
-        $busy=$_.Exception.Message -like 'Resource busy:*' -or
+        $busy=$_.Exception.Message -like 'Resource busy:*' -or $_.Exception.Message -like 'Resource admission lock busy*' -or
             $_.Exception.Message -like 'An existing compiler/extractor/Java analysis is running;*'
         if(!$busy -or $waited.Elapsed.TotalSeconds -ge $WaitForSlotSeconds){throw}
         Start-Sleep -Seconds 5
