@@ -103,6 +103,10 @@ bool write(const patch& item, bool rollback) noexcept {
 void plan_agents() {
     const auto& l = L;
     add(0x140C18D77, stock_agents, l.agents);               // G_GetMaxAgents (sub_140C18D00): min(atoi(scr_*_maxagents), 24)
+    // The stock game writes "24" into scr_zombie_maxagents and scr_default_maxagents itself (run h1, 11 Nov 2026: both
+    // read 24 with the clamp raised, 24 agents). With the capacity on, the count is the server's: `call atoi` -> `mov eax, n`.
+    block(0x140C18D6E, std::array<std::uint8_t, 5>{0xe8, 0x35, 0xed, 0x6a, 0x00},
+          std::array<std::uint8_t, 5>{0xb8, static_cast<std::uint8_t>(l.agents), 0, 0, 0});
     add(0x1405AFFF6, stock_characters, l.characters);        // entity layout: characters
     add(0x1405B0000, 58, l.map_start);                       // first map entity
     add(0x14B54FA72, 58, l.map_start); add(0x14B54FA7C, 58, l.map_start); // G_InitGame's own reservation
