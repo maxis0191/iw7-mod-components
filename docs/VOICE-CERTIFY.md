@@ -121,7 +121,7 @@ and their checks come from the server repository (`ops/bench/`, docs/BENCH.md).
    read-only bench check runs on each root before and after the run. Any problem
    after the run (for example shared data written) is a cleanup error.
 4. **The reservation.** The harness takes a shareable Runtime reservation on the
-   lease scope (default 11 GB physical and 24 GB commit for one dedicated and two
+   lease scope (default 8.5 GB physical and 20 GB commit for one dedicated and two
    clients; `-LeasePhysicalGB`, `-LeaseCommitGB`). Other agents' shareable sessions
    may run at the same time. A busy refusal is retried (30 s, doubling to 300 s)
    until `-WaitForSlotSeconds` (default 3600) has passed. Only an iw7 process this
@@ -173,7 +173,7 @@ pwsh -NoProfile -File ops\voice-certify\Invoke-VoiceCertify.ps1 -DryRun `
 | `-JoinTimeoutSeconds` | 120 | A client not in game this long after its launch is stopped and launched again |
 | `-JoinRetries` | 2 | How many times a stalled client is launched again |
 | `-WaitForSlotSeconds` | 3600 | How long busy reservation refusals are retried |
-| `-LeasePhysicalGB`, `-LeaseCommitGB` | 11, 24 | Declared memory of the session |
+| `-LeasePhysicalGB`, `-LeaseCommitGB` | 8.5, 20 | Declared memory of the session: the measured working sets (client about 3.7 GB, dedicated about 1.1 GB, server docs/BENCH.md) and private memory; each run records `PeakWorkingSetBytes` and `PeakPrivateBytes` per process |
 | `-ReadyLineSeconds` | 40 | Zombies: an answered connect request with no `Ready loopback join` line this long after counts as a stall |
 | `-InitOnly` | off | Offline self-test of the run path: preflight, guards, evidence folder and provenance, then stop before the reservation (no game) |
 | `-Diagnostics` | off | Adds `-paris-incident-log` to the dedicated and `+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log` to every process (`+set g_log iw7-mod/logs/games_mp.log` on the server, `+set cl_noprint 0 +set cl_lessprint 0` on the clients). Logs and minidumps are collected either way. |
@@ -499,7 +499,7 @@ repeated every 10 s) is not proven: the first real MP run must show it.
 
 Still unproven until the first live run: the voice_test connection state numbers
 the resend rule relies on (3 to 8 joining, 9 active), the 120 s join budget for
-two clients on one machine, the 11 GB / 24 GB declaration, and whether the game
+two clients on one machine, the 8.5 GB / 20 GB declaration, and whether the game
 writes anything into a shared (linked) file of a bench (the bench check after the
 run says so).
 

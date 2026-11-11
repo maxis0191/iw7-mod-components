@@ -48,8 +48,8 @@ param(
     # Busy refusals of the shareable reservation are retried until this many seconds have passed.
     [ValidateRange(0, 14400)][int]$WaitForSlotSeconds = 3600,
     # Declared memory of the session: one dedicated and two clients.
-    [ValidateRange(1, 256)][double]$LeasePhysicalGB = 11,
-    [ValidateRange(1, 512)][double]$LeaseCommitGB = 24,
+    [ValidateRange(1, 256)][double]$LeasePhysicalGB = 8.5,
+    [ValidateRange(1, 512)][double]$LeaseCommitGB = 20,
     # Zombies: a client whose connect request was answered but whose console shows no
     # "Ready loopback join" line this long afterwards counts as stalled at once.
     [ValidateRange(10, 600)][int]$ReadyLineSeconds = 40,
@@ -877,12 +877,23 @@ function Start-Phase([string]$Mode) {
     $phase
 }
 
+function Add-PeakMemory($Role) {
+    # Read just before the stop: the reservation declares the measured working set (docs/VOICE-CERTIFY.md).
+    try {
+        $p = [Diagnostics.Process]::GetProcessById($Role.Handle.Id); $p.Refresh()
+        $Role.Identity | Add-Member PeakWorkingSetBytes $p.PeakWorkingSet64 -Force
+        $Role.Identity | Add-Member PeakPrivateBytes $p.PeakPagedMemorySize64 -Force
+        $p.Dispose()
+    } catch { $Role.Identity | Add-Member PeakMemoryError $_.Exception.Message -Force }
+}
+
 function Stop-Phase($Phase) {
     $errors = @()
     foreach ($role in @($Phase.B, $Phase.A)) {
         if (!$role.Handle -or $role.Handle.HasExited) { continue }
         try {
             if ($role.Handle.ReadIdentity().Image -ne $role.Identity.Image) { throw 'identity changed' }
+            Add-PeakMemory $role
             $stop = Invoke-IW7OwnedStop -Handle $role.Handle -TimeoutMs 20000 -StopAction { Send-Command $role 'quit' }
             $role.Identity | Add-Member Stop $stop.Kind -Force
         } catch { $errors += "$($role.Name): $($_.Exception.Message)" }
@@ -899,6 +910,7 @@ function Stop-Phase($Phase) {
                 Start-Sleep -Seconds 1
             }
             if ($server.Handle.ReadIdentity().Image -ne $server.Identity.Image) { throw 'identity changed' }
+            Add-PeakMemory $server
             $stop = Invoke-IW7OwnedStop -Handle $server.Handle -TimeoutMs 20000 -StopAction { Send-Command $server 'quit' }
             $server.Identity | Add-Member Stop $stop.Kind -Force
         } catch { $errors += "server: $($_.Exception.Message)" }
