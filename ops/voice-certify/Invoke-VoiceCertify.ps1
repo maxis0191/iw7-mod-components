@@ -490,6 +490,7 @@ function Update-Phase($Phase) {
         if (Test-VcFatalServerLine $line) { throw "Server fixture failure: $line" }
         if ($line.Contains('[voicecert] armed')) { $Phase.Armed = $true }
         if ($line.Contains("Loaded custom gsc 'custom_scripts/mp/ranked.gsc'")) { $Phase | Add-Member RankedLoaded $true -Force }
+        if ($line -match '^\[Paris test safety\] .*script_inactivity_suppressed=(\d+)') { $Phase | Add-Member KicksBlocked ([int]$Matches[1]) -Force }
         $hb = ConvertFrom-VcHeartbeat $line
         if ($hb) { $Phase.Heartbeat = $hb; $Phase.HeartbeatTick = [Environment]::TickCount64 }
         $ack = ConvertFrom-VcAck $line
@@ -911,8 +912,8 @@ function Stop-Phase($Phase) {
             $server.Identity | Add-Member Stop $stop.Kind -Force
         } catch { $errors += "server: $($_.Exception.Message)" }
     }
-    # Zombies: retail idle-kick attempts the fixture refused (-1 in MP, which has no such watchdog).
-    if ($Phase.Heartbeat) { $Phase.ServerNotes.Add([pscustomobject]@{ Mode = $Phase.Mode; Utc = [datetime]::UtcNow.ToString('o'); KicksBlocked = $Phase.Heartbeat.Kicks }) }
+    # Retail idle kicks the native test exception refused (the server's last '[Paris test safety]' line).
+    if ($Phase.PSObject.Properties['KicksBlocked']) { $Phase.ServerNotes.Add([pscustomobject]@{ Mode = $Phase.Mode; Utc = [datetime]::UtcNow.ToString('o'); KicksBlocked = $Phase.KicksBlocked }) }
     Save-ProcessEvidence
     if ($errors.Count) { throw ('Stop incomplete (processes preserved): ' + ($errors -join '; ')) }
 }

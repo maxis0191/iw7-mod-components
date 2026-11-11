@@ -545,12 +545,22 @@ ports each client process really held.
 
 ## Known limits
 
-* The Zombies fixture calls `paris_test_protect` on every player every 0.25 s.
-  Without it the retail CP watchdog kicks a player who has not moved for 90 s once
-  two are present, whatever `g_inactivity` says (live run cp-relay-3, 2026-11-11:
-  server drop `EXE_PLAYERKICKED_INACTIVE` for client A during C4b). The method exists
-  only in the Build-Voice lab images and works only in Zombies; the MP fixture
-  relies on `g_inactivity 0`.
+* The retail Zombies watchdog kicks a player who has not moved for 90 s once two are
+  present, whatever `g_inactivity` says, also on a private passworded dedicated
+  (live run cp-relay-3: `EXE_PLAYERKICKED_INACTIVE` for client A during C4b).
+  Three scripts carry their own copy of it and its `add_to_kick_queue`: the
+  gametype `scripts\cp\gametypes\zombie`, Spaceland `cp_zmb` and Rave `cp_rave`.
+  Replacing the gametype copy alone misses Spaceland (live run final-relay-1: kicked
+  again while the replacement counted 0 attempts; reverted). The fixture therefore calls
+  `paris_test_protect` on every player every 0.25 s: the lab images' native exception
+  refuses the kick itself, whatever script asks for it. `checks.json` keeps the
+  refusals the server counted (`KicksBlocked`, from its `[Paris test safety]` line).
+  The method exists only in the Build-Voice lab images and works only in Zombies.
+* The harness removes only the server's own scripts (`iw7-mod\custom_scripts`).
+  iw7-mod's updater scripts in `cdata\custom_scripts` stay, as on any iw7-mod server:
+  without `mp\ranked.gsc` the retail `connect_validateplayerteam` kicks every MP
+  player 1.5 s after joining (`EXE_PLAYERKICKED_INVALIDTEAM`, live run relay-full-2).
+  An MP phase stops at once when the server did not load it.
 * MP team control simulates nothing on the client. It calls the retail
   `scripts\mp\menus::setteam` on the server, which kills the player and lets the
   retail respawn path run. This is valid only with `scr_skipclasschoice 1`.
