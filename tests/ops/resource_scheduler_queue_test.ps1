@@ -223,6 +223,18 @@ Case 'a session larger than the whole budget is refused, not queued' {
     Assert ($m -notmatch '(?i)busy|occupied|lease|already reserved|laboratory is running|identity unavailable') "No word the runners retry on: $m"
     Assert (!(Queue).Count) 'Never queued: it could never fit and would block others.'
 }
+Case 'a session larger than the whole budget is refused at once while a build holds the machine' {
+    Assert ((Ask b Build 8GB) -eq 'granted') 'The build holds the machine.'
+    $m=Ask huge Runtime 30GB
+    Assert ($m -like 'Refused: this session can never fit on this machine as it stands: it needs 30.0 GB*') "Refused at once, not queued behind the build: $m"
+    Assert (!(Queue).Count) 'Never queued behind the build.'
+    $m=Ask h Runtime 1.5GB
+    Assert ($m -like 'Resource busy: Build owned by b*') "A session that fits still waits for the build: $m"
+    Assert ((Queue).Count -eq 1) 'Only the session that fits is queued.'
+    Release b
+    Assert ((Ask h Runtime 1.5GB) -eq 'granted') 'Granted once the build ends.'
+    Release h
+}
 # Deadlock of 2026-11-11, from the admission log and Status of 15:38: no lease, 5.48 GB available, an 8 GB client
 # first in line for 29 min, then 1.5 GB headless sessions, a 6.5 GB network lab, more 8 GB clients and a build.
 # The old rule made the aged 8 GB ticket hold back every later request: 9 requests, 0 leases for 28 minutes.

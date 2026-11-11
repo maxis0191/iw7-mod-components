@@ -86,6 +86,9 @@ The rules, all applied inside the admission lock:
    5.5 GB and running shareable sessions hold 0.0 GB, so waiting can give at most 5.5 GB (...). Not queued. ...`
    (until 11 Nov only a request above the budget was refused, with a `Resource busy:` text that runners waited
    on until their bound). `-RequireNewLease` refusals are not queued.
+   A request above the declared budget is refused at once even while an exclusive build or session holds the
+   machine (before 11 Nov evening it was queued behind the holder and refused only on its next ask). Below the
+   budget, while an exclusive lease holds, it waits: the holder's memory comes back when it ends.
 7. The queue is advisory: an unreadable or foreign `queue.json` reads as empty, a queue or log write that fails
    is ignored, and no queue error ever refuses, grants or removes a reservation.
 
