@@ -568,7 +568,11 @@ ports each client process really held.
   every free slot with bots (`bots_enabled` is registered true and read-only; 15 bots took
   the slot client B needed). The MP fixture replaces `checkforafk` (its only copy) and
   `bot_connect_monitor` with no-ops, and prints the AI count as `ai=N`; the harness
-  stops the phase as soon as a bot appears.* MP team control simulates nothing on the client. It calls the retail
+  stops the phase as soon as a bot appears.
+* Both players on one team leave the other empty, and a matchmaking team game then
+  forfeits and restarts the map (`scripts\mp\gamelogic::updategameevents`; live run
+  mp-relay-2 lost window M0's reply to the restart). The MP fixture sets `level.disableforfeit`,
+  which that check honours.* MP team control simulates nothing on the client. It calls the retail
   `scripts\mp\menus::setteam` on the server, which kills the player and lets the
   retail respawn path run. This is valid only with `scr_skipclasschoice 1`.
 * M3 depends on intermission lasting long enough for one phrase. The window

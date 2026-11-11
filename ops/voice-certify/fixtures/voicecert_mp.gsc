@@ -1,6 +1,7 @@
 // Voice certification fixture for Multiplayer. Private test dedicated only, never deployed.
 // Installed by Invoke-VoiceCertify.ps1 as iw7-mod/custom_scripts/mp/voicecert_mp.gsc.
-// Protection: players take no damage, the retail idle check is off and no bots join.
+// Protection: players take no damage, the retail idle check is off, no bots join and an empty
+// team does not forfeit the match.
 // Team control uses the retail team
 // change path (scripts\mp\menus::setteam), the same one the team menu runs.
 // Requests arrive in the dvar voicecert_req as "<seq> <verb> [arg]":
@@ -49,6 +50,9 @@ protect()
     {
         // gametypes assign their own damage callback during init; keep ours on top
         level.callbackplayerdamage = ::no_player_damage;
+        // both players on one team empties the other: the retail updategameevents forfeits and
+        // restarts the map in a matchmaking game (live run mp-relay-2, window M0)
+        level.disableforfeit = 1;
         wait 0.25;
     }
 }
