@@ -337,5 +337,9 @@ Case 'the wait report reads order, waits per owner and the longest' {
     $text=& "$PSScriptRoot/../../ops/Resource-Scheduler.ps1" -Action Waits -LogPath (Get-IW7AdmissionLogPath) -Since '2026-11-11T00:00:00Z' | Out-String
     Assert ($text -match 'Longest wait: 2m00s \(s2, Runtime\)') "The command prints the longest wait: $text"
 }
+Case 'A busy admission lock is retryable' {
+    Assert (Test-IW7RetryableRefusal 'Resource admission lock busy; retry later.') 'A busy admission lock is waited out like a busy slot.'
+    Assert (!(Test-IW7RetryableRefusal 'Reserved launcher unknown.')) 'An unrelated refusal stays fatal.'
+}
 Write-Output ("PASS $script:cases waiting-order cases / $script:checks assertions; temporary registry, synthetic callers, clock and memory only.")
 Write-Output "Test evidence retained: $TestRoot"
