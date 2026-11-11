@@ -1,4 +1,4 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf,
+param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
@@ -47,6 +47,7 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 . "$PSScriptRoot/Voice-RelayOverlay.Core.ps1"
 . "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
 . "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
+. "$PSScriptRoot/agent-capacity/AgentCap-Peer-Overlay.Core.ps1"
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 # Reserve the complete operation before compiling tests, sanitizer binaries or
 # native sources. TestsOnly uses the same admission and final release path.
@@ -56,6 +57,7 @@ $null = Resolve-IW7VoiceBuildNativeRoot $root
 Remove-IW7VoiceCertifyOverlay $root
 Remove-IW7VoiceRelayOverlay $root
 Remove-IW7CapacityPeerOverlay $root
+Remove-IW7AgentCapPeerOverlay $root
 Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
 $commit = $null
@@ -251,6 +253,14 @@ foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp', 'paris_sperf.cpp')) {
     if ($Perf) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$perfFile") -Destination $perfTarget -Force; $nativeSources += @($perfFile) }
     elseif (Test-Path -LiteralPath $perfTarget) { Remove-Item -LiteralPath $perfTarget -Force }
 }
+# Engine agent capacity (agent_capacity.cpp): inert unless the game starts with -agent-capacity <n>; compiled only when asked.
+foreach ($capFile in @('agent_capacity.cpp', 'agent_capacity.hpp')) {
+    $capTarget = Join-Path $root "src/client/component/$capFile"
+    if ($AgentCapacity) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$capFile") -Destination $capTarget -Force; $nativeSources += @($capFile) }
+    elseif (Test-Path -LiteralPath $capTarget) { Remove-Item -LiteralPath $capTarget -Force }
+}
+# The capacity server refuses a client of another layout (today's official client sends no agentcap key), and the reverse.
+if ($AgentCapacity) { $null = Add-IW7AgentCapPeerOverlay $root }
 # Frame facts (camera and depth with each capture) hang on the debugger's present callback: compiled only with it.
 $seeTarget = Join-Path $root 'src/client/component/paris_see.cpp'
 if ($Debugger -and $IsolatedLab) { Copy-Item -LiteralPath (Join-Path $repo 'src/native/paris_see.cpp') -Destination $seeTarget -Force; $nativeSources += @('paris_see.cpp') }
@@ -510,6 +520,7 @@ else {
 }
 $manifest.Debugger = [bool]$Debugger
 $manifest.Perf = [bool]$Perf
+$manifest.AgentCapacity = [bool]$AgentCapacity
 $manifest.CollisionProvider = [bool]$CollisionProvider
 $manifest.CapacityWatchBuild = $capacityWatchBuild
 $manifest.Capacity64Capability=[bool]$capacityWatchBuild.Compiled

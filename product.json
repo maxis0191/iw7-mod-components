@@ -329,7 +329,12 @@
     "docs/archive/VOICE-HISTORY-2026-10.md",
     "docs/archive/README-2026-10.md",
     "docs/archive/AGENTS-HISTORY-2026-10.md",
-    "tests/ops/native_unit_tests.ps1"
+    "tests/ops/native_unit_tests.ps1",
+    "src/native/agent_capacity.cpp",
+    "src/native/agent_capacity.hpp",
+    "ops/agent-capacity/AgentCap-Peer-Overlay.Core.ps1",
+    "ops/engine-map/iw7_decomp.py",
+    "ops/engine-map/iw7_xref32.py"
   ],
   "dependencies": [
     {
