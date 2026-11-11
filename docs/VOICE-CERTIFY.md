@@ -172,7 +172,8 @@ pwsh -NoProfile -File ops\voice-certify\Invoke-VoiceCertify.ps1 -DryRun `
 | `-WaitForSlotSeconds` | 3600 | How long busy reservation refusals are retried |
 | `-LeasePhysicalGB`, `-LeaseCommitGB` | 11, 24 | Declared memory of the session |
 | `-ReadyLineSeconds` | 40 | Zombies: an answered connect request with no `Ready loopback join` line this long after counts as a stall |
-| `-Diagnostics` | off | Adds `+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log` to every process (`+set g_log iw7-mod/logs/games_mp.log` on the server, `+set cl_noprint 0 +set cl_lessprint 0` on the clients). Logs and minidumps are collected either way. |
+| `-InitOnly` | off | Offline self-test of the run path: preflight, guards, evidence folder and provenance, then stop before the reservation (no game) |
+| `-Diagnostics` | off | Adds `-paris-incident-log` to the dedicated and `+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log` to every process (`+set g_log iw7-mod/logs/games_mp.log` on the server, `+set cl_noprint 0 +set cl_lessprint 0` on the clients). Logs and minidumps are collected either way. |
 | `-Modes` | `CP,MP` | Phases to run, each with its own server and client processes |
 | `-ServerPort` / `-ClientAPort` / `-ClientBPort` | 27416 / 27417 / 27418 | Loopback test ports (27100-27999). 27016 is refused. |
 | `-CpMap`, `-CpSecondMap`, `-MpMap` | `cp_zmb`, `cp_rave`, `mp_frontier` | Maps used |
@@ -437,6 +438,35 @@ Client hooks:
   (`0x140D5972A`) records the decoded PCM, attributed to its talker through the
   playback stream table `0x1477A01C0`, into `recv_<talker>.wav`. Samples the playback
   buffer refused are still recorded and counted as `dropped`.
+
+Drop and disconnect reasons (added 2026-11-11 after live runs 1 and 3, where the
+server dropped client A with no reason anywhere):
+
+* **Server `drop`.** `SV_DropClient` (0x140C4FBA0) is a protected thunk whose entry
+  iw7-mod already detours (`patches.cpp`; MinHook allows one hook per address), so
+  the component hooks its 27 direct call sites instead (24 `call`, 3 tail `jmp`; the checker byte-scans the code for any it misses).
+  Each site is installed only if its bytes still match at startup; `drop_hooks`
+  lists how many were installed and which were skipped. Every drop then emits
+  `drop` {client_num, reason, tell_them, from (return address: which path dropped),
+  state, name, guid, address (ip:port)} before the native cleanup.
+* **`com_error` (both roles).** The call at 0x140B8D88E inside `Com_Error` formats
+  the message (code, format, varargs) into `com_errorMessage`; the component records
+  {code, text, connection_state} and calls the formatter unchanged. The server's
+  `disconnect` command reaches the client as `Com_Error(2, "EXE_SERVER_DISCONNECTED")`.
+* **Client `disconnect`.** When the connection state falls from 3..9 to 0..2, the
+  client emits `disconnect` {from_state, to_state, code, reason, error_age_ms} with
+  the last `Com_Error`.
+* The harness keeps these events in `checks.json` (`ServerNotes`) and names the
+  reasons in its "missing from the server" failure. With `-Diagnostics` the
+  dedicated also runs `-paris-incident-log` (in every Build-Voice image since
+  2026-11-09), whose `client_drop` rows (reason, slot, reliable counters, stack)
+  land in `iw7-mod/logs/incidents` and are collected.
+
+Why the client console log stops at `Loading zone cp_zmb`: nothing closes it. The
+retail ship build compiled almost all engine prints out; iw7-mod revives only a few
+(`logger.cpp`: one `Com_Printf` at 0x140343080 with six callers, four `Sys_Print`
+calls) plus its own lines. In game, nothing reaches the console, so there is
+nothing to mirror; the events above are the in-game record.
 
 Sessions: the users table, `client_num` and the mute check use the game session
 (`0x146B4E080`), which is where `voice.cpp` registers players and reads mutes.

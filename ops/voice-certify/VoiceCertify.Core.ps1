@@ -11,6 +11,10 @@ $script:VcEventNames = @{
     Encoded   = @('encoded')
     Error     = @('error', 'play_error')
     Connection = @('connection')
+    Drop       = @('drop')
+    Disconnect = @('disconnect')
+    ComError   = @('com_error')
+    DropHooks  = @('drop_hooks')
 }
 $script:VcFieldNames = @{
     ClientNum = @('clientNum', 'client_num', 'clientnum')

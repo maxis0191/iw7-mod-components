@@ -59,6 +59,9 @@ param(
     # Starts every process with the extra console dvars below. The console and games
     # logs and any minidumps are copied into the evidence in every run.
     [switch]$Diagnostics,
+    # Offline self-test of the run path: preflight, process guard, port check, evidence
+    # folder, run state and provenance, then stop before the reservation. Starts no game.
+    [switch]$InitOnly,
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
@@ -80,7 +83,8 @@ $ConnectFirstSeconds = @{ CP = 20; MP = 25 }; $ConnectEverySeconds = 10
 # relative to the process folder) and the game log to g_log (iw7-mod\logs\games_mp.log)
 # while logfile (a bool, default on) is set. Retail IW7 registers no developer dvar:
 # "+set developer 1" only creates an unused dvar. cl_noprint/cl_lessprint are the
-# retail console filters.
+# retail console filters. -paris-incident-log (dedicated, in every Build-Voice image since
+# 2026-11-09) writes native drop reasons to iw7-mod/logs/incidents, which is collected.
 $DiagnosticDvars = @{
     Server = '+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log +set g_log iw7-mod/logs/games_mp.log'
     Client = '+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log +set cl_noprint 0 +set cl_lessprint 0'
@@ -158,7 +162,7 @@ function Get-ServerConfig([string]$Mode, [string]$Password) {
 
 function Get-ServerArguments([string]$Mode) {
     $cp = if ($Mode -eq 'CP') { '-cpMode ' } else { '' }
-    "-dedicated -allow_root_io -noupdate -nosteam ${cp}-stdout -paris-server-test $LabFlag -voicetest $(Get-RoleDir $Mode 'server') " +
+    "-dedicated -allow_root_io -noupdate -nosteam ${cp}-stdout -paris-server-test $(if ($Diagnostics) { '-paris-incident-log ' })$LabFlag -voicetest $(Get-RoleDir $Mode 'server') " +
     "+set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port $ServerPort $(if ($Diagnostics) { $DiagnosticDvars.Server + ' ' })+exec voicecert_server.cfg +map_rotate"
 }
 
@@ -474,6 +478,11 @@ function Update-Phase($Phase) {
             $parsed = ConvertFrom-VcEventLine $line
             $role.Events.Add($parsed)
             if (Test-VcEvent $parsed 'Error') { throw "Test component error in $($role.Mode)/$($role.Name): $line" }
+            # Images with the drop observer: server "drop", client "disconnect" and "com_error".
+            if ((Test-VcEvent $parsed 'Drop') -or (Test-VcEvent $parsed 'Disconnect') -or (Test-VcEvent $parsed 'ComError') -or (Test-VcEvent $parsed 'DropHooks')) {
+                $Phase.ServerNotes.Add([pscustomobject]@{ Mode = $Phase.Mode; Utc = [datetime]::UtcNow.ToString('o'); Role = $role.Name; Event = $parsed })
+                if (Test-VcEvent $parsed 'Drop') { $Phase.Drops[[string](Get-VcField $parsed @('client_num'))] = $parsed }
+            }
         }
     }
     $read = Read-VcNewLines $Phase.Server.Stdout $Phase.Server.LogOffset
@@ -500,7 +509,13 @@ function Assert-Healthy($Phase, [switch]$RequireAlive, [switch]$AllowStaleHeartb
     foreach ($role in @($Phase.A, $Phase.B)) {
         if ($role.ClientNum -lt 0) { continue }
         $player = $Phase.Heartbeat.Players[[string]$role.ClientNum]
-        if (!$player) { throw "Client $($role.Name) (#$($role.ClientNum)) is missing from the server." }
+        if (!$player) {
+            $drop = $Phase.Drops[[string]$role.ClientNum]
+            $why = if ($drop) { " Server drop reason: '$($drop.reason)' (from $($drop.from), address $($drop.address))." } else { '' }
+            $own = Get-LastEvent $role 'Disconnect'
+            if ($own) { $why += " Client disconnect reason: '$($own.reason)' (code $($own.code))." }
+            throw "Client $($role.Name) (#$($role.ClientNum)) is missing from the server.$why"
+        }
         if ($RequireAlive -and (!$player.Alive -or $player.State -ne 'playing')) { throw "Client $($role.Name) is not alive and playing." }
     }
 }
@@ -828,7 +843,7 @@ function Start-Phase([string]$Mode) {
     $sub = $Mode.ToLower()
     $phase = @{ Mode = $Mode; Server = (New-Role $Mode 'server'); A = (New-Role $Mode 'A'); B = (New-Role $Mode 'B')
         Seq = 0; Acks = @{}; Heartbeat = $null; HeartbeatTick = 0L; Armed = $false
-        ServerXuids = @{}; ServerNotes = $script:serverNotes }
+        ServerXuids = @{}; ServerNotes = $script:serverNotes; Drops = @{} }
     $script:phase = $phase
     [IO.File]::WriteAllText((Join-Path $ServerRoot 'iw7-mod\voicecert_server.cfg'), (Get-ServerConfig $Mode $script:password) + "`n", [Text.UTF8Encoding]::new($false))
     Set-Content -LiteralPath (Join-Path $OutputRoot "configs\$sub-server.cfg") -Value (Get-ServerConfig $Mode '<redacted>')
@@ -984,6 +999,7 @@ $windows = [Collections.Generic.List[object]]::new()
 $transactions = [ordered]@{}
 $failure = $null; $cleanupErrors = [Collections.Generic.List[string]]::new(); $restored = $false
 Write-Provenance
+if ($InitOnly) { [pscustomobject]@{ InitOnly = $true; Evidence = $OutputRoot; Diagnostics = [bool]$Diagnostics } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputRoot 'init-only.json'); return }
 
 try {
     Enter-Lease

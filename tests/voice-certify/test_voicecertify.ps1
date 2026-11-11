@@ -263,6 +263,43 @@ function Test-IW7BenchRoot([string]$Root) {
         $true
     }
 
+    Check 'no variable shadows a parameter (PowerShell names ignore case and scope prefixes)' {
+        # Run 3 (2026-11-11) died at bind time: $script:diagnostics = @() hit the [switch]$Diagnostics parameter.
+        $ast = [Management.Automation.Language.Parser]::ParseFile("$harness\Invoke-VoiceCertify.ps1", [ref]$null, [ref]$null)
+        $params = @{}; foreach ($p in $ast.ParamBlock.Parameters) { $params[$p.Name.VariablePath.UserPath.ToLowerInvariant()] = $p.StaticType }
+        $bad = @($ast.FindAll({ param($n) $n -is [Management.Automation.Language.AssignmentStatementAst] }, $true) | ForEach-Object {
+            $left = $_.Left; while ($left -is [Management.Automation.Language.ConvertExpressionAst]) { $left = $left.Child }
+            if ($left -isnot [Management.Automation.Language.VariableExpressionAst]) { return }
+            $name = $left.VariablePath.UserPath -replace '^(script|global|local|private):', ''
+            $type = $params[$name.ToLowerInvariant()]
+            # a parameter may be normalized at the top level (same name, plain), never assigned as a switch or with a scope prefix
+            if ($type -and ($type -eq [Management.Automation.SwitchParameter] -or $left.VariablePath.UserPath -match ':')) { "$($left.VariablePath.UserPath) (line $($_.Extent.StartLineNumber))" }
+        })
+        if ($bad.Count) { throw ('assignments to parameter names: ' + ($bad -join ', ')) }
+        $true
+    }
+    Check 'the run path binds every switch and initializes (InitOnly: no reservation, no game)' {
+        $ast = [Management.Automation.Language.Parser]::ParseFile("$harness\Invoke-VoiceCertify.ps1", [ref]$null, [ref]$null)
+        $switches = @($ast.ParamBlock.Parameters | Where-Object { $_.StaticType -eq [Management.Automation.SwitchParameter] } | ForEach-Object { $_.Name.VariablePath.UserPath } | Where-Object { $_ -ne 'DryRun' })
+        $baseBuild = Join-Path $tmp 'build-base'; [IO.Directory]::CreateDirectory($baseBuild) | Out-Null
+        $baseImage = Join-Path $baseBuild 'iw7-mod.exe'; [IO.File]::WriteAllText($baseImage, 'base image')
+        [pscustomobject]@{ schema = 'iw7.voice-certify-build/1'; sha256 = (Get-FileHash $baseImage).Hash
+            overlays = [pscustomobject]@{ voiceTest = $true; voiceRelay = $false; isolatedAppData = $true; testPrivacy = $true } } | ConvertTo-Json | Set-Content (Join-Path $baseBuild 'voice-certify-build.json')
+        $initOut = Join-Path $tmp 'init-evidence'
+        $switchText = ($switches | ForEach-Object { "-$_" }) -join ' '
+        $command = "& '$harness\Invoke-VoiceCertify.ps1' -ServerRoot '$server' -ClientARoot '$clientA' -ClientBRoot '$clientB' -LabImage '$baseImage' " +
+            "-OutputRoot '$initOut' -ServerPort 27991 -ClientAPort 27992 -ClientBPort 27993 $switchText"
+        $pwshExe = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
+        $result = & $pwshExe -NoLogo -NoProfile -NonInteractive -Command $command 2>&1 | Out-String
+        if ($LASTEXITCODE) { throw "exit $LASTEXITCODE with $switchText`n$result" }
+        $init = Get-Content -LiteralPath (Join-Path $initOut 'init-only.json') -Raw | ConvertFrom-Json
+        $build = Get-Content -LiteralPath (Join-Path $initOut 'build.json') -Raw | ConvertFrom-Json
+        $ok = $switches -contains 'Diagnostics' -and $switches -contains 'InitOnly' -and $switches -contains 'Baseline' -and $init.InitOnly -and $init.Diagnostics -and
+            $build.Options.Diagnostics -and !(Test-Path (Join-Path $initOut 'backups\Server')) -and !(Test-Path (Join-Path $server 'iw7-voicecert.exe'))
+        Remove-Item -LiteralPath $initOut -Recurse -Force
+        $ok
+    }
+
     # ---- refusals (each dry run reports what a real run would refuse)
 
     function Get-DryText([hashtable]$Change) {
