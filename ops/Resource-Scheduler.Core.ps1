@@ -265,7 +265,7 @@ function Format-IW7Age([double]$Seconds) {
 }
 function Test-IW7RetryableRefusal([string]$Message) {
     foreach ($p in @('Resource busy:*','Heavy job already reserved*','An existing compiler/extractor/Java analysis is running*',
-        'An unreserved or foreign laboratory is running*','Existing lab has no reservation*','Reserved process identity unavailable*')) {
+        'An unreserved or foreign laboratory is running*','Existing lab has no reservation*','Reserved process identity unavailable*','Resource admission lock busy*')) {
         if ($Message -like $p) { return $true }
     }
     $false

@@ -49,11 +49,21 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 . "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 # The script tests need no compiler, checkout or reservation: run them before waiting in the build queue, so a broken
-# commit fails in seconds instead of after the queue and the native clone (11 Nov 2026: 33 min lost that way).
-foreach ($scriptTest in @("$repo/tests/ops/capacity_checkpoint_overlay_test.ps1", "$repo/tests/ops/kernel_image_alias_regression_test.ps1",
-        "$repo/ops/agent-capacity/test_build_copy.ps1", "$repo/tests/ops/download_cache_overlay_test.ps1")) {
-    pwsh -NoProfile -File $scriptTest
-    if ($LASTEXITCODE) { throw "Script test failed before the build: $scriptTest" }
+# commit fails in seconds instead of after the queue and the native clone (11 Nov 2026: 33 min lost that way). A pass
+# is remembered for the exact script sources (about 19 s saved on every retry of a caller that waits for the slot).
+$scriptTests = @("$repo/tests/ops/capacity_checkpoint_overlay_test.ps1", "$repo/tests/ops/kernel_image_alias_regression_test.ps1",
+    "$repo/ops/agent-capacity/test_build_copy.ps1", "$repo/tests/ops/download_cache_overlay_test.ps1")
+$scriptSources = @(Get-ChildItem -LiteralPath "$repo/ops", "$repo/tests/ops" -Recurse -File -Include '*.ps1', '*.json', '*.patch' | Sort-Object FullName)
+$scriptStamp = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(
+    (($scriptSources | ForEach-Object { $_.FullName + '=' + (Get-FileHash -LiteralPath $_.FullName).Hash }) -join "`n"))))
+$scriptPass = Join-Path $repo 'runtime/script-tests.pass'
+if (!(Test-Path -LiteralPath $scriptPass) -or (Get-Content -LiteralPath $scriptPass -Raw).Trim() -cne $scriptStamp) {
+    foreach ($scriptTest in $scriptTests) {
+        pwsh -NoProfile -File $scriptTest
+        if ($LASTEXITCODE) { throw "Script test failed before the build: $scriptTest" }
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path $scriptPass -Parent) | Out-Null
+    Set-Content -LiteralPath $scriptPass -Value $scriptStamp -Encoding ascii
 }
 # Reserve the complete operation before compiling tests, sanitizer binaries or
 # native sources. TestsOnly uses the same admission and final release path.
