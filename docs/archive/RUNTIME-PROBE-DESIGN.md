@@ -1,3 +1,5 @@
+> History (dated 2026-11-08). Not current instructions. Current entry point: [docs/INDEX.md](../INDEX.md). This was a proposal and was never built; the need it describes is now largely answered by the memory watch ([MEMORY-WATCH.md](../MEMORY-WATCH.md)) and the live world editor ([WORLD-LIVE.md](../WORLD-LIVE.md)). Paths in the text are relative to the repository root as it was on that date.
+
 # Runtime truth probe (design, not built)
 
 Status: proposal. Nothing here is compiled, installed or qualified. It is the

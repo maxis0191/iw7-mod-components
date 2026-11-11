@@ -1,3 +1,7 @@
+Read this first: the first section below is shared word for word with the other IW7 products. Most tools it
+names (`ops/bench`, `ops/gamelab`, `ops/enginelab`, `ops/netlab`, `ops/soak`, `ops/atlas`, `ops/quality`) are in
+the server repository, not here; "What this repository is" says what is here.
+
 ## Current workflow for every agent - owner rule 2026-11-10
 
 This section replaces older test, build and delegation instructions wherever they differ (they are kept below
@@ -36,42 +40,117 @@ Start here, in the server repository (iw7-paris-server): `docs/DEVKIT.md` says w
 
 Older lines this replaces: testing in the owner's base game folder; one heavy session on the whole machine;
 waiting for GitHub checks; per-test game copies; launching once per question.
-# Product ownership
 
-Owner correction, 2026-10-16: the primary objective is deep, reusable control of
-IW7's own engine and rules. BO3 is an optional use case, not a prerequisite or
-ceiling. Follow the SDK's ENGINE-MODDING-STRATEGY.md and this product's RE-TOOLS.md.
-The execution orchestrator keeps worker reports and resource sequencing;
-hourly strategic review is not an extra routine approval gate. Preserve specific
-stops, retired Rhino and the cancelled HUD showcase.
+## What this repository is
 
-Private engine/client components, voice protocol, native diagnostics, scoped test hooks and shared process/resource helpers. Server gameplay rules and asset serializers have other owners.
+- The private native side of the IW7 products: engine and client components, the scheduler that admits sessions
+  and builds, the tools that answer engine questions (`ops/engine-map`), the debugger, the voice relay patch and
+  its certification harness, scoped test hooks.
+- It owns exactly the paths in `product.json` `exports`. Server gameplay rules live in iw7-paris-server, asset
+  serializers in x64-zt-extensions, creator tooling in iw7-creator-sdk. Extend an interface or a dependency;
+  never copy another product's tree or put server gameplay logic here.
+- Where to look: `docs/INDEX.md` (this repository), then the server's `docs/DEVKIT.md`.
+- About the first section, which is shared word for word with the other products and is not edited here: the
+  tools it names under `ops/bench`, `ops/gamelab`, `ops/enginelab`, `ops/netlab`, `ops/soak`, `ops/atlas` and
+  `ops/quality` are in the server repository (iw7-paris-server), none of them is here; the history it says is
+  "kept below" is now in `docs/archive/AGENTS-HISTORY-2026-10.md`; the server's `docs/TOOLS-INDEX.md` has landed.
+- Read `origin/main` from your own worktree. The main checkout on the working machine can be many commits
+  behind; never take its files as the current state, and never change it for a task.
 
-Before editing, classify the change by product and inspect `product.json`,
-README.md and the migration map. This repository is the canonical owner only
-for its declared exports. Do not add server logic, another product's full tree,
-game assets, binaries, symbols, credentials, player data or decompiled dumps.
-Extend an explicit interface/dependency rather than copying implementations.
-Keep author/license notices and exact upstream pins. Never force-push history.
+## Safety rules that never change
 
-Preserve unrelated work, ignored evidence and frozen plans. Historical results
-do not qualify relocated input identities. The owner resumed authorized IW7 work
-on 2026-10-13; respect each task's scope. Refactoring/source tests alone do not
-authorize game, server, extraction or deployment. Main UDP27016 stays protected.
-Heavy native builds need complete shared resource admission. Owner update
-2026-10-13 removes all fixed RAM/commit/headroom minima, projected-memory
-refusals and percentage stop thresholds. Estimates and fresh native snapshots
-are telemetry only; keep the account-wide lock, exact process identities,
-ownership, leases, heavy-workload serialization and guarded teardown. Unknown
-identity/invalid telemetry still requires diagnosis. Never delete a holder's
-lease, adopt an occupied client or archive a live worktree. If actual exhaustion
-is observed, reduce the valid scenario or close only your own identified work;
-do not substitute a new numeric barrier, RAM cleaner, arbitrary kill, oversized
-swap or kernel change. Read docs/RESOURCE-WORKFLOW.md for consumer pin routing.
+1. Never add to this repository: game assets, binaries, symbols or PDBs, credentials, private keys, player data,
+   bank data, decompiled game dumps, another product's full tree.
+2. Keep author and license notices and the exact upstream pins. The repository is private; nothing private goes
+   into a public fork. Do not change visibility, billing, branch protection or credentials.
+3. Never force-push, never rewrite published history; merge with merge commits.
+4. Main (UDP 27016) and Canada are never a test target. Nothing reaches players without the owner's approval,
+   and then it goes to both servers. A refactor, a passing source check or a merge authorizes no game, server,
+   extraction or deployment action.
+5. Every test server is private: a non-empty random `g_password`, `sv_lanOnly 1` set at launch before any
+   heartbeat, bound to loopback by default, on a native test build that suppresses the master heartbeat; verify
+   this before a client connects. `sv_cheats` stays 0. Implemented here by `ops/Apply-TestPrivacyOverlay.ps1`
+   and `src/native/paris_test_safety.hpp`.
+6. Never copy the game and never test in the owner's game folder: bench roots only, removed only with the bench
+   remover (point 2 of the first section).
+7. Other sessions' work is not yours: never stop a game process you did not start; never touch a game instance
+   another application started; never delete another holder's lease; never adopt an occupied client; never
+   archive or remove a live worktree. Preserve unrelated work, ignored evidence and frozen plans. Respect each
+   task's scope: do only what your task covers and leave the rest to its owner.
+8. Queue through the scheduler (`-WaitForSlotSeconds`), no retry loops. Keep the account-wide lock and the
+   one-at-a-time serialization of builds, extractions and analyses. Establish exact process identity and
+   ownership before any teardown, and close only your own identified processes. On real memory exhaustion reduce
+   the scenario: no new numeric barrier, RAM cleaner, arbitrary process kill, oversized swap or kernel change. An unknown identity or
+   invalid telemetry is diagnosed, not worked around. The rule itself is `docs/RESOURCE-WORKFLOW.md`.
+9. Owner-only console access (`docs/OWNER-CHEATS.md`): the owner and server trust files and private keys are
+   never regenerated, published, copied to other players, printed or removed. A native update must not silently
+   drop the owner capability. Admin chat commands and an extra `sv_cheats` lock were cancelled by the owner and
+   are not reintroduced.
+10. A result is a measured run, never a prediction. A historical result does not qualify moved or rebuilt
+    inputs; an old runtime receipt is never reused for new inputs; a failed result stays recorded as failed.
+11. Voice is not accepted: never claim that speech works in game until the owner has heard it
+    (`docs/VOICE.md`, status).
+12. Retired, not to be resumed without the owner: Spaceland Rhino, the old voice relay, the cancelled HUD
+    showcase.
 
-Use coherent codex/* commits, owner-private PRs, exact-head checks and merge
-commits. Inspect actual CI jobs. Only the existing account quota refusal before
-any runner/step has the owner's conditional exception; executed failures must
-be fixed. Do not change visibility, billing, protection or credentials.
-Return clean synchronized main; report source/build/runtime/owner validation
-separately. No upstream PRs or automatic Codex memory changes.
+## How to work here
+
+- Tool first. Real work in the game is also the test of the tools. Whenever a tool, the workflow or the environment
+  is seen to be slow, unoptimized, buggy or blind, or a new tool would be a real jump, fix or build that FIRST,
+  prove it with a measured run, document it, then return to the job. Never grind: the same build or launch repeated
+  more than about three times for one question, a cause that is guessed instead of read from data, minutes of
+  waiting for what a file check answers in seconds, a result judged by looking at a picture, a manual step done
+  twice: each of these means stop and improve the tool.
+  (Owner rule, 2026-11-10.)
+- Edit the canonical tracked file; never a generated source workspace (`runtime/...`).
+- A task does not change agent memory or instruction files (this file, a tool's memory) on its own initiative;
+  it changes them only when that is the task.
+- Every tracked file is declared in `product.json` `exports`; the ownership gate refuses the rest. A new tool
+  comes with its test, its `checks.json` entry, its document and a line in `docs/INDEX.md`. A check that needs a
+  tool absent from the working machine goes under `retained_checks` with the reason; a real test is never
+  deleted or made to "skip and pass" to hide a failure.
+- Paths taken by other products (`docs/INDEX.md`, "Paths other products take") are not renamed or moved without
+  changing the consumer in the same piece of work. `ops/iw7_watch.py`, `ops/voice-relay/*.patch`,
+  `tools-source/community-download/`, the frozen plans in `ops/agent-capacity/`, `docs/evidence/` and
+  `migration/` keep their exact bytes.
+- Native build entry: `ops/Build-Voice.ps1` (historic name; it builds every native profile).
+- Builds are exclusive and take the Build slot; do not start a live session during a check run.
+- Dated documents are records. Do not edit them to make them current; write the current fact in the living
+  document and leave the record as it was.
+
+## How to land
+
+- Branch `claude/<topic>`, coherent commits, private pull request. Preserve failed approaches and reverts.
+- Judge: `./bootstrap.ps1 -Output runtime/<short>`, then `./checks.ps1 -Workspace runtime/<short>`, once per
+  head, in the background. Post the result on the pull request, merge with a merge commit, return to a clean
+  `main`. `./checks.ps1 -Workspace runtime/<short> -Only <id>` re-runs one check after a fix; the head is still
+  judged by a full run.
+- Merge only when the full run on that exact head has zero failed checks; a failing check is fixed (or moved to
+  `retained_checks` with its measured reason), never merged over. A pass is the last line of the run reporting
+  every check passed and none failed, plus one `RETAINED` line for each check that was not run. The run takes
+  three to eight minutes (measured 190 s and 448 s), and up to seven more when another session holds the Build slot. Prerequisites are in
+  `README.md`.
+- GitHub's own checks are ignored: they do not start, and their workflow runs only when asked by hand.
+- Report source, build, live run and owner acceptance separately.
+- Consumers adopt a change only by moving their pin and regenerating their source inputs. They pin a branch
+  that is not `main` (`docs/INDEX.md`); that branch is never deleted or rewritten.
+
+## What needs the owner
+
+- Anything deployed to players (Main and Canada): owner approval first, then both servers.
+- Repository visibility, billing, branch protection, credentials.
+- Public distribution or licensing of private code.
+- Anything sent to the public game-client project (upstream IW7-Mod): nothing is sent to that project, no issue,
+  no pull request and no message, without the owner. A contribution is prepared and proven here, following the
+  Aurora pull request rules (the `Aurora-PR-Rules` skill on the working machine, not a file of this repository:
+  minimal diff, no explanatory comments, short human text, real before/after evidence), and waits for his
+  decision.
+- The relay patch `ops/voice-relay/0001-*.patch` carries a personal e-mail address in its `From:` header. The
+  file keeps its exact bytes; sending it upstream as it is would publish that address. The owner decides the
+  author identity before any such contribution.
+- Resuming a retired effort (rule 12), admin chat commands, an extra `sv_cheats` lock.
+
+## History
+
+Older rules and their dates are in `docs/archive/AGENTS-HISTORY-2026-10.md`, with a table saying what replaced
+each. They are not instructions.

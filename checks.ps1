@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$Workspace,[string]$Output)
+param([Parameter(Mandatory)][string]$Workspace,[string]$Output,[string[]]$Only=@())
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
 $Workspace=(Resolve-Path -LiteralPath $Workspace).Path
@@ -10,7 +10,9 @@ if(!(Test-Path -LiteralPath $recipe)){
 }
 & python -B (Join-Path (Split-Path $recipe -Parent) 'check_boundaries.py') $root
 if($LASTEXITCODE){throw 'Product ownership gate failed.'}
-& python -B $recipe --project $root --workspace $Workspace --output $Output
+# -Only <id>[,<id>...] runs the named checks alone (a re-run after a fix); a head is judged by the full run.
+$selection=@(foreach($id in $Only){'--only';$id})
+& python -B $recipe --project $root --workspace $Workspace --output $Output @selection
 if($LASTEXITCODE){
     $resultsPath=Join-Path $Output 'results.json'
     if(Test-Path -LiteralPath $resultsPath){

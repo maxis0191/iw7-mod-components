@@ -30,6 +30,7 @@ namespace paris_debugger
         std::atomic<unsigned> server_ticks{0};
         std::atomic<unsigned> game_resets{0};
         std::uint64_t last_flush{};
+        std::atomic<void (*)(IDXGISwapChain*)> present_listener{nullptr};
         std::uint64_t now_ns() noexcept
         {
             return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -93,7 +94,9 @@ namespace paris_debugger
     }
     void render_frame(IDXGISwapChain* swap_chain) noexcept
     {
-        if (!swap_chain || !enabled.load(std::memory_order_acquire)) return;
+        if (!swap_chain) return;
+        if (const auto listener = present_listener.load(std::memory_order_acquire)) listener(swap_chain);
+        if (!enabled.load(std::memory_order_acquire)) return;
         try
         {
             if (!render_stats.record(reinterpret_cast<std::uintptr_t>(swap_chain), now_ns())) ++dropped_swapchains;
@@ -112,6 +115,7 @@ namespace paris_debugger
             if (SUCCEEDED(gpu_status)) gpu_status = adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &gpu_info);
         } catch (...) { }
     }
+    void set_present_listener(void (*listener)(IDXGISwapChain*)) noexcept { present_listener.store(listener, std::memory_order_release); }
     std::uint64_t begin(std::size_t id) noexcept
     {
         if (!enabled.load(std::memory_order_acquire)) return 0;

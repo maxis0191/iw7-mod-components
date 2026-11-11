@@ -1,3 +1,5 @@
+> History (dated 2026-10-07 to 2026-10-20). Not current instructions. Current entry point: [docs/INDEX.md](INDEX.md). Written in French. Capacity 48/64 is excluded by the eight-player decision recorded in the server repository (2026-10-26); pull requests #98 and #99 of this repository still build on this document, which is why it has not moved.
+
 # Capacité native : 48 zombies ordinaires et réserve pour les spéciaux
 
 ## Qualification64-v2 avec le client standard — 19 octobre2026

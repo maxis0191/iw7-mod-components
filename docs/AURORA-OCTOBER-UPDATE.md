@@ -1,3 +1,5 @@
+> History (dated 2026-10-17 to 2026-10-18). Not current instructions. Current entry point: [docs/INDEX.md](INDEX.md).
+
 # Aurora upstream integration - 2026-10-17
 
 ## Source identity and compatibility
