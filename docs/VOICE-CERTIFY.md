@@ -96,6 +96,9 @@ and their checks come from the server repository (`ops/bench/`, docs/BENCH.md).
    `%USERPROFILE%\Documents\IW7-Runtime\voicecert\images\<SHA256>\`: `26656B30...`
    is the base image (`voiceRelay` false, for `-Baseline`) and `E56C655F...` the
    relay image. Both contain the lab fixture's `connect` request (source b659c95).
+   Built 2026-11-11 from 0bacdd9 with the drop and disconnect observer (engine loop
+   `Get-LabClient.ps1 -BuildSwitch 'ServerModules,IsolatedLab,VoiceCertify[,VoiceRelay]'`):
+   `606CB10D...` base (no relay) and `E60A9038...` relay, same folder.
 3. **Three bench roots.** The server, client A and client B each run from their
    own bench root (server repository `ops/bench/New-BenchRoot.ps1 -IsolatedLab`,
    docs/BENCH.md): a folder whose big game files are extra names (hard links) of
