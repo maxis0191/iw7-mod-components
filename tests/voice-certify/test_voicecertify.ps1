@@ -24,7 +24,8 @@ Check 'scenario matrix' {
 Check 'heartbeat parsing' {
     $hb = ConvertFrom-VcHeartbeat 'x [voicecert] hb t=9 mode=mp map=mp_frontier gt=war n=2 p=0,allies,playing,1,100,allies p=3,axis,dead,0,0,axis'
     $hb.Map -eq 'mp_frontier' -and $hb.Gametype -eq 'war' -and $hb.Count -eq 2 -and $hb.Players['0'].Alive -and
-    !$hb.Players['3'].Alive -and $hb.Players['3'].Team -eq 'axis' -and !(ConvertFrom-VcHeartbeat '[voicecert] armed mode=cp')
+    !$hb.Players['3'].Alive -and $hb.Players['3'].Team -eq 'axis' -and $hb.Kicks -eq -1 -and !(ConvertFrom-VcHeartbeat '[voicecert] armed mode=cp') -and
+    (ConvertFrom-VcHeartbeat '[voicecert] hb t=9 mode=cp map=cp_zmb gt=zombie n=2 kicks=3').Kicks -eq 3
 }
 Check 'ack parsing' { $a = ConvertFrom-VcAck '[voicecert] ack 7 teams fail timeout'; $a.Seq -eq '7' -and $a.Verb -eq 'teams' -and $a.Result -eq 'fail timeout' }
 Check 'fatal server lines' { (Test-VcFatalServerLine '******* script compile error *******') -and (Test-VcFatalServerLine '[voicecert] refused: x') -and !(Test-VcFatalServerLine '[voicecert] hb t=1') }

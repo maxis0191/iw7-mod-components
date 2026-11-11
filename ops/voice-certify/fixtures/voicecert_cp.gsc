@@ -1,7 +1,8 @@
 // Voice certification fixture for Zombies. Private test dedicated only, never deployed.
 // Installed by Invoke-VoiceCertify.ps1 as iw7-mod/custom_scripts/cp/voicecert_cp.gsc.
-// Protection: players take no damage, zombies are not spawned, and the native
-// paris_test_protect exception stops the retail inactivity kick. Requests arrive in the dvar voicecert_req as
+// Protection: players take no damage, zombies are not spawned, and the retail idle-kick
+// queue is replaced (the same way as the server repository's gamelab presets), counting
+// each refused kick in the heartbeat. Requests arrive in the dvar voicecert_req as
 // "<seq> <verb> [arg]"; replies and a 1 s heartbeat go to stdout.
 
 init()
@@ -9,6 +10,10 @@ init()
     if (!armed())
         return;
 
+    // The retail watchdog (scripts\cp\gametypes\zombie) queues a player who has not moved for
+    // 90 s once two are present, whatever g_inactivity says (live run cp-relay-3, 2026-11-11).
+    level.voicecert_kicks = 0;
+    replacefunc(scripts\cp\gametypes\zombie::add_to_kick_queue, ::refuse_kick);
     level thread protect();
     level thread heartbeat();
     level thread requests();
@@ -50,13 +55,15 @@ protect()
                 continue;
 
             player.ignoreme = 1;
-            // the retail CP watchdog kicks a player who has not moved for 90 s once two
-            // are present; the native exception covers only protected loopback players
-            player paris_test_protect();
         }
 
         wait 0.25;
     }
+}
+
+refuse_kick(player)
+{
+    level.voicecert_kicks++;
 }
 
 no_player_damage(inflictor, attacker, damage, flags, mod, weapon, point, dir, hitloc, timeoffset, modelindex, partname)
@@ -67,7 +74,7 @@ heartbeat()
 {
     for (;;)
     {
-        line = "[voicecert] hb t=" + gettime() + " mode=cp map=" + getdvar("mapname") + " gt=" + getdvar("g_gametype") + " n=" + level.players.size;
+        line = "[voicecert] hb t=" + gettime() + " mode=cp map=" + getdvar("mapname") + " gt=" + getdvar("g_gametype") + " n=" + level.players.size + " kicks=" + level.voicecert_kicks;
 
         foreach (player in level.players)
         {
