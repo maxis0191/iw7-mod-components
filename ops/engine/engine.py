@@ -310,7 +310,19 @@ def cmd_callers(e, a, reverse=False):
 
 def cmd_xrefs(e, a):
     addr = e.resolve(a.addr)
-    db = e.need_db()
+    rows = []
+    if e.db:
+        rows = xrefs_from_db(e, a, addr)
+    elif not os.path.exists(a.index):
+        e.need_db()
+    rows += xrefs_from_index(e, a, addr, {r["at"] for r in rows})
+    lines = [f"{r['kind']:5} {r['at']}  {r['func']}" + (f"  -> {r['to']}" if a.range > 1 else "") +
+             (f"   {r['insn']}" if r.get("insn") else "") for r in rows]
+    out(a, rows, lines or ["no reference (try `imm` for the value as a constant)"])
+
+
+def xrefs_from_db(e, a, addr):
+    db = e.db
     q = "SELECT src_func,at,dst,kind FROM refs WHERE dst BETWEEN ? AND ?"
     args = [addr, addr + max(0, a.range - 1)]
     if a.kind:
@@ -322,9 +334,38 @@ def cmd_xrefs(e, a):
             for r in db.execute(q, args)]
     calls = [{"func": e.describe(r[0]) if r[0] else "?", "at": f"{r[1]:X}", "to": f"{r[2]:X}", "kind": r[3]}
              for r in db.execute("SELECT src_func,at,dst,kind FROM calls WHERE dst=? LIMIT ?", (addr, a.max))]
-    rows += calls
-    lines = [f"{r['kind']:5} {r['at']}  {r['func']}" + (f"  -> {r['to']}" if a.range > 1 else "") for r in rows]
-    out(a, rows, lines or ["no reference (Ghidra did not see one: try `imm` for the address as a constant)"])
+    return rows + calls
+
+
+def xrefs_from_index(e, a, addr, known):
+    # Forms Ghidra does not turn into references: an RVA in a displacement on an image-base register
+    # ([rbx+rax*4+0x60B22F2] with rbx = 0x140000000), and absolute addresses in immediates. Also every
+    # rip-relative reference in code Ghidra did not analyse (the protector section). From the instruction index.
+    rows = []
+    if os.path.exists(a.index):
+        idb = sqlite3.connect(f"file:{a.index}?mode=ro", uri=True)
+        lo, hi = addr, addr + max(0, a.range - 1)
+        extra = idb.execute("SELECT at,func,value,kind,text FROM insn WHERE (kind='disp' AND value BETWEEN ? AND ?) "
+                            "OR (kind IN ('addr','imm') AND value BETWEEN ? AND ?) ORDER BY at LIMIT ?",
+                            (lo - BASE, hi - BASE, lo, hi, a.max)).fetchall()
+        for at, fn, val, kind, text in extra:
+            if f"{at:X}" in known:
+                continue
+            form = "rva" if kind == "disp" else kind
+            mnem, _, ops = text.partition(" ")
+            if mnem == "lea" or kind == "imm":
+                access = "data"
+            elif re.match(r"(mov\w*|add|sub|inc|dec|and|or|xor|not|neg|xchg|set\w+|cmpxchg|stos\w*)$", mnem) and \
+                    re.match(r"\w+ ptr \[", ops):
+                access = "write"
+            else:
+                access = "read"
+            if a.kind and a.kind != access:
+                continue
+            form = f"{access}/{form}"
+            rows.append({"func": e.describe(fn) if e.db else f"{fn:X}", "at": f"{at:X}",
+                         "to": f"{(val + BASE if kind == 'disp' else val):X}", "kind": form, "insn": text})
+    return rows
 
 
 def cmd_grep(e, a):
@@ -380,7 +421,21 @@ def cmd_index(e, a):
             merged[-1][1] = max(merged[-1][1], en)
         else:
             merged.append([b, en])
-    ranges = merged
+    # Code no function covers (the protector's section is mostly that: moved game code without unwind data):
+    # a linear sweep with resynchronisation. Its rows carry the gap start as their "function".
+    gaps = []
+    for s in img.code_sections():
+        cur = s[1]
+        for b, en in merged:
+            if en <= s[1] or b >= s[1] + s[2]:
+                continue
+            if b - cur > 16:
+                gaps.append([cur, b])
+            cur = max(cur, en)
+        if s[1] + s[2] - cur > 16:
+            gaps.append([cur, s[1] + s[2]])
+    starts = sorted(set(starts) | {g[0] for g in gaps})
+    ranges = sorted(merged + gaps)
     if os.path.exists(a.index + ".tmp"):
         os.remove(a.index + ".tmp")
     idb = sqlite3.connect(a.index + ".tmp")
@@ -449,8 +504,19 @@ def cmd_imm(e, a):
     q = "SELECT at,func,text FROM insn WHERE value=? AND kind=?"
     args = [v, kind]
     if a.inside:
-        q += " AND func=?"
-        args.append(e.func_start(e.resolve(a.inside))[0])
+        # function bounds: Ghidra's when the database exists, else the index's own function key (pdata start)
+        x = e.resolve(a.inside)
+        f = e.func_at(x) if e.db else None
+        if f:
+            q += " AND at>=? AND at<?"
+            args += [f[0], f[1]]
+        else:
+            r = idb.execute("SELECT max(func) FROM (SELECT DISTINCT func FROM insn WHERE func<=? ORDER BY func DESC LIMIT 1)",
+                            (x,)).fetchone()
+            if not r or r[0] is None:
+                die(f"no function known at {a.inside}")
+            q += " AND func=?"
+            args.append(r[0])
     if a.mnemonic:
         q += " AND text LIKE ?"
         args.append(a.mnemonic + " %")
@@ -472,6 +538,23 @@ def cmd_disasm(e, a):
             start, end = f[0], f[1]
     md = Cs(CS_ARCH_X86, CS_MODE_64)
     lines, rows = [], []
+    if a.here or not e.db:
+        # The address may fall inside an instruction (an immediate's address, for example): decode from each of
+        # the 16 bytes up to it and let the decodings vote for the instruction that holds the address.
+        votes = {}
+        for back in range(0, 16):
+            s0 = addr - back
+            for at, size, _, _ in md.disasm_lite(e.image.read(s0, back + 32), s0):
+                if at <= addr < at + size:
+                    votes[at] = votes.get(at, 0) + 1
+                    break
+                if at > addr:
+                    break
+        best = (max(votes.items(), key=lambda kv: (kv[1], -kv[0]))[0], 0) if votes else None
+        if best and best[0] != addr:
+            lines.append(f"  ({addr:X} is inside the instruction at {best[0]:X}, chosen by {votes[best[0]]} of 16 decodings)")
+        start = best[0] if best else addr
+        end = max(end, start + 0x200)
     for at, size, mnem, ops in md.disasm_lite(e.image.read(start, end - start), start):
         txt = f"{mnem} {ops}"
         m = re.search(r"rip ([+-]) 0x([0-9a-f]+)", ops)
@@ -488,8 +571,9 @@ def cmd_disasm(e, a):
                 if s:
                     cmt += f" {s[0][:60]!r}"
         rows.append({"at": f"{at:X}", "insn": txt, "target": f"{target:X}" if target else None})
-        lines.append(f"  {at:X}  {txt:<44}{cmt}")
-        if len(lines) >= a.max:
+        mark = ">>" if (a.here or not e.db) and at <= addr < at + size else "  "
+        lines.append(f"{mark}{at:X}  {txt:<44}{cmt}")
+        if len(rows) >= a.max:
             lines.append("  ... cut (--max)")
             break
     out(a, rows, [f"{e.describe(start)}:"] + lines)
@@ -531,12 +615,24 @@ def snapshot_reader(path):
         va = int(s["va"], 16)
         secs.append((va, va + s["bytes"], os.path.join(path, f"{va:X}.bin")))
 
+    dump = meta.get("dump")
+    md_reader = []
+
     def read(a, n):
         for lo, hi, f in secs:
             if lo <= a and a + n <= hi:
                 with open(f, "rb") as fh:
                     fh.seek(a - lo)
                     return fh.read(n)
+        # Outside the module: the heap, zones, dvars. Read the full-memory dump the snapshot was made from.
+        if dump and os.path.exists(dump):
+            if not md_reader:
+                from minidump.minidumpfile import MinidumpFile
+                md_reader.append(MinidumpFile.parse(dump).get_reader())
+            try:
+                return md_reader[0].read(a, n)
+            except Exception:
+                return None
         return None
     return meta, read
 
@@ -563,13 +659,19 @@ def cmd_mem(e, a):
             return ev(m.group(1)) + int(m.group(2), 0)
         return e.resolve(x)
     addr = ev(expr)
+    if a.type == "str":
+        b = read(addr, 256) or b""
+        s = b.split(b"\0")[0].decode("latin-1")
+        out(a, {"snapshot": snap, "address": f"{addr:X}", "type": "str", "values": [s]},
+            [f"{addr:X} ({e.describe(addr)}) str = {s!r}   [snapshot {snap}]"])
+        return
     fmt = TYPES[a.type]
     size = struct.calcsize(fmt)
     vals = []
     for i in range(a.count):
         b = read(addr + i * size, size)
         if b is None:
-            die(f"0x{addr + i * size:X} is not in snapshot {snap} (it holds the iw7_ship.exe module only)")
+            die(f"0x{addr + i * size:X} is not in snapshot {snap} (a snapshot from a live server holds the iw7_ship.exe module only; one made from a full-memory dump reads everything)")
         v = struct.unpack(fmt, b)[0]
         vals.append(v)
     res = {"snapshot": snap, "source": meta.get("dump") or meta.get("source"), "address": f"{addr:X}", "type": a.type, "values": vals}
@@ -669,7 +771,7 @@ def main(argv=None):
     x = p("imm", cmd_imm, "value"); x.add_argument("--disp", action="store_true"); x.add_argument("--in", dest="inside")
     x.add_argument("--mnemonic"); x.add_argument("--max", type=int, default=100)
     p("struct", cmd_struct, "name")
-    x = p("mem", cmd_mem, "addr"); x.add_argument("--type", choices=sorted(TYPES), default="u32")
+    x = p("mem", cmd_mem, "addr"); x.add_argument("--type", choices=sorted(TYPES) + ["str"], default="u32")
     x.add_argument("--count", type=int, default=1); x.add_argument("--snapshot")
     x = p("name", cmd_name, "addr", "name"); x.add_argument("--note"); x.add_argument("--evidence")
     x.add_argument("--kind", default="function", choices=["function", "data", "struct"]); x.add_argument("--replace", action="store_true")
