@@ -536,6 +536,12 @@ function Enter-IW7ResourceLease {
         # Only shareable Runtime requests may coexist, and only with shareable Runtime leases.
         $otherShareable = @()
         if ($other.Count) {
+            # Above the declared budget a new session never fits, whatever holds the machine now: refused at once
+            # with the numbers, also while an exclusive build holds it (it used to be queued behind the build, 11 Nov).
+            if ($Shareable -and !$same.Count) {
+                $emptyPlan = Get-IW7ShareableMemoryPlan (Get-IW7ResourceSnapshot) @() $processes
+                if ($PhysicalBytes -gt $emptyPlan.Budget) { Assert-IW7ShareableCanFit $emptyPlan $PhysicalBytes }
+            }
             if ($Shareable) { $otherShareable = @($other | Where-Object { Test-IW7ShareableRuntimeLease $_ }) }
             if (!$Shareable -or $otherShareable.Count -ne $other.Count) {
                 $blocker = @($other | Where-Object { !$Shareable -or !(Test-IW7ShareableRuntimeLease $_) })[0]
