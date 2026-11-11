@@ -60,8 +60,15 @@ The rules, all applied inside the admission lock:
    parent covers runners that ask again in a new process each time), and otherwise when it is not refreshed in
    time: 90 s after a single ask, then twice the last interval between asks plus 30 s, between 90 and 660 s (a
    runner whose pauses grow to 300 s keeps its place). Every expiry is logged with its reason.
+0. **Only a ticket that could be served holds anyone back** (fix of the deadlock of 11 Nov 2026, 15:10-15:40: an
+   8 GB client ticket, aged past 600 s on a machine with 5.5 GB free and no lease running, held back 8 later
+   requests, 1.5 GB headless servers and a build included, for 28 minutes). An older shareable ticket counts
+   for rules 3 and 4 only while its request is no more than measured free memory (available minus what running
+   sessions still have to take) plus the memory declared by running shareable leases, and no more than the
+   declared budget. Otherwise later requests that fit go first and the ticket keeps its place. The refusal by
+   order says how many were passed: `... go first: 'h1' (...) (2 earlier request(s) that cannot fit now are passed).`
 3. **Exclusive requests** (Build, Extract, Analysis, a Runtime lease without `-Shareable`) wait for every older
-   ticket: strict arrival order.
+   ticket that could be served (rule 0): arrival order.
 4. **Shareable requests** that fit in memory are admitted at once unless an older **exclusive** ticket waits.
    So a waiting build stops new sessions from the moment it asks; the running ones drain and the build gets in.
    Sessions that asked before a newer build go before it (rule 3), so a chain of builds cannot starve sessions.
@@ -71,8 +78,14 @@ The rules, all applied inside the admission lock:
    slot for seconds) may go ahead of older tickets when they are admissible right now (no lease held), as long
    as no older ticket has been overtaken for more than 300 s in total. Holding a short lease longer than
    declared is logged (`Overran`), never stopped.
-6. Re-entry of a held lease is never queued. A shareable request larger than the whole budget is refused and
-   never queued (it could never fit). `-RequireNewLease` refusals are not queued.
+6. Re-entry of a held lease is never queued. A new shareable request that can never fit as the machine stands
+   (more than free memory plus what running shareable leases declare, or more than the declared budget) is
+   refused at once, its ticket leaves the queue and the refusal is logged with `NeverFits`. The text names the
+   numbers and contains none of the words runners wait on, so the runner stops at once instead of waiting:
+   `Refused: this session can never fit on this machine as it stands: it needs 8.0 GB, measured free memory is
+   5.5 GB and running shareable sessions hold 0.0 GB, so waiting can give at most 5.5 GB (...). Not queued. ...`
+   (until 11 Nov only a request above the budget was refused, with a `Resource busy:` text that runners waited
+   on until their bound). `-RequireNewLease` refusals are not queued.
 7. The queue is advisory: an unreadable or foreign `queue.json` reads as empty, a queue or log write that fails
    is ignored, and no queue error ever refuses, grants or removes a reservation.
 
@@ -86,7 +99,12 @@ most 600 s before it goes first, then D for memory to drain. Short requests add 
 Making waiting visible:
 
 - `./ops/Resource-Scheduler.ps1 -Action Status` adds `Queue` (place, owner, kind, `WaitingSeconds`,
-  `LastAskedSecondsAgo`, asks, caller PID) and `HeldSeconds` per lease. Status never writes.
+  `LastAskedSecondsAgo`, asks, caller PID, `CanFit`, `Why`) and `HeldSeconds` per lease. Status never writes.
+  Its first field `Why` says why the head ticket waits, with the numbers, for example
+  `Head of queue: 'IWZ custom map local session' (Runtime shareable, waiting 33m18s) needs 8.0 GB, free 6.7 GB
+  (...), held 0.0 GB by 0 running shareable session(s). It cannot fit as things stand (at most 6.7 GB can come
+  free by waiting): later requests that fit go first; asked again, it is refused.` `ShareableReachBytes` is the
+  most a shareable request can get by waiting.
 - A refused caller's message keeps its old text (callers match `Resource busy:`) and adds its place:
   `... Queue: place 2 of 3, asked first 4m10s ago; ahead: 'zone build' (Build, waiting 6m02s).` A refusal by
   the order itself reads `Resource busy: waiting in turn: 1 earlier request(s) go first: ...`.
@@ -106,10 +124,13 @@ new runner process); nothing breaks in between.
 Callers that poll by reading Status and asking only when nothing is held (the SDK's `zt.ps1` before 11 Nov) never
 get a ticket and are starved as before: callers ask `Enter-IW7ResourceLease` itself, every 5 to 60 s.
 
-Evidence: `tests/ops/resource_scheduler_queue_test.ps1` (20 cases, synthetic callers, clock and memory: arrival
+Evidence: `tests/ops/resource_scheduler_queue_test.ps1` (23 cases, synthetic callers, clock and memory: arrival
 order, a build not starved by sessions, sessions not starved by builds, aging, memory, expiry, a dead caller, a new
 process keeping the place, short requests and their bound, re-entry, an unreadable queue, older-core leases,
-status, the wait report) and the live run recorded in the server repository's `docs/BENCH.md`.
+status, the wait report; and the deadlock of 11 Nov rebuilt from its logged queue and memory, an aged ticket that
+stops holding back when it can no longer be served, a build not held back by a client ticket that cannot fit; the
+three new cases fail on the core before the fix) and the live runs recorded in the server repository's
+`docs/BENCH.md`.
 
 ## Shareable runtime leases - 2026-11-10
 

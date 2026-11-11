@@ -128,6 +128,25 @@ function Assert-IW7ShareableMemoryAdmission($Plan, [long]$RequestBytes, [long]$N
             "Continue light work; retry when memory is free.")
     }
 }
+function Get-IW7ShareableReachBytes($Plan) {
+    # The most memory a shareable request can get by waiting in the queue: what is free now (available minus
+    # what running sessions have still to take) plus what running shareable sessions declare (it comes back
+    # when they end), never above the declared budget. Memory held outside the scheduler (kernel pools, the
+    # public server, other programs) is not counted: waiting in the queue does not give it back.
+    [math]::Min([long]$Plan.Budget,[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)+[long]$Plan.Declared)
+}
+function Assert-IW7ShareableCanFit($Plan, [long]$RequestBytes) {
+    # A new shareable request that cannot fit even when every running shareable session has ended is refused
+    # at once and never queued (deadlock of 2026-11-11). The text avoids the words runners retry on.
+    $reach=Get-IW7ShareableReachBytes $Plan
+    if ($RequestBytes -le $reach) { return }
+    $free=[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)
+    throw ("Refused: this session can never fit on this machine as it stands: it needs $(Format-IW7Gb $RequestBytes), " +
+        "measured free memory is $(Format-IW7Gb $free) and running shareable sessions hold $(Format-IW7Gb $Plan.Declared), " +
+        "so waiting can give at most $(Format-IW7Gb $reach) (declared budget $(Format-IW7Gb $Plan.Budget): " +
+        "$(Format-IW7Gb $Plan.Total) total minus a $(Format-IW7Gb $Plan.Reserve) reserve). Not queued. " +
+        'Ask for less (a headless plan needs about 1.5 GB) or free memory outside the scheduler first.')
+}
 function Test-IW7ShareableRuntimeLease($Lease) {
     # Fail safe: a missing, non-Boolean or inconsistent flag is exclusive.
     $flag=$Lease.PSObject.Properties['Shareable']
@@ -217,12 +236,18 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOt
 #  - a ticket expires when neither its caller nor the caller's parent process is alive, or when it is not
 #    refreshed in time (90 s after a single ask; then twice the last interval between asks plus 30 s,
 #    within 90..660 s, so a runner whose pauses grow to 300 s keeps its place);
-#  - an exclusive request (Build, Extract, Analysis, non-shareable Runtime) waits for every older ticket;
+#  - an older shareable ticket counts as a blocker only while it could be satisfied by waiting: its request is
+#    no more than measured free memory plus the memory declared by running shareable leases (fix of the
+#    deadlock of 2026-11-11: an 8 GB client on a machine with 5.5 GB free held 8 requests for 28 minutes);
+#    otherwise later requests that fit go first and the ticket keeps its place;
+#  - an exclusive request (Build, Extract, Analysis, non-shareable Runtime) waits for every older such ticket;
 #  - a shareable request waits only for an older exclusive ticket, or for an older shareable ticket that has
 #    waited AgingSeconds (600 s) without fitting: then it goes first and newer sessions stop taking memory;
 #  - a short exclusive request (-ShortSeconds 1..120) may go ahead of older tickets when it is admissible now,
 #    as long as no older ticket has been overtaken for more than MaxOvertakeSeconds (300 s) in total;
-#  - re-entry of an existing lease is never queued; a shareable request that can never fit is not queued.
+#  - re-entry of an existing lease is never queued; a new shareable request that can never fit (above free
+#    memory plus what running shareable leases declare, or above the declared budget) is refused at once with
+#    "Refused: this session can never fit ..." and its ticket leaves the queue.
 # Every grant, refusal, expiry and release is one line in admission-log.jsonl (Get-IW7ResourceWaitReport).
 function Get-IW7SchedulerUtcNow { [datetime]::UtcNow }
 function Get-IW7CallerPid { $PID }
@@ -338,25 +363,51 @@ function Format-IW7Tickets($Context, $Tickets, [int]$Max=3) {
     if (@($Tickets).Count -gt $Max) { $text+=" and $(@($Tickets).Count-$Max) more" }
     $text
 }
-function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds) {
+function Test-IW7TicketCanFit($Ticket, $Plan) {
+    # An older shareable ticket only holds back later requests while it could be satisfied by waiting:
+    # its request is no more than measured free memory plus what running shareable sessions declare.
+    # Otherwise later requests that fit go first and the ticket keeps its place (deadlock of 2026-11-11).
+    if (!$Ticket.Shareable -or !$Plan) { return $true }
+    [long]$Ticket.PhysicalBytes -le (Get-IW7ShareableReachBytes $Plan)
+}
+function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds, $Plan=$null) {
     # Called only when everything else admits a NEW lease. Throws the queue refusal, or returns.
+    # Plan: the shareable memory plan of this moment (Get-IW7ShareableMemoryPlan over every held lease).
     if (!$Context -or !$Context.Queue) { return }
     $policy=Get-IW7QueuePolicy
     $mine=Get-IW7QueueTicket $Context $Scope $Kind
     $ahead=@(Get-IW7TicketsAhead $Context $mine)
     if (!$ahead.Count) { return }
+    $possible=@($ahead | Where-Object { Test-IW7TicketCanFit $_ $Plan })
+    $passed=$ahead.Count-$possible.Count
     if ($Shareable) {
-        $blockers=@($ahead | Where-Object { !$_.Shareable -or (($Context.NowMs-[long]$_.FirstMs)/1000) -ge $policy.AgingSeconds })
+        $blockers=@($possible | Where-Object { !$_.Shareable -or (($Context.NowMs-[long]$_.FirstMs)/1000) -ge $policy.AgingSeconds })
     } else {
-        $blockers=$ahead
-        if ($ShortSeconds -gt 0 -and !@($ahead | Where-Object { [double]$_.OvertakenSeconds+$ShortSeconds -gt $policy.MaxOvertakeSeconds }).Count) {
-            $Context.Overtook=$ahead
+        $blockers=$possible
+        if ($blockers.Count -and $ShortSeconds -gt 0 -and !@($blockers | Where-Object { [double]$_.OvertakenSeconds+$ShortSeconds -gt $policy.MaxOvertakeSeconds }).Count) {
+            $Context.Overtook=$blockers
             return
         }
     }
     if (!$blockers.Count) { return }
-    throw ("Resource busy: waiting in turn: $($blockers.Count) earlier request(s) go first: $(Format-IW7Tickets $Context $blockers). " +
+    $note=if ($passed) { " ($passed earlier request(s) that cannot fit now are passed)" } else { '' }
+    throw ("Resource busy: waiting in turn: $($blockers.Count) earlier request(s) go first: $(Format-IW7Tickets $Context $blockers)$note. " +
         'Continue light work; retry when released.')
+}
+function Remove-IW7NeverFitTicket($Context, [string]$Message, [string]$Scope, [string]$Kind, [string]$Owner, [long]$PhysicalBytes) {
+    # A request refused as never fitting leaves the queue at once and the refusal is logged. Never throws.
+    try {
+        if ($Context -and $Context.Queue) {
+            $mine=Get-IW7QueueTicket $Context $Scope $Kind
+            if ($mine) {
+                $Context.Queue.Tickets=@($Context.Queue.Tickets | Where-Object { !([object]::ReferenceEquals($_,$mine)) })
+                Save-IW7ResourceQueue $Context.Queue
+            }
+        }
+        Add-IW7AdmissionLog ([pscustomobject]@{Event='refuse';Kind=$Kind;Shareable=$true;Short=0;Owner=$Owner;Scope=$Scope;
+            Pid=(Get-IW7CallerPid);Place=0;Of=$(if ($Context -and $Context.Queue) { @($Context.Queue.Tickets).Count } else { 0 });
+            WaitSeconds=0;NeverFits=$true;PhysicalBytes=$PhysicalBytes;Reason=$Message.Substring(0,[math]::Min(300,$Message.Length))})
+    } catch { }
 }
 function Register-IW7QueueRefusal($Context, [string]$Message, [string]$Scope, [string]$Kind, [bool]$Shareable,
     [long]$PhysicalBytes, [int]$ShortSeconds, [string]$Owner, [bool]$Queueable=$true) {
@@ -533,20 +584,29 @@ function Enter-IW7ResourceLease {
         $budget = Test-IW7ResourceBudget $snapshot ([math]::Max(0L,$PhysicalBytes-$resident)) ([math]::Max(0L,$CommitBytes-$committed))
         # Admission by memory (decision 2026-11-10). A re-entry that does not grow the
         # declaration adds no demand and is never refused here; nothing is saved on refusal.
+        $queuePlan = $null
         if ($Shareable -and (!$same.Count -or $PhysicalBytes -gt [long]$same[0].PhysicalBytes)) {
             $plan = Get-IW7ShareableMemoryPlan $snapshot $otherShareable $processes
+            $queuePlan = $plan
+            # A new request that cannot fit even after every running shareable session ends: refused now.
+            if (!$same.Count) { Assert-IW7ShareableCanFit $plan $PhysicalBytes }
             Assert-IW7ShareableMemoryAdmission $plan $PhysicalBytes ([math]::Max(0L,$PhysicalBytes-$resident))
         }
-        # Waiting order: a new lease that would be admitted still waits for its turn.
-        if (!$same.Count) { Assert-IW7QueueTurn $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds }
+        # Waiting order: a new lease that would be admitted still waits for its turn; older shareable
+        # tickets that cannot fit now (free + held below their request) do not hold it back.
+        if (!$same.Count) {
+            if (!$queuePlan) { $queuePlan = Get-IW7ShareableMemoryPlan $snapshot @($other) $processes }
+            Assert-IW7QueueTurn $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds $queuePlan
+        }
         } catch {
             $message = $_.Exception.Message
-            # A shareable request larger than the whole budget can never fit: refused, never queued.
+            # A request that can never fit is refused at once: its ticket leaves the queue.
+            if ($message -like 'Refused: this session can never fit*') {
+                Remove-IW7NeverFitTicket $queue $message $canonical $Kind $Owner $PhysicalBytes
+                throw
+            }
             # Re-entry of an existing lease (or a duplicate of it) holds already: never queued.
             $queueable = !@($same).Count
-            if ($queueable -and $Shareable -and $message -like 'Resource busy: shareable declared memory budget exceeded*') {
-                $queueable = $PhysicalBytes -le ([long](Get-IW7ResourceSnapshot).PhysicalTotal - (Get-IW7ShareableReserveBytes))
-            }
             $augmented = Register-IW7QueueRefusal $queue $message $canonical $Kind ([bool]$Shareable) $PhysicalBytes $ShortSeconds $Owner $queueable
             if ($augmented -ceq $message) { throw }
             throw $augmented
@@ -614,6 +674,32 @@ function Exit-IW7ResourceLease {
         } catch { }
     }
 }
+function Get-IW7TicketWhy($Ticket, $Plan, $Leases, [long]$NowMs) {
+    # One line: why this ticket waits, with the numbers (Status, display only).
+    $policy=Get-IW7QueuePolicy
+    $wait=($NowMs-[long]$Ticket.FirstMs)/1000
+    $kind=if ($Ticket.Shareable) { 'Runtime shareable' } else { $Ticket.Kind }
+    $head="'$($Ticket.Owner)' ($kind, waiting $(Format-IW7Age $wait))"
+    $exclusive=@($Leases | Where-Object { !(Test-IW7ShareableRuntimeLease $_) })
+    $shared=@($Leases | Where-Object { Test-IW7ShareableRuntimeLease $_ })
+    $holders=if (@($Leases).Count) { (@($Leases | Select-Object -First 3 | ForEach-Object { "'$($_.Owner)'" }) -join ', ') } else { 'none' }
+    if (!$Ticket.Shareable) {
+        if (@($Leases).Count) { return "$head needs the machine alone; held by $(@($Leases).Count) reservation(s): $holders." }
+        return "$head needs the machine alone; nothing is held: its next ask is granted unless an older request that can fit is waiting."
+    }
+    if ($exclusive.Count) { return "$head waits for the exclusive $($exclusive[0].Kind) of '$($exclusive[0].Owner)'." }
+    $need=[long]$Ticket.PhysicalBytes
+    $free=[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)
+    $reach=Get-IW7ShareableReachBytes $Plan
+    $numbers="needs $(Format-IW7Gb $need), free $(Format-IW7Gb $free) ($(Format-IW7Gb $Plan.Available) available minus $(Format-IW7Gb $Plan.Unloaded) still to be taken), held $(Format-IW7Gb $Plan.Declared) by $($shared.Count) running shareable session(s)"
+    if ($need -gt $reach) {
+        return "$head $numbers. It cannot fit as things stand (at most $(Format-IW7Gb $reach) can come free by waiting): later requests that fit go first; asked again, it is refused."
+    }
+    if ($need -le $free -and $Plan.Declared+$need -le $Plan.Budget) { return "$head $numbers. It fits now: its next ask is granted unless an older request goes first." }
+    $aged=$wait -ge $policy.AgingSeconds
+    $rule=if ($aged) { 'it has waited over the aging time: later sessions wait behind it' } else { "later sessions that fit may pass it for another $(Format-IW7Age ($policy.AgingSeconds-$wait))" }
+    "$head $numbers. It fits once running sessions end; $rule."
+}
 function Get-IW7ResourceStatus {
     Invoke-IW7ResourceLock {
         $state=Read-IW7ResourceState
@@ -638,8 +724,11 @@ function Get-IW7ResourceStatus {
         $waiting=@(if ($queue.Queue) { foreach ($t in @($queue.Queue.Tickets)) { $place++
             [pscustomobject]@{Place=$place;Owner=$t.Owner;Kind=$t.Kind;Shareable=[bool]$t.Shareable;ShortSeconds=[int]$t.ShortSeconds;
                 Scope=$t.Scope;PhysicalBytes=[long]$t.PhysicalBytes;WaitingSeconds=[math]::Round(($queue.NowMs-[long]$t.FirstMs)/1000);
-                LastAskedSecondsAgo=[math]::Round(($queue.NowMs-[long]$t.LastMs)/1000);Asks=[int]$t.Polls;CallerPid=$t.OwnerIdentity.PID} } })
-        [pscustomobject]@{Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases);Queue=$waiting;
+                LastAskedSecondsAgo=[math]::Round(($queue.NowMs-[long]$t.LastMs)/1000);Asks=[int]$t.Polls;CallerPid=$t.OwnerIdentity.PID;
+                CanFit=[bool](Test-IW7TicketCanFit $t $plan);Why=(Get-IW7TicketWhy $t $plan @($state.Leases) $queue.NowMs)} } })
+        $why=if ($waiting.Count) { "Head of queue: $($waiting[0].Why)" } else { 'Queue empty.' }
+        [pscustomobject]@{Why=$why;Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases);Queue=$waiting;
+            ShareableReachBytes=(Get-IW7ShareableReachBytes $plan);
             ShareableRuntimeLimit=(Get-IW7ShareableRuntimeLeaseLimit);
             ShareableReserveBytes=$plan.Reserve;ShareableDeclaredBytes=$plan.Declared;
             ShareableRemainingDeclaredBytes=[math]::Max(0L,$plan.Budget-$plan.Declared);
