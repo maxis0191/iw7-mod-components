@@ -9,11 +9,13 @@
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <unordered_map>
 
 // The user interface as data, for isolated lab clients (-paris-isolated-lab). A client only.
 //
@@ -230,27 +232,45 @@ return table.concat(out)
             return static_cast<std::int64_t>(c.QuadPart * 1000000ll / f.QuadPart);
         }
 
-        bool readable(const void* pointer, const std::size_t size)
+        // A guarded read: false when the memory is not there. No address-space query, so it costs nothing when it works
+        // (a query per picture made one walk of the stock HUD take 150 to 560 ms; this takes it back to the walk itself).
+        bool guarded_copy(void* to, const void* from, const std::size_t bytes)
         {
-            if (!pointer) return false;
-            auto at = reinterpret_cast<std::uintptr_t>(pointer);
-            const auto end = at + size;
-            while (at < end)
-            {
-                MEMORY_BASIC_INFORMATION info{};
-                if (!VirtualQuery(reinterpret_cast<const void*>(at), &info, sizeof(info))) return false;
-                if (info.State != MEM_COMMIT || (info.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return false;
-                at = reinterpret_cast<std::uintptr_t>(info.BaseAddress) + info.RegionSize;
-            }
-            return true;
+            __try { std::memcpy(to, from, bytes); return true; }
+            __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION || GetExceptionCode() == EXCEPTION_IN_PAGE_ERROR ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) { return false; }
         }
 
+        // A text of at most `limit` bytes, read with guarded reads ("" when it is not there).
         std::string bounded_string(const char* text, const std::size_t limit)
         {
-            if (!text || !readable(text, 1)) return {};
-            std::size_t length = 0;
-            while (length < limit && text[length]) ++length;
-            return std::string(text, length);
+            std::string out;
+            if (!text) return out;
+            char block[64];
+            while (out.size() < limit)
+            {
+                // a block when the whole block is readable, else byte by byte up to the end of what is there
+                const auto want = (std::min)(sizeof(block), limit - out.size());
+                std::size_t got = want;
+                if (!guarded_copy(block, text + out.size(), want))
+                {
+                    got = 0;
+                    while (got < want && guarded_copy(&block[got], text + out.size() + got, 1)) ++got;
+                    if (!got) break;
+                }
+                const auto* end = static_cast<const char*>(std::memchr(block, 0, got));
+                if (end) { out.append(block, static_cast<std::size_t>(end - block)); break; }
+                out.append(block, got);
+                if (got < want) break;
+            }
+            return out;
+        }
+
+        // The name a material handle starts with ("" when it cannot be read).
+        std::string material_name_at(const std::uintptr_t address)
+        {
+            const char* text{};
+            if (address < 0x10000 || !guarded_copy(&text, reinterpret_cast<const void*>(address), sizeof(text))) return {};
+            return bounded_string(text, 96);
         }
 
         // JSON string body. Control bytes and bytes above 0x7F become \u00XX (a dump is plain ASCII and always valid).
@@ -356,10 +376,11 @@ return table.concat(out)
             row.text_width = read_float(info + 0x818);
             game::GfxFont* font{};
             std::memcpy(&font, info + 0x820, sizeof(font));
-            if (font && readable(font, sizeof(game::GfxFont)))
+            game::GfxFont font_copy{};
+            if (font && guarded_copy(&font_copy, font, sizeof(font_copy)))
             {
-                row.font = bounded_string(font->fontName, 96);
-                row.font_pixel_height = font->pixelHeight;
+                row.font = bounded_string(font_copy.fontName, 96);
+                row.font_pixel_height = font_copy.pixelHeight;
             }
             row.font_scale = read_float(info + 0x828);
             row.font_height = read_float(info + 0x82C);
@@ -379,12 +400,7 @@ return table.concat(out)
                 auto& row = rows[current_row];
                 row.has_picture = true;
                 row.picture[0] = x; row.picture[1] = y; row.picture[2] = w; row.picture[3] = h;
-                if (material && readable(material, sizeof(const char*)))
-                {
-                    const char* name{};
-                    std::memcpy(&name, material, sizeof(name));
-                    row.material = bounded_string(name, 96);
-                }
+                row.material = material_name_at(reinterpret_cast<std::uintptr_t>(material));
             }
             stretch_pic_hook.invoke<void>(x, y, w, h, s0, t0, s1, t1, color, material);
         }
@@ -401,6 +417,7 @@ return table.concat(out)
         void name_pictures(std::string& json)
         {
             static const std::string marker = "\"image\":\"@";
+            std::unordered_map<std::uintptr_t, std::string> names;
             std::string out;
             out.reserve(json.size() + 4096);
             std::size_t at = 0;
@@ -412,17 +429,14 @@ return table.concat(out)
                 const auto end = json.find('"', digits);
                 if (end == std::string::npos || end - digits > 16) break;
                 out.append(json, at, digits - 1 - at); // up to and including the opening quote of the value
-                std::string name = "?";
-                const auto address = std::strtoull(json.substr(digits, end - digits).c_str(), nullptr, 16);
-                const auto* material = reinterpret_cast<const void*>(address);
-                if (address && readable(material, sizeof(const char*)))
+                const auto address = static_cast<std::uintptr_t>(std::strtoull(json.substr(digits, end - digits).c_str(), nullptr, 16));
+                auto known = names.find(address);
+                if (known == names.end())
                 {
-                    const char* text{};
-                    std::memcpy(&text, material, sizeof(text));
-                    const auto read = bounded_string(text, 96);
-                    if (!read.empty()) name = read;
+                    auto read = material_name_at(address);
+                    known = names.emplace(address, read.empty() ? std::string("?") : std::move(read)).first;
                 }
-                json_escape(out, name);
+                json_escape(out, known->second);
                 at = end;
             }
             out.append(json, at, std::string::npos);
@@ -471,10 +485,11 @@ return table.concat(out)
             _snprintf_s(line, sizeof(line), _TRUNCATE, "\",\"serial\":%llu,\"time_ms\":%d,\"screen\":{\"width\":%u,\"height\":%u,\"scene_width\":%u,\"scene_height\":%u,\"aspect\":%.6g},\n",
                 static_cast<unsigned long long>(dump_serial), game::Sys_Milliseconds(), vid.displayWidth, vid.displayHeight, vid.sceneWidth, vid.sceneHeight, vid.displayAspectRatio);
             out += line;
+            game::ScreenPlacement placement_copy{};
             const auto* placement = game::ScrPlace_GetViewPlacement();
-            if (placement && readable(placement, sizeof(game::ScreenPlacement)))
+            if (placement && guarded_copy(&placement_copy, placement, sizeof(placement_copy)))
             {
-                const auto* p = placement;
+                const auto* p = &placement_copy;
                 _snprintf_s(line, sizeof(line), _TRUNCATE,
                     "\"placement\":{\"virtual_to_real\":[%.6g,%.6g],\"virtual_to_full\":[%.6g,%.6g],\"real_to_virtual\":[%.6g,%.6g],\"real_viewport_position\":[%.6g,%.6g],\"real_viewport_size\":[%.6g,%.6g],"
                     "\"virtual_viewable_min\":[%.6g,%.6g],\"virtual_viewable_max\":[%.6g,%.6g],\"real_viewable_min\":[%.6g,%.6g],\"real_viewable_max\":[%.6g,%.6g],"
