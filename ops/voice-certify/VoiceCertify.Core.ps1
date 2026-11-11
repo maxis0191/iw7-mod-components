@@ -183,8 +183,51 @@ function Get-VcLastConnectionState($Events, [int]$From = 0) {
 function Test-VcJoinResendDue([double]$SinceLaunchSeconds, $SinceLastSendSeconds, [double]$FirstDelaySeconds, [double]$EverySeconds, $ConnectionState) {
     if ($SinceLaunchSeconds -lt $FirstDelaySeconds) { return $false }
     if ($null -eq $SinceLastSendSeconds) { return $true }
-    if ($null -ne $ConnectionState -and [int]$ConnectionState -ge 3) { return $false }
+    # 9 is not a block: the first live run (2026-11-11) showed a client at 9 in its own
+    # front-end session (clientNum -1), never on our server.
+    if ($null -ne $ConnectionState -and [int]$ConnectionState -ge 3 -and [int]$ConnectionState -le 8) { return $false }
     [double]$SinceLastSendSeconds -ge $EverySeconds
+}
+
+# "Setting client <n> XUID to <hex>" from the dedicated's console.
+function ConvertFrom-VcServerXuid([string]$Line) {
+    if ($Line -notmatch 'Setting client (\d+) XUID to ([0-9A-Fa-f]{1,16})') { return $null }
+    [pscustomobject]@{ Slot = [int]$Matches[1]; Xuid = $Matches[2].ToUpperInvariant().PadLeft(16, '0') }
+}
+
+# Server console lines worth keeping as join evidence (connects, drops, timeouts, kicks).
+function Test-VcServerConnectionLine([string]$Line) {
+    $Line -notmatch '\[voicecert\]|\[Paris test (privacy|safety)\]' -and
+        $Line -match '(?i)\b(drop|dropped|disconnect|disconnected|timed out|timeout|kick|kicked|zombie|reconnect|connect|connecting|connected|challenge|already connected|server is full)\b'
+}
+
+# The XUID a client's own session holds at slot $Slot (voice_test snapshot "users").
+function Get-VcSnapshotXuid($Snapshot, [int]$Slot) {
+    if (!$Snapshot -or !$Snapshot.PSObject.Properties['users']) { return $null }
+    $user = @($Snapshot.users | Where-Object { [int]$_.slot -eq $Slot }) | Select-Object -First 1
+    if (!$user -or !$user.xuid -or $user.xuid -match '^0+$') { return $null }
+    ([string]$user.xuid).ToUpperInvariant().PadLeft(16, '0')
+}
+
+# In game on OUR server: the snapshot's clientNum N >= 0, the fixture heartbeat lists
+# N, and the dedicated's last "Setting client N XUID to X" equals the XUID the
+# client's own session holds at N. Connection state 9 alone is no proof: a client in
+# its own front-end session also reaches it.
+function Test-VcOnServer($Snapshot, $Heartbeat, [hashtable]$ServerXuids) {
+    if (!$Snapshot -or !$Heartbeat) { return $false }
+    $n = Get-VcField $Snapshot $script:VcFieldNames.ClientNum
+    if ($null -eq $n -or [int]$n -lt 0) { return $false }
+    if (!$Heartbeat.Players[[string][int]$n]) { return $false }
+    $server = if ($ServerXuids) { $ServerXuids[[string][int]$n] } else { $null }
+    $own = Get-VcSnapshotXuid $Snapshot ([int]$n)
+    [bool]($server -and $own -and $server -eq $own)
+}
+
+# "[Paris module client] Ready loopback join to UDP <port>." from a client console:
+# the lab fixture really called party::connect, and to which port.
+function ConvertFrom-VcReadyLine([string]$Line) {
+    if ($Line -notmatch 'Ready loopback join to UDP (\d+)') { return $null }
+    [int]$Matches[1]
 }
 
 # The request line of the lab fixture's file channel (paris_test_fixture.cpp):

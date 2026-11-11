@@ -50,9 +50,15 @@ param(
     # Declared memory of the session: one dedicated and two clients.
     [ValidateRange(1, 256)][double]$LeasePhysicalGB = 11,
     [ValidateRange(1, 512)][double]$LeaseCommitGB = 24,
+    # Zombies: a client whose connect request was answered but whose console shows no
+    # "Ready loopback join" line this long afterwards counts as stalled at once.
+    [ValidateRange(10, 600)][int]$ReadyLineSeconds = 40,
     [string]$OutputRoot,
     # Base image without the relay: the "before" run. Every window must then be silent.
     [switch]$Baseline,
+    # Starts every process with the extra console dvars below. The console and games
+    # logs and any minidumps are copied into the evidence in every run.
+    [switch]$Diagnostics,
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
@@ -70,6 +76,19 @@ $LabFlag = '-paris-' + 'isolated-lab'
 $CdataDir = 'iw7-mod/lab-appdata/cdata'
 $SettleSeconds = 1.5; $TailSeconds = 2.5; $IdleSeconds = 5
 $ConnectFirstSeconds = @{ CP = 20; MP = 25 }; $ConnectEverySeconds = 10
+# iw7-mod writes every console line to g_consoleLog (default iw7-mod/logs/console.log,
+# relative to the process folder) and the game log to g_log (iw7-mod\logs\games_mp.log)
+# while logfile (a bool, default on) is set. Retail IW7 registers no developer dvar:
+# "+set developer 1" only creates an unused dvar. cl_noprint/cl_lessprint are the
+# retail console filters.
+$DiagnosticDvars = @{
+    Server = '+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log +set g_log iw7-mod/logs/games_mp.log'
+    Client = '+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log +set cl_noprint 0 +set cl_lessprint 0'
+}
+# Files collected from each root before the restore (relative folder, file pattern, recursive).
+$DiagnosticSources = @(
+    @('iw7-mod/logs', '*.log', $false), @('iw7-mod/logs/incidents', '*', $false), @('iw7-mod/paris-hang', '*.json', $false),
+    @('minidumps', '*', $false), @('.', '*.dmp', $false))
 $bank = @((Get-Content -LiteralPath "$PSScriptRoot/phrases.json" -Raw | ConvertFrom-Json).phrases)
 
 function Get-FullPath([string]$Path) { [IO.Path]::GetFullPath($Path).TrimEnd('\', '/') }
@@ -140,7 +159,7 @@ function Get-ServerConfig([string]$Mode, [string]$Password) {
 function Get-ServerArguments([string]$Mode) {
     $cp = if ($Mode -eq 'CP') { '-cpMode ' } else { '' }
     "-dedicated -allow_root_io -noupdate -nosteam ${cp}-stdout -paris-server-test $LabFlag -voicetest $(Get-RoleDir $Mode 'server') " +
-    "+set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port $ServerPort +exec voicecert_server.cfg +map_rotate"
+    "+set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port $ServerPort $(if ($Diagnostics) { $DiagnosticDvars.Server + ' ' })+exec voicecert_server.cfg +map_rotate"
 }
 
 function Get-ClientArguments([string]$Mode, [string]$Role, [string]$Password, [string]$Dir) {
@@ -149,7 +168,7 @@ function Get-ClientArguments([string]$Mode, [string]$Role, [string]$Password, [s
     "-noupdate -nosteam ${cp}-stdout -paris-server-client-test $LabFlag -voicetest $Dir " +
     "+set net_ip 127.0.0.1 +set net_port $port +set paris_lab_server_port $ServerPort +set password `"$Password`" +set name voicecert$Role " +
     '+set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 1280 +set vid_height 720 +set r_mode 1280x720 ' +
-    '+set com_maxfps 30 +set r_picmip 2 +set r_picmip_bump 2 +set r_picmip_spec 2'
+    '+set com_maxfps 30 +set r_picmip 2 +set r_picmip_bump 2 +set r_picmip_spec 2' + $(if ($Diagnostics) { ' ' + $DiagnosticDvars.Client } else { '' })
 }
 
 # Sent through commands.txt once the component answers. The join itself is not
@@ -326,6 +345,8 @@ function Write-DryRun {
             }
             foreach ($command in Get-ClientSetupCommands) { "[command $role] $command" }
             "[join $role] $(Get-JoinDescription $mode $root): first $($ConnectFirstSeconds[$mode]) s after the launch, then every $ConnectEverySeconds s while the client reports no joining state"
+            "[join $role] in game = the snapshot's clientNum N, the heartbeat lists N, and the server's last 'Setting client N XUID to X' equals the client's own session XUID at N"
+            if ($mode -eq 'CP') { "[join $role] a connect answered but no 'Ready loopback join' line in the client's console $ReadyLineSeconds s later counts as a stall at once" }
             "[join $role] not in game $JoinTimeoutSeconds s after the launch: stop it by its owned handle and launch it again (evidence in $(Get-RoleDir $mode $role 1)), at most $JoinRetries time(s)"
             "[assert] snapshot clientNum >= 0 and the fixture heartbeat lists it"
         }
@@ -367,9 +388,11 @@ function Write-DryRun {
         ""
         "[stop] [command B] quit, [command A] quit (forced only after 20 s, owned handles only)"
         "[stop] getinfo clients=0 for $EmptyStopSeconds s, then [command server] quit"
+        "[collect] from each root, before the restore: $(@($DiagnosticSources | ForEach-Object { "$($_[0])/$($_[1])" }) -join ', ') -> $OutputRoot\$sub\<role>\console-*.log and minidumps\"
     }
     ""
     "[restore] the three root backups, verified by hash; then Exit-IW7ResourceLease"
+    "[diagnostics] $(if ($Diagnostics) { 'on: server ' + $DiagnosticDvars.Server + '; clients ' + $DiagnosticDvars.Client } else { 'off (-Diagnostics adds the console dvars; logs are collected either way)' })"
     if ($BenchCore) { "[bench check] the read-only bench check again on each root; any problem is a cleanup error (checks.json)" }
     "[analysis] python -I $PSScriptRoot\analyze_voice.py $OutputRoot\analysis-input.json --output $OutputRoot\analysis.json --table $OutputRoot\verdict.md --model $AsrModel"
 }
@@ -462,6 +485,9 @@ function Update-Phase($Phase) {
         if ($hb) { $Phase.Heartbeat = $hb; $Phase.HeartbeatTick = [Environment]::TickCount64 }
         $ack = ConvertFrom-VcAck $line
         if ($ack) { $Phase.Acks[$ack.Seq] = $ack }
+        $xuid = ConvertFrom-VcServerXuid $line
+        if ($xuid) { $Phase.ServerXuids[[string]$xuid.Slot] = $xuid.Xuid; $Phase.ServerNotes.Add([pscustomobject]@{ Mode = $Phase.Mode; Utc = [datetime]::UtcNow.ToString('o'); Line = $line.Trim() }) }
+        elseif (Test-VcServerConnectionLine $line) { $Phase.ServerNotes.Add([pscustomobject]@{ Mode = $Phase.Mode; Utc = [datetime]::UtcNow.ToString('o'); Line = $line.Trim() }) }
     }
 }
 
@@ -519,7 +545,16 @@ function Sync-Snapshot($Phase, $Role, [double]$TimeoutSeconds = 15) {
 function New-JoinRecord($Role, [string]$Kind) {
     $record = [pscustomobject]@{ Mode = $Role.Mode; Role = $Role.Name; Kind = $Kind; Attempt = $Role.Attempt; PID = $(if ($Role.Handle) { $Role.Handle.Id })
         Channel = $(if ($Role.Mode -eq 'CP') { 'request' } else { 'console' }); StartedUtc = [datetime]::UtcNow.ToString('o'); Connects = [Collections.Generic.List[object]]::new()
-        Result = $null; Seconds = $null; LastConnectionState = $null; StdoutTail = @(); Stop = $null; StartTick = [Environment]::TickCount64; LastSendTick = $null }
+        Result = $null; Seconds = $null; LastConnectionState = $null; StdoutTail = @(); Stop = $null; StartTick = [Environment]::TickCount64; LastSendTick = $null
+        # What the run saw while this join lasted: each change of the server's player list
+        # (count, slots, XUIDs), each client state and snapshot clientNum, the fixture's
+        # 'Ready loopback join' line (the port it really connected to) and the UDP ports
+        # the client process held.
+        ServerSeen = [Collections.Generic.List[object]]::new(); ClientSeen = [Collections.Generic.List[object]]::new()
+        ReadyPort = $null; ReadyAt = $null; UdpPorts = @(); InGameCheck = $null
+        # Only lines written after this join began count (the console log of a root spans launches).
+        ConsoleOffset = (Get-VcFileLength (Join-Path $Role.Root 'iw7-mod/logs/console.log')); StdoutOffset = (Get-VcFileLength $Role.Stdout)
+        LastServerKey = ''; LastClientKey = '' }
     $script:joins.Add($record)
     $record
 }
@@ -542,7 +577,47 @@ function Send-Connect($Role, $Join) {
     $Join.LastSendTick = [Environment]::TickCount64
 }
 
-function Step-Join($Role, $Join) {
+function Get-UdpPorts([int]$ProcessId) {
+    try { @(Get-NetUDPEndpoint -OwningProcess $ProcessId -ErrorAction Stop | ForEach-Object { "$($_.LocalAddress):$($_.LocalPort)" } | Sort-Object -Unique) } catch { @() }
+}
+
+# Reads the new lines of the client's console log and stdout for the fixture's
+# 'Ready loopback join' line (the console log is written line by line; stdout is buffered).
+function Update-ReadyLine($Role, $Join) {
+    if ($null -ne $Join.ReadyPort) { return }
+    foreach ($source in @(@('ConsoleOffset', (Join-Path $Role.Root 'iw7-mod\logs\console.log')), @('StdoutOffset', $Role.Stdout))) {
+        try { $read = Read-VcNewLines $source[1] $Join.($source[0]) } catch { continue }
+        $Join.($source[0]) = $read.Offset
+        foreach ($line in $read.Lines) {
+            $port = ConvertFrom-VcReadyLine $line
+            if ($null -ne $port -and $null -eq $Join.ReadyPort) { $Join.ReadyPort = $port; $Join.ReadyAt = [Math]::Round(([Environment]::TickCount64 - $Join.StartTick) / 1000.0, 1) }
+        }
+    }
+}
+
+function Update-JoinEvidence($Phase, $Role, $Join) {
+    $at = [Math]::Round(([Environment]::TickCount64 - $Join.StartTick) / 1000.0, 1)
+    $hb = $Phase.Heartbeat
+    $slots = if ($hb) { @($hb.Players.Keys | Sort-Object { [int]$_ }) } else { @() }
+    $xuids = @($slots | ForEach-Object { "$_=$($Phase.ServerXuids[[string]$_])" })
+    $serverKey = "$(if ($hb) { $hb.Count } else { '-' })|$($slots -join ',')|$($xuids -join ',')"
+    if ($serverKey -ne $Join.LastServerKey) {
+        $Join.LastServerKey = $serverKey
+        $Join.ServerSeen.Add([pscustomobject]@{ At = $at; Count = $(if ($hb) { $hb.Count } else { $null }); ClientNums = $slots; Xuids = $xuids; Map = $(if ($hb) { $hb.Map } else { $null }) })
+    }
+    $snapshot = Get-LastEvent $Role 'Snapshot'
+    $num = if ($snapshot) { Get-VcField $snapshot $script:VcFieldNames.ClientNum } else { $null }
+    $own = if ($null -ne $num -and [int]$num -ge 0) { Get-VcSnapshotXuid $snapshot ([int]$num) } else { $null }
+    $clientKey = "$($Join.LastConnectionState)|$num|$own"
+    if ($clientKey -ne $Join.LastClientKey) {
+        $Join.LastClientKey = $clientKey
+        $Join.ClientSeen.Add([pscustomobject]@{ At = $at; ConnectionState = $Join.LastConnectionState; ClientNum = $num; OwnXuid = $own
+            SessionActive = $(if ($snapshot -and $snapshot.PSObject.Properties['session_active']) { $snapshot.session_active }) })
+    }
+    if (!@($Join.UdpPorts).Count -and $Role.Handle -and $at -ge 5) { $Join.UdpPorts = Get-UdpPorts $Role.Handle.Id }
+}
+
+function Step-Join($Phase, $Role, $Join) {
     if ($Role.Mode -eq 'CP') {
         $response = Join-Path $Role.Root 'iw7-mod\paris-server-client.response'
         foreach ($connect in @($Join.Connects | Where-Object { !$_.Answered })) {
@@ -554,25 +629,40 @@ function Step-Join($Role, $Join) {
         }
     }
     $Join.LastConnectionState = Get-VcLastConnectionState $Role.Events
+    Update-ReadyLine $Role $Join
+    Update-JoinEvidence $Phase $Role $Join
     $since = ([Environment]::TickCount64 - $Join.StartTick) / 1000.0
+    # First live run (2026-11-11): each first launch answered the request but its fixture
+    # never called connect ('Ready loopback join' absent) and sat in its own front end.
+    $answered = @($Join.Connects | Where-Object { $_.Answered } | Select-Object -First 1)
+    if ($Role.Mode -eq 'CP' -and $answered.Count -and $null -eq $Join.ReadyPort -and $since - [double]$answered[0].AnsweredAt -ge $ReadyLineSeconds) {
+        $Join.InGameCheck = "no 'Ready loopback join' line $ReadyLineSeconds s after the answered connect request"
+        throw "Timed out: client $($Role.Name) answered its connect request but its fixture never joined ($ReadyLineSeconds s)."
+    }
+    if ($null -ne $Join.ReadyPort -and $Join.ReadyPort -ne $ServerPort) { throw "Client $($Role.Name) joined UDP $($Join.ReadyPort), not the test server $ServerPort." }
     $sinceSend = if ($null -eq $Join.LastSendTick) { $null } else { ([Environment]::TickCount64 - $Join.LastSendTick) / 1000.0 }
     $first = if ($Join.Kind -eq 'reconnect') { 0 } else { $ConnectFirstSeconds[$Role.Mode] }
     if (Test-VcJoinResendDue $since $sinceSend $first $ConnectEverySeconds $Join.LastConnectionState) { Send-Connect $Role $Join }
 }
 
-# In game = a snapshot taken after this call reports clientNum N >= 0 and the
-# fixture heartbeat lists player N. With $Join, the client is also asked to connect.
+# In game = a snapshot taken after this call passes Test-VcOnServer: clientNum N >= 0,
+# the fixture heartbeat lists N, and the server's XUID for N is the client's own.
+# With $Join, the client is also asked to connect and the join evidence is kept.
 function Wait-InGame($Phase, $Role, [double]$TimeoutSeconds = 240, $Join = $null) {
     $from = $Role.Events.Count; $script:lastAsk = 0L
     $num = Wait-For $Phase {
         $snapshot = Get-LastEvent $Role 'Snapshot' $from
-        $n = if ($snapshot) { Get-VcField $snapshot $script:VcFieldNames.ClientNum }
-        if ($null -ne $n -and [int]$n -ge 0 -and $Phase.Heartbeat -and $Phase.Heartbeat.Players[[string][int]$n]) { [string][int]$n }
+        if (Test-VcOnServer $snapshot $Phase.Heartbeat $Phase.ServerXuids) { [string][int](Get-VcField $snapshot $script:VcFieldNames.ClientNum) }
     } $TimeoutSeconds "client $($Role.Name) in game" -AllowStaleHeartbeat -Every {
         if ([Environment]::TickCount64 - $script:lastAsk -gt 3000) { Send-Command $Role 'voicetest_snapshot'; $script:lastAsk = [Environment]::TickCount64 }
-        if ($Join) { Step-Join $Role $Join }
+        if ($Join) { Step-Join $Phase $Role $Join }
     }
     $Role.ClientNum = [int]$num
+    if ($Join) {
+        Update-JoinEvidence $Phase $Role $Join
+        $Join.UdpPorts = Get-UdpPorts $Role.Handle.Id
+        $Join.InGameCheck = "clientNum $num in the heartbeat; server XUID $($Phase.ServerXuids[[string]$num]) = the client's own"
+    }
 }
 
 function Test-AllAlive($Phase) {
@@ -718,6 +808,7 @@ function Join-Client($Phase, [string]$Name) {
         } catch {
             if (!$_.Exception.Message.StartsWith('Timed out')) { $join.Result = 'failed'; $role.Identity.JoinResult = 'failed'; throw }
             $join.Result = 'stalled'; $role.Identity.JoinResult = 'stalled'
+            if ($role.Handle -and !$role.Handle.HasExited) { $join.UdpPorts = Get-UdpPorts $role.Handle.Id }
             $join.StdoutTail = @(Get-Content -LiteralPath $role.Stdout -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { ($_ -replace "`e\[[0-9;]*m", '').Trim() } |
                 Where-Object { $_ } | Select-Object -Last 5 | ForEach-Object { $_.Substring(0, [Math]::Min(200, $_.Length)) })
             Write-Host "[$($Phase.Mode)] client $Name not in game $JoinTimeoutSeconds s after launch $($attempt + 1); stopping it"
@@ -736,7 +827,8 @@ function Join-Client($Phase, [string]$Name) {
 function Start-Phase([string]$Mode) {
     $sub = $Mode.ToLower()
     $phase = @{ Mode = $Mode; Server = (New-Role $Mode 'server'); A = (New-Role $Mode 'A'); B = (New-Role $Mode 'B')
-        Seq = 0; Acks = @{}; Heartbeat = $null; HeartbeatTick = 0L; Armed = $false }
+        Seq = 0; Acks = @{}; Heartbeat = $null; HeartbeatTick = 0L; Armed = $false
+        ServerXuids = @{}; ServerNotes = $script:serverNotes }
     $script:phase = $phase
     [IO.File]::WriteAllText((Join-Path $ServerRoot 'iw7-mod\voicecert_server.cfg'), (Get-ServerConfig $Mode $script:password) + "`n", [Text.UTF8Encoding]::new($false))
     Set-Content -LiteralPath (Join-Path $OutputRoot "configs\$sub-server.cfg") -Value (Get-ServerConfig $Mode '<redacted>')
@@ -815,8 +907,38 @@ function Write-Provenance {
             BenchCoreSHA256 = $(if ($BenchCore) { (Get-FileHash -LiteralPath $BenchCore).Hash }) }
         Options = [pscustomobject]@{ Modes = $Modes; ServerPort = $ServerPort; ClientAPort = $ClientAPort; ClientBPort = $ClientBPort; CpMap = $CpMap
             CpSecondMap = $CpSecondMap; MpMap = $MpMap; IncludeEndOfGame = [bool]$IncludeEndOfGame; CaptureGate = $CaptureGate; MicThreshold = $MicThreshold; AsrModel = $AsrModel
-            JoinTimeoutSeconds = $JoinTimeoutSeconds; JoinRetries = $JoinRetries; WaitForSlotSeconds = $WaitForSlotSeconds; LeasePhysicalGB = $LeasePhysicalGB; LeaseCommitGB = $LeaseCommitGB }
+            JoinTimeoutSeconds = $JoinTimeoutSeconds; JoinRetries = $JoinRetries; ReadyLineSeconds = $ReadyLineSeconds; Diagnostics = [bool]$Diagnostics; WaitForSlotSeconds = $WaitForSlotSeconds; LeasePhysicalGB = $LeasePhysicalGB; LeaseCommitGB = $LeaseCommitGB }
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'build.json')
+}
+
+# Copies the console and games logs, incident and freeze reports and minidumps of the
+# three roots into <mode>\<role>\ (logs as console-<path>.log, minidumps under
+# minidumps\, the rest under diagnostics\). Runs before the restore, which removes
+# iw7-mod\logs. A root's console log spans every launch from that root so far.
+function Save-Diagnostics([string]$Mode) {
+    if ($script:diagnosticModes -contains $Mode) { return }
+    $script:diagnosticModes += $Mode
+    foreach ($name in @('Server', 'A', 'B')) {
+        $root = $roots[$name]
+        $roleDir = Get-RoleDir $Mode $(if ($name -eq 'Server') { 'server' } else { $name })
+        foreach ($source in $DiagnosticSources) {
+            $folder = if ($source[0] -eq '.') { $root } else { Join-Path $root $source[0] }
+            if (!(Test-Path -LiteralPath $folder -PathType Container)) { continue }
+            foreach ($file in @(Get-ChildItem -LiteralPath $folder -File -Filter $source[1] -Force -ErrorAction SilentlyContinue)) {
+                $relative = [IO.Path]::GetRelativePath($root, $file.FullName)
+                $flat = $relative -replace '[\\/]', '-'
+                $target = if ($file.Extension -eq '.log') { Join-Path $roleDir "console-$flat" }
+                    elseif ($source[0] -in 'minidumps', '.') { Join-Path $roleDir "minidumps\$flat" }
+                    else { Join-Path $roleDir "diagnostics\$flat" }
+                try {
+                    [IO.Directory]::CreateDirectory((Split-Path $target)) | Out-Null
+                    Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+                    $script:diagnostics += [pscustomobject]@{ Mode = $Mode; Role = $name; Source = $relative; Target = [IO.Path]::GetRelativePath($OutputRoot, $target)
+                        Bytes = $file.Length; SHA256 = (Get-FileHash -LiteralPath $target).Hash }
+                } catch { $script:diagnostics += [pscustomobject]@{ Mode = $Mode; Role = $name; Source = $relative; Error = $_.Exception.Message } }
+            }
+        }
+    }
 }
 
 function Assert-TransactionLinks {
@@ -856,6 +978,7 @@ $script:password = [guid]::NewGuid().ToString('N')
 $script:trace = [Collections.Generic.List[string]]::new()
 $script:identities = @(); $script:serverInfo = @(); $script:identityKeys = @(); $script:phrases = $null; $script:phase = $null
 $script:joins = [Collections.Generic.List[object]]::new(); $script:leaseWaits = @(); $script:linkGuard = @(); $script:benchAfter = @()
+$script:diagnostics = @(); $script:diagnosticModes = @(); $script:serverNotes = [Collections.Generic.List[object]]::new()
 $script:lease = $null; $leaseReleased = $false
 $windows = [Collections.Generic.List[object]]::new()
 $transactions = [ordered]@{}
@@ -891,14 +1014,18 @@ try {
             $windows | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'windows.json')
         }
         Stop-Phase $phase
+        Save-Diagnostics $mode
         $script:phase = $null
     }
 } catch {
     $failure = $_
     [pscustomobject]@{ Message = $_.Exception.Message; Stack = $_.ScriptStackTrace } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputRoot 'failure.json')
 } finally {
+    if ($script:phase) {
+        try { Stop-Phase $script:phase } catch { $cleanupErrors.Add($_.Exception.Message) }
+        try { Save-Diagnostics $script:phase.Mode } catch { $cleanupErrors.Add("diagnostics: $($_.Exception.Message)") }
+    }
     try {
-        if ($script:phase) { Stop-Phase $script:phase }
         if (@($owned | Where-Object { $_.Handle -and !$_.Handle.HasExited }).Count) { throw 'Owned processes still running; backups and reservation retained.' }
         if ($transactions.Count) { Assert-TransactionLinks }
         foreach ($name in @($transactions.Keys)) { $null = Restore-IW7BaseTransaction $transactions[$name] }
@@ -927,6 +1054,8 @@ try {
         Lease = [pscustomobject]@{ Scope = $LeaseScope; Shareable = $true; PhysicalBytes = [long]($LeasePhysicalGB * 1GB); CommitBytes = [long]($LeaseCommitGB * 1GB)
             Waits = $script:leaseWaits; Released = $leaseReleased }
         LinkGuard = $script:linkGuard
+        Diagnostics = [pscustomobject]@{ Dvars = [bool]$Diagnostics; Files = $script:diagnostics }
+        ServerNotes = @($script:serverNotes)
         BenchChecks = [pscustomobject]@{ Core = $BenchCore; Before = $script:benchBefore; After = $script:benchAfter } } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'checks.json')
 }

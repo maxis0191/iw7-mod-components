@@ -46,11 +46,29 @@ Check 'last connection state' {
     $null -eq $none -and (Get-VcLastConnectionState $events) -eq 7 -and (Get-VcLastConnectionState @($events[0], $events[1])) -eq 0
 }
 Check 'join resend timing' {
-    # first ask after the delay whatever the state; later asks every 10 s, never while joining (3..8) or active (9)
+    # first ask after the delay whatever the state; later asks every 10 s, never while joining (3..8);
+    # 9 does not block (live run 1: a client at 9 in its own front end, clientNum -1)
     !(Test-VcJoinResendDue 19 $null 20 10 $null) -and (Test-VcJoinResendDue 20 $null 20 10 5) -and
     (Test-VcJoinResendDue 40 10 20 10 0) -and !(Test-VcJoinResendDue 40 9.9 20 10 0) -and
-    !(Test-VcJoinResendDue 60 30 20 10 3) -and !(Test-VcJoinResendDue 60 30 20 10 8) -and !(Test-VcJoinResendDue 60 30 20 10 9) -and
+    !(Test-VcJoinResendDue 60 30 20 10 3) -and !(Test-VcJoinResendDue 60 30 20 10 8) -and (Test-VcJoinResendDue 60 30 20 10 9) -and
     (Test-VcJoinResendDue 60 30 20 10 $null) -and (Test-VcJoinResendDue 0 $null 0 10 9)
+}
+Check 'server XUID, ready and connection lines' {
+    $x = ConvertFrom-VcServerXuid '[33mSetting client 1 XUID to c99a303fd5e99710[0m'
+    $x.Slot -eq 1 -and $x.Xuid -eq 'C99A303FD5E99710' -and !(ConvertFrom-VcServerXuid 'Setting client XUID') -and
+    (ConvertFrom-VcReadyLine '[Paris module client] Ready loopback join to UDP 27416.') -eq 27416 -and $null -eq (ConvertFrom-VcReadyLine 'Request connect dispatched') -and
+    (Test-VcServerConnectionLine 'Client 0 timed out') -and (Test-VcServerConnectionLine 'voicecertA disconnected') -and
+    !(Test-VcServerConnectionLine '[voicecert] hb t=1 n=2') -and !(Test-VcServerConnectionLine '[Paris test privacy] private=1')
+}
+Check 'on our server needs the heartbeat slot and the same XUID on both sides' {
+    $hb = ConvertFrom-VcHeartbeat '[voicecert] hb t=9 mode=cp map=cp_zmb gt=zombie n=1 p=0,allies,playing,1,100,0'
+    $users = @([pscustomobject]@{ slot = 0; xuid = 'D468DB20EB6EAC3D' }, [pscustomobject]@{ slot = 1; xuid = '0000000000000000' })
+    $snap = [pscustomobject]@{ event = 'snapshot'; client_num = 0; users = $users }
+    $local = [pscustomobject]@{ event = 'snapshot'; client_num = -1; users = $users }
+    $other = [pscustomobject]@{ event = 'snapshot'; client_num = 0; users = @([pscustomobject]@{ slot = 0; xuid = '1111111111111111' }) }
+    (Test-VcOnServer $snap $hb @{ '0' = 'D468DB20EB6EAC3D' }) -and !(Test-VcOnServer $local $hb @{ '0' = 'D468DB20EB6EAC3D' }) -and
+    !(Test-VcOnServer $other $hb @{ '0' = 'D468DB20EB6EAC3D' }) -and !(Test-VcOnServer $snap $hb @{}) -and
+    !(Test-VcOnServer ([pscustomobject]@{ event = 'snapshot'; client_num = 1; users = $users }) $hb @{ '1' = 'X' })
 }
 Check 'request line format' {
     $line = New-VcRequestLine 4242 'connect'
@@ -163,6 +181,7 @@ function Test-IW7BenchRoot([string]$Root) {
     try {
         $output = & "$harness\Invoke-VoiceCertify.ps1" @common -IncludeEndOfGame
         $benchOutput = & "$harness\Invoke-VoiceCertify.ps1" @common -BenchCore $stubCore -Modes CP
+        $diagOutput = & "$harness\Invoke-VoiceCertify.ps1" @common -Modes CP -Diagnostics
     } finally {
         foreach ($name in $blocked) { Remove-Item "Function:global:$name" }
     }
@@ -196,6 +215,17 @@ function Test-IW7BenchRoot([string]$Root) {
         $stalls = @($output | Where-Object { $_ -match '^\[join [AB]\] not in game 120 s after the launch: stop it .* at most 2 time' })
         $cpJoins.Count -eq 2 -and $mpJoins.Count -eq 2 -and $stalls.Count -eq 4 -and $text.Contains("$clientA\iw7-mod\paris-server-client.request") -and
         @($output | Where-Object { $_ -match '^\[command [AB]\] connect' }).Count -eq 0
+    }
+    Check 'dry run: logs collected before the restore; -Diagnostics adds the console dvars' {
+        $diagText = $diagOutput -join "`n"
+        $text.Contains('[collect] from each root, before the restore: iw7-mod/logs/*.log') -and $text.Contains('[diagnostics] off') -and
+        !$text.Contains('+set developer 1') -and $diagText.Contains('[diagnostics] on') -and
+        @($diagOutput | Where-Object { $_ -match '^\[start\] ' -and $_.Contains('+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log') }).Count -eq 3 -and
+        @($diagOutput | Where-Object { $_ -match '^\[start\] client' -and $_.Contains('+set cl_noprint 0 +set cl_lessprint 0') }).Count -eq 2
+    }
+    Check 'dry run: the join proof and the early stall are stated' {
+        $text.Contains("server's last 'Setting client N XUID to X' equals the client's own session XUID") -and
+        ([regex]::Matches($text, "no 'Ready loopback join' line in the client's console 40 s later")).Count -eq 2
     }
     Check 'dry run: without a bench core the updater data is backed up' { !$text.Contains('disposable bench copy') -and $text.Contains('[bench check] none') }
     Check 'dry run with a bench core: manifests and bench checks pass, cdata left out' {

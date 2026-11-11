@@ -171,6 +171,8 @@ pwsh -NoProfile -File ops\voice-certify\Invoke-VoiceCertify.ps1 -DryRun `
 | `-JoinRetries` | 2 | How many times a stalled client is launched again |
 | `-WaitForSlotSeconds` | 3600 | How long busy reservation refusals are retried |
 | `-LeasePhysicalGB`, `-LeaseCommitGB` | 11, 24 | Declared memory of the session |
+| `-ReadyLineSeconds` | 40 | Zombies: an answered connect request with no `Ready loopback join` line this long after counts as a stall |
+| `-Diagnostics` | off | Adds `+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log` to every process (`+set g_log iw7-mod/logs/games_mp.log` on the server, `+set cl_noprint 0 +set cl_lessprint 0` on the clients). Logs and minidumps are collected either way. |
 | `-Modes` | `CP,MP` | Phases to run, each with its own server and client processes |
 | `-ServerPort` / `-ClientAPort` / `-ClientBPort` | 27416 / 27417 / 27418 | Loopback test ports (27100-27999). 27016 is refused. |
 | `-CpMap`, `-CpSecondMap`, `-MpMap` | `cp_zmb`, `cp_rave`, `mp_frontier` | Maps used |
@@ -224,15 +226,23 @@ For each mode the orchestrator does the following:
 
    The first ask comes 20 s (Zombies) or 25 s (MP) after the launch, then every
    10 s, but never while the client reports a joining state (voice_test's
-   `connection` event, states 3 to 8) or the active state 9. A client not in game
-   `-JoinTimeoutSeconds` after its launch is stopped through its owned handle and
-   launched again with a fresh evidence folder (`<mode>\<role>-retry<n>`), at most
-   `-JoinRetries` times. Every attempt, ask and answer is in `joins.json` and
-   `processes.json`. The C5 reconnect asks again in the same way but never relaunches.
+   `connection` event, states 3 to 8). State 9 does not block: in the first live
+   run a client sat at 9 in its own front-end session, clientNum -1. A client not
+   in game `-JoinTimeoutSeconds` after its launch is stopped through its owned
+   handle and launched again with a fresh evidence folder (`<mode>\<role>-retry<n>`),
+   at most `-JoinRetries` times. In Zombies a client whose request was answered but
+   whose console shows no `[Paris module client] Ready loopback join to UDP <port>`
+   line `-ReadyLineSeconds` (40) later counts as stalled at once: its fixture never
+   called connect. A ready line naming another port than the test server stops the
+   run. Every attempt, ask and answer is in `joins.json` and `processes.json`. The
+   C5 reconnect asks again in the same way but never relaunches.
 
-   A client is in game when a fresh snapshot gives its clientNum and the fixture
-   heartbeat lists that player. A and B must have distinct clientNums and distinct
-   `iw7-public*.key` files in their own `lab-appdata`.
+   A client is in game on OUR server when a fresh snapshot gives its clientNum N,
+   the fixture heartbeat lists N, and the dedicated's last
+   `Setting client N XUID to X` equals the XUID the client's own session holds at
+   slot N (snapshot `users`). Connection state 9 alone proves nothing. A and B must
+   have distinct clientNums and distinct `iw7-public*.key` files in their own
+   `lab-appdata`.
 
    The lab fixture flags do not touch voice_test: voice_test is gated only by
    `-voicetest`. The fixture's client side injects input only on
@@ -344,8 +354,18 @@ processes.json        every process: mode, role, attempt, PID, image, creation t
                       SHA-256, redacted arguments, desktop, evidence folder, join
                       result, how it stopped
 joins.json            every join: launch or reconnect, attempt, channel (request or
-                      console), each connect ask with its time and answer, last
-                      connection state, result (joined, stalled, failed), stdout tail
+                      console), each connect ask with its time and answer, each
+                      change of the server's player list (count, slots, XUIDs) and
+                      of the client's state, clientNum and own XUID, the port of its
+                      'Ready loopback join' line, the UDP ports the client process
+                      held, the in-game proof, result (joined, stalled, failed),
+                      stdout tail
+<mode>\<role>\console-iw7-mod-logs-console.log ...   the root's console log
+                      (g_consoleLog, every line, also lines lost from buffered
+                      stdout) and games log, copied before the restore; one
+                      root's log spans every launch from it so far
+<mode>\<role>\minidumps\  <mode>\<role>\diagnostics\   minidumps, incident and
+                      freeze reports, if any
 configs\<mode>-server.cfg   server cfg with the password redacted
 commands.log          every command written to any commands.txt, timestamped
 phrases\P01.wav ... phrases.json   SAPI phrases at the native rate, with hashes
@@ -449,6 +469,44 @@ the resend rule relies on (3 to 8 joining, 9 active), the 120 s join budget for
 two clients on one machine, the 11 GB / 24 GB declaration, and whether the game
 writes anything into a shared (linked) file of a bench (the bench check after the
 run says so).
+
+## First live run, 2026-11-11 (base image, Zombies)
+
+Benches, reservation, link guard and restore worked. Two problems:
+
+1. Each client's first launch answered the connect request but its fixture never
+   printed `Ready loopback join`: it never called connect. The fixture calls it only
+   once `Live_SyncOnlineDataFlags(0) == 0`; probably a first launch on a fresh
+   bench (which also creates the client's key: "Private key file not found") never
+   gets there. Not proven. The client loaded its own front end and reached
+   state 9 with clientNum -1. The relaunch, with the key now present, joined in
+   about 29 s. Hence the stricter in-game proof and the 40 s early stall above.
+2. When B (relaunched) joined as client 1, the server dropped A (client 0) within
+   about 250 ms. The client stdout stops early (buffered), so the reason is
+   unknown; the console log and the join evidence above are meant to show it.
+
+Where the console log is: iw7-mod writes every console line to `g_consoleLog`
+(default `iw7-mod/logs/console.log`, relative to the process folder, so
+`<root>\iw7-mod\logs\console.log` for a bench) and the game log to `g_log`
+(`iw7-mod\logs\games_mp.log`) while `logfile` (a bool, default on) is set.
+Retail IW7 registers no `developer` dvar (the engine map has no such name), so
+`+set developer 1` only creates an unused dvar. `iw7-mod\logs` is a backed-up
+folder, so the restore removes the logs; the harness copies them first.
+Minidumps go to `<root>\minidumps\iw7mod-crash-*.zip`.
+
+How the server tells clients apart (engine map, 2026-11-11). The client puts a
+`qport` in its connect string from its connection state (`[clc + 0x2000C]`,
+`sub_1409AAAF0`); IW7 has no `net_qport` dvar. The server keeps it per client at
+`client + 0x9E9A4`. Retail matches a known client by base address plus that value
+(`SV_ClientMP_DirectConnect` 0x140C4EE0A..0x140C4EE27, and the packet lookup
+`sub_140C58AB0`, a Quake `SV_PacketEvent` shape). iw7-mod (network.cpp) turns both
+value checks off (`nop` at 0x140C4EE1A, `jmp` at 0x140C58B2B, "ignore dw handle")
+and replaces `NET_CompareBaseAdr` and `NET_CompareAdr` with a compare of the IP
+and the port. So under iw7-mod a client is its IP and UDP source port only: two
+loopback clients can share a qport without effect, and collide only if they send
+from the same port. The port is `net_port`; iw7-mod's `init_socket` moves to the
+next port (up to +9) when the asked one is busy. `joins.json` now records the
+ports each client process really held.
 
 ## Known limits
 
