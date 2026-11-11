@@ -281,6 +281,39 @@ new runner process); nothing breaks in between.
 Callers that poll by reading Status and asking only when nothing is held (the SDK's `zt.ps1` before 11 Nov) never
 get a ticket and are starved as before: callers ask `Enter-IW7ResourceLease` itself, every 5 to 60 s.
 
+### The admission lock is part of the wait - 2026-11-11, evening
+
+Why. Every request, refusal, release and Status takes `admission.lock` (an exclusive handle on a file in the
+registry folder; every core, old and new, uses the same file). Until this change a caller that did not get it in
+10 s threw `Resource admission lock busy; retry later.`, a text no runner waits on, so queued callers died after
+waiting their turn: the engine loop after 1,718 s, a headless runner after 23 min, the SDK `zt.ps1` after 9 min.
+Measured on the live registry (19 queued callers): the lock was busy 89 % of a minute (57 holds, median 0.73 s,
+longest 3.0 s), because each holder listed the machine's ~700 processes through WMI (0.4-0.8 s, more under load)
+and scanned them once per ticket and per lease inside the lock. Reproduced with 16 callers asking every 5 s on a
+test registry with the live queue: 23 of 97 asks died on the busy lock, the lock was busy 96.5 % of the time.
+
+What changed (`Invoke-IW7ResourceLock`, `Enter-IW7ResourceLease`, `Get-IW7ResourceStatus`):
+
+- **The process list is taken before the lock** (`Get-IW7ProcessListing`), and the native memory reader is
+  compiled before it. A lease created, or a ticket asked, after the list was taken is never judged finished or
+  gone from it. A list that aged over 3 s while its caller waited is taken again outside the lock (twice at
+  most). Release and child registration keep their list inside the lock (a child may have just started).
+- **Scans are indexed**: one process by PID is a `.Where(...,'First')`, not a pipeline; the scope scan of a lease
+  runs only when it decides whether the lease is finished.
+- **Waiting for the lock is fair and bounded by the caller's queue wait**: new cores first take a named mutex
+  (one per registry folder), which Windows hands over in arrival order, then the file. A request that still has
+  no lock after 60 s gets `Resource busy: the scheduler admission lock is held by other callers (waited 60 s).
+  Continue light work; retry when released.`: every runner and `Invoke-IW7QueuedResourceJob` wait on
+  `Resource busy`, so they ask again. Release, registration and Status wait up to 300 s. The old text is also
+  retryable in `Test-IW7RetryableRefusal`.
+
+Measured after (same 16-caller load): 0 of 152 asks refused for the lock; lock busy 26 % of the time; a hold
+takes 35-60 ms (was 0.4-3 s); after the first two asks of each process, lock wait plus hold is 54 ms median,
+221 ms at the 95th percentile. A lock held 15 s by another caller: the old core's queued caller died at 10.6 s,
+the new one was granted at 16 s. Unit test: `tests/ops/resource_scheduler_admission_lock_test.ps1`.
+Callers on an older core still list processes under the lock and still die after 10 s on it: they take the fix
+with a new bootstrap (server) or workspace (SDK).
+
 Evidence: `tests/ops/resource_scheduler_queue_test.ps1` (23 cases, synthetic callers, clock and memory: arrival
 order, a build not starved by sessions, sessions not starved by builds, aging, memory, expiry, a dead caller, a new
 process keeping the place, short requests and their bound, re-entry, an unreadable queue, older-core leases,

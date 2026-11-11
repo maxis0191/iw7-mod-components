@@ -316,6 +316,7 @@
     "tests/ops/rejoin_trace_test.py",
     "tests/ops/resource_memory_test.ps1",
     "tests/ops/resource_recorder_owned_process_test.ps1",
+    "tests/ops/resource_scheduler_admission_lock_test.ps1",
     "tests/ops/resource_scheduler_queue_test.ps1",
     "tests/ops/resource_scheduler_shareable_test.ps1",
     "tests/ops/resource_scheduler_test.ps1",

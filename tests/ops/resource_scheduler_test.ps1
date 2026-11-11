@@ -5,7 +5,8 @@ if ($InitialAdmissionSourceOnly) {
     $tokens=$null;$parseErrors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../../ops/Resource-Scheduler.Core.ps1'),[ref]$tokens,[ref]$parseErrors)
     if($parseErrors.Count){throw 'Production Source parse failed.'}
-    $definitions=@(foreach($name in @('Get-IW7CanonicalScope','Read-IW7ResourceState','Enter-IW7ResourceLease')){
+    $definitions=@(foreach($name in @('Get-IW7CanonicalScope','Read-IW7ResourceState','Enter-IW7ResourceLease',
+        'Get-IW7ProcessListing','Update-IW7ProcessListing','Find-IW7Process')){
         $matches=@($ast.FindAll({param($n)$n-is[Management.Automation.Language.FunctionDefinitionAst]-and$n.Name-ceq$name},$true))
         if($matches.Count-ne1){throw ('One actual Source function required: '+$name)}
         $matches[0].Extent.Text
@@ -65,6 +66,8 @@ if ($InitialAdmissionSourceOnly) {
                 } finally {$c.LockHeld=$false}
             }
             function Get-IW7ResourceProcesses {$c.ProcessCount++;$c.Processes}
+            # The process list is taken before the lock (Get-IW7ProcessListing), except for RequireNewLease.
+            function Initialize-IW7ResourceMemory {}
             # The waiting order (queue.json) is covered by resource_scheduler_queue_test; here it is an empty, inert queue.
             function Open-IW7ResourceQueue {param($Processes)[pscustomobject]@{Queue=$null;NowMs=0L;Processes=$Processes;Overtook=@()}}
             function Assert-IW7QueueTurn {param($Context,$Scope,$Kind,$Shareable,$ShortSeconds,$Plan)$c.QueuePlan=$Plan}

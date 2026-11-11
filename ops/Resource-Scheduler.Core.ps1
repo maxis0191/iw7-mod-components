@@ -158,19 +158,75 @@ function Test-IW7ScopeOverlap([string]$Left, [string]$Right) {
     $Left -eq $Right -or $Left.StartsWith($Right+$sep, [StringComparison]::OrdinalIgnoreCase) -or
         $Right.StartsWith($Left+$sep, [StringComparison]::OrdinalIgnoreCase)
 }
-function Invoke-IW7ResourceLock([scriptblock]$Body) {
+function Get-IW7AdmissionTurnstileName([string]$Root) {
+    # One turnstile per registry folder, so a test registry never queues behind the live one.
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try { $bytes=$sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($Root).TrimEnd('\','/').ToLowerInvariant())) }
+    finally { $sha.Dispose() }
+    'Local\IW7ResourceAdmission-'+([BitConverter]::ToString($bytes,0,8) -replace '-','')
+}
+function Get-IW7AdmissionLockWaitSeconds { 60 }
+function Invoke-IW7ResourceLock([scriptblock]$Body, [ValidateRange(0,3600)][int]$WaitSeconds=0) {
+    if ($WaitSeconds -le 0) { $WaitSeconds = Get-IW7AdmissionLockWaitSeconds }
+    # admission.lock (exclusive file handle) is the lock every core, old and new, shares. Waiting for it is part
+    # of waiting in the queue (11 Nov 2026): callers first take a named mutex, which Windows hands over in
+    # arrival order on release instead of letting 100 ms pollers race, and a caller still without the lock at
+    # WaitSeconds gets a "Resource busy:" refusal, which every queued caller and runner waits on and asks again.
+    # The old text 'Resource admission lock busy; retry later.' after 10 s killed queued runners (1,718 s lost).
     $root = Get-IW7ResourceRoot
     [IO.Directory]::CreateDirectory($root) | Out-Null
-    $deadline = [datetime]::UtcNow.AddSeconds(10)
-    $handle = $null
-    do {
-        try { $handle = [IO.File]::Open((Join-Path $root 'admission.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
-        catch [IO.IOException] {
-            if ([datetime]::UtcNow -ge $deadline) { throw 'Resource admission lock busy; retry later.' }
-            Start-Sleep -Milliseconds 100
+    $waited = [Diagnostics.Stopwatch]::StartNew()
+    $turn = $null; $haveTurn = $false; $handle = $null
+    try { $turn = [Threading.Mutex]::new($false, (Get-IW7AdmissionTurnstileName $root)) } catch { $turn = $null }
+    try {
+        if ($turn) {
+            try { $haveTurn = $turn.WaitOne([TimeSpan]::FromSeconds($WaitSeconds)) }
+            catch {
+                # An owner that died inside the lock leaves the mutex abandoned: the wait still owns it.
+                $e = $_.Exception; while ($e -and $e -isnot [Threading.AbandonedMutexException]) { $e = $e.InnerException }
+                if ($e) { $haveTurn = $true } else { throw }
+            }
         }
-    } until ($handle)
-    try { & $Body } finally { $handle.Dispose() }
+        if (!$turn -or $haveTurn) {
+            do {
+                try { $handle = [IO.File]::Open((Join-Path $root 'admission.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
+                catch [IO.IOException] {
+                    if ($waited.Elapsed.TotalSeconds -ge $WaitSeconds) { break }
+                    Start-Sleep -Milliseconds 25
+                }
+            } until ($handle)
+        }
+        if (!$handle) {
+            throw ("Resource busy: the scheduler admission lock is held by other callers (waited $([math]::Round($waited.Elapsed.TotalSeconds)) s). " +
+                'Continue light work; retry when released.')
+        }
+        try { & $Body } finally { $handle.Dispose() }
+    } finally {
+        if ($haveTurn) { try { $turn.ReleaseMutex() } catch { } }
+        if ($turn) { $turn.Dispose() }
+    }
+}
+function Get-IW7ProcessListing {
+    # The process list (about 0.4-0.8 s of WMI on this machine) is taken BEFORE the admission lock, so the lock
+    # is held only for registry work (measured 11 Nov 2026: the lock was busy 89 % of a minute, 57 holds, the
+    # longest 3.0 s, with 19 queued callers each listing processes inside it). Utc and Ms are the scheduler
+    # clock at listing time: a lease created or a ticket asked after it may belong to a process the list cannot
+    # show, so neither is ever judged finished or gone from this list (Remove-IW7FinishedRuntimeLeases,
+    # Open-IW7ResourceQueue). A list older than 3 s once the lock is held is taken again (Enter-IW7ResourceLease).
+    $utc = Get-IW7SchedulerUtcNow
+    $age = [Diagnostics.Stopwatch]::StartNew()
+    $processes = @(Get-IW7ResourceProcesses)
+    [pscustomobject]@{Utc=$utc; Ms=[DateTimeOffset]::new([datetime]::SpecifyKind($utc,'Utc')).ToUnixTimeMilliseconds(); Age=$age; Processes=$processes}
+}
+function Update-IW7ProcessListing($Listing) {
+    if ($Listing.Age.Elapsed.TotalSeconds -le 3) { return $Listing }
+    Get-IW7ProcessListing
+}
+function Find-IW7Process($Processes, $ProcessId) {
+    # One process by PID (an indexed .Where, not a pipeline: 19 tickets x 700 processes cost 130-200 ms).
+    if ($null -eq $ProcessId) { return }
+    $id = [int]$ProcessId
+    @($Processes).Where({ $_.PID -eq $id }, 'First')
 }
 function Read-IW7ResourceState {
     $path = Join-Path (Get-IW7ResourceRoot) 'leases.json'
@@ -199,28 +255,35 @@ function Save-IW7ResourceState($State) {
 function Get-IW7LeaseLiveProcesses($Lease, $Processes) {
     # PID reuse is never liveness. Inaccessible matching PID is ambiguous, not dead.
     foreach ($record in @($Lease.Processes)) {
-        $current = @($Processes | Where-Object PID -EQ $record.PID)
+        $current = @(Find-IW7Process $Processes $record.PID)
         if ($current.Count -and (!$current[0].Image -or !$current[0].CreatedUtc)) {
             throw 'Reserved process identity unavailable; reservation retained.'
         }
         if ($current.Count -and (Test-IW7ResourceIdentity $record $current[0])) { $current[0] }
     }
 }
-function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOtherAmbiguity, [string]$ExceptScope, [string]$ExceptKind) {
+function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOtherAmbiguity, [string]$ExceptScope, [string]$ExceptKind, $ListedUtc=$null) {
     $State.Leases = @($State.Leases | Where-Object {
         $lease = $_
         # Shareable admission only: a lease other than the requested one whose process
         # identity is unreadable is retained (not finished) instead of failing the request.
         $lenient = $TolerateOtherAmbiguity -and !($lease.Scope -eq $ExceptScope -and $lease.Kind -eq $ExceptKind)
+        # A lease created after the process list was taken is never finished by that list.
+        if ($null -ne $ListedUtc) {
+            $created = $null
+            try { $created = ([datetimeoffset]$lease.CreatedUtc).UtcDateTime } catch { }
+            if ($null -eq $created -or $created -gt $ListedUtc) { return $true }
+        }
         try {
-        $owner = @($Processes | Where-Object PID -EQ $lease.OwnerIdentity.PID)
+        $owner = @(Find-IW7Process $Processes $lease.OwnerIdentity.PID)
         $ownerAlive = $owner.Count -and (Test-IW7ResourceIdentity $lease.OwnerIdentity $owner[0])
         $ownerUnknown = $owner.Count -and (!$owner[0].Image -or !$owner[0].CreatedUtc)
         $live = @(Get-IW7LeaseLiveProcesses $lease $Processes)
-        $inScope = @($Processes | Where-Object { Test-IW7ReservedProcess $_ $lease })
         # A crashed builder might have detached children outside its root. Keep it
         # quarantined until explicit release; runtime children must be inside scope.
-        !($lease.Kind -eq 'Runtime' -and !$ownerAlive -and !$ownerUnknown -and !$live.Count -and !$inScope.Count)
+        # The scope scan (700 processes, about 100 ms) runs only when it decides.
+        if ($lease.Kind -ne 'Runtime' -or $ownerAlive -or $ownerUnknown -or $live.Count) { $true }
+        else { [bool](@($Processes).Where({ Test-IW7ReservedProcess $_ $lease }, 'First')).Count }
         } catch {
             if ($lenient -and $_.Exception.Message -like 'Reserved process identity unavailable*') { $true } else { throw }
         }
@@ -265,7 +328,8 @@ function Format-IW7Age([double]$Seconds) {
 }
 function Test-IW7RetryableRefusal([string]$Message) {
     foreach ($p in @('Resource busy:*','Heavy job already reserved*','An existing compiler/extractor/Java analysis is running*',
-        'An unreserved or foreign laboratory is running*','Existing lab has no reservation*','Reserved process identity unavailable*')) {
+        'An unreserved or foreign laboratory is running*','Existing lab has no reservation*','Reserved process identity unavailable*',
+        'Resource admission lock busy*')) {
         if ($Message -like $p) { return $true }
     }
     $false
@@ -307,7 +371,7 @@ function Test-IW7TicketCallerAlive($Ticket, $Processes) {
         $property=$Ticket.PSObject.Properties[$name]
         if (!$property -or !$property.Value) { continue }
         $id=$property.Value
-        $p=@($Processes | Where-Object PID -EQ $id.PID)
+        $p=@(Find-IW7Process $Processes $id.PID)
         if (!$p.Count) { continue }
         if (!$p[0].Image -or !$p[0].CreatedUtc) { return $true }    # unreadable right now: not proven gone
         if (Test-IW7ResourceIdentity $id $p[0]) { return $true }
@@ -319,8 +383,9 @@ function Get-IW7TicketGraceSeconds($Ticket) {
     if ([int]$Ticket.Polls -le 1) { return $policy.FirstGraceSeconds }
     [math]::Min($policy.MaxGraceSeconds,[math]::Max($policy.MinGraceSeconds,2*[double]$Ticket.LastIntervalSeconds+30))
 }
-function Open-IW7ResourceQueue($Processes, [switch]$ReadOnly) {
+function Open-IW7ResourceQueue($Processes, [switch]$ReadOnly, $ListedMs=$null) {
     # Reads the queue and drops expired tickets (logged and saved unless ReadOnly). Never throws.
+    # ListedMs: when the process list was taken; a ticket asked after it is never 'caller gone' by that list.
     $context=[pscustomobject]@{Queue=$null;NowMs=0L;Processes=$Processes;Ticket=$null;Overtook=@()}
     try {
         $context.NowMs=Get-IW7NowMs
@@ -329,7 +394,8 @@ function Open-IW7ResourceQueue($Processes, [switch]$ReadOnly) {
         foreach ($t in @($queue.Tickets)) {
             $idle=($context.NowMs-[long]$t.LastMs)/1000
             $why=$null
-            if ($null -ne $Processes -and !(Test-IW7TicketCallerAlive $t $Processes)) { $why='caller gone' }
+            $listedBefore=$null -eq $ListedMs -or [long]$t.LastMs -le [long]$ListedMs
+            if ($null -ne $Processes -and $listedBefore -and !(Test-IW7TicketCallerAlive $t $Processes)) { $why='caller gone' }
             elseif ($idle -gt (Get-IW7TicketGraceSeconds $t)) { $why='not asked again for '+(Format-IW7Age $idle) }
             if ($why) { $expired+=[pscustomobject]@{Ticket=$t;Why=$why} } else { $keep+=$t }
         }
@@ -417,9 +483,9 @@ function Register-IW7QueueRefusal($Context, [string]$Message, [string]$Scope, [s
         $queue=$Context.Queue
         $mine=Get-IW7QueueTicket $Context $Scope $Kind
         $callerPid=Get-IW7CallerPid
-        $self=@($Context.Processes | Where-Object PID -EQ $callerPid)[0]
+        $self=@(Find-IW7Process $Context.Processes $callerPid)[0]
         if ($Queueable -and $self -and $self.Image -and $self.CreatedUtc) {
-            $parent=@($Context.Processes | Where-Object { $_.PID -eq $self.ParentPID -and $_.Image -and $_.CreatedUtc -and
+            $parent=@(Find-IW7Process $Context.Processes $self.ParentPID | Where-Object { $_.Image -and $_.CreatedUtc -and
                 ([datetimeoffset]$_.CreatedUtc) -le ([datetimeoffset]$self.CreatedUtc) })[0]
             $own=[pscustomobject]@{PID=$self.PID;CreatedUtc=$self.CreatedUtc;Image=$self.Image}
             $par=if ($parent) { [pscustomobject]@{PID=$parent.PID;CreatedUtc=$parent.CreatedUtc;Image=$parent.Image} } else { $null }
@@ -513,17 +579,29 @@ function Enter-IW7ResourceLease {
             [IO.Path]::GetExtension($BaseClientImage) -ne '.exe') { throw 'A base client needs one absolute executable declared on a runtime reservation.' }
         $BaseClientImage=[IO.Path]::GetFullPath($BaseClientImage)
     }
-    Invoke-IW7ResourceLock {
+    # Compile the native memory reader and list processes outside the lock: only registry work runs under it.
+    # (RequireNewLease keeps its order: its refusal reads no process, so it lists inside the lock.) The warm-up
+    # is best effort: a reader that cannot load still fails the snapshot under the lock, as before.
+    try { Initialize-IW7ResourceMemory } catch { }
+    # A list that aged over 3 s while waiting for the lock is taken again outside it (twice at most; then inside),
+    # so a burst of waiters does not turn into a burst of WMI calls under the lock.
+    $listing = if ($RequireNewLease) { $null } else { Get-IW7ProcessListing }
+    $relists = 0
+    do {
+    $again = [ref]$false
+    $granted = Invoke-IW7ResourceLock {
+        if ($listing -and $relists -lt 2 -and $listing.Age.Elapsed.TotalSeconds -gt 3) { $again.Value = $true; return }
         $state = Read-IW7ResourceState
         if ($RequireNewLease -and @($state.Leases).Count) {
             throw 'A new resource lease was required; an existing reservation is retained. Do not retry without RequireNewLease.'
         }
-        $processes = @(Get-IW7ResourceProcesses)
-        $queue = Open-IW7ResourceQueue $processes
+        $listing = if ($listing) { Update-IW7ProcessListing $listing } else { Get-IW7ProcessListing }
+        $processes = $listing.Processes
+        $queue = Open-IW7ResourceQueue $processes -ListedMs $listing.Ms
         $same = @()
         try {
-        $reclaim = @{}
-        if ($Shareable) { $reclaim = @{TolerateOtherAmbiguity=$true; ExceptScope=$canonical; ExceptKind=$Kind} }
+        $reclaim = @{ListedUtc=$listing.Utc}
+        if ($Shareable) { $reclaim += @{TolerateOtherAmbiguity=$true; ExceptScope=$canonical; ExceptKind=$Kind} }
         Remove-IW7FinishedRuntimeLeases $state $processes @reclaim
         $same = @($state.Leases | Where-Object { $_.Scope -eq $canonical -and $_.Kind -eq $Kind })
         $other = @($state.Leases | Where-Object { $_.Scope -ne $canonical -or $_.Kind -ne $Kind })
@@ -633,10 +711,15 @@ function Enter-IW7ResourceLease {
         if (!$same.Count) { Complete-IW7QueueGrant $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds $Owner }
         $lease
     }
+    if ($again.Value) { $relists++; $listing = Get-IW7ProcessListing }
+    } while ($again.Value)
+    $granted
 }
 function Add-IW7ResourceProcess {
     param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][int]$ProcessId)
-    Invoke-IW7ResourceLock {
+    # Registration and release keep their process list inside the lock (a child may have just started) and
+    # wait longer for it: a lease holder must never fail to register or release because others are queued.
+    Invoke-IW7ResourceLock -WaitSeconds 300 {
         $state=Read-IW7ResourceState
         $lease=@($state.Leases | Where-Object Token -EQ $Token)
         if ($lease.Count -ne 1) { throw 'Resource lease not found.' }
@@ -654,7 +737,7 @@ function Add-IW7ResourceProcess {
 }
 function Exit-IW7ResourceLease {
     param([Parameter(Mandatory)][string]$Token)
-    Invoke-IW7ResourceLock {
+    Invoke-IW7ResourceLock -WaitSeconds 300 {
         $state=Read-IW7ResourceState
         $lease=@($state.Leases | Where-Object Token -EQ $Token)
         if (!$lease.Count) { return }
@@ -707,9 +790,13 @@ function Get-IW7TicketWhy($Ticket, $Plan, $Leases, [long]$NowMs) {
     "$head $numbers. It fits once running sessions end; $rule."
 }
 function Get-IW7ResourceStatus {
-    Invoke-IW7ResourceLock {
+    # Display only: processes are listed outside the lock (Get-IW7ProcessListing); a failed listing is shown
+    # without the per-process parts, as before.
+    $listing=$null
+    $snapshot=Get-IW7ResourceSnapshot
+    try { $listing=Get-IW7ProcessListing } catch { $listing=$null }
+    Invoke-IW7ResourceLock -WaitSeconds 300 {
         $state=Read-IW7ResourceState
-        $snapshot=Get-IW7ResourceSnapshot
         # Display only (never saved): a lease without the flag is exclusive.
         foreach ($lease in @($state.Leases)) {
             if (!$lease.PSObject.Properties['Shareable']) { Add-Member -InputObject $lease -NotePropertyName Shareable -NotePropertyValue $false }
@@ -717,10 +804,13 @@ function Get-IW7ResourceStatus {
         # Why a shareable caller waits: reserve, declared total, remaining declared
         # budget, measured available memory and the promised-but-untaken part.
         $plan=$null; $unloaded=$null; $processes=$null
-        try { $processes=@(Get-IW7ResourceProcesses); $plan=Get-IW7ShareableMemoryPlan $snapshot @($state.Leases) $processes; $unloaded=$plan.Unloaded }
+        try {
+            if (!$listing) { throw 'Process listing unavailable.' }
+            $processes=$listing.Processes; $plan=Get-IW7ShareableMemoryPlan $snapshot @($state.Leases) $processes; $unloaded=$plan.Unloaded
+        }
         catch { $plan=Get-IW7ShareableMemoryPlan $snapshot @($state.Leases) @() }
         # Waiting order, display only: nothing is saved by Status.
-        $queue=Open-IW7ResourceQueue $processes -ReadOnly
+        $queue=Open-IW7ResourceQueue $processes -ReadOnly -ListedMs $(if ($listing) { $listing.Ms } else { $null })
         $nowUtc=Get-IW7SchedulerUtcNow
         foreach ($lease in @($state.Leases)) {
             $age=$null; try { $age=[math]::Round(($nowUtc-([datetimeoffset]$lease.CreatedUtc).UtcDateTime).TotalSeconds) } catch { }
