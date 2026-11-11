@@ -10,6 +10,7 @@ server repository (`docs/DEVKIT.md`, `docs/TOOLS-INDEX.md`). Paths are relative 
 | What is at an address, who calls it, which function mentions a text, console variables | `ops/engine-map/iw7_engine_map.py` | [ENGINE-MAP.md](ENGINE-MAP.md) | `tests/ops/engine_map_test.py`, `tests/ops/engine_map_names_test.py` |
 | Where does the game keep a value | `ops/engine-map/iw7_watch.py` with `src/native/paris_watch.cpp`, `paris_watch.hpp` | [MEMORY-WATCH.md](MEMORY-WATCH.md) | `tests/ops/memory_watch_test.py` |
 | Frame rate, and which functions cost the time | `ops/engine-map/iw7_perf.py` with `src/native/paris_perf.cpp` | [PERF.md](PERF.md) | `tests/ops/perf_window_test.py` |
+| Server frame time, and which script functions and threads cost it (lab dedicated server) | `ops/engine-map/iw7_sperf.py` with `src/native/paris_sperf.cpp` | [SERVER-PERF.md](SERVER-PERF.md) | `tests/ops/sperf_report_test.py` |
 | A freeze | `ops/engine-map/iw7_hang.py` with `src/native/paris_hang.cpp` | [HANG.md](HANG.md) | `tests/ops/hang_report_test.py` |
 | A crash | `ops/engine-map/iw7_crash.py` with `src/native/paris_stack.hpp` | [CRASH.md](CRASH.md) | `tests/ops/crash_stack_test.py` |
 | Network update timing | `ops/engine-map/iw7_net.py` with `src/native/paris_net.cpp` | [NET.md](NET.md) | `tests/ops/net_report_test.py` |
@@ -19,7 +20,7 @@ server repository (`docs/DEVKIT.md`, `docs/TOOLS-INDEX.md`). Paths are relative 
 | What does a captured frame show, as data: the camera and the depth of the frame | `src/native/paris_see.cpp`; the tool is the creator SDK's `tools-source/worldkit/iw7_see.py` | [SEE.md](SEE.md) | in the creator SDK: `tools-source/worldkit/tests/test_see.py` |
 | Ghidra project, scoped reads | `ops/Install-ReTools.ps1`, `ops/re-tools/` | [RE-TOOLS.md](RE-TOOLS.md) | `tests/ops/re_tools_sdk_test.py` (retained check: needs the Python environment made by `ops/Install-ReTools.ps1`) |
 
-The Python readers are covered by source tests. The native side of these tools (`paris_perf.cpp`, `paris_net.cpp`,
+The Python readers are covered by source tests. The native side of these tools (`paris_perf.cpp`, `paris_sperf.cpp`, `paris_net.cpp`,
 `paris_hang.cpp`, `paris_world.cpp`, `paris_see.cpp`, `paris_stack.hpp`, `paris_lab_properties.cpp`, `paris_debugger.cpp`) has no
 source test of its own: it is proven by live runs in the server repository's engine lab.
 

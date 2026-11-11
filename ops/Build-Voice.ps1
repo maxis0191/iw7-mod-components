@@ -245,8 +245,8 @@ $null = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -Nativ
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
 $capacityCheckpointBuild = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -NativeRoot $root -Commit $commit -Phase AfterDebugger -Enabled:$capacityCheckpointEnabled
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
-# The performance recorder and the network update recorder are compiled only when asked: a kept native tree must not carry them into another build.
-foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp')) {
+# The performance recorder, the network update recorder and the server meter are compiled only when asked: a kept native tree must not carry them into another build.
+foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp', 'paris_sperf.cpp')) {
     $perfTarget = Join-Path $root "src/client/component/$perfFile"
     if ($Perf) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$perfFile") -Destination $perfTarget -Force; $nativeSources += @($perfFile) }
     elseif (Test-Path -LiteralPath $perfTarget) { Remove-Item -LiteralPath $perfTarget -Force }
