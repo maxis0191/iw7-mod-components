@@ -543,11 +543,12 @@ ports each client process really held.
 
 ## Known limits
 
-* The GSC fixtures give script-level protection: the player damage callback is
-  replaced and zombies are paused. The Build-Voice lab images also contain the
-  Paris fixture's `paris_test_protect` (native engine godmode), but it works only in
-  Zombies (its private fixture check requires CP) and the harness fixtures do not
-  call it yet.
+* The Zombies fixture calls `paris_test_protect` on every player every 0.25 s.
+  Without it the retail CP watchdog kicks a player who has not moved for 90 s once
+  two are present, whatever `g_inactivity` says (live run cp-relay-3, 2026-11-11:
+  server drop `EXE_PLAYERKICKED_INACTIVE` for client A during C4b). The method exists
+  only in the Build-Voice lab images and works only in Zombies; the MP fixture
+  relies on `g_inactivity 0`.
 * MP team control simulates nothing on the client. It calls the retail
   `scripts\mp\menus::setteam` on the server, which kills the player and lets the
   retail respawn path run. This is valid only with `scr_skipclasschoice 1`.
