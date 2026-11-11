@@ -125,14 +125,21 @@ Case 'an old shareable ticket stops newer sessions after the aging time' {
     Assert ((Ask big2 Runtime 12GB) -eq 'granted') 'It gets the memory.'
 }
 Case 'memory is still respected at the head of the queue' {
-    Ask b Build 4GB | Out-Null; Release b            # nothing held
-    $script:avail=1GB
+    $script:avail=3GB
+    Ask s0 Runtime 2GB | Out-Null                    # running: 1 GB free, 2 GB held
     $m=Ask s1 Runtime 2GB
     Assert ($m -like 'Resource busy: not enough measured free memory*Queue: place 1 of 1*') "The first in line is still refused by measured memory: $m"
     Advance 5
     Assert ((Ask s1 Runtime 2GB) -like 'Resource busy: not enough measured free memory*Queue: place 1 of 1, asked first 5s ago*') 'No admission without memory, place kept.'
-    $script:avail=3GB
+    Release s0
     Assert ((Ask s1 Runtime 2GB) -eq 'granted') 'Admitted once the memory is there.'
+    $script:avail=1GB
+    $m=Ask s2 Runtime 2GB
+    Assert ($m -like 'Resource busy: not enough measured free memory*') "With 2 GB held by s1 it can come free: s2 waits: $m"
+    Release s1
+    $m=Ask s2 Runtime 2GB
+    Assert ($m -like 'Refused: this session can never fit*needs 2.0 GB*free memory is 1.0 GB*hold 0.0 GB*at most 1.0 GB*') "Nothing left to wait for: a refusal, not a wait: $m"
+    Assert (!(Queue).Count) 'And its ticket left the queue.'
 }
 Case 'a ticket asked once expires after 90 s' {
     Ask s1 | Out-Null
@@ -211,8 +218,74 @@ Case 're-entry is never queued' {
     Assert ((Queue).Count -eq 1) 'No ticket for the re-entry.'
 }
 Case 'a session larger than the whole budget is refused, not queued' {
-    Assert ((Ask huge Runtime 30GB) -like 'Resource busy: shareable declared memory budget exceeded*') 'Refused.'
+    $m=Ask huge Runtime 30GB
+    Assert ($m -like 'Refused: this session can never fit on this machine as it stands: it needs 30.0 GB*at most 24.0 GB*') "Refused at once with the numbers: $m"
+    Assert ($m -notmatch '(?i)busy|occupied|lease|already reserved|laboratory is running|identity unavailable') "No word the runners retry on: $m"
     Assert (!(Queue).Count) 'Never queued: it could never fit and would block others.'
+}
+# Deadlock of 2026-11-11, from the admission log and Status of 15:38: no lease, 5.48 GB available, an 8 GB client
+# first in line for 29 min, then 1.5 GB headless sessions, a 6.5 GB network lab, more 8 GB clients and a build.
+# The old rule made the aged 8 GB ticket hold back every later request: 9 requests, 0 leases for 28 minutes.
+Case 'deadlock of 2026-11-11: an aged ticket that cannot fit no longer holds back the queue' {
+    # Recreate the logged queue as the old core left it: tickets exist although the requests do not fit now.
+    $q=[pscustomobject]@{Version=1;Seq=0L;Tickets=@()}
+    $now=Get-IW7NowMs
+    foreach ($t in @(@('c1',8GB,1739,'Runtime'),@('h1',1.5GB,1641,'Runtime'),@('net',6.5GB,1157,'Runtime'),@('h2',1.5GB,940,'Runtime'),
+            @('c2',8GB,573,'Runtime'),@('b',6GB,551,'Build'))) {
+        New-Caller $t[0]; $c=$script:callers[$t[0]]
+        $q.Seq++
+        $q.Tickets+=[pscustomobject]@{Seq=$q.Seq;Scope=(Get-IW7CanonicalScope (Bench $t[0]));Kind=$t[3];Shareable=($t[3] -eq 'Runtime');PhysicalBytes=[long]$t[1];
+            ShortSeconds=0;Owner=$t[0];OwnerIdentity=[pscustomobject]@{PID=$c.Process.PID;CreatedUtc=$c.Process.CreatedUtc;Image=$c.Process.Image};
+            ParentIdentity=[pscustomobject]@{PID=$c.Parent.PID;CreatedUtc=$c.Parent.CreatedUtc;Image=$c.Parent.Image};
+            FirstMs=$now-1000*[long]$t[2];LastMs=$now-1000;Polls=20;LastIntervalSeconds=60;OvertakenSeconds=0}
+    }
+    [IO.Directory]::CreateDirectory((Get-IW7ResourceRoot)) | Out-Null
+    Save-IW7ResourceQueue $q
+    $script:avail=[long](5.48*1GB)
+    $s=Get-IW7ResourceStatus
+    Assert ($s.Why -like "Head of queue: 'c1' (Runtime shareable, waiting 28m59s) needs 8.0 GB, free 5.5 GB*held 0.0 GB by 0 running*cannot fit as things stand*") "Status says why the head waits: $($s.Why)"
+    Assert (!$s.Queue[0].CanFit -and $s.Queue[1].CanFit) 'Status marks which tickets can fit.'
+    $m=Ask h2 Runtime 1.5GB
+    Assert ($m -like "Resource busy: waiting in turn: 1 earlier request(s) go first: 'h1'*(2 earlier request(s) that cannot fit now are passed)*") "Only the older headless session that fits goes first; the 8 GB client and the 6.5 GB lab are passed: $m"
+    Assert ((Ask h1 Runtime 1.5GB) -eq 'granted') 'The first headless session is granted with 5.5 GB free (it was held back 27 min by the old rule).'
+    $m=Ask net Runtime 6.5GB
+    Assert ($m -like 'Refused: this session can never fit*needs 6.5 GB*free memory is 4.0 GB*hold 1.5 GB*at most 5.5 GB*') "The 6.5 GB lab can never fit beside 5.5 GB: refused at once: $m"
+    Assert ((Ask h2 Runtime 1.5GB) -eq 'granted') 'The second headless session goes in (4.0 GB free).'
+    $m=Ask c1 Runtime 8GB
+    Assert ($m -like 'Refused: this session can never fit*needs 8.0 GB*') "The 8 GB client is refused at once when it asks again: $m"
+    Assert (!@(Queue | Where-Object Owner -In @('c1','net')).Count) 'Refused tickets leave the queue.'
+    Assert (@(Log | Where-Object { $_.Event -eq 'refuse' -and $_.NeverFits }).Count -eq 2) 'Never-fit refusals are logged.'
+    $m=Ask b Build 6GB
+    Assert ($m -like 'Resource busy: Runtime owned by h1*') "The build waits for the running sessions only: $m"
+    Release h1; Release h2
+    Assert ((Ask b Build 6GB) -eq 'granted') 'The build is not held back by the 8 GB client ticket c2 that cannot fit.'
+    Assert (@(Queue | Where-Object Owner -EQ 'c2').Count -eq 1) 'c2 keeps its place in the queue until it asks again.'
+}
+Case 'an aged ticket that could fit by waiting still holds back later sessions; it stops when it no longer could' {
+    $script:avail=9GB
+    Ask s6 Runtime 6GB | Out-Null                    # running, declares 6 GB, nothing taken yet: 3 GB free
+    $m=Ask c Runtime 8GB
+    Assert ($m -like 'Resource busy: not enough measured free memory*Queue: place 1 of 1*') "8 GB can come free when s6 ends (3 + 6 = 9 GB): queued: $m"
+    foreach ($i in 1..10) { Advance 60; Ask c Runtime 8GB | Out-Null }
+    $m=Ask small Runtime 1.5GB
+    Assert ($m -like "Resource busy: waiting in turn: 1 earlier request(s) go first: 'c'*") "Aged and satisfiable: later sessions wait: $m"
+    $script:avail=[long](7.5*1GB)                    # memory taken outside the scheduler: 1.5 GB free + 6 GB held = 7.5 GB
+    Assert ((Ask small Runtime 1.5GB) -eq 'granted') 'The aged 8 GB ticket can no longer be satisfied: the fitting session goes first.'
+    Assert ((Queue)[0].Owner -eq 'c') 'The 8 GB ticket keeps its place.'
+    $s=Get-IW7ResourceStatus
+    Assert ($s.Why -like "Head of queue: 'c'*needs 8.0 GB*held 7.5 GB by 2 running shareable session(s)*") "Status gives need, free and held: $($s.Why)"
+}
+Case 'a build is not held back by an older session ticket that cannot fit' {
+    $script:avail=9GB
+    Ask s6 Runtime 6GB | Out-Null
+    Ask c Runtime 8GB | Out-Null                     # queued: 3 + 6 = 9 GB could come free
+    Advance 5
+    Assert ((Ask b Build 4GB) -like 'Resource busy: Runtime owned by s6*Queue: place 2 of 2*') 'The build queues behind the client.'
+    Release s6
+    $script:avail=6GB                                # after s6, only 6 GB free: the client cannot fit
+    Assert ((Ask b Build 4GB) -eq 'granted') 'The build goes in; under the old rule it waited for the client forever.'
+    Release b; $script:avail=9GB
+    Assert ((Ask c Runtime 8GB) -eq 'granted') 'The client still had its place and goes in when memory is there.'
 }
 Case 'unreadable queue file is ignored, never refuses' {
     [IO.Directory]::CreateDirectory((Get-IW7ResourceRoot)) | Out-Null
