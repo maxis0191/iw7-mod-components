@@ -48,6 +48,13 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 . "$PSScriptRoot/Cutscene-Overlay.Core.ps1"
 . "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
+# The script tests need no compiler, checkout or reservation: run them before waiting in the build queue, so a broken
+# commit fails in seconds instead of after the queue and the native clone (11 Nov 2026: 33 min lost that way).
+foreach ($scriptTest in @("$repo/tests/ops/capacity_checkpoint_overlay_test.ps1", "$repo/tests/ops/kernel_image_alias_regression_test.ps1",
+        "$repo/ops/agent-capacity/test_build_copy.ps1", "$repo/tests/ops/download_cache_overlay_test.ps1")) {
+    pwsh -NoProfile -File $scriptTest
+    if ($LASTEXITCODE) { throw "Script test failed before the build: $scriptTest" }
+}
 # Reserve the complete operation before compiling tests, sanitizer binaries or
 # native sources. TestsOnly uses the same admission and final release path.
 Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
@@ -132,12 +139,6 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\capacity_check
 if errorlevel 1 exit /b 1
 "$runtime\capacity-checkpoint-publication-test.exe"
 if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\capacity_checkpoint_overlay_test.ps1"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\tests\ops\kernel_image_alias_regression_test.ps1"
-if errorlevel 1 exit /b 1
-pwsh -NoProfile -File "$repo\ops\agent-capacity\test_build_copy.ps1"
-if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\agent_scenario_test.cpp" /Fe:"$runtime\agent-scenario-test.exe" /Fo:"$runtime\agent-scenario-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\agent-scenario-test.exe"
@@ -170,7 +171,6 @@ if ($Sanitizers) {
     & $sanitizerCmd
     if ($LASTEXITCODE) { throw 'Native AddressSanitizer tests failed.' }
 }
-& "$repo/tests/ops/download_cache_overlay_test.ps1"
 if ($TestsOnly) { return }
 $properties = Join-Path $root 'src/common/utils/properties.cpp'
 $baseProperties = (((git -C $root show ($commit + ':src/common/utils/properties.cpp')) -join "`n").TrimEnd()) + "`n"
