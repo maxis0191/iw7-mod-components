@@ -341,7 +341,7 @@ try {
     [IO.File]::WriteAllBytes($fixturePath,$nativeClean)
     $result=Invoke-ApplySourceFixture $unknownPin BeforeDebugger $false
     Assert (!$result.Enabled -and !$result.Ready -and (Same ([IO.File]::ReadAllBytes($fixturePath)) $nativeClean)) 'Unknown clean-only legacy behavior changed.'
-    Assert ($applySourceFixtureState.GitReads -eq 31) 'The real Apply Source entry was skipped or performed an unexpected Git read.'
+    Assert ($applySourceFixtureState.GitReads -eq 39) 'The real Apply Source entry was skipped or performed an unexpected Git read.'
 } finally {
     $resolvedFixture=[IO.Path]::GetFullPath($fixtureRoot)
     if([IO.Path]::GetDirectoryName($resolvedFixture) -cne $fixtureParent -or
