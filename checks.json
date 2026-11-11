@@ -347,6 +347,14 @@
       ]
     },
     {
+      "id": "sperf_report_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/sperf_report_test.py"
+      ]
+    },
+    {
       "id": "net_report_test",
       "command": [
         "python",
