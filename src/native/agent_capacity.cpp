@@ -250,6 +250,15 @@ void plan_client() {
     for (auto a : {0x14086470Dull, 0x14086471Full, 0x1408648E9ull, 0x1408648FBull, 0x14086C728ull}) add(a, 0x3DC78, l.snap_size());
     for (auto a : {0x1408706ABull, 0x140873602ull, 0x1408738B3ull, 0x1409934BFull}) add(a, 0x38D48, 0x3DC78);
     add(0x1409934A4, stock_agents, l.agents);
+    // SV snapshot buffers (sub_140C68A00): the two agent-state rings hold 24 states a snapshot frame
+    // (count = frames x 24 as lea [r+r*2] / shl 3; the allocator sub_140C68B00 sizes them from that count x 0xC0).
+    // With more agents a frame the rings wrap before the oldest frame a client may delta from: frames x agents.
+    block(0x140C68A82, std::array<std::uint8_t, 4>{0x43, 0x8d, 0x04, 0x52},
+                       std::array<std::uint8_t, 4>{0x41, 0x6b, 0xc2, static_cast<std::uint8_t>(l.agents)}); // imul eax, r10d, agents
+    block(0x140C68A8D, std::array<std::uint8_t, 3>{0xc1, 0xe0, 0x03}, std::array<std::uint8_t, 3>{0x0f, 0x1f, 0x00});
+    block(0x140C68A96, std::array<std::uint8_t, 4>{0x43, 0x8d, 0x04, 0x5b},
+                       std::array<std::uint8_t, 4>{0x41, 0x6b, 0xc3, static_cast<std::uint8_t>(l.agents)}); // imul eax, r11d, agents
+    block(0x140C68A9A, std::array<std::uint8_t, 3>{0xc1, 0xe0, 0x03}, std::array<std::uint8_t, 3>{0x0f, 0x1f, 0x00});
     // CG_SetNextSnap: the character change mask (one bit a character) grows into a free stack slot
     add1(0x14086FBE0, 0x70, 0x68); add(0x14086FBE3, 0x100, 0x108);
     add1(0x14086FDAF, 0x60, 0x58); add1(0x140870705, 0x60, 0x58);
