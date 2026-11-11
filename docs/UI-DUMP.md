@@ -34,6 +34,21 @@ dedicated server never registers the commands. On start the console prints `[Par
 
 A file `iw7-mod/paris-ui/walker.lua` replaces the built-in tree walker, to try a change without a build.
 
+### Asked from outside the game (lab request file)
+
+In a client started with `-paris-isolated-lab`, the lab request file `iw7-mod/paris-server-client.request`
+(`<pid> <nonce> <action>`, `src/native/paris_test_fixture.cpp`) also takes, gated exactly like `keydown:`:
+
+| Action | Does |
+|---|---|
+| `uilua:<name>` | `paris_ui_lua <name>` (`[a-z0-9_]{1,24}`) |
+| `uidump:<tag>` | `paris_ui_dump <tag>` (`[a-z0-9_]{1,24}`) |
+| `rawkey:<key>:<0\|1>` | a real key event through `CL_KeyEvent` (0x1409A7980, the address the fork's `input.cpp` hooks, so its console, gui and custom-bind code run first, as for a physical key). `<key>`: a name `Key_KeynumToString` gives (any case) or one lowercase letter or digit (its ASCII code). Prints `[Paris rawkey] key=.. num=.. down=.. catchers=<before> after=<after> bind="<binding>" sys_ms=.. tick_ms=..` |
+| `rawchar:<code>` | one char event through `CL_CharEvent` (0x1409A7350); codes 8, 9, 13, 27, 32..126 |
+
+A refused request gets no response (the requester times out). The server repository's network lab relays these from a
+server fixture (`[IWZ local] CLIREQ <action>`, its docs/NETLAB.md "Client requests") and copies `iw7-mod/paris-perf` back.
+
 ## The reader
 
 `ops/engine-map/iw7_ui.py` (no dependency beyond Python):

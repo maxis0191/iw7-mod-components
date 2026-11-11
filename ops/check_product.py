@@ -31,7 +31,9 @@ def main():
         print('CHECK ' + check['id'], flush=True)
         with log.open('wb') as stream:
             try:
-                run = subprocess.run(command, cwd=args.workspace, stdout=stream, stderr=subprocess.STDOUT, timeout=600)
+                # timeout_seconds: a check that waits in turn for the machine's Build slot may need longer than 600 s.
+                run = subprocess.run(command, cwd=args.workspace, stdout=stream, stderr=subprocess.STDOUT,
+                                     timeout=int(check.get('timeout_seconds', 600)))
                 exit_code = run.returncode
             except subprocess.TimeoutExpired:
                 exit_code = 124

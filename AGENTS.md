@@ -102,6 +102,12 @@ waiting for GitHub checks; per-test game copies; launching once per question.
   waiting for what a file check answers in seconds, a result judged by looking at a picture, a manual step done
   twice: each of these means stop and improve the tool.
   (Owner rule, 2026-11-10.)
+- Delegation (owner, 2026-11-11): in Claude Code sessions the lead session plans and orchestrates; helpers run
+  Opus 5.5 at medium effort for real work and Sonnet 5.5 at medium effort for cheap and easy tasks (searches,
+  inventories, mechanical edits, landing a finished branch). Other agent programs follow their own program's
+  equivalent: the strongest model plans, a cheaper one does routine work. Briefs name exact paths, commands,
+  limits and what proves the work. Where this differs from point 10 above, this rule is the current one (owner,
+  2026-11-11).
 - Edit the canonical tracked file; never a generated source workspace (`runtime/...`).
 - A task does not change agent memory or instruction files (this file, a tool's memory) on its own initiative;
   it changes them only when that is the task.

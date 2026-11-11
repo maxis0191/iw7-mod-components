@@ -7,6 +7,7 @@
     },
     {
       "id": "cutscene_test",
+      "timeout_seconds": 2400,
       "command": [
         "pwsh",
         "-NoLogo",
@@ -19,6 +20,7 @@
     },
     {
       "id": "owner_cheats_test",
+      "timeout_seconds": 2400,
       "command": [
         "pwsh",
         "-NoLogo",
@@ -571,6 +573,17 @@
         "-File",
         "tests/ops/resource_scheduler_test.ps1",
         "-InitialAdmissionSourceOnly"
+      ]
+    },
+    {
+      "id": "resource_scheduler_queue_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_queue_test.ps1"
       ]
     },
     {
