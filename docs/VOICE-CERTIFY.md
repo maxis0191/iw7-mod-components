@@ -561,7 +561,14 @@ ports each client process really held.
   without `mp\ranked.gsc` the retail `connect_validateplayerteam` kicks every MP
   player 1.5 s after joining (`EXE_PLAYERKICKED_INVALIDTEAM`, live run relay-full-2).
   An MP phase stops at once when the server did not load it.
-* MP team control simulates nothing on the client. It calls the retail
+* Multiplayer on a dedicated is a matchmaking game for the retail scripts, so two more
+  things meet an idle test client there (live run final-base-1): `scripts\mp\teams::watchafk`
+  kicks a player with no kill or assist who has not moved for 60 s of play
+  (`EXE_PLAYERKICKED_INACTIVE`), and iw7-mod's `cdata\custom_scripts\mp\bots.gsc` fills
+  every free slot with bots (`bots_enabled` is registered true and read-only; 15 bots took
+  the slot client B needed). The MP fixture replaces `checkforafk` (its only copy) and
+  `bot_connect_monitor` with no-ops, and prints the AI count as `ai=N`; the harness
+  stops the phase as soon as a bot appears.* MP team control simulates nothing on the client. It calls the retail
   `scripts\mp\menus::setteam` on the server, which kills the player and lets the
   retail respawn path run. This is valid only with `scr_skipclasschoice 1`.
 * M3 depends on intermission lasting long enough for one phrase. The window

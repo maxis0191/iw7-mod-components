@@ -78,7 +78,7 @@ function Get-VcFileLength([string]$Path) {
 # "[voicecert] hb t=.. mode=cp map=cp_zmb gt=zombie n=2 p=0,allies,playing,1,100,0 p=1,..."
 function ConvertFrom-VcHeartbeat([string]$Line) {
     if ($Line -notmatch '\[voicecert\] hb (.*)$') { return $null }
-    $result = [ordered]@{ Map = ''; Gametype = ''; Mode = ''; Count = -1; Players = @{} }
+    $result = [ordered]@{ Map = ''; Gametype = ''; Mode = ''; Count = -1; Bots = -1; Players = @{} }
     foreach ($token in ($Matches[1] -split '\s+')) {
         $pair = $token -split '=', 2
         if ($pair.Count -ne 2) { continue }
@@ -87,6 +87,7 @@ function ConvertFrom-VcHeartbeat([string]$Line) {
             'gt'   { $result.Gametype = $pair[1] }
             'mode' { $result.Mode = $pair[1] }
             'n'    { $result.Count = [int]$pair[1] }
+            'ai'   { if ($pair[1] -match '^\d+$') { $result.Bots = [int]$pair[1] } }
             'p'    {
                 $f = $pair[1] -split ','
                 if ($f.Count -ge 6 -and $f[0] -match '^\d+$') {

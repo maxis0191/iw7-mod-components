@@ -493,6 +493,7 @@ function Update-Phase($Phase) {
         if ($line -match '^\[Paris test safety\] .*script_inactivity_suppressed=(\d+)') { $Phase | Add-Member KicksBlocked ([int]$Matches[1]) -Force }
         $hb = ConvertFrom-VcHeartbeat $line
         if ($hb) { $Phase.Heartbeat = $hb; $Phase.HeartbeatTick = [Environment]::TickCount64 }
+        if ($hb -and $hb.Bots -gt 0) { throw "$($hb.Bots) bot(s) on the test server; the voice windows need the two test clients alone." }
         $ack = ConvertFrom-VcAck $line
         if ($ack) { $Phase.Acks[$ack.Seq] = $ack }
         $xuid = ConvertFrom-VcServerXuid $line
