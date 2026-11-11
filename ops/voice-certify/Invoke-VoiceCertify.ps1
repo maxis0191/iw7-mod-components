@@ -657,6 +657,10 @@ function Step-Join($Phase, $Role, $Join) {
     if ($null -ne $Join.ReadyPort -and $Join.ReadyPort -ne $ServerPort) { throw "Client $($Role.Name) joined UDP $($Join.ReadyPort), not the test server $ServerPort." }
     $sinceSend = if ($null -eq $Join.LastSendTick) { $null } else { ([Environment]::TickCount64 - $Join.LastSendTick) / 1000.0 }
     $first = if ($Join.Kind -eq 'reconnect') { 0 } else { $ConnectFirstSeconds[$Role.Mode] }
+    # The native request stays pending until online data is ready, so one answered CP
+    # request is enough. A second one makes a joined or joining client leave and rejoin
+    # (live run 4, 2026-11-11: server drop EXE_DISCONNECTED right after the resend).
+    if ($Role.Mode -eq 'CP' -and $answered.Count) { return }
     if (Test-VcJoinResendDue $since $sinceSend $first $ConnectEverySeconds $Join.LastConnectionState) { Send-Connect $Role $Join }
 }
 
