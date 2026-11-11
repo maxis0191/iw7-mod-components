@@ -1,6 +1,6 @@
 # UI dump: the user interface as data
 
-Status: built and run live on 10 Nov 2026 on Spaceland (`cp_zmb`), in private local sessions from bench roots.
+Status: built and run live on 10 and 11 Nov 2026 on Spaceland (`cp_zmb`), in private local sessions from bench roots.
 Lab clients only. Nothing here is deployed.
 
 ## What it is for
@@ -98,9 +98,10 @@ The rules file is a list (or `{"rules": [...]}`). A selector is a text pattern, 
 For a dump and a frame captured at the same moment, `frame` measures each visible text or picture twice: the share of
 pixels inside its rectangle that differ from the colour around it ("ink"), and, with `--base`, the share that changed
 against a frame without the elements, inside the rectangle and in a ring of 4 pixels just outside. A rectangle agrees
-when there is ink inside and none around, or when the inside changed and the ring did not. An element that touches
-another one cannot agree: its ring holds the neighbour. This is how the rectangles below were proven; it is also the
-way to check a new kind of element before trusting its numbers.
+when there is ink inside and none around, or when the inside changed and the ring did not. The ring leaves out the
+pixels of the element's neighbours; an element wholly surrounded by others cannot be judged, and a sprite with
+transparent margins or a rotated one will not agree. This is how the rectangles below were proven; it is also the way
+to check a new kind of element before trusting its numbers.
 
 ## The JSON
 
@@ -189,16 +190,76 @@ goes from `Engine.GetLuiRoot()` through `getFirstChild` and `getNextSibling` and
 `getCurrentRGBA`, `getText`, `getElementTextDims`, `getCurrentAlignment`, `GetImage`, `getUseStencil` and `IsInWorld`.
 These names were found by listing the engine's method table from Lua in a live run (178 methods). A native walk
 would have needed the layout of the engine's element structure, which is not known, to get the same numbers. The
-walker returns the JSON text; native code only adds one helper, `paris_ui_material`, that reads the name behind a
-picture handle. The Lua class of an element comes from the table chain above it.
+walker returns the JSON text. It writes a picture as the address of its material handle, and native code replaces
+that by the material's name afterwards (a call from Lua into native code per picture is not needed). The Lua class
+of an element comes from the table chain above it.
 
-## Cost (measured, 10 Nov 2026, 1280x720, stock HUD: 691 Lua UI elements, 2 to 13 HUD elements)
+## Cost (measured, 11 Nov 2026, 1280x720, stock HUD: 691 Lua UI elements, 2 to 11 HUD elements)
 
-COST_TABLE
+| What | Measured |
+|---|---|
+| Size of one dump | 89 to 95 KB (stock HUD, 2 to 11 HUD elements); 126 KB with the pause menu open (950 Lua UI elements) |
+| From the request to the file | 127 to 148 ms at 60 frames a second, about 8 frames: one to arm, one observed, the walk on the UI's next turn, one to write. The game keeps running meanwhile |
+| The Lua walk (the one frame that pays) | 8 to 40 ms for 691 to 697 elements, 11 ms in the middle of ten dumps; 22 ms for 950 |
+| Building and writing the JSON | 0.07 to 0.23 ms |
+| Calls to the observers in one frame | one draw and one layout call per HUD element (2 to 11 here), one picture call per material element (0 to 2) |
+| Frame time with the observers installed and no dump asked | not different from without them. One uncapped session of twelve 8 s windows in the order on, off, off, on: median frame 4.89 ms with, 4.83 ms without (+1.3 %; the first window, still loading, left out), while windows of the same state differ by 5.2 %. `iw7_perf.py compare` on all twelve: +2.9 % median, "a smaller change than 5.24 % is not established" |
+
+When no dump is asked, each observer is one compare of a flag, and the frame tick one compare.
+
+One lesson is kept in the code: the first version asked the system whether each address was readable before reading it
+(two queries per picture). In this process a query costs about half a millisecond, and one walk took 150 to 560 ms.
+Guarded reads took it back to the numbers above.
 
 ## Proof
 
-PROOF_SECTION
+All runs: 10 and 11 Nov 2026, `cp_zmb`, 1280x720, private local sessions from bench roots (loopback, random password),
+gamelab plans with the `ui`, `hud` and `capture` steps. The frames and dumps stay outside the repository.
+
+**P1. A server-drawn page.** The plan draws a page with the calls and the numbers of the Maxis terminal panel
+(`newclienthudelem`; a `white` backdrop of 312x109 at x -6, y 80 anchored to the right, a rule of 2, a title at
+scale 1.05, six rows at 0.68 to 0.78), takes a dump and a frame, destroys the page, takes both again.
+
+| Measure | Result |
+|---|---|
+| HUD elements in the dump before, with the page, after | 2, 11, 2 |
+| Texts of the page found in the dump with a rectangle | 7 of 7 (`MAXIS TERMINAL` at 821,129 135x20; the rows at 821,156 to 821,255) |
+| The two pictures | `white` 803,120 468x164 and 803,120 468x3: the rectangle of the picture the game drew equals the layout rectangle |
+| Rectangles that agree with the frame (`frame --base` the frame before the page) | 8 of 9: ink inside 24 to 38 % of a text's rectangle and 0 to 1.7 % in the ring around it; the panel changed 34 % of its pixels against the frame before and 0 % of its ring. The one that does not agree is the last row: 2 % of the ring under it holds descenders |
+| `diff` page to closed | 9 removed, nothing else |
+| Texts or pictures of the page in the dump after | none |
+
+This is a page made by the test plan in a local session, not the `.menu` page itself on a dedicated server: the
+terminal script runs only on a dedicated server, and the runner that joins a client to one takes no dump yet. The
+client-side path (elements received from the server, laid out and drawn) is the same.
+
+**P2. The stock Lua UI.** One dump of the stock HUD half a minute into the session: 691 elements, 11 levels deep; 135 texts
+and 274 pictures by class; 109 on world surfaces; 42 visible texts or pictures on the screen. Known texts are there
+with the right place: round `1` at 1217,37 and `SCENE` at 1162,46, clip `8` at 1067,648, reserve `32` at 1091,666,
+cash `500` at 139,676 with `$` at 124,676. Against a frame with the HUD hidden (its alpha set to 0 by a Lua line),
+6 elements agree by pixels: the clapboard picture, `SCENE`, the grenade icon, the first card of the fan (two
+elements), the cash `500`. The others sit against textured neighbours or are rotated sprites and cannot be judged by
+this pixel test; 10 are not drawn at all (see "not covered").
+A stock menu: the pause menu (`CPPauseMenu`, opened by a Lua line) gives 950 elements, 259 more than the HUD,
+under `LUIRoot/flowManager/CPPauseMenu`; the scoreboard (`ZomScoreboard`) 728, 37 more, with the player row and the
+five column icons.
+
+**P3. Defects found with no picture.** The project's Lua HUD (`bo3_zombies_hud`) could not be loaded on the lab
+client. With the module in `iw7-mod/ui_scripts/bo3_zombies_hud/` and its opt-in file in place, the client ended with an
+access violation (exit code 0xC0000005) at start, in the main menu, right after the module printed that its dispatch
+hook was installed (`hook version=0.7.0 kind=dispatch installed=1`); twice in two launches. The session runner
+kept no crash dump. The same client starts normally without the module. The cause was not looked for here.
+So the defects were planted, twice:
+
+| Planted | `check --baseline <dump before>` reports |
+|---|---|
+| Server-drawn: a line at the right edge, two cash texts 30 units apart | `PARTLY_OFF_SCREEN` (66 % off screen) and `TEXT_OVERLAP` (46 % of the smaller); 2 findings, nothing else |
+| Lua UI: a line at the right edge, two cash texts, a portrait picture lower than the frame that clips it | `PARTLY_OFF_SCREEN` (52 %), `TEXT_OVERLAP` (50 %), `CLIPPED` (55 % of the portrait outside its frame); 3 findings, nothing else |
+
+Without `--baseline` the stock HUD adds 15 `PARTLY_OFF_SCREEN` of its own (the fan of cards and the devil head in the
+corner are laid out partly outside the screen).
+
+**P4. Cost.** See "Cost" above.
 
 ## What is covered and what is not
 
@@ -217,7 +278,7 @@ Not covered, stated plainly:
   and scale. A rotated card is listed unrotated. It needs the engine's element structure (not decoded) or a native
   observer of the Lua UI's quads.
 - **Lua UI hidden by another way than alpha.** A mask picture, a radial bar at zero, an element scaled to nothing
-  still count as visible. In the stock HUD at the spawn this was 10 of 39 visible content elements (a ticket mask,
+  still count as visible. In the stock HUD this was 10 of 42 visible texts and pictures (a ticket mask,
   eight segments of the grenade bar, one timer text). The same native observer would settle it.
 - **Animations.** A dump is one frame. The HUD element's own fade, move and scale fields are in `raw`; a Lua UI
   animation in progress shows only its current alpha and rectangle. Take two dumps and `diff`.
