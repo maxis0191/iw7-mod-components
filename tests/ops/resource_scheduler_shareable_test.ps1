@@ -28,7 +28,8 @@ function Reset-Registry {
     $script:fakeProcesses=@($script:launcher)
     $script:total=32GB; $script:avail=30GB
     $root=Get-IW7ResourceRoot
-    if (Test-Path -LiteralPath $root) { Get-ChildItem -LiteralPath $root -Filter 'leases.json*' | Remove-Item -Force }
+    # Each case starts with no lease and no waiting ticket (queue.json, 2026-11-11).
+    if (Test-Path -LiteralPath $root) { Get-ChildItem -LiteralPath $root | Where-Object Name -match '^(?:leases|queue)\.json' | Remove-Item -Force }
 }
 function Refused([scriptblock]$Body,[string]$Like) {
     try { & $Body | Out-Null } catch { return ($_.Exception.Message -like $Like) }
@@ -70,7 +71,8 @@ Case 'shareable refused beside exclusive Runtime' {
 }
 Case 'exclusive Runtime refused beside shareable' {
     Enter-Share a | Out-Null
-    Assert (Refused { Enter-Share x -Plain } 'Resource busy: Runtime owned by owner-a. Continue light work; retry when released.') 'Exclusive request keeps the old message shape.'
+    # The old message is kept whole; since 2026-11-11 the place in the waiting order follows it.
+    Assert (Refused { Enter-Share x -Plain } 'Resource busy: Runtime owned by owner-a. Continue light work; retry when released. Queue: place 1 of 1, *') 'Exclusive request keeps the old message shape.'
 }
 Case 'Build and shareable exclude each other' {
     $build=Enter-IW7ResourceLease -Scope (Bench build) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'builder'
@@ -350,7 +352,7 @@ foreach ($field in @('Image','CreatedUtc')) {
 }
 Case 'exclusive and shareable still exclude each other' {
     Enter-Share a -Bytes 2GB | Out-Null
-    Assert (Refused { Enter-Share x -Plain -Bytes 1GB } 'Resource busy: Runtime owned by owner-a. Continue light work; retry when released.') 'Exclusive refused beside a shareable lease.'
+    Assert (Refused { Enter-Share x -Plain -Bytes 1GB } 'Resource busy: Runtime owned by owner-a. Continue light work; retry when released.*') 'Exclusive refused beside a shareable lease.'
     $s=Read-IW7ResourceState; $s.Leases=@(); Save-IW7ResourceState $s
     Enter-Share x -Plain -Bytes 1GB | Out-Null
     Assert (Refused { Enter-Share a -Bytes 2GB } 'Resource busy: Runtime owned by owner-x.*') 'Shareable refused beside an exclusive lease.'

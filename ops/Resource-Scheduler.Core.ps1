@@ -207,17 +207,256 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOt
         }
     })
 }
+# ---------------------------------------------------------------------------------------------------------------
+# Waiting order (2026-11-11). A refused request that will ask again keeps a ticket in queue.json, next to
+# leases.json and under the same admission lock. The queue is advisory state: it can only add the refusal
+# "Resource busy: waiting in turn ..."; a missing, unreadable or foreign queue file is read as empty, and no
+# queue error ever refuses, grants or removes a reservation. Older cores never read or write queue.json.
+# Rules (docs/RESOURCE-WORKFLOW.md, "Waiting order"):
+#  - a ticket is one intended lease: canonical scope + kind. Asking again refreshes it and keeps its place;
+#  - a ticket expires when neither its caller nor the caller's parent process is alive, or when it is not
+#    refreshed in time (90 s after a single ask; then twice the last interval between asks plus 30 s,
+#    within 90..660 s, so a runner whose pauses grow to 300 s keeps its place);
+#  - an exclusive request (Build, Extract, Analysis, non-shareable Runtime) waits for every older ticket;
+#  - a shareable request waits only for an older exclusive ticket, or for an older shareable ticket that has
+#    waited AgingSeconds (600 s) without fitting: then it goes first and newer sessions stop taking memory;
+#  - a short exclusive request (-ShortSeconds 1..120) may go ahead of older tickets when it is admissible now,
+#    as long as no older ticket has been overtaken for more than MaxOvertakeSeconds (300 s) in total;
+#  - re-entry of an existing lease is never queued; a shareable request that can never fit is not queued.
+# Every grant, refusal, expiry and release is one line in admission-log.jsonl (Get-IW7ResourceWaitReport).
+function Get-IW7SchedulerUtcNow { [datetime]::UtcNow }
+function Get-IW7CallerPid { $PID }
+function Get-IW7QueuePolicy {
+    [pscustomobject]@{FirstGraceSeconds=90;MinGraceSeconds=90;MaxGraceSeconds=660;AgingSeconds=600;MaxOvertakeSeconds=300;MaxShortSeconds=120;LogRotateBytes=8MB}
+}
+function Get-IW7NowMs { [DateTimeOffset]::new([datetime]::SpecifyKind((Get-IW7SchedulerUtcNow),'Utc')).ToUnixTimeMilliseconds() }
+function Get-IW7QueuePath { Join-Path (Get-IW7ResourceRoot) 'queue.json' }
+function Get-IW7AdmissionLogPath { Join-Path (Get-IW7ResourceRoot) 'admission-log.jsonl' }
+function Format-IW7Age([double]$Seconds) {
+    $s=[long][math]::Max(0,[math]::Round($Seconds))
+    if ($s -lt 60) { return "${s}s" }
+    if ($s -lt 3600) { return ('{0}m{1:00}s' -f [math]::Floor($s/60),($s%60)) }
+    '{0}h{1:00}m' -f [math]::Floor($s/3600),[math]::Floor(($s%3600)/60)
+}
+function Test-IW7RetryableRefusal([string]$Message) {
+    foreach ($p in @('Resource busy:*','Heavy job already reserved*','An existing compiler/extractor/Java analysis is running*',
+        'An unreserved or foreign laboratory is running*','Existing lab has no reservation*','Reserved process identity unavailable*')) {
+        if ($Message -like $p) { return $true }
+    }
+    $false
+}
+function Read-IW7ResourceQueue {
+    $empty=[pscustomobject]@{Version=1;Seq=0L;Tickets=@()}
+    $path=Get-IW7QueuePath
+    try {
+        if (![IO.File]::Exists($path)) { return $empty }
+        $q=[IO.File]::ReadAllText($path) | ConvertFrom-Json -ErrorAction Stop
+        if ($q.Version -ne 1 -or !$q.PSObject.Properties['Tickets']) { return $empty }
+        $tickets=@($q.Tickets | Where-Object { $_ -and $_.Scope -is [string] -and $_.Kind -in @('Runtime','Build','Extract','Analysis') -and
+            $null -ne $_.FirstMs -and $null -ne $_.LastMs -and $null -ne $_.Seq })
+        [pscustomobject]@{Version=1;Seq=[long]$(if ($q.PSObject.Properties['Seq']) { $q.Seq } else { 0 });Tickets=$tickets}
+    } catch { $empty }
+}
+function Save-IW7ResourceQueue($Queue) {
+    $path=Get-IW7QueuePath
+    $temporary=$path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+    [IO.File]::WriteAllText($temporary,($Queue | ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
+    if ([IO.File]::Exists($path)) { [IO.File]::Replace($temporary,$path,($path+'.previous')) } else { [IO.File]::Move($temporary,$path) }
+}
+function Add-IW7AdmissionLog($Record) {
+    # Best effort, inside the admission lock: a log failure never changes an admission.
+    try {
+        $path=Get-IW7AdmissionLogPath
+        $policy=Get-IW7QueuePolicy
+        if ([IO.File]::Exists($path) -and ([IO.FileInfo]::new($path)).Length -gt $policy.LogRotateBytes) {
+            $old=[IO.Path]::ChangeExtension($path,'.1.jsonl')
+            if ([IO.File]::Exists($old)) { [IO.File]::Delete($old) }
+            [IO.File]::Move($path,$old)
+        }
+        $Record | Add-Member -NotePropertyName Utc -NotePropertyValue ((Get-IW7SchedulerUtcNow).ToString('o')) -Force
+        [IO.File]::AppendAllText($path,(($Record | ConvertTo-Json -Depth 4 -Compress)+"`n"),[Text.UTF8Encoding]::new($false))
+    } catch { }
+}
+function Test-IW7TicketCallerAlive($Ticket, $Processes) {
+    foreach ($name in @('OwnerIdentity','ParentIdentity')) {
+        $property=$Ticket.PSObject.Properties[$name]
+        if (!$property -or !$property.Value) { continue }
+        $id=$property.Value
+        $p=@($Processes | Where-Object PID -EQ $id.PID)
+        if (!$p.Count) { continue }
+        if (!$p[0].Image -or !$p[0].CreatedUtc) { return $true }    # unreadable right now: not proven gone
+        if (Test-IW7ResourceIdentity $id $p[0]) { return $true }
+    }
+    $false
+}
+function Get-IW7TicketGraceSeconds($Ticket) {
+    $policy=Get-IW7QueuePolicy
+    if ([int]$Ticket.Polls -le 1) { return $policy.FirstGraceSeconds }
+    [math]::Min($policy.MaxGraceSeconds,[math]::Max($policy.MinGraceSeconds,2*[double]$Ticket.LastIntervalSeconds+30))
+}
+function Open-IW7ResourceQueue($Processes, [switch]$ReadOnly) {
+    # Reads the queue and drops expired tickets (logged and saved unless ReadOnly). Never throws.
+    $context=[pscustomobject]@{Queue=$null;NowMs=0L;Processes=$Processes;Ticket=$null;Overtook=@()}
+    try {
+        $context.NowMs=Get-IW7NowMs
+        $queue=Read-IW7ResourceQueue
+        $keep=@(); $expired=@()
+        foreach ($t in @($queue.Tickets)) {
+            $idle=($context.NowMs-[long]$t.LastMs)/1000
+            $why=$null
+            if ($null -ne $Processes -and !(Test-IW7TicketCallerAlive $t $Processes)) { $why='caller gone' }
+            elseif ($idle -gt (Get-IW7TicketGraceSeconds $t)) { $why='not asked again for '+(Format-IW7Age $idle) }
+            if ($why) { $expired+=[pscustomobject]@{Ticket=$t;Why=$why} } else { $keep+=$t }
+        }
+        $queue.Tickets=@($keep | Sort-Object { [long]$_.FirstMs },{ [long]$_.Seq })
+        $context.Queue=$queue
+        if ($expired.Count -and !$ReadOnly) {
+            foreach ($e in $expired) {
+                Add-IW7AdmissionLog ([pscustomobject]@{Event='expire';Kind=$e.Ticket.Kind;Shareable=[bool]$e.Ticket.Shareable;Owner=$e.Ticket.Owner;
+                    Scope=$e.Ticket.Scope;WaitSeconds=[math]::Round(($context.NowMs-[long]$e.Ticket.FirstMs)/1000,1);Why=$e.Why})
+            }
+            Save-IW7ResourceQueue $queue
+        }
+    } catch { $context.Queue=$null }
+    $context
+}
+function Get-IW7QueueTicket($Context, [string]$Scope, [string]$Kind) {
+    if (!$Context -or !$Context.Queue) { return $null }
+    @($Context.Queue.Tickets | Where-Object { $_.Scope -eq $Scope -and $_.Kind -eq $Kind })[0]
+}
+function Get-IW7TicketsAhead($Context, $Mine) {
+    if (!$Context -or !$Context.Queue) { return @() }
+    @($Context.Queue.Tickets | Where-Object { !$Mine -or ([long]$_.FirstMs -lt [long]$Mine.FirstMs -or
+        ([long]$_.FirstMs -eq [long]$Mine.FirstMs -and [long]$_.Seq -lt [long]$Mine.Seq)) } |
+        Where-Object { !$Mine -or !($_.Scope -eq $Mine.Scope -and $_.Kind -eq $Mine.Kind) })
+}
+function Format-IW7Tickets($Context, $Tickets, [int]$Max=3) {
+    $shown=@($Tickets | Select-Object -First $Max | ForEach-Object {
+        $kind=if ($_.Shareable) { 'Runtime shareable' } else { $_.Kind }
+        "'$($_.Owner)' ($kind, waiting $(Format-IW7Age (($Context.NowMs-[long]$_.FirstMs)/1000)))" })
+    $text=$shown -join ', '
+    if (@($Tickets).Count -gt $Max) { $text+=" and $(@($Tickets).Count-$Max) more" }
+    $text
+}
+function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds) {
+    # Called only when everything else admits a NEW lease. Throws the queue refusal, or returns.
+    if (!$Context -or !$Context.Queue) { return }
+    $policy=Get-IW7QueuePolicy
+    $mine=Get-IW7QueueTicket $Context $Scope $Kind
+    $ahead=@(Get-IW7TicketsAhead $Context $mine)
+    if (!$ahead.Count) { return }
+    if ($Shareable) {
+        $blockers=@($ahead | Where-Object { !$_.Shareable -or (($Context.NowMs-[long]$_.FirstMs)/1000) -ge $policy.AgingSeconds })
+    } else {
+        $blockers=$ahead
+        if ($ShortSeconds -gt 0 -and !@($ahead | Where-Object { [double]$_.OvertakenSeconds+$ShortSeconds -gt $policy.MaxOvertakeSeconds }).Count) {
+            $Context.Overtook=$ahead
+            return
+        }
+    }
+    if (!$blockers.Count) { return }
+    throw ("Resource busy: waiting in turn: $($blockers.Count) earlier request(s) go first: $(Format-IW7Tickets $Context $blockers). " +
+        'Continue light work; retry when released.')
+}
+function Register-IW7QueueRefusal($Context, [string]$Message, [string]$Scope, [string]$Kind, [bool]$Shareable,
+    [long]$PhysicalBytes, [int]$ShortSeconds, [string]$Owner, [bool]$Queueable=$true) {
+    # Refresh or create this request's ticket; return the refusal text with its place. Never throws.
+    try {
+        if (!$Context -or !$Context.Queue -or !(Test-IW7RetryableRefusal $Message)) { return $Message }
+        $queue=$Context.Queue
+        $mine=Get-IW7QueueTicket $Context $Scope $Kind
+        $callerPid=Get-IW7CallerPid
+        $self=@($Context.Processes | Where-Object PID -EQ $callerPid)[0]
+        if ($Queueable -and $self -and $self.Image -and $self.CreatedUtc) {
+            $parent=@($Context.Processes | Where-Object { $_.PID -eq $self.ParentPID -and $_.Image -and $_.CreatedUtc -and
+                ([datetimeoffset]$_.CreatedUtc) -le ([datetimeoffset]$self.CreatedUtc) })[0]
+            $own=[pscustomobject]@{PID=$self.PID;CreatedUtc=$self.CreatedUtc;Image=$self.Image}
+            $par=if ($parent) { [pscustomobject]@{PID=$parent.PID;CreatedUtc=$parent.CreatedUtc;Image=$parent.Image} } else { $null }
+            if ($mine) {
+                $mine.LastIntervalSeconds=[math]::Round(($Context.NowMs-[long]$mine.LastMs)/1000,1)
+                $mine.LastMs=$Context.NowMs; $mine.Polls=[int]$mine.Polls+1
+                $mine.Owner=$Owner; $mine.Shareable=$Shareable; $mine.PhysicalBytes=$PhysicalBytes; $mine.ShortSeconds=$ShortSeconds
+                $mine.OwnerIdentity=$own; $mine.ParentIdentity=$par
+            } else {
+                $queue.Seq=[long]$queue.Seq+1
+                $mine=[pscustomobject]@{Seq=$queue.Seq;Scope=$Scope;Kind=$Kind;Shareable=$Shareable;PhysicalBytes=$PhysicalBytes;
+                    ShortSeconds=$ShortSeconds;Owner=$Owner;OwnerIdentity=$own;ParentIdentity=$par;FirstMs=$Context.NowMs;LastMs=$Context.NowMs;
+                    Polls=1;LastIntervalSeconds=0;OvertakenSeconds=0}
+                $queue.Tickets=@($queue.Tickets)+$mine
+            }
+            Save-IW7ResourceQueue $queue
+        }
+        $suffix=''; $place=0; $of=@($queue.Tickets).Count; $waited=0
+        if ($mine -and @($queue.Tickets | Where-Object { [object]::ReferenceEquals($_,$mine) }).Count) {
+            $ahead=@(Get-IW7TicketsAhead $Context $mine)
+            $place=$ahead.Count+1; $waited=($Context.NowMs-[long]$mine.FirstMs)/1000
+            $suffix=" Queue: place $place of $of, asked first $(Format-IW7Age $waited) ago"
+            if ($ahead.Count -and $Message -notlike 'Resource busy: waiting in turn:*') { $suffix+="; ahead: $(Format-IW7Tickets $Context $ahead)" }
+            $suffix+='.'
+        }
+        Add-IW7AdmissionLog ([pscustomobject]@{Event='refuse';Kind=$Kind;Shareable=$Shareable;Short=$ShortSeconds;Owner=$Owner;Scope=$Scope;
+            Pid=(Get-IW7CallerPid);Place=$place;Of=$of;WaitSeconds=[math]::Round($waited,1);Reason=$Message.Substring(0,[math]::Min(200,$Message.Length))})
+        $Message+$suffix
+    } catch { $Message }
+}
+function Complete-IW7QueueGrant($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds, [string]$Owner) {
+    # After the lease is saved: drop this request's ticket and log the grant. Never throws.
+    try {
+        $wait=0.0; $polls=0; $ahead=0
+        if ($Context -and $Context.Queue) {
+            $mine=Get-IW7QueueTicket $Context $Scope $Kind
+            $ahead=@(Get-IW7TicketsAhead $Context $mine).Count
+            foreach ($t in @($Context.Overtook)) { $t.OvertakenSeconds=[double]$t.OvertakenSeconds+$ShortSeconds }
+            if ($mine) {
+                $wait=($Context.NowMs-[long]$mine.FirstMs)/1000; $polls=[int]$mine.Polls
+                $Context.Queue.Tickets=@($Context.Queue.Tickets | Where-Object { !([object]::ReferenceEquals($_,$mine)) })
+            }
+            if ($mine -or @($Context.Overtook).Count) { Save-IW7ResourceQueue $Context.Queue }
+        }
+        Add-IW7AdmissionLog ([pscustomobject]@{Event='grant';Kind=$Kind;Shareable=$Shareable;Short=$ShortSeconds;Owner=$Owner;Scope=$Scope;
+            Pid=(Get-IW7CallerPid);WaitSeconds=[math]::Round($wait,1);Asks=$polls;StillWaiting=$(if ($Context -and $Context.Queue) { @($Context.Queue.Tickets).Count } else { $null });
+            Overtook=@($Context.Overtook).Count})
+    } catch { }
+}
+function Get-IW7ResourceWaitReport {
+    # Reads the admission log: grants in order, waits per owner, the longest wait. Read-only.
+    param([string]$Path=(Get-IW7AdmissionLogPath), [datetime]$Since=[datetime]::MinValue, [datetime]$Until=[datetime]::MaxValue)
+    $rows=@()
+    foreach ($p in @(([IO.Path]::ChangeExtension($Path,'.1.jsonl')),$Path)) {
+        if (![IO.File]::Exists($p)) { continue }
+        foreach ($line in [IO.File]::ReadAllLines($p)) {
+            if (!$line.Trim()) { continue }
+            try { $r=$line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+            $t=([datetimeoffset]$r.Utc).UtcDateTime
+            if ($t -lt $Since.ToUniversalTime() -or $t -gt $Until.ToUniversalTime()) { continue }
+            $r | Add-Member -NotePropertyName Time -NotePropertyValue $t -Force
+            $rows+=$r
+        }
+    }
+    $grants=@($rows | Where-Object Event -EQ 'grant')
+    $perOwner=@($grants | Group-Object Owner | ForEach-Object {
+        $w=@($_.Group | ForEach-Object { [double]$_.WaitSeconds })
+        [pscustomobject]@{Owner=$_.Name;Grants=$_.Count;Waited=@($w | Where-Object { $_ -gt 0 }).Count;
+            MeanWaitSeconds=[math]::Round(($w | Measure-Object -Average).Average,1);MaxWaitSeconds=($w | Measure-Object -Maximum).Maximum}
+    } | Sort-Object MaxWaitSeconds -Descending)
+    [pscustomobject]@{Grants=$grants;PerOwner=$perOwner;
+        Longest=@($grants | Sort-Object { [double]$_.WaitSeconds } -Descending)[0];
+        Refusals=@($rows | Where-Object Event -EQ 'refuse').Count;Expired=@($rows | Where-Object Event -EQ 'expire');
+        Releases=@($rows | Where-Object Event -EQ 'release')}
+}
 function Enter-IW7ResourceLease {
     param([Parameter(Mandatory)][string]$Scope,
         [ValidateSet('Runtime','Build','Extract','Analysis')][string]$Kind,
         [Parameter(Mandatory)][long]$PhysicalBytes, [Parameter(Mandatory)][long]$CommitBytes,
         [Parameter(Mandatory)][ValidateLength(1,100)][string]$Owner,
-        [string]$BaseClientImage, [switch]$RequireNewLease, [switch]$Shareable)
+        [string]$BaseClientImage, [switch]$RequireNewLease, [switch]$Shareable,
+        [ValidateRange(0,120)][int]$ShortSeconds=0)
     $canonical = Get-IW7CanonicalScope $Scope
     if ($PhysicalBytes -le 0 -or $CommitBytes -le 0) { throw 'A positive full-workload reservation is required.' }
     if ($Shareable -and ($Kind -ne 'Runtime' -or $BaseClientImage)) {
         throw 'Shareable is only valid on a Runtime reservation without BaseClientImage.'
     }
+    if ($Shareable -and $ShortSeconds) { throw 'ShortSeconds is only valid on an exclusive reservation.' }
     if ($BaseClientImage) {
         if ($Kind -ne 'Runtime' -or ![IO.Path]::IsPathRooted($BaseClientImage) -or
             [IO.Path]::GetExtension($BaseClientImage) -ne '.exe') { throw 'A base client needs one absolute executable declared on a runtime reservation.' }
@@ -229,6 +468,9 @@ function Enter-IW7ResourceLease {
             throw 'A new resource lease was required; an existing reservation is retained. Do not retry without RequireNewLease.'
         }
         $processes = @(Get-IW7ResourceProcesses)
+        $queue = Open-IW7ResourceQueue $processes
+        $same = @()
+        try {
         $reclaim = @{}
         if ($Shareable) { $reclaim = @{TolerateOtherAmbiguity=$true; ExceptScope=$canonical; ExceptKind=$Kind} }
         Remove-IW7FinishedRuntimeLeases $state $processes @reclaim
@@ -295,18 +537,34 @@ function Enter-IW7ResourceLease {
             $plan = Get-IW7ShareableMemoryPlan $snapshot $otherShareable $processes
             Assert-IW7ShareableMemoryAdmission $plan $PhysicalBytes ([math]::Max(0L,$PhysicalBytes-$resident))
         }
+        # Waiting order: a new lease that would be admitted still waits for its turn.
+        if (!$same.Count) { Assert-IW7QueueTurn $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds }
+        } catch {
+            $message = $_.Exception.Message
+            # A shareable request larger than the whole budget can never fit: refused, never queued.
+            # Re-entry of an existing lease (or a duplicate of it) holds already: never queued.
+            $queueable = !@($same).Count
+            if ($queueable -and $Shareable -and $message -like 'Resource busy: shareable declared memory budget exceeded*') {
+                $queueable = $PhysicalBytes -le ([long](Get-IW7ResourceSnapshot).PhysicalTotal - (Get-IW7ShareableReserveBytes))
+            }
+            $augmented = Register-IW7QueueRefusal $queue $message $canonical $Kind ([bool]$Shareable) $PhysicalBytes $ShortSeconds $Owner $queueable
+            if ($augmented -ceq $message) { throw }
+            throw $augmented
+        }
         if (!$same.Count) {
             $identity = @($processes | Where-Object PID -EQ $PID)[0]
             if (!$identity.Image -or !$identity.CreatedUtc) { throw 'Launcher identity unavailable.' }
             $lease = [pscustomobject]@{Token=[guid]::NewGuid().ToString('N');Scope=$canonical;Kind=$Kind;Owner=$Owner;
-                OwnerIdentity=$identity;CreatedUtc=[datetime]::UtcNow.ToString('o');Phase='Pending';
+                OwnerIdentity=$identity;CreatedUtc=(Get-IW7SchedulerUtcNow).ToString('o');Phase='Pending';
                 PhysicalBytes=$PhysicalBytes;CommitBytes=$CommitBytes;BaseClientImage=$BaseClientImage;Shareable=[bool]$Shareable;Processes=@()}
+            if ($ShortSeconds) { Add-Member -InputObject $lease -NotePropertyName ShortSeconds -NotePropertyValue $ShortSeconds }
             $state.Leases = @($state.Leases) + $lease
         }
         $lease.PhysicalBytes=$PhysicalBytes; $lease.CommitBytes=$CommitBytes
         Add-Member -InputObject $lease -NotePropertyName MemoryObservation -NotePropertyValue (
             [pscustomobject]@{Snapshot=$snapshot;Budget=$budget}) -Force
         Save-IW7ResourceState $state
+        if (!$same.Count) { Complete-IW7QueueGrant $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds $Owner }
         $lease
     }
 }
@@ -346,6 +604,14 @@ function Exit-IW7ResourceLease {
         }
         $state.Leases=@($state.Leases | Where-Object Token -NE $Token)
         Save-IW7ResourceState $state
+        try {
+            $held=((Get-IW7SchedulerUtcNow)-([datetimeoffset]$lease[0].CreatedUtc).UtcDateTime).TotalSeconds
+            $short=$lease[0].PSObject.Properties['ShortSeconds']
+            $shortValue=if ($short) { [int]$short.Value } else { 0 }
+            Add-IW7AdmissionLog ([pscustomobject]@{Event='release';Kind=$lease[0].Kind;Shareable=(Test-IW7ShareableRuntimeLease $lease[0]);
+                Short=$shortValue;Owner=$lease[0].Owner;Scope=$lease[0].Scope;HeldSeconds=[math]::Round($held,1);
+                Overran=[bool]($shortValue -and $held -gt $shortValue)})
+        } catch { }
     }
 }
 function Get-IW7ResourceStatus {
@@ -358,10 +624,22 @@ function Get-IW7ResourceStatus {
         }
         # Why a shareable caller waits: reserve, declared total, remaining declared
         # budget, measured available memory and the promised-but-untaken part.
-        $plan=$null; $unloaded=$null
-        try { $plan=Get-IW7ShareableMemoryPlan $snapshot @($state.Leases) @(Get-IW7ResourceProcesses); $unloaded=$plan.Unloaded }
+        $plan=$null; $unloaded=$null; $processes=$null
+        try { $processes=@(Get-IW7ResourceProcesses); $plan=Get-IW7ShareableMemoryPlan $snapshot @($state.Leases) $processes; $unloaded=$plan.Unloaded }
         catch { $plan=Get-IW7ShareableMemoryPlan $snapshot @($state.Leases) @() }
-        [pscustomobject]@{Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases);
+        # Waiting order, display only: nothing is saved by Status.
+        $queue=Open-IW7ResourceQueue $processes -ReadOnly
+        $nowUtc=Get-IW7SchedulerUtcNow
+        foreach ($lease in @($state.Leases)) {
+            $age=$null; try { $age=[math]::Round(($nowUtc-([datetimeoffset]$lease.CreatedUtc).UtcDateTime).TotalSeconds) } catch { }
+            Add-Member -InputObject $lease -NotePropertyName HeldSeconds -NotePropertyValue $age -Force
+        }
+        $place=0
+        $waiting=@(if ($queue.Queue) { foreach ($t in @($queue.Queue.Tickets)) { $place++
+            [pscustomobject]@{Place=$place;Owner=$t.Owner;Kind=$t.Kind;Shareable=[bool]$t.Shareable;ShortSeconds=[int]$t.ShortSeconds;
+                Scope=$t.Scope;PhysicalBytes=[long]$t.PhysicalBytes;WaitingSeconds=[math]::Round(($queue.NowMs-[long]$t.FirstMs)/1000);
+                LastAskedSecondsAgo=[math]::Round(($queue.NowMs-[long]$t.LastMs)/1000);Asks=[int]$t.Polls;CallerPid=$t.OwnerIdentity.PID} } })
+        [pscustomobject]@{Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases);Queue=$waiting;
             ShareableRuntimeLimit=(Get-IW7ShareableRuntimeLeaseLimit);
             ShareableReserveBytes=$plan.Reserve;ShareableDeclaredBytes=$plan.Declared;
             ShareableRemainingDeclaredBytes=[math]::Max(0L,$plan.Budget-$plan.Declared);
@@ -590,6 +868,42 @@ function Invoke-IW7ResourceJob {
         return
     }
     $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+    $process=Get-Process -Id $PID
+    $priority=$process.PriorityClass
+    try {
+        $process.PriorityClass='BelowNormal'
+        & $Body
+    } finally {
+        $process.PriorityClass=$priority
+        Exit-IW7ResourceLease -Token $lease.Token
+    }
+}
+# The same plain job as Invoke-IW7ResourceJob, queued: while the slot is held by a temporary holder the
+# admission is asked again every five seconds, up to WaitForSlotSeconds. Only a refusal that names such a
+# holder is waited for; every other refusal (identity, telemetry, an unreserved laboratory, a duplicate
+# lease) is thrown at once, and so is the last refusal at the bound. Invoke-IW7ResourceJob is unchanged.
+function Invoke-IW7QueuedResourceJob {
+    param([Parameter(Mandatory)][scriptblock]$Body,[Parameter(Mandatory)][string]$Scope,
+        [ValidateSet('Build','Extract','Analysis')][string]$Kind='Build',
+        [long]$PhysicalBytes=4GB,[long]$CommitBytes=6GB,[string]$Owner='native build',
+        [Parameter(Mandatory)][ValidateRange(1,86400)][int]$WaitForSlotSeconds,
+        [ValidateRange(0,120)][int]$ShortSeconds=0)
+    $waited=[Diagnostics.Stopwatch]::StartNew()
+    $said=-60
+    $short=@{}; if ($ShortSeconds) { $short.ShortSeconds=$ShortSeconds }
+    while ($true) {
+        try {
+            $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner @short
+            break
+        } catch {
+            $busy=$_.Exception.Message -like 'Resource busy:*' -or
+                $_.Exception.Message -like 'An existing compiler/extractor/Java analysis is running;*'
+            if (!$busy -or $waited.Elapsed.TotalSeconds -ge $WaitForSlotSeconds) { throw }
+            # One line a minute while waiting, with the place in the queue.
+            if ($waited.Elapsed.TotalSeconds -ge $said+60) { $said=$waited.Elapsed.TotalSeconds; Write-Host ("waiting {0:N0} s for the {1} reservation: {2}" -f $said,$Kind,$_.Exception.Message) }
+            Start-Sleep -Seconds 5
+        }
+    }
     $process=Get-Process -Id $PID
     $priority=$process.PriorityClass
     try {

@@ -65,6 +65,12 @@ if ($InitialAdmissionSourceOnly) {
                 } finally {$c.LockHeld=$false}
             }
             function Get-IW7ResourceProcesses {$c.ProcessCount++;$c.Processes}
+            # The waiting order (queue.json) is covered by resource_scheduler_queue_test; here it is an empty, inert queue.
+            function Open-IW7ResourceQueue {param($Processes)[pscustomobject]@{Queue=$null;NowMs=0L;Processes=$Processes;Overtook=@()}}
+            function Assert-IW7QueueTurn {param($Context,$Scope,$Kind,$Shareable,$ShortSeconds)}
+            function Register-IW7QueueRefusal {param($Context,$Message)$Message}
+            function Complete-IW7QueueGrant {param($Context)}
+            function Get-IW7SchedulerUtcNow {[datetime]::UtcNow}
             function Remove-IW7FinishedRuntimeLeases {param($State,$Processes)$c.ReclaimCount++}
             function Get-IW7LeaseLiveProcesses {param($Lease,$Processes)$c.LiveCount++;$c.Live}
             function Test-IW7ProcessInScope {param($Process,$Scope)throw 'Unexpected scope callback.'}
@@ -419,6 +425,10 @@ function Get-IW7ResourceSnapshot { $script:fakeSnapshot }
 $self=Get-Process -Id $PID
 $script:fakeProcesses=@([pscustomobject]@{PID=$PID;ParentPID=0;CreatedUtc=$self.StartTime.ToUniversalTime().ToString('o');Image=$self.Path;Name='pwsh.exe';Lab=$false;Heavy=$false;WorkingSet=100MB;PrivateBytes=100MB})
 function Get-IW7ResourceProcesses { $script:fakeProcesses }
+# This linear suite checks admission without the waiting order: one long-lived process makes every request, so
+# its refused requests would stay queued ahead of its later ones. The waiting order has its own suite
+# (resource_scheduler_queue_test.ps1); resource_scheduler_shareable_test.ps1 runs with the real queue.
+function Open-IW7ResourceQueue { param($Processes,[switch]$ReadOnly) [pscustomobject]@{Queue=$null;NowMs=0L;Processes=$Processes;Overtook=@()} }
 if ($Contender) {
     try {
         $lease=Enter-IW7ResourceLease -Scope (Join-Path $TestRoot ('lab-'+$PID)) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner "contender-$PID"

@@ -1,4 +1,4 @@
-param([string]$NativeRoot,[switch]$Compile)
+param([string]$NativeRoot,[switch]$Compile,[ValidateRange(1,3600)][int]$WaitForSlotSeconds=2100)   # the Build slot is held ~30 s: wait in turn, short
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 . "$repo/ops/Owner-CheatsOverlay.Core.ps1"
@@ -37,7 +37,7 @@ Refuses {ConvertTo-IW7OwnerCheatsSource 'arbitrary.cpp' $sources['command.cpp']}
 Refuses {ConvertTo-IW7OwnerCheatsSource 'command.cpp' ($sources['command.cpp'].Replace('cmd_give(client_num, params.get_all());',''))}
 if($Compile){
     . "$repo/ops/Resource-Scheduler.Core.ps1"
-    Invoke-IW7ResourceJob -Scope $repo -Owner 'Owner cheats policy and Windows CNG tests' -PhysicalBytes 512MB -CommitBytes 1GB -Body {
+    Invoke-IW7QueuedResourceJob -Scope $repo -Owner 'Owner cheats policy and Windows CNG tests' -WaitForSlotSeconds $WaitForSlotSeconds -ShortSeconds 120 -PhysicalBytes 512MB -CommitBytes 1GB -Body {
         $kit=Join-Path $scratch 'keys'
         & "$repo/ops/New-OwnerCheatsKit.ps1" -OutputDirectory $kit
         Refuses {& "$repo/ops/New-OwnerCheatsKit.ps1" -OutputDirectory $kit}
