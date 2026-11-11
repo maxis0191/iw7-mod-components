@@ -187,9 +187,7 @@ function Get-ClientSetupCommands {
 }
 
 function Get-JoinDescription([string]$Mode, [string]$Root) {
-    if ($Mode -eq 'CP') {
-        "write '<pid> <32 hex nonce> connect' to $Root\iw7-mod\paris-server-client.request (temporary name, then move); read the .response"
-    } else { "[command] connect 127.0.0.1:$ServerPort through commands.txt (the fixture's connect forces Zombies, so MP cannot use it)" }
+    "write '<pid> <32 hex nonce> $(Get-VcConnectAction $Mode)' to $Root\iw7-mod\paris-server-client.request (temporary name, then move); read the .response"
 }
 
 function Hide-Password([string]$Text, [string]$Password) { if ($Password) { $Text.Replace($Password, '<redacted>') } else { $Text } }
@@ -350,7 +348,7 @@ function Write-DryRun {
             foreach ($command in Get-ClientSetupCommands) { "[command $role] $command" }
             "[join $role] $(Get-JoinDescription $mode $root): first $($ConnectFirstSeconds[$mode]) s after the launch, then every $ConnectEverySeconds s while the client reports no joining state"
             "[join $role] in game = the snapshot's clientNum N, the heartbeat lists N, and the server's last 'Setting client N XUID to X' equals the client's own session XUID at N"
-            if ($mode -eq 'CP') { "[join $role] a connect answered but no 'Ready loopback join' line in the client's console $ReadyLineSeconds s later counts as a stall at once" }
+            "[join $role] a connect answered but no 'Ready loopback join' line in the client's console $ReadyLineSeconds s later counts as a stall at once"
             "[join $role] not in game $JoinTimeoutSeconds s after the launch: stop it by its owned handle and launch it again (evidence in $(Get-RoleDir $mode $role 1)), at most $JoinRetries time(s)"
             "[assert] snapshot clientNum >= 0 and the fixture heartbeat lists it"
         }
@@ -559,7 +557,7 @@ function Sync-Snapshot($Phase, $Role, [double]$TimeoutSeconds = 15) {
 
 function New-JoinRecord($Role, [string]$Kind) {
     $record = [pscustomobject]@{ Mode = $Role.Mode; Role = $Role.Name; Kind = $Kind; Attempt = $Role.Attempt; PID = $(if ($Role.Handle) { $Role.Handle.Id })
-        Channel = $(if ($Role.Mode -eq 'CP') { 'request' } else { 'console' }); StartedUtc = [datetime]::UtcNow.ToString('o'); Connects = [Collections.Generic.List[object]]::new()
+        Channel = 'request'; StartedUtc = [datetime]::UtcNow.ToString('o'); Connects = [Collections.Generic.List[object]]::new()
         Result = $null; Seconds = $null; LastConnectionState = $null; StdoutTail = @(); Stop = $null; StartTick = [Environment]::TickCount64; LastSendTick = $null
         # What the run saw while this join lasted: each change of the server's player list
         # (count, slots, XUIDs), each client state and snapshot clientNum, the fixture's
@@ -574,21 +572,18 @@ function New-JoinRecord($Role, [string]$Kind) {
     $record
 }
 
-# One connect ask. CP: the lab fixture's request file (proven by the server
-# repository's network lab); MP: a console connect (the fixture's connect forces Zombies).
+# One connect ask through the lab fixture's request file: 'connect' waits for Zombies
+# mode, 'connect_mp' for Multiplayer. A console connect fails silently in MP: its
+# infoResponse errors only open a menu (live run mp-relay-1, 2026-11-11: ten console
+# connects, no packet in the server's log, the client stayed in state 0).
 function Send-Connect($Role, $Join) {
     $at = [Math]::Round(([Environment]::TickCount64 - $Join.StartTick) / 1000.0, 1)
-    if ($Role.Mode -eq 'CP') {
-        $line = New-VcRequestLine $Role.Handle.Id 'connect'
-        $request = Join-Path $Role.Root 'iw7-mod\paris-server-client.request'
-        [IO.File]::WriteAllText("$request.tmp", $line, [Text.Encoding]::ASCII)
-        Move-Item -LiteralPath "$request.tmp" -Destination $request -Force
-        $script:trace.Add(('{0:o} {1}/{2} request {3}' -f [datetime]::UtcNow, $Role.Mode, $Role.Name, $line))
-        $Join.Connects.Add([pscustomobject]@{ At = $at; Line = $line; Answered = $false; AnsweredAt = $null })
-    } else {
-        Send-Command $Role "connect 127.0.0.1:$ServerPort"
-        $Join.Connects.Add([pscustomobject]@{ At = $at; Line = "connect 127.0.0.1:$ServerPort"; Answered = $null; AnsweredAt = $null })
-    }
+    $line = New-VcRequestLine $Role.Handle.Id (Get-VcConnectAction $Role.Mode)
+    $request = Join-Path $Role.Root 'iw7-mod\paris-server-client.request'
+    [IO.File]::WriteAllText("$request.tmp", $line, [Text.Encoding]::ASCII)
+    Move-Item -LiteralPath "$request.tmp" -Destination $request -Force
+    $script:trace.Add(('{0:o} {1}/{2} request {3}' -f [datetime]::UtcNow, $Role.Mode, $Role.Name, $line))
+    $Join.Connects.Add([pscustomobject]@{ At = $at; Line = $line; Answered = $false; AnsweredAt = $null })
     $Join.LastSendTick = [Environment]::TickCount64
 }
 
@@ -633,15 +628,13 @@ function Update-JoinEvidence($Phase, $Role, $Join) {
 }
 
 function Step-Join($Phase, $Role, $Join) {
-    if ($Role.Mode -eq 'CP') {
-        $response = Join-Path $Role.Root 'iw7-mod\paris-server-client.response'
-        foreach ($connect in @($Join.Connects | Where-Object { !$_.Answered })) {
-            try {
-                if ((Test-Path -LiteralPath $response) -and [IO.File]::ReadAllText($response).Trim() -eq $connect.Line) {
-                    $connect.Answered = $true; $connect.AnsweredAt = [Math]::Round(([Environment]::TickCount64 - $Join.StartTick) / 1000.0, 1)
-                }
-            } catch {}
-        }
+    $response = Join-Path $Role.Root 'iw7-mod\paris-server-client.response'
+    foreach ($connect in @($Join.Connects | Where-Object { !$_.Answered })) {
+        try {
+            if ((Test-Path -LiteralPath $response) -and [IO.File]::ReadAllText($response).Trim() -eq $connect.Line) {
+                $connect.Answered = $true; $connect.AnsweredAt = [Math]::Round(([Environment]::TickCount64 - $Join.StartTick) / 1000.0, 1)
+            }
+        } catch {}
     }
     $Join.LastConnectionState = Get-VcLastConnectionState $Role.Events
     Update-ReadyLine $Role $Join
@@ -650,7 +643,7 @@ function Step-Join($Phase, $Role, $Join) {
     # First live run (2026-11-11): each first launch answered the request but its fixture
     # never called connect ('Ready loopback join' absent) and sat in its own front end.
     $answered = @($Join.Connects | Where-Object { $_.Answered } | Select-Object -First 1)
-    if ($Role.Mode -eq 'CP' -and $answered.Count -and $null -eq $Join.ReadyPort -and $since - [double]$answered[0].AnsweredAt -ge $ReadyLineSeconds) {
+    if ($answered.Count -and $null -eq $Join.ReadyPort -and $since - [double]$answered[0].AnsweredAt -ge $ReadyLineSeconds) {
         $Join.InGameCheck = "no 'Ready loopback join' line $ReadyLineSeconds s after the answered connect request"
         throw "Timed out: client $($Role.Name) answered its connect request but its fixture never joined ($ReadyLineSeconds s)."
     }
@@ -660,7 +653,7 @@ function Step-Join($Phase, $Role, $Join) {
     # The native request stays pending until online data is ready, so one answered CP
     # request is enough. A second one makes a joined or joining client leave and rejoin
     # (live run 4, 2026-11-11: server drop EXE_DISCONNECTED right after the resend).
-    if ($Role.Mode -eq 'CP' -and $answered.Count) { return }
+    if ($answered.Count) { return }
     if (Test-VcJoinResendDue $since $sinceSend $first $ConnectEverySeconds $Join.LastConnectionState) { Send-Connect $Role $Join }
 }
 

@@ -236,6 +236,9 @@ function ConvertFrom-VcReadyLine([string]$Line) {
 
 # The request line of the lab fixture's file channel (paris_test_fixture.cpp):
 # "<pid> <32 lowercase hex nonce> <action>", one line, no newline.
+# The lab fixture's request action: 'connect' waits for Zombies mode, 'connect_mp' for Multiplayer.
+function Get-VcConnectAction([string]$Mode) { if ($Mode -eq 'CP') { 'connect' } elseif ($Mode -eq 'MP') { 'connect_mp' } else { throw "Unknown mode $Mode" } }
+
 function New-VcRequestLine([int]$ProcessId, [string]$Action, [string]$Nonce = ([guid]::NewGuid().ToString('N'))) {
     if ($ProcessId -le 0 -or $Nonce -cnotmatch '^[0-9a-f]{32}$' -or $Action -notmatch '^\S+$') { throw 'A request needs a process id, a 32-hex nonce and one action word.' }
     "$ProcessId $Nonce $Action"

@@ -221,12 +221,14 @@ For each mode the orchestrator does the following:
    once at that rate (SAPI, canonical 44-byte PCM16 mono WAV, 250 ms of silence on
    both ends). It then sends `cl_voice 1` and the capture-gate settings.
 5. It joins each client, the way the server repository's network lab does:
-   * Zombies: it writes `<pid> <32 hex nonce> connect` to
-     `<client root>\iw7-mod\paris-server-client.request` (temporary name, then
-     move) and reads `.response`. The lab fixture then connects to
-     `127.0.0.1:<paris_lab_server_port>` once the front end is ready.
-   * Multiplayer: the fixture's `connect` forces Zombies, so it sends
-     `connect 127.0.0.1:<port>` through `commands.txt` instead.
+   It writes `<pid> <32 hex nonce> connect` (Zombies) or `connect_mp`
+   (Multiplayer) to `<client root>\iw7-mod\paris-server-client.request`
+   (temporary name, then move) and reads `.response`. The lab fixture switches
+   the client to that game mode, waits for its online data, then connects to
+   `127.0.0.1:<paris_lab_server_port>` and prints `Ready loopback join`.
+   A console `connect` is not used: in MP its errors only open a menu, so a
+   failed join leaves no trace (live run mp-relay-1, 2026-11-11: ten console
+   connects, no packet in the server's log, the client stayed in state 0).
 
    The first ask comes 20 s (Zombies) or 25 s (MP) after the launch, then every
    10 s, but never while the client reports a joining state (voice_test's

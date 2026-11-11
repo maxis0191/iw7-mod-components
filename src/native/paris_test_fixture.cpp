@@ -126,6 +126,7 @@ namespace paris_test_fixture
                 lan && lan->type == game::DVAR_TYPE_BOOL ? static_cast<int>(lan->current.enabled) : -1);
         }
         bool connect_pending = false;
+        game::GameModeType connect_mode = game::GAME_MODE_CP;
         bool vote_witness_running = false;
         void vote_binding(const char* name, bool down);
         std::string agent_nonce()
@@ -776,9 +777,9 @@ namespace paris_test_fixture
         void client_request()
         {
             if (connect_pending && utils::flags::has_flag("paris-isolated-lab") &&
-                game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP)
+                game::Com_GameMode_GetActiveGameMode() != connect_mode)
             {
-                game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP);
+                game::Com_GameMode_SetDesiredGameMode(connect_mode);
                 return;
             }
             if (connect_pending && utils::flags::has_flag("paris-isolated-lab") &&
@@ -821,7 +822,7 @@ namespace paris_test_fixture
             if (watch_input && agent_runtime.client && agent_runtime.client->active()) return;
             if (vote_input && vote_witness_running) return;
             if (vote_input && agent_runtime.client && agent_runtime.client->active()) return;
-            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "rejoin" && action != "rejoin_immediate" && !vote_input && !key_input && !watch_input && !afk_input && !teleport_input && !cutscene_input) return;
+            if (action != "capture" && action != "stop" && action != "help" && action != "mods" && action != "close" && action != "connect" && action != "connect_mp" && action != "rejoin" && action != "rejoin_immediate" && !vote_input && !key_input && !watch_input && !afk_input && !teleport_input && !cutscene_input) return;
             if (action == "rejoin" || action == "rejoin_immediate")
             {
                 const auto* connection = party::get_server_connection_state();
@@ -836,10 +837,11 @@ namespace paris_test_fixture
                     scheduler::once([] { connect_pending = true; }, scheduler::main, 3s);
                 }
             }
-            else if (action == "connect")
+            else if (action == "connect" || action == "connect_mp")
             {
                 if (!utils::flags::has_flag("paris-isolated-lab")) return;
                 if (!lab_port()) return;
+                connect_mode = action == "connect_mp" ? game::GAME_MODE_MP : game::GAME_MODE_CP;
                 connect_pending = true;
             }
             if (action == "capture")

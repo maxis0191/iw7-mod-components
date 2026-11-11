@@ -70,6 +70,11 @@ Check 'on our server needs the heartbeat slot and the same XUID on both sides' {
     !(Test-VcOnServer $other $hb @{ '0' = 'D468DB20EB6EAC3D' }) -and !(Test-VcOnServer $snap $hb @{}) -and
     !(Test-VcOnServer ([pscustomobject]@{ event = 'snapshot'; client_num = 1; users = $users }) $hb @{ '1' = 'X' })
 }
+Check 'connect action per mode' {
+    $unknown = try { Get-VcConnectAction 'SP'; $false } catch { $true }
+    (Get-VcConnectAction 'CP') -eq 'connect' -and (Get-VcConnectAction 'MP') -eq 'connect_mp' -and $unknown
+}
+
 Check 'request line format' {
     $line = New-VcRequestLine 4242 'connect'
     $bad = try { New-VcRequestLine 0 'connect'; $false } catch { $true }
@@ -209,9 +214,9 @@ function Test-IW7BenchRoot([string]$Root) {
         $text.Contains('set g_password "<redacted>"') -and $text.Contains('+set password "<redacted>"') -and
         ([regex]::Matches($text, '\+set paris_lab_server_port 27416')).Count -eq 4 -and !$text.Contains('27016') -and !$text.Contains('connect 127.0.0.1:27416   ')
     }
-    Check 'dry run: CP joins through the request file, MP through the console, with the stall budget' {
-        $cpJoins = @($output | Where-Object { $_ -match '^\[join [AB]\] write .*paris-server-client\.request' })
-        $mpJoins = @($output | Where-Object { $_ -match '^\[join [AB]\] \[command\] connect 127\.0\.0\.1:27416' })
+    Check 'dry run: CP and MP join through the request file (connect, connect_mp), with the stall budget' {
+        $cpJoins = @($output | Where-Object { $_ -match '^\[join [AB]\] write ''<pid> <32 hex nonce> connect'' to .*paris-server-client\.request' })
+        $mpJoins = @($output | Where-Object { $_ -match '^\[join [AB]\] write ''<pid> <32 hex nonce> connect_mp'' to .*paris-server-client\.request' })
         $stalls = @($output | Where-Object { $_ -match '^\[join [AB]\] not in game 120 s after the launch: stop it .* at most 2 time' })
         $cpJoins.Count -eq 2 -and $mpJoins.Count -eq 2 -and $stalls.Count -eq 4 -and $text.Contains("$clientA\iw7-mod\paris-server-client.request") -and
         @($output | Where-Object { $_ -match '^\[command [AB]\] connect' }).Count -eq 0
@@ -225,7 +230,7 @@ function Test-IW7BenchRoot([string]$Root) {
     }
     Check 'dry run: the join proof and the early stall are stated' {
         $text.Contains("server's last 'Setting client N XUID to X' equals the client's own session XUID") -and
-        ([regex]::Matches($text, "no 'Ready loopback join' line in the client's console 40 s later")).Count -eq 2
+        ([regex]::Matches($text, "no 'Ready loopback join' line in the client's console 40 s later")).Count -eq 4
     }
     Check 'dry run: without a bench core the updater data is backed up' { !$text.Contains('disposable bench copy') -and $text.Contains('[bench check] none') }
     Check 'dry run with a bench core: manifests and bench checks pass, cdata left out' {
