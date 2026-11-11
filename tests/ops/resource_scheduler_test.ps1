@@ -26,7 +26,7 @@ if ($InitialAdmissionSourceOnly) {
         $script:initialCases++
         $c=[pscustomobject]@{Json=$Json;Exists=!$Missing;RaceJson=$RaceJson;RaceApplied=$false;BeforeJson=$null;
             BeforeParsedJson=$null;ReadState=$null;InitialMemory=$null;LockHeld=$false;LockCount=0;ReadCount=0;
-            PathCount=0;ContentCount=0;ProcessCount=0;ReclaimCount=0;SnapshotCount=0;BudgetCount=0;SaveCount=0;LiveCount=0;
+            PathCount=0;ContentCount=0;ProcessCount=0;ReclaimCount=0;SnapshotCount=0;BudgetCount=0;SaveCount=0;LiveCount=0;PlanCount=0;QueuePlan=$null;
             Result=$null;Caught=$null;SavedState=$null;Budget=$null;BudgetArgs=$null;Live=$Live;
             Snapshot=[pscustomobject]@{PhysicalTotal=32GB;PhysicalAvailable=1MB;CommitLimit=48GB;Committed=47GB};
             Processes=@([pscustomobject]@{PID=$PID;Image='C:\source-only\pwsh.exe';CreatedUtc='2026-10-19T01:00:00.0000000Z';
@@ -67,7 +67,11 @@ if ($InitialAdmissionSourceOnly) {
             function Get-IW7ResourceProcesses {$c.ProcessCount++;$c.Processes}
             # The waiting order (queue.json) is covered by resource_scheduler_queue_test; here it is an empty, inert queue.
             function Open-IW7ResourceQueue {param($Processes)[pscustomobject]@{Queue=$null;NowMs=0L;Processes=$Processes;Overtook=@()}}
-            function Assert-IW7QueueTurn {param($Context,$Scope,$Kind,$Shareable,$ShortSeconds)}
+            function Assert-IW7QueueTurn {param($Context,$Scope,$Kind,$Shareable,$ShortSeconds,$Plan)$c.QueuePlan=$Plan}
+            # The fit rule's memory plan (covered by resource_scheduler_queue_test): a new lease passes it to its queue turn.
+            function Get-IW7ShareableMemoryPlan {param($Snapshot,$Leases,$Processes)$c.PlanCount++
+                Assert-InitialAdmission ([object]::ReferenceEquals($Snapshot,$c.Snapshot)-and@($Leases).Count-eq0) 'Queue plan not built from the snapshot and the other leases.'
+                [pscustomobject]@{Reserve=8GB;Total=32GB;Budget=24GB;Declared=0L;Unloaded=0L;Available=[long]$Snapshot.PhysicalAvailable}}
             function Register-IW7QueueRefusal {param($Context,$Message)$Message}
             function Complete-IW7QueueGrant {param($Context)}
             function Get-IW7SchedulerUtcNow {[datetime]::UtcNow}
@@ -100,7 +104,7 @@ if ($InitialAdmissionSourceOnly) {
         Assert-InitialAdmission ($null-ne$Case.Caught-and$null-eq$Case.Result) ('No refusal: '+$Name)
         if(!$Malformed){Assert-InitialAdmission ($Case.Caught.Exception.Message-like'A new resource lease was required;*') ('Wrong refusal: '+$Name)}
         Assert-InitialAdmission ($Case.LockCount-eq1-and$Case.ReadCount-eq1-and!$Case.LockHeld) ('Real reader/lock not reached once: '+$Name)
-        foreach($counter in @('ProcessCount','ReclaimCount','SnapshotCount','BudgetCount','SaveCount','LiveCount')){
+        foreach($counter in @('ProcessCount','ReclaimCount','SnapshotCount','BudgetCount','SaveCount','LiveCount','PlanCount')){
             Assert-InitialAdmission ($Case.$counter-eq0) ('Forbidden callback '+$counter+': '+$Name)
         }
         Assert-InitialAdmission ($Case.Json-ceq$Case.BeforeJson) ('Registry text changed: '+$Name)
@@ -139,7 +143,7 @@ if ($InitialAdmissionSourceOnly) {
         $case=Invoke-InitialAdmissionCase -Missing:$missing
         Assert-InitialAdmission ($null-eq$case.Caught-and$null-ne$case.Result) 'Empty first admission failed.'
         Assert-InitialAdmission ($case.Result.Token-is[string]-and$case.Result.Token-cmatch'^[0-9a-f]{32}$') 'Fresh token not scalar lowercase hex.'
-        Assert-InitialAdmission ($case.LockCount-eq1-and$case.ReadCount-eq1-and$case.ProcessCount-eq1-and$case.ReclaimCount-eq1-and$case.SnapshotCount-eq1-and$case.BudgetCount-eq1-and$case.SaveCount-eq1) 'Fresh path callbacks changed.'
+        Assert-InitialAdmission ($case.LockCount-eq1-and$case.ReadCount-eq1-and$case.ProcessCount-eq1-and$case.ReclaimCount-eq1-and$case.SnapshotCount-eq1-and$case.BudgetCount-eq1-and$case.SaveCount-eq1-and$case.PlanCount-eq1-and$null-ne$case.QueuePlan) 'Fresh path callbacks changed.'
         Assert-InitialAdmission ($case.Result.Scope-ceq$scope-and$case.Result.BaseClientImage-ceq$baseImage-and$case.Result.Phase-ceq'Pending') 'Fresh reservation metadata changed.'
         Assert-InitialAdmission ([object]::ReferenceEquals($case.Result.OwnerIdentity,$case.Processes[0])-and[object]::ReferenceEquals($case.SavedState,$case.ReadState)) 'Fresh actual identities/state copied.'
         Assert-InitialAdmission ([object]::ReferenceEquals($case.Result.MemoryObservation.Snapshot,$case.Snapshot)-and[object]::ReferenceEquals($case.Result.MemoryObservation.Budget,$case.Budget)) 'Fresh memory observation changed.'
@@ -156,7 +160,7 @@ if ($InitialAdmissionSourceOnly) {
             Assert-InitialAdmission ([object]::ReferenceEquals($case.Result,$case.ReadState.Leases[0])-and[object]::ReferenceEquals($case.SavedState,$case.ReadState)) 'Legacy lease/state not the real reader objects.'
             Assert-InitialAdmission ($case.Result.PhysicalBytes-eq$expectedPhysical-and$case.Result.CommitBytes-eq$expectedCommit) 'Legacy maximum estimates changed.'
             Assert-InitialAdmission ($case.BudgetArgs[0]-eq($expectedPhysical-2GB)-and$case.BudgetArgs[1]-eq($expectedCommit-3GB)) 'Legacy resident budget subtraction changed.'
-            Assert-InitialAdmission ($case.ProcessCount-eq1-and$case.ReclaimCount-eq1-and$case.LiveCount-eq1-and$case.SnapshotCount-eq1-and$case.BudgetCount-eq1-and$case.SaveCount-eq1) 'Legacy callbacks changed.'
+            Assert-InitialAdmission ($case.ProcessCount-eq1-and$case.ReclaimCount-eq1-and$case.LiveCount-eq1-and$case.SnapshotCount-eq1-and$case.BudgetCount-eq1-and$case.SaveCount-eq1-and$case.PlanCount-eq0) 'Legacy callbacks changed.'
             Assert-InitialAdmission ([object]::ReferenceEquals($case.Result.MemoryObservation.Snapshot,$case.Snapshot)-and[object]::ReferenceEquals($case.Result.MemoryObservation.Budget,$case.Budget)-and![object]::ReferenceEquals($case.Result.MemoryObservation,$case.InitialMemory)) 'Legacy fresh MemoryObservation changed.'
         }
     }
