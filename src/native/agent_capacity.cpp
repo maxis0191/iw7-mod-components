@@ -259,6 +259,10 @@ void plan_client() {
     block(0x140C68A96, std::array<std::uint8_t, 4>{0x43, 0x8d, 0x04, 0x5b},
                        std::array<std::uint8_t, 4>{0x41, 0x6b, 0xc3, static_cast<std::uint8_t>(l.agents)}); // imul eax, r11d, agents
     block(0x140C68A9A, std::array<std::uint8_t, 3>{0xc1, 0xe0, 0x03}, std::array<std::uint8_t, 3>{0x0f, 0x1f, 0x00});
+    // CL snapshot buffers (sub_14034F1D0, called from sub_1409B2620): the client's agent-state ring is frames x agents a
+    // frame. A listen host passes the server's own max agents (byte +0x546, set from the patched selector); a client
+    // joining a remote server passes 24 as `mov ebp, 18; lea r14d, [rbp + 6]`: the 6 becomes agents - 18.
+    add1(0x1409B26FC, 6, l.agents - players);
     // CG_SetNextSnap: the character change mask (one bit a character) grows into a free stack slot
     add1(0x14086FBE0, 0x70, 0x68); add(0x14086FBE3, 0x100, 0x108);
     add1(0x14086FDAF, 0x60, 0x58); add1(0x140870705, 0x60, 0x58);
