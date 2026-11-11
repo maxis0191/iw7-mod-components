@@ -10,12 +10,14 @@ $script:VcEventNames = @{
     Recv      = @('recv')
     Encoded   = @('encoded')
     Error     = @('error', 'play_error')
+    Connection = @('connection')
 }
 $script:VcFieldNames = @{
     ClientNum = @('clientNum', 'client_num', 'clientnum')
     Rate      = @('rate', 'sampleRate', 'sample_rate', 'nativeRate', 'native_rate', 'captureRate', 'capture_rate')
     Talker    = @('talker')
     Encoded   = @('encoded')
+    State     = @('state', 'connection_state')
 }
 
 # Cumulative decoded samples a client snapshot reports for one talker ("recv": {"0": n, ...}).
@@ -155,6 +157,101 @@ function Get-VcScenarios {
     $scenarios += S 'M4a' 'free-for-all, A talks' 'heard' $ab $toFfa -RequireAlive $true
     $scenarios += S 'M4b' 'free-for-all, B talks' 'heard' $ba -RequireAlive $true
     $scenarios
+}
+
+# The last connection state a client reported (voice_test emits "connection" with
+# "state" on every change; 9 = active). $null when it reported none yet.
+function Get-VcLastConnectionState($Events, [int]$From = 0) {
+    if ($null -eq $Events) { return $null }
+    for ($i = $Events.Count - 1; $i -ge $From; $i--) {
+        $item = $Events[$i]
+        if (Test-VcEvent $item 'Connection') {
+            $state = Get-VcField $item $script:VcFieldNames.State
+            if ($null -ne $state) { return [int]$state }
+        }
+    }
+    $null
+}
+
+# Whether a join should ask the client to connect now. The first ask comes
+# $FirstDelaySeconds after the launch (the front end must be up); later asks every
+# $EverySeconds, but never while the client reports a joining state (3..8 in the
+# retail order disconnected, cinematic, logo, connecting, challenging, connected,
+# sending stats, loading, primed, active) or the active state 9: a new connect
+# would restart a join that is still progressing. A join stuck in such a state is
+# the join-stall budget's job (stop and relaunch), not a resend's.
+function Test-VcJoinResendDue([double]$SinceLaunchSeconds, $SinceLastSendSeconds, [double]$FirstDelaySeconds, [double]$EverySeconds, $ConnectionState) {
+    if ($SinceLaunchSeconds -lt $FirstDelaySeconds) { return $false }
+    if ($null -eq $SinceLastSendSeconds) { return $true }
+    if ($null -ne $ConnectionState -and [int]$ConnectionState -ge 3) { return $false }
+    [double]$SinceLastSendSeconds -ge $EverySeconds
+}
+
+# The request line of the lab fixture's file channel (paris_test_fixture.cpp):
+# "<pid> <32 lowercase hex nonce> <action>", one line, no newline.
+function New-VcRequestLine([int]$ProcessId, [string]$Action, [string]$Nonce = ([guid]::NewGuid().ToString('N'))) {
+    if ($ProcessId -le 0 -or $Nonce -cnotmatch '^[0-9a-f]{32}$' -or $Action -notmatch '^\S+$') { throw 'A request needs a process id, a 32-hex nonce and one action word.' }
+    "$ProcessId $Nonce $Action"
+}
+
+# Number of names (hard links) of a file; 0 when it does not exist. Opens the
+# file for attributes only and never follows a reparse point.
+function Get-VcLinkCount([string]$Path) {
+    if (!('VcLinkCount' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class VcLinkCount {
+    [StructLayout(LayoutKind.Sequential)]
+    struct Info { public uint Attributes, CL, CH, AL, AH, WL, WH, VolumeSerial, SizeHigh, SizeLow, Links, IndexHigh, IndexLow; }
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetFileInformationByHandle(SafeFileHandle handle, out Info info);
+    public static long Get(string path) {
+        string name = path.StartsWith(@"\\") ? path : @"\\?\" + path;
+        using (var handle = CreateFileW(name, 0x80, 7, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero)) {
+            if (handle.IsInvalid) {
+                int code = Marshal.GetLastWin32Error();
+                if (code == 2 || code == 3) return 0;
+                throw new Win32Exception(code, "open " + path);
+            }
+            Info info;
+            if (!GetFileInformationByHandle(handle, out info)) throw new Win32Exception(Marshal.GetLastWin32Error(), "read " + path);
+            return info.Links;
+        }
+    }
+}
+'@
+    }
+    [VcLinkCount]::Get([IO.Path]::GetFullPath($Path))
+}
+
+# Link guard: every file a run writes, restores or replaces in a game root must be
+# absent or have exactly one name. A file with more names shares its data with
+# another folder (a bench root links the retained stock), so writing it would
+# change that folder too. Returns one problem line per refused file.
+function Get-VcLinkProblems([string]$Root, [string[]]$Relatives) {
+    foreach ($relative in @($Relatives | Where-Object { $_ } | Select-Object -Unique)) {
+        $path = Join-Path $Root $relative
+        $links = Get-VcLinkCount $path
+        if ($links -gt 1) { "$relative in $Root has $links names (shared data); it is never written." }
+    }
+}
+
+# Bench manifest checks the harness makes itself (the bench core's own check runs
+# separately): schema, the folder it describes, the isolated-lab identity and the
+# port this root plays. Returns problem lines.
+function Get-VcBenchManifestProblems([string]$Root, [string]$Name, [int]$Port) {
+    $path = Join-Path $Root 'paris-bench-root.json'
+    if (!(Test-Path -LiteralPath $path -PathType Leaf)) { return "$Name root is not a bench root (no paris-bench-root.json)." }
+    try { $manifest = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } catch { return "$Name bench manifest is not readable JSON." }
+    if ($manifest.schema -ne 'iw7.bench-root/1') { "$Name bench manifest schema is '$($manifest.schema)', not iw7.bench-root/1." }
+    if (![string]::Equals(([string]$manifest.root).TrimEnd('\', '/'), $Root, [StringComparison]::OrdinalIgnoreCase)) { "$Name bench manifest describes another folder ($($manifest.root))." }
+    if (!$manifest.identity -or $manifest.identity.isolatedLab -ne $true) { "$Name bench was not made with -IsolatedLab." }
+    elseif ([int]$manifest.identity.port -ne $Port) { "$Name bench port is $($manifest.identity.port), the harness uses $Port for it." }
 }
 
 function Resolve-VcCommand([string]$Command, [hashtable]$ClientNums) {

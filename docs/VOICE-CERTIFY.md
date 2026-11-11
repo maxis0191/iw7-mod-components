@@ -2,10 +2,12 @@
 
 Private tooling for this components repository. It never goes upstream.
 
-Status, 2026-11-09: written and checked offline only (dry run, PowerShell tests,
-analyzer tests, GSC compile check). It has never run against a game process. It
-runs only after the owner allows in-game tests. Its results are agent evidence and
-are not owner gameplay acceptance.
+Status, 2026-11-11: written and checked offline only (dry runs, PowerShell tests,
+analyzer tests, GSC compile check, and a dry run against three real bench roots of
+a fake stock). It has **never run against a game process**. Since 2026-11-11 it runs
+on three disposable bench roots, never in the owner's game folder. It runs live
+only after the owner allows in-game tests. Its results are agent evidence and are
+not owner gameplay acceptance.
 
 ## Overview
 
@@ -50,8 +52,10 @@ output with WASAPI process loopback.
 
 The old voice lab tooling was retired on 2026-11-09 (see [VOICE.md](VOICE.md)).
 The harness reuses only these small shared pieces: the resource scheduler, the
-base-client backup and restore transaction, `LabProcess.cs` (owned process on a
-private desktop), `Invoke-IW7OwnedStop` and `Get-ServerInfo.ps1`.
+base-client backup and restore transaction (its optional `ExcludeDirectories`
+leaves a bench's copied updater data out), `LabProcess.cs` (owned process on a
+private desktop), `Invoke-IW7OwnedStop` and `Get-ServerInfo.ps1`. The bench roots
+and their checks come from the server repository (`ops/bench/`, docs/BENCH.md).
 
 ## Prerequisites
 
@@ -87,24 +91,38 @@ private desktop), `Invoke-IW7OwnedStop` and `Get-ServerInfo.ps1`.
    These images are the Paris fork (`cfca45b` plus the Paris overlays). Their
    results are evidence for the Paris build, not for the upstream PR head; upstream
    before and after rows need an upstream build.
-3. **Test dedicated.** A retained, marked, stopped test root, for example
-   `%USERPROFILE%\Documents\IW7-Runtime\private-test-server`. It must have
-   `iw7-mod\paris-isolated-lab.marker`, game files, and `cp_zmb.ff`, `cp_rave.ff` and
-   `mp_frontier.ff`, or the maps you pass. Never Main and never Canada.
-4. **Client roots.** Client A runs from the base installation, and no owner client
-   may be running. Client B runs from a peer root inside the server root, by default
-   `<server>\agent-peer`, which is also the resource reservation scope. Two
-   simultaneous receivers are the documented reason for this separation: each needs
-   its own `players2`, `lab-appdata` identity and dcache. Prepare the peer root once
-   with the existing reviewed pair preparation (the NTFS hardlink transaction behind
-   `Agent-Pair-Prepare.ps1` / `Invoke-IW7AgentPairPrepare` in the server repository).
-   **Changed on 2026-11-10, not yet carried into the harness:** the base installation is the owner's game
-   folder, and no test may run there any more (`AGENTS.md`, first section, point 2). Client A must be a bench
-   root (the server repository's `ops/bench/New-BenchRoot.ps1`). The harness has never been run that way: it
-   replaces `iw7-mod.exe` and writes a marker in the client A root, and a bench root is made of hard links, so
-   whether that replacement leaves the owner's files untouched is **not verified**. Until a dry run and a
-   file-identity check have shown it, do not go beyond `-DryRun`.
-   Do not make a new physical retail copy. The harness never creates or deletes stock.
+
+   The two images built on 2026-11-09 are kept in
+   `%USERPROFILE%\Documents\IW7-Runtime\voicecert\images\<SHA256>\`: `26656B30...`
+   is the base image (`voiceRelay` false, for `-Baseline`) and `E56C655F...` the
+   relay image. Both contain the lab fixture's `connect` request (source b659c95).
+3. **Three bench roots.** The server, client A and client B each run from their
+   own bench root (server repository `ops/bench/New-BenchRoot.ps1 -IsolatedLab`,
+   docs/BENCH.md): a folder whose big game files are extra names (hard links) of
+   the retained test stock `%USERPROFILE%\Documents\IW7-Runtime\private-test-server`,
+   with a real copy of the mod's `cdata` in `iw7-mod\lab-appdata\cdata`. The three
+   roots must be sibling folders, directly under one folder (`-LeaseScope`, by
+   default their common parent). That folder is the reservation scope. Each client
+   needs its own root for its own `players2`, `lab-appdata` identity and dcache.
+   The server repository's wrapper `ops/voicecert/Invoke-VoiceCertifyBench.ps1`
+   makes the three benches, runs the harness and removes them. Never Main, never
+   Canada, never the owner's game folder. The harness never creates or deletes stock.
+
+   What the harness writes in a root is always a new file or a real copy:
+   `iw7-voicecert.exe` (staged beside the linked `iw7_ship.exe`, which is never
+   touched), the server cfg and fixture, and the files the game and the lab fixture
+   write. A link guard refuses to write, restore or replace any file that has more
+   than one name, before the backup and again before the restore. With `-BenchCore`
+   (the server repository's `ops/bench/Bench-Root.Core.ps1`), every root must be a
+   valid isolated-lab bench whose port is the harness port for that role, and the
+   read-only bench check runs on each root before and after the run. Any problem
+   after the run (for example shared data written) is a cleanup error.
+4. **The reservation.** The harness takes a shareable Runtime reservation on the
+   lease scope (default 11 GB physical and 24 GB commit for one dedicated and two
+   clients; `-LeasePhysicalGB`, `-LeaseCommitGB`). Other agents' shareable sessions
+   may run at the same time. A busy refusal is retried (30 s, doubling to 300 s)
+   until `-WaitForSlotSeconds` (default 3600) has passed. Only an iw7 process this
+   run does not own whose program lies inside the lease scope stops the run.
 5. **Tools.** PowerShell 7, an installed en-US SAPI voice (Microsoft David or Zira),
    and Python 3.12 with numpy (scipy is optional). For ASR, `faster-whisper` must be
    importable and `Systran/faster-whisper-small` must be in
@@ -112,23 +130,47 @@ private desktop), `Invoke-IW7OwnedStop` and `Get-ServerInfo.ps1`.
    (`HF_HUB_OFFLINE=1`, `local_files_only=True`).
    `faster-whisper==1.2.1` is installed in the per-user site-packages (2026-11-09);
    without it every "heard" window ends INCONCLUSIVE, never PASS.
-6. **No other heavy job.** The shared scheduler refuses to start while a build,
-   extraction or other lab is running.
+6. **No build at the same time.** The scheduler still refuses a reservation while
+   a compiler or extractor runs; that refusal is retried like any busy refusal.
 
 ## How to run
 
-```powershell
-# 1. Always first: prints every process, file change, command and assertion; starts nothing, writes nothing.
-pwsh -NoProfile -File ops\voice-certify\Invoke-VoiceCertify.ps1 -DryRun `
-  -ServerRoot $env:USERPROFILE\Documents\IW7-Runtime\private-test-server `
-  -ClientARoot <client A game root: a bench root, never the owner's game folder> `
-  -LabImage runtime\voice-certify-images\<SHA256>\iw7-mod.exe -IncludeEndOfGame
+Through the server repository's wrapper (it makes and removes the benches):
 
-# 2. Only with the owner's permission: the same command without -DryRun.
+```powershell
+$img = "$env:USERPROFILE\Documents\IW7-Runtime\voicecert\images\26656B3027FAD68CCE158390B39F93D06DDBF3AC30703D41BF66AA8D30E91D26\iw7-mod.exe"
+# 1. Plan only: creates nothing, starts nothing.
+pwsh -NoProfile -File <server repo>\ops\voicecert\Invoke-VoiceCertifyBench.ps1 -LabImage $img -Baseline -Modes CP -DryRun
+# 2. Real benches, harness dry run (no game), benches removed at the end.
+pwsh -NoProfile -File <server repo>\ops\voicecert\Invoke-VoiceCertifyBench.ps1 -LabImage $img -Baseline -Modes CP -DryRunWithBenches
+# 3. The real run (a game runs): the same without the dry-run switch.
+pwsh -NoProfile -File <server repo>\ops\voicecert\Invoke-VoiceCertifyBench.ps1 -LabImage $img -Baseline -Modes CP
+```
+
+The wrapper's other parameters: `-ComponentsRoot`, `-StockRoot`, `-BenchParent`
+(default `%USERPROFILE%\Documents\IW7-Runtime\bench`), `-UpdaterData`, `-OutputRoot`,
+the three ports and `-KeepBenches`. Anything after them goes to the harness, for
+example `-IncludeEndOfGame` or `-WaitForSlotSeconds 7200`. Exit: 0 PASS (dry run:
+preflight ok), 1 the run ended without PASS, 2 a cleanup is pending, 3 preparation
+failed or the harness refused.
+
+The harness alone, on roots you made yourself:
+
+```powershell
+pwsh -NoProfile -File ops\voice-certify\Invoke-VoiceCertify.ps1 -DryRun `
+  -ServerRoot <scope>\server -ClientARoot <scope>\a -ClientBRoot <scope>\b `
+  -BenchCore <server repo>\ops\bench\Bench-Root.Core.ps1 -LabImage $img -Baseline -Modes CP
 ```
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
+| `-ServerRoot`, `-ClientARoot`, `-ClientBRoot` | required | Three sibling roots, none inside another |
+| `-LeaseScope` | their common parent | The folder that holds the three roots; the reservation scope |
+| `-BenchCore` | none | `Bench-Root.Core.ps1`: every root must be a valid isolated-lab bench; bench checks before and after; the copied `cdata` is left out of the backup |
+| `-JoinTimeoutSeconds` | 120 | A client not in game this long after its launch is stopped and launched again |
+| `-JoinRetries` | 2 | How many times a stalled client is launched again |
+| `-WaitForSlotSeconds` | 3600 | How long busy reservation refusals are retried |
+| `-LeasePhysicalGB`, `-LeaseCommitGB` | 11, 24 | Declared memory of the session |
 | `-Modes` | `CP,MP` | Phases to run, each with its own server and client processes |
 | `-ServerPort` / `-ClientAPort` / `-ClientBPort` | 27416 / 27417 / 27418 | Loopback test ports (27100-27999). 27016 is refused. |
 | `-CpMap`, `-CpSecondMap`, `-MpMap` | `cp_zmb`, `cp_rave`, `mp_frontier` | Maps used |
@@ -160,20 +202,42 @@ For each mode the orchestrator does the following:
    MP it adds `scr_skipclasschoice 1`, forced respawn and no time or score limit.
 2. It installs the mode's fixture. Every other server `.gsc` is moved out of the
    way for the run, including `lab-appdata\cdata\custom_scripts`.
-3. It starts the dedicated on a private desktop with
+3. It starts the dedicated on a private desktop with `-allow_root_io` and
    `+set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port <test port>`. Before any
    client starts, it requires the fixture's `armed` line (the fixture checks
    `sv_lanOnly`, the password, `sv_cheats` and the port from inside the server), a
    heartbeat, and `getinfo` showing `isPrivate=1 clients=0` and the expected map.
-4. It starts client A, then client B. Each gets its own `-voicetest` directory and
-   a startup `+set password`. Through `commands.txt` the orchestrator sends
-   `voicetest_snapshot` until the component answers, reads the native capture rate
-   from the start event, and synthesizes the phrase bank once at that rate (SAPI,
-   canonical 44-byte PCM16 mono WAV, 250 ms of silence on both ends). It then sends
-   `cl_voice 1`, the capture-gate settings and `connect 127.0.0.1:<port>`.
-5. A client is in game when a fresh snapshot gives its clientNum and the fixture
+4. It starts client A, then client B, with `-paris-server-client-test`, the
+   isolated-lab flag and `+set paris_lab_server_port <server port>`. Each gets its
+   own `-voicetest` directory and a startup `+set password`. Through `commands.txt`
+   the orchestrator sends `voicetest_snapshot` until the component answers, reads
+   the native capture rate from the start event, and synthesizes the phrase bank
+   once at that rate (SAPI, canonical 44-byte PCM16 mono WAV, 250 ms of silence on
+   both ends). It then sends `cl_voice 1` and the capture-gate settings.
+5. It joins each client, the way the server repository's network lab does:
+   * Zombies: it writes `<pid> <32 hex nonce> connect` to
+     `<client root>\iw7-mod\paris-server-client.request` (temporary name, then
+     move) and reads `.response`. The lab fixture then connects to
+     `127.0.0.1:<paris_lab_server_port>` once the front end is ready.
+   * Multiplayer: the fixture's `connect` forces Zombies, so it sends
+     `connect 127.0.0.1:<port>` through `commands.txt` instead.
+
+   The first ask comes 20 s (Zombies) or 25 s (MP) after the launch, then every
+   10 s, but never while the client reports a joining state (voice_test's
+   `connection` event, states 3 to 8) or the active state 9. A client not in game
+   `-JoinTimeoutSeconds` after its launch is stopped through its owned handle and
+   launched again with a fresh evidence folder (`<mode>\<role>-retry<n>`), at most
+   `-JoinRetries` times. Every attempt, ask and answer is in `joins.json` and
+   `processes.json`. The C5 reconnect asks again in the same way but never relaunches.
+
+   A client is in game when a fresh snapshot gives its clientNum and the fixture
    heartbeat lists that player. A and B must have distinct clientNums and distinct
    `iw7-public*.key` files in their own `lab-appdata`.
+
+   The lab fixture flags do not touch voice_test: voice_test is gated only by
+   `-voicetest`. The fixture's client side injects input only on
+   `paris-agent.request` (never written here) and never dispatches `+talk`; its
+   safety probe to the server runs only in Zombies.
 6. It runs the scenarios. Each window:
    1. takes fresh client snapshots (which flush the recordings) and a server
       snapshot, and checks the heartbeat (younger than 6 s);
@@ -188,12 +252,19 @@ For each mode the orchestrator does the following:
    clients for `-EmptyStopSeconds`. Otherwise it is preserved, and the backups and
    reservation are retained.
 
-After the last phase, it restores the backups of all three roots and verifies them
-by hash: the staged `iw7-voicecert.exe`, cfg, fixture, marker, `players2`,
-`lab-appdata`, `custom_scripts` and `logs`, and B's dcache. In A and B it also
-restores the files the lab fixture writes there (`iw7-mod/paris-agent.*`,
-`iw7-mod/paris-server-client.*` and the fixture screenshot), the same list as
-`ops/Base-Client.Core.ps1`. It then releases the reservation and runs the analyzer.
+Before the first phase it takes the reservation, backs up the three roots and
+stages `iw7-voicecert.exe` in each. It writes no marker: the benches carry it.
+
+After the last phase, it checks the link guard again, restores the backups of all
+three roots and verifies them by hash: the staged `iw7-voicecert.exe`, cfg,
+fixture, marker, `players2`, `lab-appdata` (on a bench without the copied
+`cdata`, but with the server's `cdata\custom_scripts`), `custom_scripts` and `logs`,
+and both clients' dcache. In A and B it also restores the files the lab fixture
+writes there (`iw7-mod/paris-agent.*`, `iw7-mod/paris-server-client.*` and the
+fixture screenshot), the same list as `ops/Base-Client.Core.ps1`. It then releases
+the reservation, runs the bench check on each root again (with `-BenchCore`) and
+runs the analyzer. What the game wrote outside the backup (caches, the copied
+`cdata`) stays in the bench and goes with `Remove-BenchRoot.ps1 -RunFiles`.
 
 ## Scenario matrix
 
@@ -258,19 +329,32 @@ Each window's verdict comes from `analyze_voice.py`:
 
 ## Evidence layout
 
-`runtime\voice-certify\<UTC stamp>-<id>\` (ignored by Git):
+Through the wrapper: `<server repo>\runtime\voicecert\<UTC stamp>-<id>\` (ignored
+by Git) holds `voicecert-bench.json` (plan, bench results, harness result, exit
+code), `bench-create-*.log`, `bench-check-before-*.log`, `bench-check-after-*.log`,
+`bench-remove-*.log`, `harness.log`, and the harness evidence in `harness\`.
+Called directly, the harness writes `runtime\voice-certify\<UTC stamp>-<id>\` in
+this repository (also ignored by Git):
 
 ```
 build.json            lab image hash and build manifest, candidate HEAD, diff hash,
-                      voice.cpp hash, harness file hashes, options
-processes.json        every process: role, PID, image, creation time, SHA-256,
-                      redacted arguments, desktop, how it stopped
+                      voice.cpp hash, harness file hashes, roots, lease scope,
+                      bench core hash, options
+processes.json        every process: mode, role, attempt, PID, image, creation time,
+                      SHA-256, redacted arguments, desktop, evidence folder, join
+                      result, how it stopped
+joins.json            every join: launch or reconnect, attempt, channel (request or
+                      console), each connect ask with its time and answer, last
+                      connection state, result (joined, stalled, failed), stdout tail
 configs\<mode>-server.cfg   server cfg with the password redacted
 commands.log          every command written to any commands.txt, timestamped
 phrases\P01.wav ... phrases.json   SAPI phrases at the native rate, with hashes
 cp\server\  cp\A\  cp\B\  mp\...   per process: commands.txt, events.jsonl,
-                      stdout.log, stderr.log; clients also recv_<talker>.wav
-checks.json           getinfo answers and identity key hashes per mode
+                      stdout.log, stderr.log; clients also recv_<talker>.wav;
+                      cp\A-retry1\ ... for a client launched again
+checks.json           getinfo answers and identity key hashes per mode, joins,
+                      reservation (scope, declared memory, busy waits, released),
+                      link guard results, bench checks before and after
 windows.json          every window: client numbers, byte range, event counts, heartbeat
 analysis-input.json   analysis.json   verdict.md   (final verdict table)
 backups\Server|A|B\   restore transactions (local only)
@@ -352,14 +436,19 @@ Commands: `voicetest_play <wav>`, `voicetest_stop`, `voicetest_mute <n>`,
 ## Who runs it
 
 In-game runs are delegated to Codex (`codex exec`, GPT-6.1 Sol, medium reasoning)
-with a self-contained brief; agents never drive the game window. Codex's proven
-client method (2026-11-09) launches from the game folder with
-`-noupdate -nosteam -wincon -stdout -nointro`, sends console commands on stdin and
-connects only once the menu is up (`cpMode;` about 25 s, `connect` about 50 s after
-launch); `+connect` on the command line fires too early. The orchestrator sends
-`connect` through `commands.txt` only after the client's first snapshot, but its
-`-cpMode` launch flag is unproven: the first real run must confirm the client
-reaches the expected mode, or switch to `cpMode` through `commands.txt`.
+with a self-contained brief; agents never drive the game window, and the harness
+is driven by files only. The Zombies join copies the server repository's network lab, which joins `-cpMode`
+lab clients through the fixture's `connect` request on bench roots. Earlier,
+Codex's client method (2026-11-09) connected only once the menu was up (`cpMode;`
+about 25 s, `connect` about 50 s after launch); `+connect` on the command line
+fires too early. The Multiplayer join (`connect` through `commands.txt` from 25 s,
+repeated every 10 s) is not proven: the first real MP run must show it.
+
+Still unproven until the first live run: the voice_test connection state numbers
+the resend rule relies on (3 to 8 joining, 9 active), the 120 s join budget for
+two clients on one machine, the 11 GB / 24 GB declaration, and whether the game
+writes anything into a shared (linked) file of a bench (the bench check after the
+run says so).
 
 ## Known limits
 
@@ -373,6 +462,6 @@ reaches the expected mode, or switch to `cpMode` through `commands.txt`.
   retail respawn path run. This is valid only with `scr_skipclasschoice 1`.
 * M3 depends on intermission lasting long enough for one phrase. The window
   tolerates the map unloading afterwards.
-* The game writes files outside the backed-up directories (for example
-  `main\*.dcache` in the base root, screenshots and crash dumps). These are the same
-  limits as the earlier base-client transaction.
+* The game writes files outside the backed-up directories (screenshots, crash
+  dumps, caches). On a bench they stay until `Remove-BenchRoot.ps1 -RunFiles`
+  removes the bench; the wrapper does that at the end unless `-KeepBenches`.
