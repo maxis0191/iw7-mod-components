@@ -326,7 +326,8 @@ function Write-DryRun {
     }
     "[guard] every file above and $ImageName must be absent or have exactly one name, before the backup and again before the restore"
     foreach ($name in $roots.Keys) { "[stage] copy $LabImage -> $($roots[$name])\$ImageName (hash verified)" }
-    "[stage] server: remove every .gsc/.gscbin under iw7-mod\custom_scripts and iw7-mod\lab-appdata\cdata\custom_scripts (restored at the end)"
+    "[stage] server: remove every .gsc/.gscbin under iw7-mod\custom_scripts (restored at the end); iw7-mod's own scripts in iw7-mod\lab-appdata\cdata\custom_scripts stay"
+    "[assert] server: iw7-mod's cdata scripts loaded (MP needs mp\ranked.gsc: without it every player is kicked with EXE_PLAYERKICKED_INVALIDTEAM)"
     foreach ($mode in $Modes) {
         $sub = $mode.ToLower()
         ""
@@ -488,6 +489,7 @@ function Update-Phase($Phase) {
     foreach ($line in $read.Lines) {
         if (Test-VcFatalServerLine $line) { throw "Server fixture failure: $line" }
         if ($line.Contains('[voicecert] armed')) { $Phase.Armed = $true }
+        if ($line.Contains("Loaded custom gsc 'custom_scripts/mp/ranked.gsc'")) { $Phase | Add-Member RankedLoaded $true -Force }
         $hb = ConvertFrom-VcHeartbeat $line
         if ($hb) { $Phase.Heartbeat = $hb; $Phase.HeartbeatTick = [Environment]::TickCount64 }
         $ack = ConvertFrom-VcAck $line
@@ -853,6 +855,7 @@ function Start-Phase([string]$Mode) {
 
     $null = Start-Owned $ServerRoot (Get-ServerArguments $Mode) $phase.Server $script:password
     $null = Wait-For $phase { $phase.Armed -and $phase.Heartbeat } 240 'fixture armed with a heartbeat' -AllowStaleHeartbeat
+    if ($Mode -eq 'MP' -and !$phase.PSObject.Properties['RankedLoaded']) { throw "iw7-mod's custom_scripts/mp/ranked.gsc was not loaded; MP players would be kicked for an invalid team." }
     $info = & "$opsRoot/Get-ServerInfo.ps1" -Port $ServerPort
     $map = if ($Mode -eq 'CP') { $CpMap } else { $MpMap }
     if ($info.isPrivate -ne '1' -or $info.clients -ne '0' -or $info.mapname -ne $map) { throw "Server is not the expected private empty $map dedicated." }
@@ -908,6 +911,8 @@ function Stop-Phase($Phase) {
             $server.Identity | Add-Member Stop $stop.Kind -Force
         } catch { $errors += "server: $($_.Exception.Message)" }
     }
+    # Zombies: retail idle-kick attempts the fixture refused (-1 in MP, which has no such watchdog).
+    if ($Phase.Heartbeat) { $Phase.ServerNotes.Add([pscustomobject]@{ Mode = $Phase.Mode; Utc = [datetime]::UtcNow.ToString('o'); KicksBlocked = $Phase.Heartbeat.Kicks }) }
     Save-ProcessEvidence
     if ($errors.Count) { throw ('Stop incomplete (processes preserved): ' + ($errors -join '; ')) }
 }
@@ -1022,10 +1027,12 @@ try {
         Copy-Item -LiteralPath $LabImage -Destination $target -Force
         if ((Get-FileHash -LiteralPath $target).Hash -ne $hash) { throw "Staged image hash mismatch: $target" }
     }
-    foreach ($dir in @('iw7-mod\custom_scripts', 'iw7-mod\lab-appdata\cdata\custom_scripts')) {
-        $path = Join-Path $ServerRoot $dir
-        if (Test-Path -LiteralPath $path) { Get-ChildItem -LiteralPath $path -Recurse -File -Include '*.gsc', '*.gscbin' | Remove-Item }
-    }
+    # Only the server's own scripts go; iw7-mod's updater scripts (cdata) stay, as on any
+    # iw7-mod server. Without cdata/custom_scripts/mp/ranked.gsc the retail
+    # connect_validateplayerteam kicks every MP player 1.5 s after joining
+    # (EXE_PLAYERKICKED_INVALIDTEAM, live run relay-full-2, 2026-11-11).
+    $path = Join-Path $ServerRoot 'iw7-mod\custom_scripts'
+    if (Test-Path -LiteralPath $path) { Get-ChildItem -LiteralPath $path -Recurse -File -Include '*.gsc', '*.gscbin' | Remove-Item }
     foreach ($mode in $Modes) {
         $phase = Start-Phase $mode
         # Zombies plays an intro before the first spawn; start once both players are in the world
