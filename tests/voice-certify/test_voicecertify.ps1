@@ -208,7 +208,7 @@ function Test-IW7BenchRoot([string]$Root) {
     }
     Check 'dry run: no marker is written at run time' { !$text.Contains('write iw7-mod\paris-isolated-lab.marker') -and !($text -match '\[stage\][^\n]*marker') }
     Check 'dry run: shareable reservation on the lease scope, retried while busy' {
-        $text.Contains("Enter-IW7ResourceLease -Scope $scope -Kind Runtime -Shareable, 8.5 GB physical, 20 GB commit") -and $text.Contains('for up to 3600 s') -and !$text.Contains('BaseClientImage')
+        $text.Contains("Enter-IW7ResourceLease -Scope $scope -Kind Runtime -Shareable, 8.5 GB physical, 20 GB commit") -and $text.Contains('busy refusals retried (30 s, then every 60 s)') -and $text.Contains('for up to 3600 s') -and !$text.Contains('BaseClientImage')
     }
     Check 'dry run: privacy flags, root io, lab port and redaction' {
         $text.Contains('-dedicated -allow_root_io -noupdate') -and $text.Contains('+set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port 27416') -and

@@ -318,7 +318,7 @@ function Write-DryRun {
     if ($problems.Count) { "Preflight problems (a real run refuses to start):"; $problems | ForEach-Object { "  ! $_" } }
     else { "Preflight: ok" }
     "[check] no process this run does not own runs from $LeaseScope; UDP $ServerPort/$ClientAPort/$ClientBPort free"
-    "[reserve] Enter-IW7ResourceLease -Scope $LeaseScope -Kind Runtime -Shareable, $LeasePhysicalGB GB physical, $LeaseCommitGB GB commit; busy refusals retried (30 s doubling to 300 s) for up to $WaitForSlotSeconds s"
+    "[reserve] Enter-IW7ResourceLease -Scope $LeaseScope -Kind Runtime -Shareable, $LeasePhysicalGB GB physical, $LeaseCommitGB GB commit; busy refusals retried (30 s, then every 60 s) for up to $WaitForSlotSeconds s"
     foreach ($name in $transactionPlans.Keys) {
         $t = $transactionPlans[$name]
         $skip = if (@($t.ExcludeDirectories).Count) { " not [$($t.ExcludeDirectories -join ', ')] (disposable bench copy)" } else { '' }
@@ -982,7 +982,7 @@ function Assert-TransactionLinks {
 }
 
 # Shareable reservation, retried on busy refusals the way the server repository's
-# network lab does (30 s, doubling up to 300 s, until -WaitForSlotSeconds).
+# network lab and gamelab do (30 s, then every 60 s, until -WaitForSlotSeconds). The scheduler
 function Enter-Lease {
     $deadline = [datetime]::UtcNow.AddSeconds($WaitForSlotSeconds); $pause = 30
     while (!$script:lease) {
@@ -995,7 +995,7 @@ function Enter-Lease {
             $script:leaseWaits += [pscustomobject]@{ At = [datetime]::UtcNow.ToString('o'); Refusal = $message.Substring(0, [Math]::Min(300, $message.Length)) }
             if ([datetime]::UtcNow -ge $deadline) { throw "The reservation stayed busy for $WaitForSlotSeconds s: $message" }
             Write-Host "Reservation busy; retrying (waited up to $WaitForSlotSeconds s): $($message.Substring(0, [Math]::Min(160, $message.Length)))"
-            Start-Sleep -Seconds ([Math]::Min($pause, [Math]::Max(1, ($deadline - [datetime]::UtcNow).TotalSeconds))); $pause = [Math]::Min(300, $pause * 2)
+            Start-Sleep -Seconds ([Math]::Min($pause, [Math]::Max(1, ($deadline - [datetime]::UtcNow).TotalSeconds))); $pause = 60
         }
     }
 }
