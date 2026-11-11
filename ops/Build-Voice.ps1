@@ -28,7 +28,7 @@ function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
 if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requires ServerModules and IsolatedLab.' }
 if ($Perf -and (!$ServerModules -or !$IsolatedLab)) { throw 'Perf requires ServerModules and IsolatedLab.' }
 if ($Capacity64 -and !$ServerModules) { throw 'Capacity64 requires the current ServerModules profile.' }
-if ($VoiceRelay -and !$ServerModules) { throw 'VoiceRelay requires ServerModules (native pin cfca45b).' }
+if ($VoiceRelay -and !$ServerModules) { throw 'VoiceRelay requires ServerModules (native pin 81e32f7).' }
 if ($VoiceCertify -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceCertify requires ServerModules and IsolatedLab.' }
 if ($CollisionProvider -and (!$ServerModules -or !$IsolatedLab)) { throw 'CollisionProvider requires ServerModules and IsolatedLab.' }
 if ($WordProvenance -and (!$ServerModules -or !$IsolatedLab -or !$Debugger)) { throw 'WordProvenance requires ServerModules, IsolatedLab and Debugger.' }
@@ -60,7 +60,7 @@ Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
 $commit = $null
 if ($RhinoExperiment -or $EnemyExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
-if ($ServerModules) { $commit = 'cfca45b11ee14641945b9a264a95638387f48a4a' }
+if ($ServerModules) { $commit = '81e32f7a15139d7b92fdad2e5dbb5989149259cb' }
 if (!$TestsOnly) {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 if (!(Test-Path -LiteralPath "$root/.git")) {
@@ -70,6 +70,19 @@ if (!(Test-Path -LiteralPath "$root/.git")) {
     if ($LASTEXITCODE) { throw 'Exact IW7-Mod pin checkout failed.' }
 }
 $null = Resolve-IW7VoiceBuildNativeRoot $root
+# A checkout of an older pin moves forward to the new pin when the new pin descends from it (a pin bump on the fork):
+# a plain checkout, which keeps the local overlays and refuses when they touch a file the new commit changes.
+$head = (git -C $root rev-parse HEAD)
+if ($head -ne $commit) {
+    git -C $root cat-file -e "$commit^{commit}" 2>$null
+    if ($LASTEXITCODE) { git -C $root fetch --quiet origin $commit }
+    git -C $root merge-base --is-ancestor $head $commit 2>$null
+    if (!$LASTEXITCODE) {
+        git -C $root checkout --quiet --detach $commit
+        if ($LASTEXITCODE) { throw "Moving the build checkout from $head to pin $commit failed; preserve its local work and use a fresh native root." }
+        Write-Output "Build checkout moved forward from $head to pin $commit."
+    }
+}
 if ((git -C $root rev-parse HEAD) -ne $commit) { throw "Build checkout must be pinned to $commit; do not silently discard local work." }
 git -C $root submodule update --init --recursive
 if ($LASTEXITCODE) { throw 'Pinned submodule checkout failed.' }
