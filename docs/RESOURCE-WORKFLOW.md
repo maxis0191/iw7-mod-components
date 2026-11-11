@@ -10,6 +10,10 @@ IW7 product shares on one Windows account. In short, as of 2026-11-10:
 - **Builds, extractions and analyses are exclusive.** One at a time on the whole account, and never beside a
   live session. A check or a script that can wait uses `Invoke-IW7QueuedResourceJob -WaitForSlotSeconds <n>`;
   callers in the server repository pass `-WaitForSlotSeconds`. Never write a retry loop around a refusal.
+- **Waiting is served in arrival order** (since 2026-11-11). A refused request that asks again keeps its place;
+  a waiting build stops new sessions so the running ones drain, and the sessions that waited behind it go before
+  any newer build. Read [Waiting order](#waiting-order---2026-11-11). `-Action Status` shows the queue,
+  `-Action Waits` the waits as data.
 - **An exclusive (not shareable) Runtime lease** still exists for scenarios that cannot share (a declared base
   client image, the voice certification). It excludes everything else while held.
 - **Outside the shareable admission, memory figures are telemetry only** (owner update of 2026-10-13): no
@@ -33,6 +37,79 @@ mechanisms (leases, owned processes, the retained-release form, telemetry). Wher
 base client, `AGENTS.md` (first section) takes precedence: tests run from bench roots. The October policy prose,
 its validation and rollout records are in
 [archive/RESOURCE-WORKFLOW-HISTORY-2026-10.md](archive/RESOURCE-WORKFLOW-HISTORY-2026-10.md).
+
+## Waiting order - 2026-11-11
+
+Why. Before this, a refused caller simply asked again later and whoever asked at the right instant won. Measured
+on 11 Nov 2026 with 4 to 6 workers: a zone build waited 25 to 75 minutes behind other workers' back-to-back
+headless sessions (one gave up after its 3600 s wait), a session waited 30 minutes while one worker chained
+builds, and three checks of the local judges that hold the Build slot for seconds failed 13-minute runs.
+
+What the scheduler keeps (unchanged): one exclusive lease or several shareable Runtime leases admitted by memory,
+the account-wide lock, identity checks, never deleting another holder's lease, and the call itself: nobody
+changes how `Enter-IW7ResourceLease` or `Invoke-IW7QueuedResourceJob` is called.
+
+The rules, all applied inside the admission lock:
+
+1. **Ticket.** A request refused for a reason that passes (`Resource busy: ...`, a duplicate of a held lease,
+   a running compiler, a lab without a lease, an unreadable identity) gets a ticket in `queue.json`, next to
+   `leases.json`: scope and kind (one ticket is one intended lease), owner label, declared memory, `-ShortSeconds`,
+   the caller's process identity and its parent's, the time of the first and the last ask. Asking again for the
+   same scope and kind (from the same or a new process) refreshes the ticket and keeps its place. A grant removes it.
+2. **Expiry.** A ticket expires at once when neither its caller nor the caller's parent process is alive (the
+   parent covers runners that ask again in a new process each time), and otherwise when it is not refreshed in
+   time: 90 s after a single ask, then twice the last interval between asks plus 30 s, between 90 and 660 s (a
+   runner whose pauses grow to 300 s keeps its place). Every expiry is logged with its reason.
+3. **Exclusive requests** (Build, Extract, Analysis, a Runtime lease without `-Shareable`) wait for every older
+   ticket: strict arrival order.
+4. **Shareable requests** that fit in memory are admitted at once unless an older **exclusive** ticket waits.
+   So a waiting build stops new sessions from the moment it asks; the running ones drain and the build gets in.
+   Sessions that asked before a newer build go before it (rule 3), so a chain of builds cannot starve sessions.
+   A shareable request may pass an older shareable ticket that does not fit (a small server beside a waiting
+   client), except once that ticket has waited 600 s: then it goes first as well.
+5. **Short exclusive requests** (`-ShortSeconds 1..120`, declared by the caller: the checks that hold the Build
+   slot for seconds) may go ahead of older tickets when they are admissible right now (no lease held), as long
+   as no older ticket has been overtaken for more than 300 s in total. Holding a short lease longer than
+   declared is logged (`Overran`), never stopped.
+6. Re-entry of a held lease is never queued. A shareable request larger than the whole budget is refused and
+   never queued (it could never fit). `-RequireNewLease` refusals are not queued.
+7. The queue is advisory: an unreadable or foreign `queue.json` reads as empty, a queue or log write that fails
+   is ignored, and no queue error ever refuses, grants or removes a reservation.
+
+Bounded waiting. Let D be the longest time anyone holds a lease and P the longest pause between a waiting
+caller's asks. A build waits at most for the holders present when it asked (at most D), then for the older
+tickets: older sessions run side by side (at most D more) and each older exclusive request holds for at most D:
+**W(build) <= (2 + k) x D + P**, k = older exclusive tickets; with nobody ahead, **D + P**. A session waits at most
+for the exclusive tickets older than it and their holders, the same bound; a session that does not fit waits at
+most 600 s before it goes first, then D for memory to drain. Short requests add at most 300 s to anyone.
+
+Making waiting visible:
+
+- `./ops/Resource-Scheduler.ps1 -Action Status` adds `Queue` (place, owner, kind, `WaitingSeconds`,
+  `LastAskedSecondsAgo`, asks, caller PID) and `HeldSeconds` per lease. Status never writes.
+- A refused caller's message keeps its old text (callers match `Resource busy:`) and adds its place:
+  `... Queue: place 2 of 3, asked first 4m10s ago; ahead: 'zone build' (Build, waiting 6m02s).` A refusal by
+  the order itself reads `Resource busy: waiting in turn: 1 earlier request(s) go first: ...`.
+- `admission-log.jsonl` (same folder, rotated at 8 MB to `admission-log.1.jsonl`) has one line per grant
+  (`WaitSeconds`, asks), refusal (place, reason), expiry and release (`HeldSeconds`). No token is written.
+- `./ops/Resource-Scheduler.ps1 -Action Waits [-Since <time>] [-Json]` prints the grants in order, the waits
+  per owner and the longest wait (`Get-IW7ResourceWaitReport`).
+
+Mixed population (callers still running an older core for a few hours after the pin moves): an older core never
+reads or writes `queue.json` or the log, so it cannot damage them, and its leases are read as before. It ignores
+tickets: an older caller can still take a free slot ahead of a waiting newer one, exactly as before this change,
+and it records no ticket of its own (it is not protected either). The newer core sees every lease an older core
+writes and queues behind it; a ticket of an older-core caller does not exist, so nothing waits for a caller that
+will never be served. Fairness is complete once every running caller has re-read the core (a new bootstrap or a
+new runner process); nothing breaks in between.
+
+Callers that poll by reading Status and asking only when nothing is held (the SDK's `zt.ps1` before 11 Nov) never
+get a ticket and are starved as before: callers ask `Enter-IW7ResourceLease` itself, every 5 to 60 s.
+
+Evidence: `tests/ops/resource_scheduler_queue_test.ps1` (20 cases, synthetic callers, clock and memory: arrival
+order, a build not starved by sessions, sessions not starved by builds, aging, memory, expiry, a dead caller, a new
+process keeping the place, short requests and their bound, re-entry, an unreadable queue, older-core leases,
+status, the wait report) and the live run recorded in the server repository's `docs/BENCH.md`.
 
 ## Shareable runtime leases - 2026-11-10
 
@@ -405,8 +482,9 @@ Invoke-IW7ResourceJob -Scope $absoluteWorktree -Kind Extract -Owner 'asset closu
 No sleeping game should be held while compiling. Finish the bounded encounter,
 collect its evidence, stop the owned pair, then build. On refusal, continue source
 review, test construction and documentation; retry after the active owner releases.
-The registry reports the current holder. It is an admission gate, not a persistent
-job queue or an OS limit on arbitrary direct executable launches.
+The registry reports the current holder and the waiting order. It is an admission gate with a waiting order of
+callers that keep asking, not a job queue that runs work by itself, and not an OS limit on arbitrary direct
+executable launches.
 
 ### Queued plain job - 2026-11-10
 
@@ -415,8 +493,10 @@ mandatory `-WaitForSlotSeconds` (1 to 86400). While the slot is held it asks for
 seconds, up to the bound, then throws the last refusal. Only a refusal that names a temporary holder is waited
 for (`Resource busy: ...`, or a compiler/extractor/Java analysis still running); an unknown identity, invalid
 telemetry, an unreserved laboratory or a duplicate lease is thrown at once. It has no retained-release form.
-`tests/ops/cutscene_test.ps1` and `tests/ops/owner_cheats_test.ps1` use it with 420 seconds, so the local judge
-waits for another session's build instead of failing. `Invoke-IW7ResourceJob` itself is unchanged and still
+`tests/ops/cutscene_test.ps1` and `tests/ops/owner_cheats_test.ps1` use it with `-ShortSeconds 120` and a
+2100-second bound (their `checks.json` entries set `timeout_seconds` 2400; `ops/check_product.py` reads it,
+default 600), so the local judge waits in turn for another session's build instead of failing. Since 2026-11-11
+it takes `-ShortSeconds` and prints one line a minute with its place while it waits. `Invoke-IW7ResourceJob` itself is unchanged and still
 refuses at once. Evidence: the cases under "Invoke-IW7QueuedResourceJob" in `tests/ops/resource_scheduler_test.ps1`
 (temporary registry, synthetic processes); no live contention run is claimed.
 

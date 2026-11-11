@@ -1,11 +1,31 @@
 param(
-    [ValidateSet('Status','Release','Measure')][string]$Action='Status',
+    [ValidateSet('Status','Release','Measure','Waits')][string]$Action='Status',
     [string]$Token,
     [ValidateRange(1,300)][int]$Seconds=15,
-    [string]$OutputPath
+    [string]$OutputPath,
+    [datetime]$Since=[datetime]::UtcNow.AddHours(-24),   # Waits: read the admission log from this time (default: last 24 h)
+    [string]$LogPath,                                     # Waits: another copy of admission-log.jsonl
+    [switch]$Json
 )
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
+if ($Action -eq 'Waits') {
+    # Starvation as data: every grant in order, the wait per owner and the longest wait.
+    $arguments=@{Since=$Since}; if ($LogPath) { $arguments.Path=[IO.Path]::GetFullPath($LogPath) }
+    $report=Get-IW7ResourceWaitReport @arguments
+    if ($Json) { $report | ConvertTo-Json -Depth 6; return }
+    'Grants in order (time UTC, wait, kind, owner):'
+    foreach ($g in $report.Grants) {
+        $kind=if ($g.Shareable) { 'Runtime shareable' } elseif ([int]$g.Short) { "$($g.Kind) short $($g.Short)s" } else { $g.Kind }
+        '  {0:HH:mm:ss}  {1,9}  {2,-20} {3}' -f $g.Time,(Format-IW7Age ([double]$g.WaitSeconds)),$kind,$g.Owner
+    }
+    ''
+    'Waits per owner:'
+    $report.PerOwner | Format-Table Owner,Grants,Waited,MeanWaitSeconds,MaxWaitSeconds -AutoSize | Out-String -Width 200
+    if ($report.Longest) { 'Longest wait: {0} ({1}, {2}), granted {3:u}' -f (Format-IW7Age ([double]$report.Longest.WaitSeconds)),$report.Longest.Owner,$report.Longest.Kind,$report.Longest.Time }
+    'Refusals: {0}; expired tickets: {1}; releases: {2}' -f $report.Refusals,@($report.Expired).Count,@($report.Releases).Count
+    return
+}
 if ($Action -eq 'Release') {
     if (!$Token) { throw 'Release requires an exact lease token.' }
     Exit-IW7ResourceLease -Token $Token
