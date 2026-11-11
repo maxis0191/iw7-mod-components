@@ -666,6 +666,66 @@ namespace paris_test_fixture
             console::error("[Paris key input] no retail binding %s\n", binding_name.c_str());
             return false;
         }
+        // Lab raw key request: "rawkey:<key name>:<0|1>". A real key event through the game's key path (CL_KeyEvent,
+        // hooked by the pinned input.cpp at the same address), so the console, the chat field, Lua UI menus and every
+        // key binding, including custom binds, see it exactly as a physical key. The name is a key name of the game
+        // (Key_KeynumToString, any case: UPARROW, ENTER, ESCAPE, MOUSE1, ...) or one lowercase letter or digit.
+        int raw_key_number(const std::string& name)
+        {
+            if (name.empty() || name.size() > 16 || name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != std::string::npos) return -1;
+            if (name.size() == 1 && ((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= '0' && name[0] <= '9'))) return name[0];
+            for (int keynum = 0; keynum < 256; ++keynum)
+                for (int pad = 0; pad < 2; ++pad)
+                {
+                    const auto* text = game::Key_KeynumToString(keynum, 0, pad);
+                    if (text && *text && _stricmp(text, name.c_str()) == 0) return keynum;
+                }
+            return -1;
+        }
+        bool raw_key(const std::string& action)
+        {
+            // action is "rawkey:<name>:<0|1>"
+            const auto colon = action.rfind(':');
+            if (colon == std::string::npos || colon <= 7 || colon + 2 != action.size() || (action[colon + 1] != '0' && action[colon + 1] != '1')) return false;
+            const auto name = action.substr(7, colon - 7);
+            const int down = action[colon + 1] == '1';
+            const int keynum = raw_key_number(name);
+            if (keynum < 0) { console::error("[Paris rawkey] unknown key %s\n", name.c_str()); return false; }
+            const int before = *game::keyCatchers;
+            const auto active = game::Key_GetActiveBinding(0, keynum);
+            const char* command = active ? game::Key_GetCmdForBinding(0, active) : "";
+            // Pinned input.cpp detours 0x1409A7980 (CL_KeyEvent): calling the address runs its stub, so the fork's
+            // console, gui and custom-bind handling run first, as for a key of the keyboard. The time argument is
+            // extra for the hooked signature and harmless.
+            utils::hook::invoke<void>(0x1409A7980, 0, keynum, down, static_cast<unsigned>(game::Sys_Milliseconds()));
+            console::info("[Paris rawkey] key=%s num=%d down=%d catchers=%d after=%d bind=\"%s\" sys_ms=%d tick_ms=%llu\n", name.c_str(), keynum, down,
+                before, *game::keyCatchers, command ? command : "", game::Sys_Milliseconds(), GetTickCount64());
+            return true;
+        }
+        // Lab raw char request: "rawchar:<ascii code>" (8, 9, 13, 27 or 32..126): one character event through the game's char
+        // path (CL_CharEvent, also hooked by input.cpp), as the keyboard sends after a key press: types into the console,
+        // the chat field or a Lua text field.
+        bool raw_char(const std::string& action)
+        {
+            const auto digits = action.substr(8);
+            if (digits.empty() || digits.size() > 3 || digits.find_first_not_of("0123456789") != std::string::npos) return false;
+            const int code = std::atoi(digits.c_str());
+            if (!(code == 8 || code == 9 || code == 13 || code == 27 || (code >= 32 && code <= 126))) return false;
+            utils::hook::invoke<void>(0x1409A7350, 0, code);
+            console::info("[Paris rawchar] code=%d catchers=%d tick_ms=%llu\n", code, *game::keyCatchers, GetTickCount64());
+            return true;
+        }
+        // Lab Lua UI requests: "uilua:<name>" runs paris_ui_lua <name> (iw7-mod/paris-ui/<name>.lua), "uidump:<tag>" runs
+        // paris_ui_dump <tag> (components docs/UI-DUMP.md). Name and tag: [a-z0-9_]{1,24}.
+        bool ui_request(const std::string& action)
+        {
+            const bool lua = action.rfind("uilua:", 0) == 0;
+            const auto name = action.substr(lua ? 6 : 7);
+            if (name.empty() || name.size() > 24 || name.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_") != std::string::npos) return false;
+            command::execute(std::string(lua ? "paris_ui_lua " : "paris_ui_dump ") + name, true);
+            console::info("[Paris ui request] %s %s tick_ms=%llu\n", lua ? "lua" : "dump", name.c_str(), GetTickCount64());
+            return true;
+        }
         // Lab memory watch request: "watch:<address hex>:<size>:<interval_ms>:<count>", one token with exactly four fields
         // (hex without 0x, then three decimal numbers). paris_watch::start checks the ranges; nothing else is read here.
         bool parse_watch(const std::string& action, std::uintptr_t& address, std::size_t& size, unsigned& interval_ms, unsigned& count)
@@ -800,7 +860,8 @@ namespace paris_test_fixture
             if (!(input >> pid >> nonce >> action) || (input >> extra) || pid != GetCurrentProcessId() ||
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
             const bool vote_input = action == "votenext" || action == "voteprevious" || action == "voteboth" || action == "voteholdnext" || action == "voterelease" || action == "votewitness";
-            const bool key_input = action.rfind("keydown:", 0) == 0 || action.rfind("keyup:", 0) == 0;
+            const bool key_input = action.rfind("keydown:", 0) == 0 || action.rfind("keyup:", 0) == 0 ||
+                action.rfind("rawkey:", 0) == 0 || action.rfind("rawchar:", 0) == 0 || action.rfind("uilua:", 0) == 0 || action.rfind("uidump:", 0) == 0;
             const bool watch_input = action.rfind("watch:", 0) == 0;
             const bool afk_input = action == "afk";
             const bool teleport_input = action == "owner_tphere" || action == "owner_tp";
@@ -859,6 +920,18 @@ namespace paris_test_fixture
             }
             else if (cutscene_input)
                 command::execute("paris_cutscene_test_key " + action.substr(9),true);
+            else if (action.rfind("rawkey:", 0) == 0)
+            {
+                if (!raw_key(action)) return; // no response: the requester sees the refusal as a timeout
+            }
+            else if (action.rfind("rawchar:", 0) == 0)
+            {
+                if (!raw_char(action)) return;
+            }
+            else if (action.rfind("uilua:", 0) == 0 || action.rfind("uidump:", 0) == 0)
+            {
+                if (!ui_request(action)) return;
+            }
             else if (key_input)
             {
                 const bool down = action[3] == 'd';
