@@ -164,6 +164,12 @@ class WordTests(unittest.TestCase):
         self.assertEqual(av.word_recall('silver rocket flying north', 'silver pocket'), 0.25)
         self.assertEqual(av.word_recall('silver rocket flying north', ''), 0.0)
 
+    def test_word_recall_accepts_neighbours_written_as_one_word(self):
+        # live run cp-relay-4, C6b: correlation 1.02 with the source, scored 60% before
+        self.assertEqual(av.word_recall('thunder storm over desert road', 'Thunderstorm over Desert Road.'), 1.0)
+        self.assertEqual(av.word_recall('thunder storm over desert road', 'Thunder over desert road.'), 0.8)
+        self.assertEqual(av.word_recall('thunder storm over desert road', 'stormthunder'), 0.0)
+
     def test_phrase_bank_words_are_disjoint(self):
         seen = {}
         for phrase in BANK:

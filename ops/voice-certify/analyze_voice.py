@@ -170,12 +170,19 @@ def _base(word):
 
 def word_recall(expected, recognized):
     """Share of the expected words present in the transcript; a plural/singular
-    difference ('lantern' / 'lanterns') still counts as recognized."""
+    difference ('lantern' / 'lanterns') still counts as recognized, and so do two
+    neighbouring words written as one ('thunder storm' / 'thunderstorm')."""
     want = words(expected)
     if not want:
         return 0.0
     heard = {_base(w) for w in words(recognized)}
-    return sum(1 for w in want if _base(w) in heard) / float(len(want))
+
+    def found(i):
+        joined_next = i + 1 < len(want) and _base(want[i] + want[i + 1]) in heard
+        joined_prev = i > 0 and _base(want[i - 1] + want[i]) in heard
+        return _base(want[i]) in heard or joined_next or joined_prev
+
+    return sum(1 for i in range(len(want)) if found(i)) / float(len(want))
 
 
 class Recognizer:
