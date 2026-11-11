@@ -231,15 +231,18 @@ Case 'two 10 GB admitted and a third refused by the declared budget' {
     try { Enter-Share c -Bytes 10GB | Out-Null } catch { $msg=$_.Exception.Message }
     Assert ($msg -like 'Resource busy: shareable declared memory budget exceeded: existing shareable leases declare 20.0 GB and this request needs 10.0 GB, above the budget of 24.0 GB (32.0 GB total minus a 8.0 GB reserve).*') "Budget message names the numbers: $msg"
     Assert ((Leases).Count -eq 2) 'Refusal must not add a lease.'
-    Assert (Refused { Enter-Share c -Bytes 25GB } 'Resource busy: shareable declared memory budget exceeded*') 'A single session above the budget is refused too.'
+    Assert (Refused { Enter-Share c -Bytes 25GB } 'Refused: this session can never fit on this machine as it stands: it needs 25.0 GB*at most 24.0 GB*Not queued.*') 'A single session above the budget is refused at once (never fits).'
 }
 Case 'measured memory refuses although the declared budget has room' {
     $script:avail=6GB
+    Assert (Refused { Enter-Share a -Bytes 10GB } 'Refused: this session can never fit*needs 10.0 GB, measured free memory is 6.0 GB and running shareable sessions hold 0.0 GB*') 'Nothing held to wait for: never fits.'
+    $script:avail=10GB
+    Enter-Share h -Bytes 4GB | Out-Null              # 6 GB free, 4 GB held: 10 GB can come free
     $msg=''
     try { Enter-Share a -Bytes 10GB | Out-Null } catch { $msg=$_.Exception.Message }
-    Assert ($msg -like 'Resource busy: not enough measured free memory: 6.0 GB available minus 0.0 GB still to be taken by existing shareable sessions leaves 6.0 GB, and this request needs 10.0 GB.*') "Measured message: $msg"
-    Assert ((Leases).Count -eq 0) 'Refusal must not add a lease.'
-    $script:avail=12GB
+    Assert ($msg -like 'Resource busy: not enough measured free memory: 10.0 GB available minus 4.0 GB still to be taken by existing shareable sessions leaves 6.0 GB, and this request needs 10.0 GB.*') "Measured message: $msg"
+    Assert ((Leases).Count -eq 1) 'Refusal must not add a lease.'
+    $script:avail=16GB
     Assert ((Enter-Share a -Bytes 10GB).Shareable) 'Admitted once available memory rises.'
 }
 Case 'declared but not yet taken memory is reserved' {
