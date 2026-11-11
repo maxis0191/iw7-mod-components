@@ -1,4 +1,4 @@
-param([switch]$Compile)
+param([switch]$Compile,[ValidateRange(1,3600)][int]$WaitForSlotSeconds=2100)   # the Build slot is held ~20 s: wait in turn, short
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 . "$repo/ops/Cutscene-Overlay.Core.ps1"
@@ -24,7 +24,7 @@ foreach($name in $source.Keys){Check ([IO.File]::ReadAllText((Join-Path $scratch
 Refuses {ConvertTo-IW7CutsceneSource 'gsc/script_loading.cpp' '#include <std_include.hpp>'}
 if($Compile){
  . "$repo/ops/Resource-Scheduler.Core.ps1"
- Invoke-IW7QueuedResourceJob -Scope $repo -Owner 'Cutscene policy tests' -WaitForSlotSeconds 420 -PhysicalBytes 256MB -CommitBytes 512MB -Body {
+ Invoke-IW7QueuedResourceJob -Scope $repo -Owner 'Cutscene policy tests' -WaitForSlotSeconds $WaitForSlotSeconds -ShortSeconds 120 -PhysicalBytes 256MB -CommitBytes 512MB -Body {
   $vs=& "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath|Select-Object -First 1
   if(!$vs){throw 'VS2022 C++ tools required.'}
   $batch=Join-Path $scratch 'compile.cmd';$exe=Join-Path $scratch 'cutscene-test.exe'
