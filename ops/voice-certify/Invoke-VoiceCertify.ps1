@@ -933,9 +933,9 @@ function Save-Diagnostics([string]$Mode) {
                 try {
                     [IO.Directory]::CreateDirectory((Split-Path $target)) | Out-Null
                     Copy-Item -LiteralPath $file.FullName -Destination $target -Force
-                    $script:diagnostics += [pscustomobject]@{ Mode = $Mode; Role = $name; Source = $relative; Target = [IO.Path]::GetRelativePath($OutputRoot, $target)
+                    $script:diagnosticFiles += [pscustomobject]@{ Mode = $Mode; Role = $name; Source = $relative; Target = [IO.Path]::GetRelativePath($OutputRoot, $target)
                         Bytes = $file.Length; SHA256 = (Get-FileHash -LiteralPath $target).Hash }
-                } catch { $script:diagnostics += [pscustomobject]@{ Mode = $Mode; Role = $name; Source = $relative; Error = $_.Exception.Message } }
+                } catch { $script:diagnosticFiles += [pscustomobject]@{ Mode = $Mode; Role = $name; Source = $relative; Error = $_.Exception.Message } }
             }
         }
     }
@@ -978,7 +978,7 @@ $script:password = [guid]::NewGuid().ToString('N')
 $script:trace = [Collections.Generic.List[string]]::new()
 $script:identities = @(); $script:serverInfo = @(); $script:identityKeys = @(); $script:phrases = $null; $script:phase = $null
 $script:joins = [Collections.Generic.List[object]]::new(); $script:leaseWaits = @(); $script:linkGuard = @(); $script:benchAfter = @()
-$script:diagnostics = @(); $script:diagnosticModes = @(); $script:serverNotes = [Collections.Generic.List[object]]::new()
+$script:diagnosticFiles = @(); $script:diagnosticModes = @(); $script:serverNotes = [Collections.Generic.List[object]]::new()
 $script:lease = $null; $leaseReleased = $false
 $windows = [Collections.Generic.List[object]]::new()
 $transactions = [ordered]@{}
@@ -1054,7 +1054,7 @@ try {
         Lease = [pscustomobject]@{ Scope = $LeaseScope; Shareable = $true; PhysicalBytes = [long]($LeasePhysicalGB * 1GB); CommitBytes = [long]($LeaseCommitGB * 1GB)
             Waits = $script:leaseWaits; Released = $leaseReleased }
         LinkGuard = $script:linkGuard
-        Diagnostics = [pscustomobject]@{ Dvars = [bool]$Diagnostics; Files = $script:diagnostics }
+        Diagnostics = [pscustomobject]@{ Dvars = [bool]$Diagnostics; Files = $script:diagnosticFiles }
         ServerNotes = @($script:serverNotes)
         BenchChecks = [pscustomobject]@{ Core = $BenchCore; Before = $script:benchBefore; After = $script:benchAfter } } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot 'checks.json')
