@@ -545,18 +545,12 @@ ports each client process really held.
 
 ## Known limits
 
-* The retail Zombies watchdog (`scripts\cp\gametypes\zombie`) kicks a player who has
-  not moved for 90 s once two are present, whatever `g_inactivity` says. It does run
-  on a private, passworded dedicated: live run cp-relay-3 (2026-11-11) lost client A
-  to `EXE_PLAYERKICKED_INACTIVE` during C4b. The Zombies fixture replaces
-  `add_to_kick_queue` (the same way as the server repository's gamelab presets) and
-  prints the refused attempts as `kicks=N` in its heartbeat; `checks.json` keeps the
-  last count as `KicksBlocked`.
-* The harness removes only the server's own scripts (`iw7-mod\custom_scripts`).
-  iw7-mod's updater scripts in `cdata\custom_scripts` stay, as on any iw7-mod server:
-  without `mp\ranked.gsc` the retail `connect_validateplayerteam` kicks every MP
-  player 1.5 s after joining (`EXE_PLAYERKICKED_INVALIDTEAM`, live run relay-full-2,
-  2026-11-11). An MP phase stops at once when the server did not load it.
+* The Zombies fixture calls `paris_test_protect` on every player every 0.25 s.
+  Without it the retail CP watchdog kicks a player who has not moved for 90 s once
+  two are present, whatever `g_inactivity` says (live run cp-relay-3, 2026-11-11:
+  server drop `EXE_PLAYERKICKED_INACTIVE` for client A during C4b). The method exists
+  only in the Build-Voice lab images and works only in Zombies; the MP fixture
+  relies on `g_inactivity 0`.
 * MP team control simulates nothing on the client. It calls the retail
   `scripts\mp\menus::setteam` on the server, which kills the player and lets the
   retail respawn path run. This is valid only with `scr_skipclasschoice 1`.
