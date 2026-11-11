@@ -260,6 +260,14 @@ Measured on the real inputs on 2026-11-10 (names from `symbols.hpp` only):
 `--like snaps` gives 7 `sv_*snapshot*` texts used by one function, `--like packet` gives `cl_maxpackets`, `cl_packetdup` and 3 more.
 `--like rate` also matches words that only contain `rate` (for example `bribe_crates_enabled`).
 
+## Companions: C, every reference form, live spans
+
+`refs` lists rip-relative references only; the engine also reaches its big tables through a disp32 on an image-base
+register (`[r10+rcx*4+0x60B22F2]`). `ops/engine-map/iw7_xref32.py` finds both forms, operand-exact (1 to 10 s for a
+whole-code scan). `ops/engine-map/iw7_decomp.py` decompiles functions to C with Ghidra over the same section files,
+without whole-program analysis. `ops/engine-map/iw7_dump_spans.py` copies the protected code spans (0x14B2B4000) of
+your own live process, which the section files do not hold. Commands: [AGENT-CAPACITY-ENGINE.md](AGENT-CAPACITY-ENGINE.md), "Tools".
+
 ## What it cannot know
 
 - Calls through registers and tables are not in the map. A function that is only reached that way shows no caller.
