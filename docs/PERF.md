@@ -85,7 +85,9 @@ Rule: a change below about 5 % is not established by one run a side. Repeat each
 ## Limits
 
 - The frame clock is the renderer pipeline's pass. It is not proof of displayed frames.
-- There is no GPU timing. A sample in the graphics driver says the thread was there, not how long the GPU took.
+- There is no GPU timing. A sample in the graphics driver says the thread was there, not how long the GPU took. The
+  graphics card's time per pass comes from a RenderDoc capture: server repository `docs/GPU-PASSES.md`. The dedicated
+  server's frame time and script cost: `docs/SERVER-PERF.md`.
 - Stacks stop at the edge of the game image. For system samples there is only a nearest-game-code hint.
 - The sampler itself costs time. This is not yet measured. Compare a build with and without `-paris-perf` windows open before quoting absolute numbers.
 - Names are only as good as the engine map. Calls through registers and tables are not in the map.
