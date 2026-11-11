@@ -59,7 +59,7 @@ ticks) times the window's length, divided by the number of server frames.
 ## Proof
 
 Run live on 11 Nov 2026 (i5-13400F; headless gamelab, cp_zmb, one bot, waves off; client built from commit 80d1aad
-with `-Perf`; evidence in `C:\Users\ezvalo\Documents\IW7-Runtime\tf9\sperf-3`, `sperf-4`, `sperf-5`, outside the
+with `-Perf`; evidence in the agent's run folders `IW7-Runtime/tf9/sperf-3`, `sperf-4`, `sperf-5`, outside the
 repositories). The server repository's plan `tests/scenarios/gamelab/headless-sperf-burn.json` with
 `tests/fixtures/sperf_burn.gsc` (installed with `-ServerCopy`) opens a 20 s window `base`, switches on 6,000
 iterations of arithmetic every server frame in the script function `sperf_burn_work` (thread `sperf_burn_loop`), and
