@@ -412,7 +412,7 @@
   "resolution": "Non-recursive exact revisions; no dependency may contribute an already owned path.",
   "upstream": {
     "repository": "maxis0191/iw7-mod",
-    "revision": "81e32f7a15139d7b92fdad2e5dbb5989149259cb",
-    "usage": "ServerModules retains Aurora develop 37abcb260408ce7cdef0dde831bbfcad594510e3 and Paris generic fixes, including the generic five-byte loading-new-map continuation fix (cfca45b) and the menu movement switch game:setmenumovement (81e32f7, fork branch claude/menu-movement); historical experiment and legacy pins remain explicit. The opt-in upstream-shaped voice relay (local feature/voice-chat commit fbf17531a4be72a31f1637dba38091c74f49cde0 on auroramod develop 85ada7c61e2b8722e9d3a704db490b909bb23ccb) is applied only by Build-Voice -VoiceRelay; ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch is its durable copy."
+    "revision": "485842f53fb3d6765f87176c1ca4a434863432f7",
+    "usage": "ServerModules retains Aurora develop 37abcb260408ce7cdef0dde831bbfcad594510e3 and Paris generic fixes, including the generic five-byte loading-new-map continuation fix (cfca45b) and the menu movement switch game:setmenumovement (485842f, fork branch claude/menu-movement); historical experiment and legacy pins remain explicit. The opt-in upstream-shaped voice relay (local feature/voice-chat commit fbf17531a4be72a31f1637dba38091c74f49cde0 on auroramod develop 85ada7c61e2b8722e9d3a704db490b909bb23ccb) is applied only by Build-Voice -VoiceRelay; ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch is its durable copy."
   }
 }

@@ -14,7 +14,7 @@ function Get-IW7VoiceRelayPin {
         UpstreamCommit='fbf17531a4be72a31f1637dba38091c74f49cde0'
         UpstreamBase='85ada7c61e2b8722e9d3a704db490b909bb23ccb'
         UpstreamBranch='feature/voice-chat'
-        NativeCommit='81e32f7a15139d7b92fdad2e5dbb5989149259cb'
+        NativeCommit='485842f53fb3d6765f87176c1ca4a434863432f7'
         PatchPath='ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch'
         PatchSHA256='C705EC499172261C96F7A8736AD6EBC2C5D681B90F89930B116F7E5A3E2680A6'
         # Hashes of LF text. Native checkouts made with core.autocrlf=true hold

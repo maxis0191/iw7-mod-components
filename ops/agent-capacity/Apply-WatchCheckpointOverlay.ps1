@@ -7,7 +7,7 @@ $ErrorActionPreference='Stop'
 . "$PSScriptRoot/Checkpoint-Overlay.Core.ps1"
 if($Commit -cnotmatch '^[0-9a-f]{40}$'){throw 'Exact native commit required.'}
 $pinned=@('77e6d4d24e918ee363b3feee3735c3b889dff7d7','993737428781c4357fe21ecd375300e39a29a654',
-          'cfca45b11ee14641945b9a264a95638387f48a4a','81e32f7a15139d7b92fdad2e5dbb5989149259cb')
+          'cfca45b11ee14641945b9a264a95638387f48a4a','485842f53fb3d6765f87176c1ca4a434863432f7')
 # All four pins have scheduler blob d235aeee97891254b1c38b7841e01700e130220d.
 # This admits the exact diagnostic overlay, not a larger agent allocation.
 if($Enabled -and $Commit -cnotin $pinned){throw 'Checkpoint Watch requires the reviewed isolated debugger native pin.'}
