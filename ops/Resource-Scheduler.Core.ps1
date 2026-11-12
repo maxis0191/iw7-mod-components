@@ -252,7 +252,7 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOt
 function Get-IW7SchedulerUtcNow { [datetime]::UtcNow }
 function Get-IW7CallerPid { $PID }
 function Get-IW7QueuePolicy {
-    [pscustomobject]@{FirstGraceSeconds=90;MinGraceSeconds=90;MaxGraceSeconds=660;AgingSeconds=600;MaxOvertakeSeconds=300;MaxShortSeconds=120;LogRotateBytes=8MB}
+    [pscustomobject]@{FirstGraceSeconds=90;MinGraceSeconds=180;MaxGraceSeconds=660;AgingSeconds=600;MaxOvertakeSeconds=300;MaxShortSeconds=120;LogRotateBytes=8MB}
 }
 function Get-IW7NowMs { [DateTimeOffset]::new([datetime]::SpecifyKind((Get-IW7SchedulerUtcNow),'Utc')).ToUnixTimeMilliseconds() }
 function Get-IW7QueuePath { Join-Path (Get-IW7ResourceRoot) 'queue.json' }

@@ -58,8 +58,10 @@ The rules, all applied inside the admission lock:
    same scope and kind (from the same or a new process) refreshes the ticket and keeps its place. A grant removes it.
 2. **Expiry.** A ticket expires at once when neither its caller nor the caller's parent process is alive (the
    parent covers runners that ask again in a new process each time), and otherwise when it is not refreshed in
-   time: 90 s after a single ask, then twice the last interval between asks plus 30 s, between 90 and 660 s (a
-   runner whose pauses grow to 300 s keeps its place). Every expiry is logged with its reason.
+   time: 90 s after a single ask, then twice the last interval between asks plus 30 s, between 180 and 660 s (a
+   runner whose pauses grow to 300 s keeps its place; the floor was 90 s until 12 Nov 2026, when a build asking every
+   5 s lost its place three times after 61, 19 and 12 minutes: with 20+ waiters the admission lock refuses for 10 s
+   at a time, and such refusals do not refresh a ticket, so gaps of 91 s happened). Every expiry is logged with its reason.
 0. **Only a ticket that could be served holds anyone back** (fix of the deadlock of 11 Nov 2026, 15:10-15:40: an
    8 GB client ticket, aged past 600 s on a machine with 5.5 GB free and no lease running, held back 8 later
    requests, 1.5 GB headless servers and a build included, for 28 minutes). An older shareable ticket counts
