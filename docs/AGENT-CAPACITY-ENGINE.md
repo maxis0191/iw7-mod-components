@@ -12,10 +12,11 @@ built on: the RE map `engine-zombie-limits.md` (notes folder) and the tools belo
 
 | Limit | Stock | With n agents (C = 18 + n characters) | Where |
 |---|---|---|---|
-| G_GetMaxAgents clamp | 24 | n (dvar `scr_default_maxagents` registered as n) | sub_140C18D00 imm 0x140C18D77 |
+| G_GetMaxAgents | min(atoi(scr_<gametype>_maxagents), 24); the stock game writes "24" into that dvar itself | n (the dvar is not read: `call atoi` becomes `mov eax, n`) | sub_140C18D00, 0x140C18D6E and 0x140C18D77 |
 | characters / first corpse / first map entity | 42 / 42, 50 / 58 | C / C, C+8 / C+16 | 0x1405AFFF6, 0x1405B0000, G_InitGame 0x14B54FA72/7C, 0x140B6686F, corpse allocators and 12 index sites |
 | G agent records (0x5010) | static 24 | new storage n x 0x5010 | rip 0x14C1ED662, 0x140007788, five 0x78180 sizes |
 | sentients (0xA0) | 71 | n + 47 | sub_140AF6310, 0x14B3C5D02 |
+| two per-sentient object pools (0x4D0 and 0x180 bytes, built by static constructors) | 71 each | n + 47 each, built with the shipped constructors | allocators sub_1403EE550, sub_1403F2820 and 28 scan/restore sites |
 | character tables (refs 64 B, work 8 B and 100 B, server 0x2CA0 records, client 0x2CA0 records, flags) | 42 | C | see plan_agents / plan_client |
 | lag-compensation archive (40 frames of per-character controllers and saved trees) | 42 | C | plan_archive (three copy loops re-encoded, three stack frames and their unwind data grown) |
 | wire: character index | 6 bits | 7 bits | agent-state delta writer and readers, 24 clientNum net fields |
