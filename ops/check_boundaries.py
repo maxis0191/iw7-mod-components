@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-from source_workspace import check_source_bytes, check_source_metadata, safe_relative
+from source_workspace import check_source_bytes, check_source_metadata, expand_exports, safe_relative
 
 META = {'README.md', 'AGENTS.md', 'CONTRIBUTING.md', '.gitignore', '.gitattributes',
         'product.json', 'checks.json', 'dependency-package.json', 'bootstrap.ps1', 'checks.ps1', 'LICENSE.upstream'}
@@ -14,7 +14,9 @@ def check(root):
     exports = product['exports']
     if len(exports) != len(set(p.casefold() for p in exports)):
         raise ValueError('Duplicate product export')
-    declared = set(exports)
+    tracked = subprocess.check_output(['git','-C',str(root),'ls-files','--stage'], text=True).splitlines()
+    # "<folder>/*.<ext>" exports own the files of that folder (one file per entry); the rest stay listed by name.
+    declared = set(expand_exports(exports, [row.split('\t', 1)[1] for row in tracked]))
     foreign_file = root / 'migration/foreign-paths.json'
     foreign = set(json.loads(foreign_file.read_text(encoding='utf-8-sig'))) if foreign_file.exists() else set()
     if foreign & declared:
@@ -28,7 +30,6 @@ def check(root):
             if path in contributions:
                 raise ValueError('Duplicate canonical implementation: ' + path)
             contributions.add(path)
-    tracked = subprocess.check_output(['git','-C',str(root),'ls-files','--stage'], text=True).splitlines()
     names = set()
     for row in tracked:
         info, path = row.split('\t',1)
