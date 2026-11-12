@@ -512,7 +512,7 @@ executable launches.
 `Invoke-IW7QueuedResourceJob` takes the same arguments as the plain form of `Invoke-IW7ResourceJob` plus a
 mandatory `-WaitForSlotSeconds` (1 to 86400). While the slot is held it asks for admission again every five
 seconds, up to the bound, then throws the last refusal. Only a refusal that names a temporary holder is waited
-for (`Resource busy: ...`, or a compiler/extractor/Java analysis still running); an unknown identity, invalid
+for (`Resource busy: ...`, `Resource admission lock busy; retry later.` (another caller held the admission lock a few seconds), or a compiler/extractor/Java analysis still running); an unknown identity, invalid
 telemetry, an unreserved laboratory or a duplicate lease is thrown at once. It has no retained-release form.
 `tests/ops/cutscene_test.ps1` and `tests/ops/owner_cheats_test.ps1` use it with `-ShortSeconds 120` and a
 2100-second bound (their `checks.json` entries set `timeout_seconds` 2400; `ops/check_product.py` reads it,
