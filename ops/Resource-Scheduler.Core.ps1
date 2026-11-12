@@ -264,7 +264,7 @@ function Format-IW7Age([double]$Seconds) {
     '{0}h{1:00}m' -f [math]::Floor($s/3600),[math]::Floor(($s%3600)/60)
 }
 function Test-IW7RetryableRefusal([string]$Message) {
-    foreach ($p in @('Resource busy:*','Heavy job already reserved*','An existing compiler/extractor/Java analysis is running*',
+    foreach ($p in @('Resource busy:*','Resource admission lock busy*','Heavy job already reserved*','An existing compiler/extractor/Java analysis is running*',
         'An unreserved or foreign laboratory is running*','Existing lab has no reservation*','Reserved process identity unavailable*')) {
         if ($Message -like $p) { return $true }
     }
@@ -985,7 +985,7 @@ function Invoke-IW7QueuedResourceJob {
             $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner @short
             break
         } catch {
-            $busy=$_.Exception.Message -like 'Resource busy:*' -or
+            $busy=$_.Exception.Message -like 'Resource busy:*' -or $_.Exception.Message -like 'Resource admission lock busy*' -or
                 $_.Exception.Message -like 'An existing compiler/extractor/Java analysis is running;*'
             if (!$busy -or $waited.Elapsed.TotalSeconds -ge $WaitForSlotSeconds) { throw }
             # One line a minute while waiting, with the place in the queue.
