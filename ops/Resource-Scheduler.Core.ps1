@@ -735,6 +735,124 @@ function Get-IW7ResourceStatus {
             ShareableAvailableBytes=$plan.Available;ShareableUnloadedBytes=$unloaded}
     }
 }
+# Windows 11 power-throttles (EcoQoS: efficiency cores, low clock) hidden processes it judges to be background
+# work, BelowNormal ones most of all, even on an idle machine, and the opt-out of a parent is not inherited by
+# its children. While a job body runs, this guard opts the host and every process it starts out of
+# execution-speed throttling. BelowNormal is kept, so the owner's game still wins any CPU contention, and while
+# the owner's game (iw7-cb-aurora.exe) runs the guard hands the choice back to Windows, which throttles our jobs
+# again so the game keeps the fast cores. Ten times a second it lists process ids (EnumProcesses, about
+# 0.2 ms); only a new id is opened, once, for its parent, start time and image name. A descendant is a process
+# whose parent is the host or a known descendant started before it, so a grandchild whose parent exited within
+# one tick is missed. A job object cannot do this here: the agent shells run inside a job that lets children
+# break away silently. It never throws: on failure the job only runs as before, slower.
+function Start-IW7ResourceJobQos {
+    param([string[]]$GameImages=@('iw7-cb-aurora.exe'),[int]$PeriodMs=100)
+    try {
+        if (!('IW7Scheduler.JobQos' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+namespace IW7Scheduler {
+public sealed class JobQos : IDisposable {
+    [StructLayout(LayoutKind.Sequential)] struct Throttle { public uint Version, ControlMask, StateMask; }
+    [StructLayout(LayoutKind.Sequential)] struct BasicInfo { public IntPtr ExitStatus, Peb, Affinity, BasePriority, Pid, ParentPid; }
+    sealed class Seen { public long Created; public bool Member, Game; public long Mode = -1; }
+    [DllImport("psapi.dll", SetLastError = true)] static extern bool EnumProcesses([Out] uint[] pids, int bytes, out int needed);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetProcessTimes(IntPtr h, out long c, out long e, out long k, out long u);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool QueryFullProcessImageNameW(IntPtr h, int flags, StringBuilder name, ref int size);
+    [DllImport("ntdll.dll")] static extern int NtQueryInformationProcess(IntPtr h, int cls, ref BasicInfo info, int size, IntPtr returned);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetProcessInformation(IntPtr h, int cls, ref Throttle t, int size);
+    readonly uint self; readonly HashSet<string> games; readonly object gate = new object(); readonly Timer timer;
+    readonly Dictionary<uint, Seen> seen = new Dictionary<uint, Seen>(); uint[] pids = new uint[4096]; bool disposed;
+    public int Ticks, Changes, Failures, Processes; public bool Fast, GameSeen; public string LastError;
+    public JobQos(int selfPid, string[] gameImages, int periodMs) {
+        self = (uint)selfPid; games = new HashSet<string>(gameImages, StringComparer.OrdinalIgnoreCase);
+        Tick(); timer = new Timer(_ => Tick(), null, periodMs, periodMs);
+    }
+    static long Created(uint pid) {
+        IntPtr h = OpenProcess(0x1000, false, pid); if (h == IntPtr.Zero) return 0;
+        try { long c, e, k, u; return GetProcessTimes(h, out c, out e, out k, out u) ? c : 0; } finally { CloseHandle(h); }
+    }
+    static bool Apply(uint pid, bool fast) {
+        IntPtr h = OpenProcess(0x0200, false, pid); if (h == IntPtr.Zero) return false;
+        try { var t = new Throttle { Version = 1, ControlMask = fast ? 1u : 0u, StateMask = 0 }; return SetProcessInformation(h, 4, ref t, 12); }
+        finally { CloseHandle(h); }
+    }
+    // Start time, parent id and image name of a process seen for the first time; null when it cannot be read.
+    Seen Read(uint pid, out uint parent) {
+        parent = 0; IntPtr h = OpenProcess(0x1000, false, pid); if (h == IntPtr.Zero) return null;
+        try {
+            long c, e, k, u; if (!GetProcessTimes(h, out c, out e, out k, out u)) return null;
+            var s = new Seen { Created = c }; var b = new BasicInfo();
+            if (NtQueryInformationProcess(h, 0, ref b, Marshal.SizeOf(typeof(BasicInfo)), IntPtr.Zero) == 0) parent = (uint)b.ParentPid.ToInt64();
+            var name = new StringBuilder(1024); int size = name.Capacity;
+            if (QueryFullProcessImageNameW(h, 0, name, ref size)) s.Game = games.Contains(Path.GetFileName(name.ToString()));
+            return s;
+        } finally { CloseHandle(h); }
+    }
+    void Tick() {
+        lock (gate) {
+            if (disposed) return;
+            try { TickCore(); } catch (Exception ex) { Failures++; LastError = ex.Message; }
+        }
+    }
+    void TickCore() {
+        Ticks++; int needed;
+        while (true) {
+            if (!EnumProcesses(pids, pids.Length * 4, out needed)) throw new InvalidOperationException("EnumProcesses " + Marshal.GetLastWin32Error());
+            if (needed < pids.Length * 4) break; pids = new uint[pids.Length * 2];
+        }
+        int n = needed / 4; var live = new HashSet<uint>(); var fresh = new List<KeyValuePair<uint, uint>>(); var freshSeen = new Dictionary<uint, Seen>();
+        for (int i = 0; i < n; i++) {
+            uint pid = pids[i]; if (pid == 0) continue; live.Add(pid);
+            if (seen.ContainsKey(pid)) continue;
+            uint parent; Seen s = Read(pid, out parent); if (s == null) continue;
+            freshSeen[pid] = s; fresh.Add(new KeyValuePair<uint, uint>(pid, parent));
+        }
+        foreach (var pid in new List<uint>(seen.Keys)) if (!live.Contains(pid)) seen.Remove(pid);
+        // Parents before children: classify the new processes in start-time order.
+        fresh.Sort((a, b) => freshSeen[a.Key].Created.CompareTo(freshSeen[b.Key].Created));
+        foreach (var f in fresh) {
+            Seen s = freshSeen[f.Key], p;
+            s.Member = f.Key == self || (seen.TryGetValue(f.Value, out p) && p.Member && p.Created <= s.Created);
+            seen[f.Key] = s;
+        }
+        bool game = false; foreach (var s in seen.Values) if (s.Game) { game = true; break; }
+        Fast = !game; if (game) GameSeen = true; long mode = Fast ? 1 : 0; int members = 0;
+        foreach (var m in seen) {
+            if (!m.Value.Member) continue; members++;
+            if (m.Value.Mode == mode) continue;
+            if (Apply(m.Key, Fast)) { m.Value.Mode = mode; Changes++; } else Failures++;
+        }
+        Processes = members;
+    }
+    public void Dispose() {
+        lock (gate) {
+            if (disposed) return; disposed = true; timer.Dispose();
+            foreach (var m in seen) if (m.Value.Member && m.Value.Mode == 1 && Created(m.Key) == m.Value.Created) Apply(m.Key, false);
+            seen.Clear();
+        }
+    }
+}
+}
+'@
+        }
+        return [IW7Scheduler.JobQos]::new($PID,[string[]]$GameImages,$PeriodMs)
+    } catch {
+        Write-Warning ("Resource job runs without the power-throttling opt-out: " + $_.Exception.Message)
+        return $null
+    }
+}
+function Stop-IW7ResourceJobQos($Qos) {
+    if ($null -eq $Qos) { return }
+    try { $Qos.Dispose() } catch { Write-Warning ("Power-throttling opt-out stop failed: " + $_.Exception.Message) }
+}
 function Invoke-IW7ResourceJob {
     param([Parameter(Mandatory)][scriptblock]$Body,[Parameter(Mandatory)][string]$Scope,
         [ValidateSet('Build','Extract','Analysis')][string]$Kind='Build',
@@ -901,7 +1019,7 @@ function Invoke-IW7ResourceJob {
         }
         . $private:jobProject
         . $private:jobAssert
-        $private:jobProcess=$null;$private:jobPriority=$null
+        $private:jobProcess=$null;$private:jobPriority=$null;$private:jobQos=$null
         $private:jobPriorityCaptured=$false;$private:jobPriorityRestored=$false;$private:jobHookApproved=$false
         try {
             $private:jobStore['Lease']=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
@@ -921,12 +1039,14 @@ function Invoke-IW7ResourceJob {
             if ($private:jobPriority -isnot [Diagnostics.ProcessPriorityClass]) { throw 'Original host priority is unknown.' }
             $private:jobPriorityCaptured=$true
             $private:jobProcess.PriorityClass='BelowNormal'
+            $private:jobQos=Start-IW7ResourceJobQos
             . $private:jobAssert -jobCheckToken
             & $Body
             . $private:jobAssert -jobCheckToken
         } catch { . $private:jobRecordError -jobCapturedRecord $_ -jobCapturedFrontier 'SetupBody' }
         finally {
             if ($null-ne$private:jobStore['Lease']) {
+                Stop-IW7ResourceJobQos $private:jobQos
                 if ($private:jobPriorityCaptured) {
                     try {
                         $private:jobProcess.PriorityClass=$private:jobPriority
@@ -959,10 +1079,13 @@ function Invoke-IW7ResourceJob {
     $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
     $process=Get-Process -Id $PID
     $priority=$process.PriorityClass
+    $qos=$null
     try {
         $process.PriorityClass='BelowNormal'
+        $qos=Start-IW7ResourceJobQos
         & $Body
     } finally {
+        Stop-IW7ResourceJobQos $qos
         $process.PriorityClass=$priority
         Exit-IW7ResourceLease -Token $lease.Token
     }
@@ -995,10 +1118,13 @@ function Invoke-IW7QueuedResourceJob {
     }
     $process=Get-Process -Id $PID
     $priority=$process.PriorityClass
+    $qos=$null
     try {
         $process.PriorityClass='BelowNormal'
+        $qos=Start-IW7ResourceJobQos
         & $Body
     } finally {
+        Stop-IW7ResourceJobQos $qos
         $process.PriorityClass=$priority
         Exit-IW7ResourceLease -Token $lease.Token
     }

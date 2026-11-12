@@ -305,7 +305,7 @@ requirements, measured maxima or supported-client-count limits:
 
 | Workload | Physical estimate | Commit estimate | Qualification |
 | --- | ---: | ---: | --- |
-| Native build, one MSBuild node, compiler `/MP` disabled | 4 GiB | 6 GiB | BelowNormal priority inherited by synchronous children |
+| Native build, one MSBuild node, compiler `/MP` disabled | 4 GiB | 6 GiB | BelowNormal priority inherited by synchronous children; power throttling off for the host and its children unless the owner's game runs (see "Job speed and the owner's game") |
 | Native build, two nodes, explicitly selected | 8 GiB | 12 GiB | Same exclusive lease; no gameplay overlap |
 | One reduced client | 8 GiB | 8 GiB | Logic/audio evidence only |
 | One full-quality client | 12 GiB | 12 GiB | Required for unqualified texture/material evidence |
@@ -474,7 +474,9 @@ The narrow `tests/ops/resource_scheduler_test.ps1
 extracted by AST with fake admission/release/process/priority/check dependencies
 and owned managed root witnesses. It checks actual lease/error references after
 unwind, private-writer visibility, read-only journal mutations, token frontiers,
-strict check results and literal legacy parity. It returns before the Core
+strict check results and literal legacy parity, and that the power-throttling
+guard starts after the lowering and is stopped before the restore on every path
+(check `resource_scheduler_retained_release_source_test`). It returns before the Core
 import, real registry and historical cross-process contenders. Those Source
 causals do not establish a real lease, NoExit host, descendant closure,
 compiler/build/game result or full legacy-suite pass. Subsequent child coverage
@@ -482,8 +484,33 @@ and postbuild evidence remain separate work.
 
 Build-Voice and Build-RhinoZoneTool acquire a heavy-job lease around compilation,
 default to one MSBuild node, disable compiler multiprocess expansion, disable
-node reuse and run at BelowNormal priority. The caller's priority is restored in
-`finally`. `TestsOnly` remains lightweight and does not reserve a whole game slot.
+node reuse and run at BelowNormal priority with power throttling off (next
+section). The caller's priority is restored in `finally`. `TestsOnly` remains
+lightweight and does not reserve a whole game slot.
+
+### Job speed and the owner's game
+
+All three job forms (`Invoke-IW7ResourceJob`, its retained-release form and
+`Invoke-IW7QueuedResourceJob`) lower the host to BelowNormal for the body, and
+`Start-IW7ResourceJobQos` switches Windows power throttling (EcoQoS: efficiency
+cores, low clock) off for the host and for every process the body starts, until
+the body ends. Windows 11 throttles hidden background processes even on an idle
+machine, BelowNormal ones most of all, and a parent's opt-out is not inherited:
+measured on 12 Nov 2026 (i5-13400F, CPU-bound child started with `&` from the
+body, 8 s, three runs each): before 0.51-0.65 CPU s per wall s and 37-45 million
+loop iterations, after 0.97-0.99 and 81-86 million (about 2x). The lead measured
+a Ghidra analysis at 0.6 s of CPU in 30 s at BelowNormal, 45.2 s once unthrottled.
+The guard lists process ids ten times a second (`EnumProcesses`) and opens only
+new ones; its cost is about 0.2 s of CPU a minute. A grandchild whose parent
+exits within 100 ms of starting it is missed. A job object cannot be used: the
+agent shells run inside a job that lets children break away silently.
+
+**The owner's game keeps priority:** while `iw7-cb-aurora.exe` runs, the guard
+hands throttling back to Windows (our BelowNormal jobs go to the efficiency cores
+again) and BelowNormal lets the game win every CPU contention. After the job the
+host's state is handed back to Windows as well. The real-job check in
+`tests/ops/resource_scheduler_test.ps1` reads the explicit state of the host and
+of a child the body starts (1/0 = never throttle) and the game fallback (0/0).
 Do not nest a lease wrapper around an already guarded builder.
 Build-RhinoAutoDownload now also reserves its synchronous ZoneTool invocation,
 with the same 6 GiB physical/8 GiB commit estimates as the other Rhino pack builder.

@@ -198,6 +198,7 @@ if ($RetainedReleaseSourceOnly) {
             HookException=[InvalidOperationException]::new('authored hook failure')
             ExitException=[InvalidOperationException]::new('authored exit failure')
             Priority=[Diagnostics.ProcessPriorityClass]::Normal;HookFirst=$null;HookExceptionRef=$null;ExitToken=$null;Args=$null
+            QosGuard=[pscustomobject]@{Name='authored qos guard'};QosStopped=[Collections.Generic.List[object]]::new()
         }
         if($Configure){&$Configure $c}
         & {
@@ -247,6 +248,9 @@ if ($RetainedReleaseSourceOnly) {
                 }
                 return $p
             }
+            # The power-throttling guard: started after the lowering, stopped before the restore; it never throws.
+            function Start-IW7ResourceJobQos { $c.Events.Add('qos');return $c.QosGuard }
+            function Stop-IW7ResourceJobQos($Qos) { $c.Events.Add('unqos');$c.QosStopped.Add($Qos) }
             function Invoke-AuthoredMutation($v) {
                 switch -CaseSensitive($c.Mutation){
                     'LeaseNull' {$v.ResourceJobLease=$null}
@@ -307,16 +311,25 @@ if ($RetainedReleaseSourceOnly) {
     try {
         $legacy=@(
             '    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner',
-            '    $process=Get-Process -Id $PID','    $priority=$process.PriorityClass','    try {',
-            '        $process.PriorityClass=''BelowNormal''','        & $Body','    } finally {',
-            '        $process.PriorityClass=$priority','        Exit-IW7ResourceLease -Token $lease.Token','    }','}'
+            '    $process=Get-Process -Id $PID','    $priority=$process.PriorityClass','    $qos=$null','    try {',
+            '        $process.PriorityClass=''BelowNormal''','        $qos=Start-IW7ResourceJobQos','        & $Body','    } finally {',
+            '        Stop-IW7ResourceJobQos $qos','        $process.PriorityClass=$priority','        Exit-IW7ResourceLease -Token $lease.Token','    }','}'
         )-join[string][char]10
         Assert-Source ($source.Replace([string][char]13,'').EndsWith($legacy,[StringComparison]::Ordinal)) 'Legacy literal tail changed.'
         $old=Invoke-SourceCase -Configure {param($c)$c.Legacy=$true}
         Assert-Source (!$old.Caught-and$old.EnterCount-eq1-and$old.ExitCount-eq1-and$old.HookCount-eq0-and$null-eq$old.Owner) 'Legacy semantics/root changed.'
+        Assert-Source (($old.Events-join',')-ceq'enter,process,read,lower,qos,body,unqos,restore,exit') 'Legacy operation order differs.'
+        Assert-Source ($old.QosStopped.Count-eq1-and[object]::ReferenceEquals($old.QosStopped[0],$old.QosGuard)) 'Legacy path did not stop its own guard.'
+        $oldFail=Invoke-SourceCase -Configure {param($c)$c.Legacy=$true;$c.BodyFails=$true}
+        Assert-Source ($oldFail.Caught-and($oldFail.Events-join',')-ceq'enter,process,read,lower,qos,body,unqos,restore,exit') 'Legacy failed body skipped guard stop, restore or release.'
         $ok=Invoke-SourceCase -Configure {param($c)$c.ProbePrivate=$true}
         Assert-Source (!$ok.Caught-and$ok.Output-ceq'authored output'-and$ok.ExitCount-eq1) 'Known normal Source outcome failed.'
-        Assert-Source (($ok.Events-join',')-ceq'enter,process,read,lower,body,restore,read,hook,exit') 'Actual operation order differs.'
+        Assert-Source (($ok.Events-join',')-ceq'enter,process,read,lower,qos,body,unqos,restore,read,hook,exit') 'Actual operation order differs.'
+        Assert-Source ($ok.QosStopped.Count-eq1-and[object]::ReferenceEquals($ok.QosStopped[0],$ok.QosGuard)) 'Retained path did not stop its own guard.'
+        $failQos=Invoke-SourceCase -Configure {param($c)$c.BodyFails=$true}
+        Assert-Source (($failQos.Events-join',')-ceq'enter,process,read,lower,qos,body,unqos,restore,read,hook,exit'-and[object]::ReferenceEquals($failQos.QosStopped[0],$failQos.QosGuard)) 'Failed body skipped the guard stop before restore.'
+        $lowerQos=Invoke-SourceCase -Configure {param($c)$c.LowerFails=$true}
+        Assert-Source (!$lowerQos.Events.Contains('qos')-and$lowerQos.QosStopped.Count-eq1-and$null-eq$lowerQos.QosStopped[0]) 'A failed lowering started a guard or stopped a foreign one.'
         Assert-Source ([object]::ReferenceEquals($ok.RootVariable.Value,$ok.Owner)-and[object]::ReferenceEquals([AppDomain]::CurrentDomain.GetData($ok.RootKey),$ok.RootVariable)) 'Original root owner differs after unwind.'
         Assert-Source ([object]::ReferenceEquals($ok.Owner['Lease'],$ok.Lease)-and$ok.Owner['ReleaseReturned']-and$ok.Owner['ReleaseAttempted']) 'Original lease/release outcome not durable.'
         Assert-Source ($ok.PrivateVisible.Count-eq0) ('Private writer exposed: '+($ok.PrivateVisible-join','))
@@ -542,8 +555,24 @@ try { Invoke-IW7QueuedResourceJob -Scope $waitScope -Owner 'not waited' -WaitFor
 Assert ($message -like 'An unreserved or foreign laboratory is running*' -and $script:waitSleeps -eq 0) 'A refusal that is not a temporary holder is never waited for.'
 $script:fakeProcesses=@($script:fakeProcesses | Where-Object PID -EQ $PID)
 Remove-Item Function:\Start-Sleep
-# A real cross-process race on a shared file lock, without heavyweight children.
 $shell=(Get-Process -Id $PID).Path
+# A real job: the host and a child its body starts with & run with power throttling (EcoQoS) switched off; the
+# host hands the choice back to Windows after the job; while the owner's game runs the guard leaves it to Windows.
+# Each process reads its own explicit state (ControlMask/StateMask): 1/0 is "never throttle", 0/0 is "Windows decides".
+$qosProbe=@'
+Add-Type -Namespace IW7Test -Name Qos -MemberDefinition '[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool GetProcessInformation(System.IntPtr h, int cls, uint[] info, int size); [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern System.IntPtr GetCurrentProcess();'
+function Get-TestQosState { $s=[uint32[]]@(1,0,0); if (![IW7Test.Qos]::GetProcessInformation([IW7Test.Qos]::GetCurrentProcess(),4,$s,12)) { throw 'GetProcessInformation failed.' }; '{0}/{1}' -f $s[1],$s[2] }
+'@
+. ([scriptblock]::Create($qosProbe))
+$childProbe=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($qosProbe+[char]10+'$w=[Diagnostics.Stopwatch]::StartNew(); while ((Get-TestQosState) -ne ''1/0'' -and $w.Elapsed.TotalSeconds -lt 10) { Start-Sleep -Milliseconds 50 }; Get-TestQosState'))
+$qosSeen=Invoke-IW7ResourceJob -Scope (Join-Path $TestRoot 'qos-job') -Owner 'qos job' -Body { [pscustomobject]@{Host=(Get-TestQosState);Child=@(& $shell -NoLogo -NoProfile -NonInteractive -EncodedCommand $childProbe)[-1]} }
+Assert ($qosSeen.Host -eq '1/0') ('The job host must run with power throttling switched off: '+$qosSeen.Host)
+Assert ($qosSeen.Child -eq '1/0') ('A child started with & by the body must run with power throttling switched off: '+$qosSeen.Child)
+Assert ((Get-TestQosState) -eq '0/0') 'After the job the host must hand throttling back to Windows.'
+Assert (@((Get-IW7ResourceStatus).Leases).Count -eq 0) 'The power-throttling job must release its lease.'
+$qosGame=Start-IW7ResourceJobQos -GameImages @([IO.Path]::GetFileName($shell))
+try { Assert ($null -ne $qosGame -and !$qosGame.Fast -and $qosGame.GameSeen -and (Get-TestQosState) -eq '0/0') 'While the owner game runs the guard must leave throttling to Windows.' } finally { Stop-IW7ResourceJobQos $qosGame }
+# A real cross-process race on a shared file lock, without heavyweight children.
 $children=@()
 foreach ($i in 1..2) {
     $result=Join-Path $TestRoot "contender-$i.txt"
