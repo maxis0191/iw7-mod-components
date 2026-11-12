@@ -20,7 +20,7 @@ $previousJava = $env:JAVA_HOME
 try {
     $env:JAVA_HOME = Join-Path $ghidraRoot 'jdk-21.0.12.1+1'
     . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
-    Invoke-IW7ResourceJob -Scope $repo -Kind Analysis -Owner 'Selected Ghidra functions' -PhysicalBytes 4GB -CommitBytes 6GB -Body {
+    Invoke-IW7ResourceJob -Scope $repo -Kind Analysis -Owner 'Selected Ghidra functions' -PhysicalBytes 4GB -CommitBytes 6GB -Resources "ghidra:$projectRoot" -Body {
     & (Join-Path $ghidraRoot 'ghidra_12.1.4_PUBLIC/support/analyzeHeadless.bat') $projectRoot voice `
         -import (Join-Path $ReferenceRoot 'unpacked-text.bin') -loader BinaryLoader `
         -loader-baseAddr 140001000 -processor x86:LE:64:default -cspec windows -noanalysis `

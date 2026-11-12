@@ -16,7 +16,7 @@ while($cursor){
     $parent=Split-Path $cursor -Parent;if($parent -eq $cursor){break};$cursor=$parent
 }
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
-Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
+Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Resources "native-build:$repo" -Body {
     Remove-IW7VoiceCertifyOverlay $root
     Remove-IW7VoiceRelayOverlay $root
     Remove-IW7CapacityPeerOverlay $root

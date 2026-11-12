@@ -193,7 +193,7 @@ switch ($Action) {
         $oldJava=$env:JAVA_HOME
         try {
             $env:JAVA_HOME=Join-Path $GhidraRoot 'jdk-21.0.12.1+1'
-            Invoke-IW7ResourceJob -Scope $repo -Kind Analysis -Owner 'Selected debugger Ghidra ranges' -PhysicalBytes 4GB -CommitBytes 6GB -Body {
+            Invoke-IW7ResourceJob -Scope $repo -Kind Analysis -Owner 'Selected debugger Ghidra ranges' -PhysicalBytes 4GB -CommitBytes 6GB -Resources "ghidra:$project" -Body {
                 & (Join-Path $GhidraRoot 'ghidra_12.1.4_PUBLIC/support/analyzeHeadless.bat') $project engine `
                     -import (Join-Path $references 'unpacked-text.bin') -loader BinaryLoader -loader-baseAddr 140001000 -processor x86:LE:64:default -cspec windows -noanalysis `
                     -scriptPath (Join-Path $PSScriptRoot 'ghidra') -postScript DecompileSelected.java `
