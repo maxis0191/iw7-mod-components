@@ -111,6 +111,15 @@ waiting for GitHub checks; per-test game copies; launching once per question.
 - Edit the canonical tracked file; never a generated source workspace (`runtime/...`).
 - A task does not change agent memory or instruction files (this file, a tool's memory) on its own initiative;
   it changes them only when that is the task.
+- `product.json` `exports` stays in sorted order, one path a line, so branches that add files in parallel change
+  different lines and merge without a conflict. `checks.ps1` refuses an unsorted list; put the path at its place or
+  run `pwsh -NoProfile -File checks.ps1 -SortExports` (inside a conflicted merge of main it keeps every path of both
+  sides that exists on disk, which resolves that file).
+- A folder of one file per entry (a changelog folder, plan steps) is exported by one pattern line,
+  `"<folder>/*.<ext>"`: it owns the files directly in that folder with that extension, nothing else (the gate still
+  refuses every other unlisted file). Parallel branches then add files there without touching `product.json`.
+  Implemented in `ops/source_workspace.py` (`expand_exports`) and `ops/check_boundaries.py`; a product uses it once
+  its dependency pin reaches this recipe.
 - Every tracked file is declared in `product.json` `exports`; the ownership gate refuses the rest. A new tool
   comes with its test, its `checks.json` entry, its document and a line in `docs/INDEX.md`. A check that needs a
   tool absent from the working machine goes under `retained_checks` with the reason; a real test is never

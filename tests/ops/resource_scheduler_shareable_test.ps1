@@ -62,7 +62,7 @@ Case 'two shareable admitted' {
 }
 Case 'third 12 GB shareable refused by the declared budget' {
     Enter-Share a | Out-Null; Enter-Share b | Out-Null
-    Assert (Refused { Enter-Share c } 'Resource busy: shareable declared memory budget exceeded*') 'Third 12 GB session exceeds 32 - 8 = 24 GB.'
+    Assert (Refused { Enter-Share c } 'Resource busy: declared memory budget exceeded*') 'Third 12 GB session exceeds 32 - 8 = 24 GB.'
     Assert ((Leases).Count -eq 2) 'Refusal must not add a lease.'
 }
 Case 'shareable refused beside exclusive Runtime' {
@@ -72,14 +72,17 @@ Case 'shareable refused beside exclusive Runtime' {
 Case 'exclusive Runtime refused beside shareable' {
     Enter-Share a | Out-Null
     # The old message is kept whole; since 2026-11-11 the place in the waiting order follows it.
-    Assert (Refused { Enter-Share x -Plain } 'Resource busy: Runtime owned by owner-a. Continue light work; retry when released. Queue: place 1 of 1, *') 'Exclusive request keeps the old message shape.'
+    Assert (Refused { Enter-Share x -Plain } "Resource busy: Runtime owned by owner-a. It holds 'runtime:*', which this request needs too ('machine'). Continue light work; retry when released. Queue: place 1 of 1, *") 'Exclusive request keeps the old message shape.'
 }
 Case 'Build and shareable exclude each other' {
-    $build=Enter-IW7ResourceLease -Scope (Bench build) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'builder'
-    Assert (Refused { Enter-Share a } 'Resource busy: Build owned by builder.*') 'Shareable refused while a Build lease exists.'
+    # Named resources (12 Nov 2026): a Build that asks for the machine alone excludes sessions both ways.
+    $build=Enter-IW7ResourceLease -Scope (Bench build) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'builder' -Resources machine
+    Assert (Refused { Enter-Share a } 'Resource busy: Build owned by builder.*') 'Shareable refused while a machine Build lease exists.'
     Exit-IW7ResourceLease -Token $build.Token
     Enter-Share a | Out-Null
-    Assert (Refused { Enter-IW7ResourceLease -Scope (Bench build) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'builder' } 'Resource busy: Runtime owned by owner-a.*') 'Build refused while a shareable lease exists.'
+    Assert (Refused { Enter-IW7ResourceLease -Scope (Bench build) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'builder' -Resources machine } 'Resource busy: Runtime owned by owner-a.*') 'A machine Build refused while a shareable lease exists.'
+    $b=Enter-IW7ResourceLease -Scope (Bench build) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'builder'
+    Assert ($b.Resources -contains ('work:'+(Get-IW7CanonicalScope (Bench build)))) 'A Build of the default kind holds its own work folder only, and runs beside the session.'
 }
 Case 'invalid Shareable declarations' {
     Assert (Refused { Enter-IW7ResourceLease -Scope (Bench a) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'b' -Shareable } 'Shareable is only valid*') 'Shareable Build refused.'
@@ -130,7 +133,7 @@ Case 'unreserved lab in the requested bench still refuses' {
 }
 Case 'builders refuse shareable requests' {
     Enter-Share a | Out-Null
-    New-Proc 'C:\tools\MSBuild.exe' 'MSBuild.exe' | Out-Null
+    $rogue=New-Proc 'C:\tools\MSBuild.exe' 'MSBuild.exe'; $rogue.ParentPID=0   # started by no lease
     Assert (Refused { Enter-Share b } 'An existing compiler/extractor/Java analysis is running*') 'Running builder refuses shareable.'
 }
 Case 'a shareable lease may hold several game processes' {
@@ -229,18 +232,18 @@ Case 'two 10 GB admitted and a third refused by the declared budget' {
     Enter-Share a -Bytes 10GB | Out-Null; Enter-Share b -Bytes 10GB | Out-Null
     $msg=''
     try { Enter-Share c -Bytes 10GB | Out-Null } catch { $msg=$_.Exception.Message }
-    Assert ($msg -like 'Resource busy: shareable declared memory budget exceeded: existing shareable leases declare 20.0 GB and this request needs 10.0 GB, above the budget of 24.0 GB (32.0 GB total minus a 8.0 GB reserve).*') "Budget message names the numbers: $msg"
+    Assert ($msg -like 'Resource busy: declared memory budget exceeded: running reservations declare 20.0 GB and this request needs 10.0 GB, above the budget of 24.0 GB (32.0 GB total minus a 8.0 GB reserve).*') "Budget message names the numbers: $msg"
     Assert ((Leases).Count -eq 2) 'Refusal must not add a lease.'
     Assert (Refused { Enter-Share c -Bytes 25GB } 'Refused: this session can never fit on this machine as it stands: it needs 25.0 GB*at most 24.0 GB*Not queued.*') 'A single session above the budget is refused at once (never fits).'
 }
 Case 'measured memory refuses although the declared budget has room' {
     $script:avail=6GB
-    Assert (Refused { Enter-Share a -Bytes 10GB } 'Refused: this session can never fit*needs 10.0 GB, measured free memory is 6.0 GB and running shareable sessions hold 0.0 GB*') 'Nothing held to wait for: never fits.'
+    Assert (Refused { Enter-Share a -Bytes 10GB } 'Refused: this session can never fit*needs 10.0 GB, measured free memory is 6.0 GB and running reservations hold 0.0 GB*') 'Nothing held to wait for: never fits.'
     $script:avail=10GB
     Enter-Share h -Bytes 4GB | Out-Null              # 6 GB free, 4 GB held: 10 GB can come free
     $msg=''
     try { Enter-Share a -Bytes 10GB | Out-Null } catch { $msg=$_.Exception.Message }
-    Assert ($msg -like 'Resource busy: not enough measured free memory: 10.0 GB available minus 4.0 GB still to be taken by existing shareable sessions leaves 6.0 GB, and this request needs 10.0 GB.*') "Measured message: $msg"
+    Assert ($msg -like 'Resource busy: not enough measured free memory: 10.0 GB available minus 4.0 GB still to be taken by running reservations leaves 6.0 GB, and this request needs 10.0 GB.*') "Measured message: $msg"
     Assert ((Leases).Count -eq 1) 'Refusal must not add a lease.'
     $script:avail=16GB
     Assert ((Enter-Share a -Bytes 10GB).Shareable) 'Admitted once available memory rises.'
@@ -249,10 +252,10 @@ Case 'declared but not yet taken memory is reserved' {
     $script:avail=21GB
     Enter-Share a -Bytes 10GB | Out-Null
     Enter-Share b -Bytes 10GB | Out-Null            # 21 - 10 >= 10
-    Assert (Refused { Enter-Share c -Bytes 10GB } 'Resource busy: shareable declared memory budget exceeded*') 'Third 10 GB refused (budget).'
+    Assert (Refused { Enter-Share c -Bytes 10GB } 'Resource busy: declared memory budget exceeded*') 'Third 10 GB refused (budget).'
     $msg=''
     try { Enter-Share c -Bytes 2.5GB | Out-Null } catch { $msg=$_.Exception.Message }
-    Assert ($msg -like 'Resource busy: not enough measured free memory: 21.0 GB available minus 20.0 GB still to be taken by existing shareable sessions leaves 1.0 GB, and this request needs 2.5 GB.*') "Third refused by the not-yet-taken part: $msg"
+    Assert ($msg -like 'Resource busy: not enough measured free memory: 21.0 GB available minus 20.0 GB still to be taken by running reservations leaves 1.0 GB, and this request needs 2.5 GB.*') "Third refused by the not-yet-taken part: $msg"
     Assert ((Leases).Count -eq 2) 'No lease added.'
 }
 Case 'live processes shrink the reservation of their lease' {
@@ -277,7 +280,7 @@ Case 'reserve override by environment variable' {
     }
     Set-Reserve '16'
     Enter-Share a -Bytes 8GB | Out-Null              # budget 32 - 16 = 16
-    Assert (Refused { Enter-Share b -Bytes 8.5GB } 'Resource busy: shareable declared memory budget exceeded*above the budget of 16.0 GB (32.0 GB total minus a 16.0 GB reserve).*') 'Larger reserve shrinks the budget.'
+    Assert (Refused { Enter-Share b -Bytes 8.5GB } 'Resource busy: declared memory budget exceeded*above the budget of 16.0 GB (32.0 GB total minus a 16.0 GB reserve).*') 'Larger reserve shrinks the budget.'
     Assert ((Enter-Share b -Bytes 8GB).Shareable) 'Exactly the budget is admitted.'
     Set-Reserve '2'
     Assert ((Enter-Share c -Bytes 10GB).Shareable) 'Smaller reserve widens it (8+8+10 = 26 <= 30).'
@@ -290,7 +293,7 @@ Case 'hard cap of 24 leases' {
     Assert ((Leases).Count -eq 24) 'Twenty-four tiny sessions admitted.'
     $msg=''
     try { Enter-Share t25 -Bytes 64MB | Out-Null } catch { $msg=$_.Exception.Message }
-    Assert ($msg -like 'Resource busy: shareable Runtime cap of 24 leases reached; owned by owner-t1, owner-t2, owner-t3, owner-t4, owner-t5 and 19 more.*') "Cap message: $msg"
+    Assert ($msg -like 'Resource busy: cap of 24 leases side by side reached; owned by owner-t1, owner-t2, owner-t3, owner-t4, owner-t5 and 19 more.*') "Cap message: $msg"
     Assert ((Enter-Share t7 -Bytes 64MB).Shareable) 'Re-entry of an existing lease at the cap is not refused.'
     Assert ((Leases).Count -eq 24) 'Still 24.'
 }
@@ -298,7 +301,7 @@ Case 're-entry that would break the budget is refused and leaves the lease uncha
     $a=Enter-Share a -Bytes 10GB; Enter-Share b -Bytes 10GB | Out-Null
     $file=Join-Path (Get-IW7ResourceRoot) 'leases.json'
     $before=(Get-FileHash -LiteralPath $file).Hash; $aBefore=LeaseJson $a.Token
-    Assert (Refused { Enter-Share a -Bytes 15GB } 'Resource busy: shareable declared memory budget exceeded*') 'Growth to 15 GB: 10 + 15 > 24.'
+    Assert (Refused { Enter-Share a -Bytes 15GB } 'Resource busy: declared memory budget exceeded*') 'Growth to 15 GB: 10 + 15 > 24.'
     Assert ((Get-FileHash -LiteralPath $file).Hash -eq $before -and (LeaseJson $a.Token) -eq $aBefore) 'Registry file and lease unchanged after refusal.'
     $script:avail=15GB
     Assert (Refused { Enter-Share a -Bytes 12GB } 'Resource busy: not enough measured free memory*') 'Growth refused by measured memory: 15 - 10 (B untaken) < 12.'
@@ -344,7 +347,7 @@ foreach ($field in @('Image','CreatedUtc')) {
         # The identity check keeps its force everywhere else.
         Assert (Refused { Enter-Share a -Bytes 10GB } 'Reserved process identity unavailable*') 'Re-entry of the SAME lease still refuses.'
         Assert (Refused { Exit-IW7ResourceLease -Token $a.Token } 'Reserved process identity unavailable*') 'Release still refuses.'
-        Assert (Refused { Enter-Share x -Plain -Bytes 1GB } 'Reserved process identity unavailable*') 'An exclusive request keeps the hard identity refusal (strict path unchanged).'
+        Assert (Refused { Enter-Share x -Plain -Bytes 1GB } 'Resource busy: Runtime owned by*') 'An exclusive request beside it is refused as busy (the unreadable lease is held), not by a hard identity error (named resources).'
         $status=Get-IW7ResourceStatus
         Assert ($status.ShareableUnloadedBytes -eq 12.5GB) 'Status counts the unreadable lease as fully untaken (conservative), no exception.'
     }
@@ -355,7 +358,7 @@ foreach ($field in @('Image','CreatedUtc')) {
 }
 Case 'exclusive and shareable still exclude each other' {
     Enter-Share a -Bytes 2GB | Out-Null
-    Assert (Refused { Enter-Share x -Plain -Bytes 1GB } 'Resource busy: Runtime owned by owner-a. Continue light work; retry when released.*') 'Exclusive refused beside a shareable lease.'
+    Assert (Refused { Enter-Share x -Plain -Bytes 1GB } "Resource busy: Runtime owned by owner-a. It holds 'runtime:*', which this request needs too ('machine'). Continue light work; retry when released.*") 'Exclusive refused beside a shareable lease.'
     $s=Read-IW7ResourceState; $s.Leases=@(); Save-IW7ResourceState $s
     Enter-Share x -Plain -Bytes 1GB | Out-Null
     Assert (Refused { Enter-Share a -Bytes 2GB } 'Resource busy: Runtime owned by owner-x.*') 'Shareable refused beside an exclusive lease.'
@@ -379,9 +382,9 @@ Case 'status without shareable leases' {
     $s=Get-IW7ResourceStatus
     Assert ($s.ShareableDeclaredBytes -eq 0 -and $s.ShareableRemainingDeclaredBytes -eq 24GB -and $s.ShareableUnloadedBytes -eq 0) 'Empty registry: nothing declared, full budget.'
 }
-Case 'a Build lease stays exclusive' {
-    $build=Enter-IW7ResourceLease -Scope (Bench build) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'builder'
-    Assert (Refused { Enter-Share a -Bytes 1GB } 'Resource busy: Build owned by builder.*') 'Shareable refused beside a Build.'
+Case 'a Build lease that asks for the machine stays exclusive' {
+    $build=Enter-IW7ResourceLease -Scope (Bench build) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'builder' -Resources machine
+    Assert (Refused { Enter-Share a -Bytes 1GB } 'Resource busy: Build owned by builder.*') 'Shareable refused beside a machine Build.'
     Assert (Refused { Enter-IW7ResourceLease -Scope (Bench build2) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner 'b2' } 'Resource busy: Build owned by builder.*') 'Second Build refused.'
 }
 Case 'a legacy lease without the flag stays exclusive' {
@@ -391,7 +394,7 @@ Case 'a legacy lease without the flag stays exclusive' {
     Save-IW7ResourceState $state
     Assert (Refused { Enter-Share b -Bytes 1GB } 'Resource busy: Runtime owned by legacy.*') 'Legacy lease blocks a shareable request.'
     $s=Get-IW7ResourceStatus
-    Assert ($s.ShareableDeclaredBytes -eq 0) 'A legacy lease is not counted as shareable.'
+    Assert ($s.ShareableDeclaredBytes -eq 1GB -and !$s.Leases[0].Shareable -and $s.Leases[0].Holds -contains 'machine') ("A legacy lease holds the machine; its memory counts like every held lease (named resources): "+($s | Select-Object ShareableDeclaredBytes,@{n='h';e={$_.Leases[0].Holds -join ','}} | ConvertTo-Json -Compress))
 }
 } finally { Set-Reserve $script:savedReserve }Reset-Registry
 Write-Output ("PASS $script:cases shareable-runtime cases / $script:checks assertions; temporary registry and synthetic process list only.")
