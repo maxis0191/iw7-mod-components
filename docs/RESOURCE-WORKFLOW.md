@@ -192,6 +192,82 @@ hooks. Native retains the original investigation profile. Player refuses synthet
 VoiceProbe; one-client readiness does not prove two-client speech. The complete
 planned scenario still needs admission before launch.
 
+## Named resources - 2026-11-12
+
+Why. "A build needs the machine alone" stalled the machine three times on 11-12 Nov 2026 (admission log): at 21:45
+one 1.5 GB headless soak session held its lease while 12 builds and 10 sessions waited up to 55 minutes with
+12.8 GB free; at 23:30 a native C++ compile held the single build reservation for about 90 minutes while 21
+requests waited, nearly all ZoneTool builds and dumps that share nothing with a compile (10.8 GB free; a client
+session gave up after 60 minutes); at 01:30 a Ghidra analysis (kind Analysis, hours long) held the machine 40+
+minutes while 17 builds waited, one for 87 minutes. `tests/ops/resource_scheduler_resources_test.ps1` replays the
+three from the log: they fail on the core before this change and pass on it.
+
+What each kind of work really shares (read from the code and the log):
+
+| Work | Writes or holds alone | Shares with others |
+|---|---|---|
+| native compile (MSBuild, cl, link) | its build tree (`build/`, `runtime/` of its worktree) | memory, cores |
+| ZoneTool build or dump (`zt.ps1`) | its work folder: `zonetool.exe` runs there and writes `zone/`, `dump/` there | memory; reads the stock game files (read only) |
+| headless session | its bench root, a random loopback port | memory |
+| client session | its bench root, the GPU (one window) | memory |
+| Ghidra analysis | its Ghidra project | memory (Java heap), mostly one core |
+| policy and unit tests (`-ShortSeconds`) | their own `runtime/` folder | memory |
+
+Nothing in this table needs "the machine". The rule:
+
+1. **Names.** A request carries `-Resources <names>`: `class` or `class:value` (letters, digits, `.`, `_`, `-`
+   for the class; a path value is canonical, so `zonetool:C:\w\zt` equals `zonetool:c:\w\zt\`). Two names
+   conflict when their classes are equal and a value is missing or `*`, or both values are paths that overlap
+   (one inside the other), or the values are equal. `machine` conflicts with every name. Every request also holds
+   its own scope: `runtime:<scope>` for a Runtime lease, `work:<scope>` for the others. Names in use: `machine`,
+   `gpu`, `analysis`, `zonetool:<folder>`, `native-build:<tree>`, `ghidra:<project>`; any other class is allowed.
+2. **Admission.** A new lease is refused (retryable: `Resource busy: <Kind> owned by <owner>. It holds '<name>',
+   which this request needs too ('<name>').`) only by a held lease that names a conflicting resource. Beside other
+   leases it must fit in memory: the declared total stays within the budget (total minus the 8 GB reserve) and
+   measured free memory, minus what running leases have declared and not taken yet, covers it. A build's or an
+   analysis's taken memory is the working set of its owner and every process below it; a session's is its
+   registered processes. `-Cores <n>` (optional) are counted against the logical processors. Alone on the machine
+   a request is admitted whatever the memory, as before.
+3. **Defaults for callers that name nothing** (nobody has to change at once): a shareable Runtime holds its bench
+   root; a Build or an Extract its work folder; an Analysis its work folder and `analysis` (one undeclared analysis
+   at a time); an exclusive Runtime `machine`. A lease or a queue ticket written by a core before this change has
+   no `Resources` field and holds `machine` (that core assumed it was alone and still refuses everything while
+   another lease is held, so its holders keep their old guarantees).
+4. **Waiting order.** An older ticket holds a request back only when it names a conflicting resource (arrival order
+   between jobs that cannot run together; a short request may still pass within the 300 s bound), or when it has
+   waited the aging time (600 s), is not declared long, and would no longer fit in memory beside the request (later
+   requests stop taking memory so the machine drains for it), or when it was written by an older core and has
+   waited the aging time. An older ticket that cannot fit even when every running lease ends never holds anything
+   back. A holder that releases and asks again waits behind older conflicting tickets like anyone.
+5. **Long holders.** `-Long` marks a soak, an analysis or a long compile. Its lease never delays requests it shares
+   nothing with (rule 2), and its waiting ticket never stops later requests for memory (rule 4).
+6. **Compilers belong to the lease that started them.** A compiler, ZoneTool or Java process below a held lease's
+   owner or registered process (parent links, each parent no younger than its child) is that lease's own: it no
+   longer refuses other admissions, and it keeps only its own lease from being released. One that no lease started
+   still refuses every admission (`An existing compiler/extractor/Java analysis is running`).
+
+`-Action Status` shows what each lease `Holds`, and for each waiting ticket its `Resources`, `Long` and a `Why` that
+names the holder and the shared name, or the memory numbers. The admission log records the names and the declared
+memory of every grant and refusal.
+
+How a caller declares (examples):
+
+```powershell
+# a ZoneTool run in its own work folder (zt.ps1)
+Enter-IW7ResourceLease -Scope $Work -Kind Build -PhysicalBytes 6GB -CommitBytes 8GB -Owner $Owner -Resources "zonetool:$Work"
+# a native compile of a worktree
+Invoke-IW7ResourceJob -Scope $repo -Owner 'native build' -PhysicalBytes 4GB -CommitBytes 6GB -Resources "native-build:$repo" -Body { ... }
+# an hours-long Ghidra analysis of one project
+Invoke-IW7ResourceJob -Scope $repo -Kind Analysis -Owner 'engine database analyze' -PhysicalBytes 10GB -CommitBytes 12GB -Resources "ghidra:$project" -Long -Body { ... }
+# a client session (needs the GPU, not the machine)
+Enter-IW7ResourceLease -Scope $bench -Kind Runtime -PhysicalBytes 5GB -CommitBytes 6GB -Owner 'client' -BaseClientImage $exe -Resources gpu
+# a measurement that must have the machine alone
+Enter-IW7ResourceLease ... -Resources machine
+```
+
+Callers that may load an older core feature-detect with
+`(Get-Command Enter-IW7ResourceLease).Parameters.ContainsKey('Resources')` and pass the names only when present.
+
 ## Waiting order - 2026-11-11
 
 Why. Before this, a refused caller simply asked again later and whoever asked at the right instant won. Measured

@@ -95,17 +95,24 @@ function Format-IW7Gb([long]$Bytes) {
     ($Bytes/1GB).ToString('0.0',[Globalization.CultureInfo]::InvariantCulture)+' GB'
 }
 function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes) {
-    # $Leases: the shareable leases already held. Declared = what their sessions need
-    # in total. Unloaded = the part of that their registered live processes have not
-    # taken yet (declared minus working set, never below zero, per lease): free memory
-    # that is already promised. A lease without live processes counts all of it.
-    $declared=0L; $unloaded=0L
-    foreach ($l in @($Leases | Where-Object { Test-IW7ShareableRuntimeLease $_ })) {
+    # $Leases: every lease already held that the request would run beside (named resources, 12 Nov 2026: builds,
+    # analyses and sessions share the machine by memory). Declared = what they need in total. Unloaded = the part
+    # of that their live processes have not taken yet (declared minus working set, never below zero, per lease):
+    # free memory that is already promised. A session's processes are the ones it registered; a build's or an
+    # analysis's are also its owner and every process below it (compilers, ZoneTool, Java are its children).
+    $declared=0L; $unloaded=0L; $index=$null
+    foreach ($l in @($Leases | Where-Object { $_ })) {
         $declared += [long]$l.PhysicalBytes
         $taken=0L
         # Identities of ANOTHER lease that cannot be read right now (a server just
         # starting or exiting): count nothing as taken, so all its memory stays reserved.
-        try { foreach ($p in @(Get-IW7LeaseLiveProcesses $l $Processes)) { $taken += [long]$p.WorkingSet } }
+        try {
+            if ($l.Kind -ne 'Runtime' -and @($Processes).Count) {
+                if (!$index) { $index=New-IW7ProcessIndex $Processes }
+                $roots=New-IW7RootMap @($l)
+                foreach ($p in @($Processes)) { if (Test-IW7ProcessUnder $p $index $roots) { $taken += [long]$p.WorkingSet } }
+            } else { foreach ($p in @(Get-IW7LeaseLiveProcesses $l $Processes)) { $taken += [long]$p.WorkingSet } }
+        }
         catch { if ($_.Exception.Message -like 'Reserved process identity unavailable*') { $taken=0L } else { throw } }
         $unloaded += [math]::Max(0L,[long]$l.PhysicalBytes-$taken)
     }
@@ -117,14 +124,14 @@ function Assert-IW7ShareableMemoryAdmission($Plan, [long]$RequestBytes, [long]$N
     # RequestBytes: the lease's whole declared session memory. NeedBytes: the part
     # not yet taken by its own live processes (the whole request for a new lease).
     if ($Plan.Declared + $RequestBytes -gt $Plan.Budget) {
-        throw ("Resource busy: shareable declared memory budget exceeded: existing shareable leases declare $(Format-IW7Gb $Plan.Declared) " +
+        throw ("Resource busy: declared memory budget exceeded: running reservations declare $(Format-IW7Gb $Plan.Declared) " +
             "and this request needs $(Format-IW7Gb $RequestBytes), above the budget of $(Format-IW7Gb $Plan.Budget) " +
             "($(Format-IW7Gb $Plan.Total) total minus a $(Format-IW7Gb $Plan.Reserve) reserve). Continue light work; retry when released.")
     }
     $free=$Plan.Available-$Plan.Unloaded
     if ($free -lt $NeedBytes) {
         throw ("Resource busy: not enough measured free memory: $(Format-IW7Gb $Plan.Available) available minus $(Format-IW7Gb $Plan.Unloaded) " +
-            "still to be taken by existing shareable sessions leaves $(Format-IW7Gb ([math]::Max(0L,$free))), and this request needs $(Format-IW7Gb $NeedBytes). " +
+            "still to be taken by running reservations leaves $(Format-IW7Gb ([math]::Max(0L,$free))), and this request needs $(Format-IW7Gb $NeedBytes). " +
             "Continue light work; retry when memory is free.")
     }
 }
@@ -142,7 +149,7 @@ function Assert-IW7ShareableCanFit($Plan, [long]$RequestBytes) {
     if ($RequestBytes -le $reach) { return }
     $free=[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)
     throw ("Refused: this session can never fit on this machine as it stands: it needs $(Format-IW7Gb $RequestBytes), " +
-        "measured free memory is $(Format-IW7Gb $free) and running shareable sessions hold $(Format-IW7Gb $Plan.Declared), " +
+        "measured free memory is $(Format-IW7Gb $free) and running reservations hold $(Format-IW7Gb $Plan.Declared), " +
         "so waiting can give at most $(Format-IW7Gb $reach) (declared budget $(Format-IW7Gb $Plan.Budget): " +
         "$(Format-IW7Gb $Plan.Total) total minus a $(Format-IW7Gb $Plan.Reserve) reserve). Not queued. " +
         'Ask for less (a headless plan needs about 1.5 GB) or free memory outside the scheduler first.')
@@ -158,6 +165,103 @@ function Test-IW7ScopeOverlap([string]$Left, [string]$Right) {
     $Left -eq $Right -or $Left.StartsWith($Right+$sep, [StringComparison]::OrdinalIgnoreCase) -or
         $Right.StartsWith($Left+$sep, [StringComparison]::OrdinalIgnoreCase)
 }
+# ---------------------------------------------------------------------------------------------------------------
+# Named resources (12 Nov 2026). Exclusivity follows what two jobs really share, not "the whole machine": every
+# request names what it needs alone (a native build tree, a ZoneTool work folder, a bench root, the GPU, the
+# machine) and is admitted beside every lease that names nothing in common with it, when memory (and declared
+# processor cores) fit. Three stalls of 11-12 Nov (a headless soak, a native compile, a Ghidra analysis each held
+# "the machine" for 40-90 minutes while 12-21 builds and sessions that shared nothing with them waited) came
+# from the old rule. A name is 'class' or 'class:value'; two names conflict when their classes are equal and a
+# value is missing or '*', or both values are paths that overlap, or the values are equal. 'machine' conflicts
+# with every name. Every request also holds its own scope: 'runtime:<scope>' for a Runtime lease (bench roots
+# never overlap), 'work:<scope>' for the others (a build tree or work folder is built by one job at a time).
+# Defaults when a caller names nothing (docs/RESOURCE-WORKFLOW.md, "Named resources"): a shareable Runtime and a
+# Build or Extract hold only their scope; an Analysis also holds 'analysis' (one undeclared analysis at a time);
+# an exclusive Runtime (a client or a non-shareable lab) holds 'machine'. A lease or ticket written by a core
+# before this change has no Resources field and holds 'machine': that core assumed it was alone.
+function Get-IW7ProcessorCount { [Environment]::ProcessorCount }
+function ConvertTo-IW7ResourceName([string]$Name) {
+    if (!$Name -or !$Name.Trim() -or $Name.Length -gt 300) { throw "Invalid resource name '$Name'." }
+    $n=$Name.Trim(); $i=$n.IndexOf(':')
+    $class=if ($i -lt 0) { $n } else { $n.Substring(0,$i) }
+    $value=if ($i -lt 0) { '' } else { $n.Substring($i+1).Trim() }
+    if ($class -notmatch '^[A-Za-z][A-Za-z0-9_.-]{0,39}$') { throw "Invalid resource name '$Name': a class of letters, digits, '.', '_' or '-', then optionally ':' and a value." }
+    $class=$class.ToLowerInvariant()
+    if ($value -and $value -ne '*' -and $value -match '^(?:[A-Za-z]:[\\/]|\\\\)') { $value=Get-IW7CanonicalScope $value }
+    elseif ($value) { $value=$value.ToLowerInvariant() }
+    if ($value) { "${class}:$value" } else { $class }
+}
+function Get-IW7DefaultResources([string]$Kind, [bool]$Shareable) {
+    if ($Kind -eq 'Runtime' -and !$Shareable) { return @('machine') }
+    if ($Kind -eq 'Analysis') { return @('analysis') }
+    @()
+}
+function Resolve-IW7RequestResources([string]$CanonicalScope, [string]$Kind, [bool]$Shareable, [bool]$Declared, $Resources) {
+    $own=if ($Kind -eq 'Runtime') { "runtime:$CanonicalScope" } else { "work:$CanonicalScope" }
+    $named=if ($Declared) { @(@($Resources) | Where-Object { $null -ne $_ } | ForEach-Object { ConvertTo-IW7ResourceName ([string]$_) }) }
+        else { @(Get-IW7DefaultResources $Kind $Shareable) }
+    if ($named.Count -gt 16) { throw 'At most 16 named resources per request.' }
+    $all=[Collections.Generic.List[string]]::new(); $all.Add($own)
+    foreach ($n in $named) { if (!$all.Contains($n)) { $all.Add($n) } }
+    ,$all.ToArray()
+}
+function Get-IW7HeldResources($Record) {
+    # A lease or a ticket. Without the field it was written by a core that assumed the machine alone. Fail safe:
+    # a Runtime record without a Boolean Shareable flag, or a shareable flag on another kind, holds the machine.
+    $shown=$Record.PSObject.Properties['Holds']   # Status reads it once, before it fills display defaults in
+    if ($shown) { return @($shown.Value) }
+    $flag=$Record.PSObject.Properties['Shareable']
+    if (($Record.Kind -eq 'Runtime' -and !$flag) -or ($flag -and ($flag.Value -isnot [bool] -or ($flag.Value -and $Record.Kind -ne 'Runtime')))) { return @('machine') }
+    $p=$Record.PSObject.Properties['Resources']
+    if ($p -and $null -ne $p.Value) { return @(@($p.Value) | ForEach-Object { [string]$_ }) }
+    @('machine')
+}
+function Test-IW7LegacyRecord($Record) { !$Record.PSObject.Properties['Resources'] }
+function Test-IW7LongRecord($Record) { $p=$Record.PSObject.Properties['Long']; [bool]($p -and $p.Value -eq $true) }
+function Get-IW7RecordCores($Record) { $p=$Record.PSObject.Properties['Cores']; if ($p -and $p.Value) { [int]$p.Value } else { 0 } }
+function Test-IW7ResourceNamesConflict([string]$A, [string]$B) {
+    if ($A -eq 'machine' -or $B -eq 'machine') { return $true }
+    $ia=$A.IndexOf(':'); $ib=$B.IndexOf(':')
+    $ca=if ($ia -lt 0) { $A } else { $A.Substring(0,$ia) }; $va=if ($ia -lt 0) { '' } else { $A.Substring($ia+1) }
+    $cb=if ($ib -lt 0) { $B } else { $B.Substring(0,$ib) }; $vb=if ($ib -lt 0) { '' } else { $B.Substring($ib+1) }
+    if ($ca -ne $cb) { return $false }
+    if (!$va -or !$vb -or $va -eq '*' -or $vb -eq '*') { return $true }
+    if ($va -match '^(?:[a-z]:\\|\\\\)' -and $vb -match '^(?:[a-z]:\\|\\\\)') { return [bool](Test-IW7ScopeOverlap $va $vb) }
+    $va -eq $vb
+}
+function Get-IW7ResourceConflict($Mine, $Theirs) {
+    # The first pair of names that conflict ('mine' / 'theirs'), or $null.
+    foreach ($a in @($Mine)) { foreach ($b in @($Theirs)) { if (Test-IW7ResourceNamesConflict $a $b) { return [pscustomobject]@{Mine=$a;Theirs=$b} } } }
+    $null
+}
+# Which processes belong to a held lease: its owner, its registered processes and every process below them
+# (parent links, each parent no younger than its child, so a reused PID never adopts a stranger).
+function New-IW7ProcessIndex($Processes) { $h=@{}; foreach ($p in @($Processes)) { if ($p) { $h[[int]$p.PID]=$p } }; $h }
+function New-IW7RootMap($Leases) {
+    $map=@{}
+    foreach ($l in @($Leases)) {
+        foreach ($r in @(@($l.OwnerIdentity)+@($l.Processes))) {
+            if (!$r -or $null -eq $r.PID) { continue }
+            $k=[int]$r.PID
+            if (!$map.ContainsKey($k)) { $map[$k]=[Collections.Generic.List[object]]::new() }
+            $map[$k].Add($r)
+        }
+    }
+    $map
+}
+function Test-IW7ProcessUnder($Process, $Index, $Roots) {
+    $p=$Process; $steps=0
+    while ($p -and $steps -lt 64) {
+        $records=$Roots[[int]$p.PID]
+        if ($records) { foreach ($r in $records) { if (Test-IW7ResourceIdentity $r $p) { return $true } } }
+        $parent=$Index[[int]$p.ParentPID]
+        if (!$parent -or $parent.PID -eq $p.PID -or !$parent.CreatedUtc -or !$p.CreatedUtc) { return $false }
+        try { if (([datetimeoffset]$parent.CreatedUtc) -gt ([datetimeoffset]$p.CreatedUtc)) { return $false } } catch { return $false }
+        $p=$parent; $steps++
+    }
+    $false
+}
+function Test-IW7BuilderProcess($Process) { $Process.Name -match '^(?:zonetool.*|MSBuild|cl|link|java)\.exe$' }
 function Get-IW7AdmissionTurnstileName([string]$Root) {
     # One turnstile per registry folder, so a test registry never queues behind the live one.
     $sha=[Security.Cryptography.SHA256]::Create()
@@ -327,9 +431,8 @@ function Format-IW7Age([double]$Seconds) {
     '{0}h{1:00}m' -f [math]::Floor($s/3600),[math]::Floor(($s%3600)/60)
 }
 function Test-IW7RetryableRefusal([string]$Message) {
-    foreach ($p in @('Resource busy:*','Heavy job already reserved*','An existing compiler/extractor/Java analysis is running*',
-        'An unreserved or foreign laboratory is running*','Existing lab has no reservation*','Reserved process identity unavailable*',
-        'Resource admission lock busy*')) {
+    foreach ($p in @('Resource busy:*','Resource admission lock busy*','Heavy job already reserved*','An existing compiler/extractor/Java analysis is running*',
+        'An unreserved or foreign laboratory is running*','Existing lab has no reservation*','Reserved process identity unavailable*')) {
         if ($Message -like $p) { return $true }
     }
     $false
@@ -436,25 +539,43 @@ function Test-IW7TicketCanFit($Ticket, $Plan) {
     if (!$Ticket.Shareable -or !$Plan) { return $true }
     [long]$Ticket.PhysicalBytes -le (Get-IW7ShareableReachBytes $Plan)
 }
-function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds, $Plan=$null) {
+function Test-IW7FitsBeside($Ticket, $Plan, [long]$NeedBytes) {
+    # Would the older ticket still fit in memory if this request were admitted now?
+    if (!$Plan) { return $true }
+    $free=[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)
+    ($free-$NeedBytes) -ge [long]$Ticket.PhysicalBytes -and ([long]$Plan.Declared+$NeedBytes+[long]$Ticket.PhysicalBytes) -le [long]$Plan.Budget
+}
+function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds, $Plan=$null,
+    $Resources=$null, [long]$PhysicalBytes=0) {
     # Called only when everything else admits a NEW lease. Throws the queue refusal, or returns.
-    # Plan: the shareable memory plan of this moment (Get-IW7ShareableMemoryPlan over every held lease).
+    # Plan: the memory plan of this moment (Get-IW7ShareableMemoryPlan over every held lease).
+    # Named resources (12 Nov 2026): an older ticket holds this request back only when
+    #  - it names a resource this request names too (arrival order between jobs that cannot run together), or
+    #  - it has waited AgingSeconds, is not declared long, and would no longer fit in memory beside this request
+    #    (later requests stop taking memory so it can drain; before the aging time they may pass), or
+    #  - it was written by a core before named resources (it needs the machine alone) and has waited AgingSeconds.
+    # An older ticket that cannot fit even when every running lease has ended never holds anything back.
     if (!$Context -or !$Context.Queue) { return }
+    if ($null -eq $Resources) { $Resources=Resolve-IW7RequestResources $Scope $Kind $Shareable $false $null }
     $policy=Get-IW7QueuePolicy
     $mine=Get-IW7QueueTicket $Context $Scope $Kind
     $ahead=@(Get-IW7TicketsAhead $Context $mine)
     if (!$ahead.Count) { return }
     $possible=@($ahead | Where-Object { Test-IW7TicketCanFit $_ $Plan })
     $passed=$ahead.Count-$possible.Count
-    if ($Shareable) {
-        $blockers=@($possible | Where-Object { !$_.Shareable -or (($Context.NowMs-[long]$_.FirstMs)/1000) -ge $policy.AgingSeconds })
-    } else {
-        $blockers=$possible
-        if ($blockers.Count -and $ShortSeconds -gt 0 -and !@($blockers | Where-Object { [double]$_.OvertakenSeconds+$ShortSeconds -gt $policy.MaxOvertakeSeconds }).Count) {
-            $Context.Overtook=$blockers
-            return
-        }
+    $named=@(); $memory=@()
+    foreach ($t in $possible) {
+        $legacy=Test-IW7LegacyRecord $t
+        $aged=(($Context.NowMs-[long]$t.FirstMs)/1000) -ge $policy.AgingSeconds
+        if (!$legacy -and (Get-IW7ResourceConflict $Resources (Get-IW7HeldResources $t))) { $named+=$t; continue }
+        if ($aged -and ($legacy -or (!(Test-IW7LongRecord $t) -and !(Test-IW7FitsBeside $t $Plan $PhysicalBytes)))) { $memory+=$t }
     }
+    if (!$Shareable -and $named.Count -and !$memory.Count -and $ShortSeconds -gt 0 -and
+        !@($named | Where-Object { [double]$_.OvertakenSeconds+$ShortSeconds -gt $policy.MaxOvertakeSeconds }).Count) {
+        $Context.Overtook=$named
+        return
+    }
+    $blockers=@($possible | Where-Object { $t=$_; @($named+$memory | Where-Object { [object]::ReferenceEquals($_,$t) }).Count })
     if (!$blockers.Count) { return }
     $note=if ($passed) { " ($passed earlier request(s) that cannot fit now are passed)" } else { '' }
     throw ("Resource busy: waiting in turn: $($blockers.Count) earlier request(s) go first: $(Format-IW7Tickets $Context $blockers)$note. " +
@@ -476,9 +597,11 @@ function Remove-IW7NeverFitTicket($Context, [string]$Message, [string]$Scope, [s
     } catch { }
 }
 function Register-IW7QueueRefusal($Context, [string]$Message, [string]$Scope, [string]$Kind, [bool]$Shareable,
-    [long]$PhysicalBytes, [int]$ShortSeconds, [string]$Owner, [bool]$Queueable=$true) {
+    [long]$PhysicalBytes, [int]$ShortSeconds, [string]$Owner, [bool]$Queueable=$true, $Resources=$null, [int]$Cores=0, [bool]$Long=$false) {
     # Refresh or create this request's ticket; return the refusal text with its place. Never throws.
     try {
+        if ($null -eq $Resources) { $Resources=Resolve-IW7RequestResources $Scope $Kind $Shareable $false $null }
+        $Resources=[string[]]@($Resources)
         if (!$Context -or !$Context.Queue -or !(Test-IW7RetryableRefusal $Message)) { return $Message }
         $queue=$Context.Queue
         $mine=Get-IW7QueueTicket $Context $Scope $Kind
@@ -494,11 +617,14 @@ function Register-IW7QueueRefusal($Context, [string]$Message, [string]$Scope, [s
                 $mine.LastMs=$Context.NowMs; $mine.Polls=[int]$mine.Polls+1
                 $mine.Owner=$Owner; $mine.Shareable=$Shareable; $mine.PhysicalBytes=$PhysicalBytes; $mine.ShortSeconds=$ShortSeconds
                 $mine.OwnerIdentity=$own; $mine.ParentIdentity=$par
+                foreach ($f in @(@('Resources',$Resources),@('Cores',$Cores),@('Long',$Long))) {
+                    Add-Member -InputObject $mine -NotePropertyName $f[0] -NotePropertyValue $f[1] -Force
+                }
             } else {
                 $queue.Seq=[long]$queue.Seq+1
                 $mine=[pscustomobject]@{Seq=$queue.Seq;Scope=$Scope;Kind=$Kind;Shareable=$Shareable;PhysicalBytes=$PhysicalBytes;
                     ShortSeconds=$ShortSeconds;Owner=$Owner;OwnerIdentity=$own;ParentIdentity=$par;FirstMs=$Context.NowMs;LastMs=$Context.NowMs;
-                    Polls=1;LastIntervalSeconds=0;OvertakenSeconds=0}
+                    Polls=1;LastIntervalSeconds=0;OvertakenSeconds=0;Resources=$Resources;Cores=$Cores;Long=$Long}
                 $queue.Tickets=@($queue.Tickets)+$mine
             }
             Save-IW7ResourceQueue $queue
@@ -512,11 +638,12 @@ function Register-IW7QueueRefusal($Context, [string]$Message, [string]$Scope, [s
             $suffix+='.'
         }
         Add-IW7AdmissionLog ([pscustomobject]@{Event='refuse';Kind=$Kind;Shareable=$Shareable;Short=$ShortSeconds;Owner=$Owner;Scope=$Scope;
-            Pid=(Get-IW7CallerPid);Place=$place;Of=$of;WaitSeconds=[math]::Round($waited,1);Reason=$Message.Substring(0,[math]::Min(200,$Message.Length))})
+            Pid=(Get-IW7CallerPid);Place=$place;Of=$of;WaitSeconds=[math]::Round($waited,1);PhysicalBytes=$PhysicalBytes;Resources=$Resources;Long=$Long;
+            Reason=$Message.Substring(0,[math]::Min(200,$Message.Length))})
         $Message+$suffix
     } catch { $Message }
 }
-function Complete-IW7QueueGrant($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds, [string]$Owner) {
+function Complete-IW7QueueGrant($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds, [string]$Owner, $Resources=$null, [long]$PhysicalBytes=0, [bool]$Long=$false) {
     # After the lease is saved: drop this request's ticket and log the grant. Never throws.
     try {
         $wait=0.0; $polls=0; $ahead=0
@@ -532,7 +659,7 @@ function Complete-IW7QueueGrant($Context, [string]$Scope, [string]$Kind, [bool]$
         }
         Add-IW7AdmissionLog ([pscustomobject]@{Event='grant';Kind=$Kind;Shareable=$Shareable;Short=$ShortSeconds;Owner=$Owner;Scope=$Scope;
             Pid=(Get-IW7CallerPid);WaitSeconds=[math]::Round($wait,1);Asks=$polls;StillWaiting=$(if ($Context -and $Context.Queue) { @($Context.Queue.Tickets).Count } else { $null });
-            Overtook=@($Context.Overtook).Count})
+            Overtook=@($Context.Overtook).Count;PhysicalBytes=$PhysicalBytes;Resources=$(if ($null -ne $Resources) { [string[]]@($Resources) } else { $null });Long=$Long})
     } catch { }
 }
 function Get-IW7ResourceWaitReport {
@@ -567,8 +694,14 @@ function Enter-IW7ResourceLease {
         [Parameter(Mandatory)][long]$PhysicalBytes, [Parameter(Mandatory)][long]$CommitBytes,
         [Parameter(Mandatory)][ValidateLength(1,100)][string]$Owner,
         [string]$BaseClientImage, [switch]$RequireNewLease, [switch]$Shareable,
-        [ValidateRange(0,120)][int]$ShortSeconds=0)
+        [ValidateRange(0,120)][int]$ShortSeconds=0,
+        # Named resources this job needs alone (see "Named resources" above); not given: the defaults of its kind.
+        [string[]]$Resources, [ValidateRange(0,1024)][int]$Cores=0,
+        # A long holder (soak, analysis, long compile): its waiting ticket never stops later requests for memory.
+        [switch]$Long)
     $canonical = Get-IW7CanonicalScope $Scope
+    $named = Resolve-IW7RequestResources $canonical $Kind ([bool]$Shareable) $PSBoundParameters.ContainsKey('Resources') $Resources
+    if ($Long -and $ShortSeconds) { throw 'A request is either short or long.' }
     if ($PhysicalBytes -le 0 -or $CommitBytes -le 0) { throw 'A positive full-workload reservation is required.' }
     if ($Shareable -and ($Kind -ne 'Runtime' -or $BaseClientImage)) {
         throw 'Shareable is only valid on a Runtime reservation without BaseClientImage.'
@@ -611,8 +744,7 @@ function Enter-IW7ResourceLease {
                 if ([bool]$Shareable -ne (Test-IW7ShareableRuntimeLease $same[0])) { throw 'Shareable declaration cannot change after reservation.' }
             }
         }
-        # Only shareable Runtime requests may coexist, and only with shareable Runtime leases.
-        $otherShareable = @()
+        # Named resources (12 Nov 2026): a request coexists with every lease that names nothing in common with it.
         if ($other.Count) {
             # Above the declared budget a new session never fits, whatever holds the machine now: refused at once
             # with the numbers, also while an exclusive build holds it (it used to be queued behind the build, 11 Nov).
@@ -620,31 +752,44 @@ function Enter-IW7ResourceLease {
                 $emptyPlan = Get-IW7ShareableMemoryPlan (Get-IW7ResourceSnapshot) @() $processes
                 if ($PhysicalBytes -gt $emptyPlan.Budget) { Assert-IW7ShareableCanFit $emptyPlan $PhysicalBytes }
             }
-            if ($Shareable) { $otherShareable = @($other | Where-Object { Test-IW7ShareableRuntimeLease $_ }) }
-            if (!$Shareable -or $otherShareable.Count -ne $other.Count) {
-                $blocker = @($other | Where-Object { !$Shareable -or !(Test-IW7ShareableRuntimeLease $_) })[0]
-                throw "Resource busy: $($blocker.Kind) owned by $($blocker.Owner). Continue light work; retry when released."
+            foreach ($held in $other) {
+                $pair = Get-IW7ResourceConflict $named (Get-IW7HeldResources $held)
+                if (!$pair) { continue }
+                if ($Shareable -and (Test-IW7ShareableRuntimeLease $held) -and $pair.Mine -like 'runtime:*' -and $pair.Theirs -like 'runtime:*') {
+                    throw "Resource busy: shareable Runtime scope overlaps the lease owned by $($held.Owner). Use a separate bench root."
+                }
+                throw ("Resource busy: $($held.Kind) owned by $($held.Owner). It holds '$($pair.Theirs)', which this request needs too ('$($pair.Mine)'). " +
+                    'Continue light work; retry when released.')
             }
             $limit = Get-IW7ShareableRuntimeLeaseLimit
             if ($other.Count -ge $limit) {
                 $names=@($other | ForEach-Object Owner)
                 $shown=($names | Select-Object -First 5) -join ', '
                 if ($names.Count -gt 5) { $shown += " and $($names.Count-5) more" }
-                throw "Resource busy: shareable Runtime cap of $limit leases reached; owned by $shown. Continue light work; retry when released."
+                throw "Resource busy: cap of $limit leases side by side reached; owned by $shown. Continue light work; retry when released."
             }
-            $overlap = @($other | Where-Object { Test-IW7ScopeOverlap $_.Scope $canonical })
-            if ($overlap.Count) {
-                throw "Resource busy: shareable Runtime scope overlaps the lease owned by $($overlap[0].Owner). Use a separate bench root."
+            if ($Cores -gt 0 -and !$same.Count) {
+                $usedCores = 0; foreach ($held in $other) { $usedCores += Get-IW7RecordCores $held }
+                $haveCores = Get-IW7ProcessorCount
+                if ($usedCores + $Cores -gt $haveCores) {
+                    throw "Resource busy: not enough processor cores: running reservations declare $usedCores of $haveCores and this request needs $Cores. Continue light work; retry when released."
+                }
             }
         }
+        # Every other lease is reserved work, not a stranger: its labs and compilers are its own.
+        $otherShareable = @($other)
         if ($same.Count -gt 1) { throw 'Duplicate lease; registry requires investigation.' }
         # Runtime re-entry is a lab transaction; builds must never nest/share a lease.
         if ($same.Count -and $Kind -ne 'Runtime') { throw 'Heavy job already reserved, including this worktree.' }
         if ($same.Count -and $BaseClientImage -and $same[0].BaseClientImage -ne $BaseClientImage) { throw 'Base client declaration cannot change after reservation.' }
-        # A lab of another shareable lease is reserved, not foreign, for a shareable request.
+        # A lab of another lease is reserved, not foreign: inside its runtime scope, registered by it, or started
+        # below its owner (a check run that starts a lab under its own build lease).
+        $index = $null; $otherRoots = $null
         $sharedLab = { param($p) foreach ($l in $otherShareable) {
-            if ((Test-IW7ReservedProcess $p $l) -or @($l.Processes | Where-Object { Test-IW7ResourceIdentity $_ $p }).Count) { return $true } }
-            return $false }
+            if (($l.Kind -eq 'Runtime' -and (Test-IW7ReservedProcess $p $l)) -or @($l.Processes | Where-Object { Test-IW7ResourceIdentity $_ $p }).Count) { return $true } }
+            if (!$otherShareable.Count) { return $false }
+            if (!$index) { $index = New-IW7ProcessIndex $processes; $otherRoots = New-IW7RootMap $otherShareable }
+            return [bool](Test-IW7ProcessUnder $p $index $otherRoots) }
         $foreignLabs = @($processes | Where-Object { ($_.Lab -or $_.Name -eq 'iw7-paris-lab.exe') -and
             !(Test-IW7ProcessInScope $_ $canonical) -and !($same.Count -and (Test-IW7ReservedProcess $_ $same[0])) -and
             !($otherShareable.Count -and (& $sharedLab $_)) })
@@ -653,7 +798,14 @@ function Enter-IW7ResourceLease {
             !($otherShareable.Count -and (& $sharedLab $_)) }).Count) {
             throw 'Existing lab has no reservation. Close it through its owner before first admission.'
         }
-        $builders = @($processes | Where-Object { $_.Name -match '^(?:zonetool.*|MSBuild|cl|link|java)\.exe$' })
+        # A compiler, ZoneTool or Java that no held lease started is unreserved work: nothing is admitted beside it.
+        # One below a held lease (its owner or a registered process up the parent chain) is that lease's own.
+        $builders = @($processes | Where-Object { Test-IW7BuilderProcess $_ })
+        if ($builders.Count -and @($state.Leases).Count) {
+            if (!$index) { $index = New-IW7ProcessIndex $processes }
+            $allRoots = New-IW7RootMap @($state.Leases)
+            $builders = @($builders | Where-Object { !(Test-IW7ProcessUnder $_ $index $allRoots) })
+        }
         if ($builders.Count) { throw 'An existing compiler/extractor/Java analysis is running; wait before heavy admission.' }
         $resident = 0L; $committed = 0L
         if ($same.Count) {
@@ -670,17 +822,23 @@ function Enter-IW7ResourceLease {
         # declaration adds no demand and is never refused here; nothing is saved on refusal.
         $queuePlan = $null
         if ($Shareable -and (!$same.Count -or $PhysicalBytes -gt [long]$same[0].PhysicalBytes)) {
-            $plan = Get-IW7ShareableMemoryPlan $snapshot $otherShareable $processes
+            $plan = Get-IW7ShareableMemoryPlan $snapshot $other $processes
             $queuePlan = $plan
-            # A new request that cannot fit even after every running shareable session ends: refused now.
+            # A new request that cannot fit even after every running lease ends: refused now.
             if (!$same.Count) { Assert-IW7ShareableCanFit $plan $PhysicalBytes }
             Assert-IW7ShareableMemoryAdmission $plan $PhysicalBytes ([math]::Max(0L,$PhysicalBytes-$resident))
+        } elseif (!$same.Count -and $other.Count) {
+            # A build, an analysis or an exclusive session beside other leases is admitted by memory too (alone, as
+            # before, it is admitted whatever the memory: it is the only one asking).
+            $plan = Get-IW7ShareableMemoryPlan $snapshot $other $processes
+            $queuePlan = $plan
+            Assert-IW7ShareableMemoryAdmission $plan $PhysicalBytes $PhysicalBytes
         }
-        # Waiting order: a new lease that would be admitted still waits for its turn; older shareable
-        # tickets that cannot fit now (free + held below their request) do not hold it back.
+        # Waiting order: a new lease that would be admitted still waits for older tickets that conflict with it
+        # (a shared name, or memory once they have waited the aging time); the others are passed.
         if (!$same.Count) {
             if (!$queuePlan) { $queuePlan = Get-IW7ShareableMemoryPlan $snapshot @($other) $processes }
-            Assert-IW7QueueTurn $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds $queuePlan
+            Assert-IW7QueueTurn $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds $queuePlan $named $PhysicalBytes
         }
         } catch {
             $message = $_.Exception.Message
@@ -691,24 +849,27 @@ function Enter-IW7ResourceLease {
             }
             # Re-entry of an existing lease (or a duplicate of it) holds already: never queued.
             $queueable = !@($same).Count
-            $augmented = Register-IW7QueueRefusal $queue $message $canonical $Kind ([bool]$Shareable) $PhysicalBytes $ShortSeconds $Owner $queueable
+            $augmented = Register-IW7QueueRefusal $queue $message $canonical $Kind ([bool]$Shareable) $PhysicalBytes $ShortSeconds $Owner $queueable $named $Cores ([bool]$Long)
             if ($augmented -ceq $message) { throw }
             throw $augmented
         }
         if (!$same.Count) {
-            $identity = @($processes | Where-Object PID -EQ $PID)[0]
+            $identity = @($processes | Where-Object PID -EQ (Get-IW7CallerPid))[0]   # $PID in production; a seam for tests
             if (!$identity.Image -or !$identity.CreatedUtc) { throw 'Launcher identity unavailable.' }
             $lease = [pscustomobject]@{Token=[guid]::NewGuid().ToString('N');Scope=$canonical;Kind=$Kind;Owner=$Owner;
                 OwnerIdentity=$identity;CreatedUtc=(Get-IW7SchedulerUtcNow).ToString('o');Phase='Pending';
                 PhysicalBytes=$PhysicalBytes;CommitBytes=$CommitBytes;BaseClientImage=$BaseClientImage;Shareable=[bool]$Shareable;Processes=@()}
             if ($ShortSeconds) { Add-Member -InputObject $lease -NotePropertyName ShortSeconds -NotePropertyValue $ShortSeconds }
+            Add-Member -InputObject $lease -NotePropertyName Resources -NotePropertyValue ([string[]]@($named))
+            Add-Member -InputObject $lease -NotePropertyName Cores -NotePropertyValue $Cores
+            Add-Member -InputObject $lease -NotePropertyName Long -NotePropertyValue ([bool]$Long)
             $state.Leases = @($state.Leases) + $lease
         }
         $lease.PhysicalBytes=$PhysicalBytes; $lease.CommitBytes=$CommitBytes
         Add-Member -InputObject $lease -NotePropertyName MemoryObservation -NotePropertyValue (
             [pscustomobject]@{Snapshot=$snapshot;Budget=$budget}) -Force
         Save-IW7ResourceState $state
-        if (!$same.Count) { Complete-IW7QueueGrant $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds $Owner }
+        if (!$same.Count) { Complete-IW7QueueGrant $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds $Owner $named $PhysicalBytes ([bool]$Long) }
         $lease
     }
     if ($again.Value) { $relists++; $listing = Get-IW7ProcessListing }
@@ -748,8 +909,14 @@ function Exit-IW7ResourceLease {
         } else {
             $owner=@($processes | Where-Object PID -EQ $lease[0].OwnerIdentity.PID)
             if ($owner.Count -and (!$owner[0].Image -or !$owner[0].CreatedUtc)) { throw 'Heavy job owner identity unavailable; lease retained.' }
-            if ($owner.Count -and $PID -ne $owner[0].PID -and (Test-IW7ResourceIdentity $lease[0].OwnerIdentity $owner[0])) { throw 'Heavy job owner is still alive.' }
-            if (@($processes | Where-Object { $_.Name -match '^(?:zonetool.*|MSBuild|cl|link|java)\.exe$' }).Count) { throw 'Heavy child may still be alive; lease retained.' }
+            if ($owner.Count -and (Get-IW7CallerPid) -ne $owner[0].PID -and (Test-IW7ResourceIdentity $lease[0].OwnerIdentity $owner[0])) { throw 'Heavy job owner is still alive.' }
+            # Only this lease's own compilers keep it (below its owner or a registered process); another lease's
+            # build running beside it no longer does (named resources, 12 Nov 2026).
+            $builders=@($processes | Where-Object { Test-IW7BuilderProcess $_ })
+            if ($builders.Count) {
+                $index=New-IW7ProcessIndex $processes; $roots=New-IW7RootMap @($lease[0])
+                if (@($builders | Where-Object { Test-IW7ProcessUnder $_ $index $roots }).Count) { throw 'Heavy child may still be alive; lease retained.' }
+            }
         }
         $state.Leases=@($state.Leases | Where-Object Token -NE $Token)
         Save-IW7ResourceState $state
@@ -769,18 +936,25 @@ function Get-IW7TicketWhy($Ticket, $Plan, $Leases, [long]$NowMs) {
     $wait=($NowMs-[long]$Ticket.FirstMs)/1000
     $kind=if ($Ticket.Shareable) { 'Runtime shareable' } else { $Ticket.Kind }
     $head="'$($Ticket.Owner)' ($kind, waiting $(Format-IW7Age $wait))"
-    $exclusive=@($Leases | Where-Object { !(Test-IW7ShareableRuntimeLease $_) })
-    $shared=@($Leases | Where-Object { Test-IW7ShareableRuntimeLease $_ })
-    $holders=if (@($Leases).Count) { (@($Leases | Select-Object -First 3 | ForEach-Object { "'$($_.Owner)'" }) -join ', ') } else { 'none' }
-    if (!$Ticket.Shareable) {
-        if (@($Leases).Count) { return "$head needs the machine alone; held by $(@($Leases).Count) reservation(s): $holders." }
-        return "$head needs the machine alone; nothing is held: its next ask is granted unless an older request that can fit is waiting."
+    $res=@(Get-IW7HeldResources $Ticket)
+    $long=if (Test-IW7LongRecord $Ticket) { ' (declared long)' } else { '' }
+    $head+=$long
+    # Named resources: the holders it really waits for, with the name they share.
+    $conflicts=@(foreach ($l in @($Leases)) { $pair=Get-IW7ResourceConflict $res (Get-IW7HeldResources $l); if ($pair) { [pscustomobject]@{Lease=$l;Pair=$pair} } })
+    if ($conflicts.Count) {
+        $shown=(@($conflicts | Select-Object -First 3 | ForEach-Object { "'$($_.Lease.Owner)' ($($_.Lease.Kind), holds '$($_.Pair.Theirs)')" }) -join ', ')
+        if ($conflicts.Count -gt 3) { $shown+=" and $($conflicts.Count-3) more" }
+        return "$head needs '$($conflicts[0].Pair.Mine)', held by $shown."
     }
-    if ($exclusive.Count) { return "$head waits for the exclusive $($exclusive[0].Kind) of '$($exclusive[0].Owner)'." }
     $need=[long]$Ticket.PhysicalBytes
     $free=[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)
     $reach=Get-IW7ShareableReachBytes $Plan
-    $numbers="needs $(Format-IW7Gb $need), free $(Format-IW7Gb $free) ($(Format-IW7Gb $Plan.Available) available minus $(Format-IW7Gb $Plan.Unloaded) still to be taken), held $(Format-IW7Gb $Plan.Declared) by $($shared.Count) running shareable session(s)"
+    $numbers="needs $(Format-IW7Gb $need), free $(Format-IW7Gb $free) ($(Format-IW7Gb $Plan.Available) available minus $(Format-IW7Gb $Plan.Unloaded) still to be taken), held $(Format-IW7Gb $Plan.Declared) by $(@($Leases).Count) running reservation(s)"
+    if (!$Ticket.Shareable) {
+        if (!@($Leases).Count) { return "$head shares nothing that is held and nothing is held: its next ask is granted unless an older request that conflicts with it goes first." }
+        if ($need -le $free -and $Plan.Declared+$need -le $Plan.Budget) { return "$head $numbers. It shares nothing that is held and fits now: its next ask is granted unless an older request that conflicts with it goes first." }
+        return "$head $numbers. It shares nothing that is held and waits for memory; alone it is admitted whatever the memory."
+    }
     if ($need -gt $reach) {
         return "$head $numbers. It cannot fit as things stand (at most $(Format-IW7Gb $reach) can come free by waiting): later requests that fit go first; asked again, it is refused."
     }
@@ -799,6 +973,8 @@ function Get-IW7ResourceStatus {
         $state=Read-IW7ResourceState
         # Display only (never saved): a lease without the flag is exclusive.
         foreach ($lease in @($state.Leases)) {
+            # Display only: what it holds by name (an older core's lease holds the machine), read before the flag below.
+            Add-Member -InputObject $lease -NotePropertyName Holds -NotePropertyValue @(Get-IW7HeldResources $lease) -Force
             if (!$lease.PSObject.Properties['Shareable']) { Add-Member -InputObject $lease -NotePropertyName Shareable -NotePropertyValue $false }
         }
         # Why a shareable caller waits: reserve, declared total, remaining declared
@@ -821,6 +997,7 @@ function Get-IW7ResourceStatus {
             [pscustomobject]@{Place=$place;Owner=$t.Owner;Kind=$t.Kind;Shareable=[bool]$t.Shareable;ShortSeconds=[int]$t.ShortSeconds;
                 Scope=$t.Scope;PhysicalBytes=[long]$t.PhysicalBytes;WaitingSeconds=[math]::Round(($queue.NowMs-[long]$t.FirstMs)/1000);
                 LastAskedSecondsAgo=[math]::Round(($queue.NowMs-[long]$t.LastMs)/1000);Asks=[int]$t.Polls;CallerPid=$t.OwnerIdentity.PID;
+                Resources=@(Get-IW7HeldResources $t);Long=(Test-IW7LongRecord $t);
                 CanFit=[bool](Test-IW7TicketCanFit $t $plan);Why=(Get-IW7TicketWhy $t $plan @($state.Leases) $queue.NowMs)} } })
         $why=if ($waiting.Count) { "Head of queue: $($waiting[0].Why)" } else { 'Queue empty.' }
         [pscustomobject]@{Why=$why;Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases);Queue=$waiting;
@@ -835,7 +1012,11 @@ function Invoke-IW7ResourceJob {
     param([Parameter(Mandatory)][scriptblock]$Body,[Parameter(Mandatory)][string]$Scope,
         [ValidateSet('Build','Extract','Analysis')][string]$Kind='Build',
         [long]$PhysicalBytes=4GB,[long]$CommitBytes=6GB,[string]$Owner='native build',
-        [scriptblock]$BeforeReleaseCheck=$null,[object]$OriginalContext=$null,[object]$RetentionRoot=$null)
+        [scriptblock]$BeforeReleaseCheck=$null,[object]$OriginalContext=$null,[object]$RetentionRoot=$null,
+        [string[]]$Resources,[ValidateRange(0,1024)][int]$Cores=0,[switch]$Long)
+    # Named resources (12 Nov 2026) are passed through; not given, the kind's defaults apply.
+    $private:jobNamed=@{}
+    foreach ($private:jobKey in @('Resources','Cores','Long')) { if ($PSBoundParameters.ContainsKey($private:jobKey)) { $private:jobNamed[$private:jobKey]=$PSBoundParameters[$private:jobKey] } }
     if ($PSBoundParameters.ContainsKey('BeforeReleaseCheck') -or $PSBoundParameters.ContainsKey('OriginalContext') -or
         $PSBoundParameters.ContainsKey('RetentionRoot')) {
         foreach ($private:jobArgument in @('BeforeReleaseCheck','OriginalContext','RetentionRoot')) {
@@ -1000,7 +1181,7 @@ function Invoke-IW7ResourceJob {
         $private:jobProcess=$null;$private:jobPriority=$null
         $private:jobPriorityCaptured=$false;$private:jobPriorityRestored=$false;$private:jobHookApproved=$false
         try {
-            $private:jobStore['Lease']=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+            $private:jobStore['Lease']=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner @private:jobNamed
             # The caller's root already owns this actual lease, before mirrors/getters.
             $private:jobLease=$private:jobStore['Lease']
             if ($null-eq$private:jobLease) { throw 'Actual returned lease required.' }
@@ -1052,7 +1233,7 @@ function Invoke-IW7ResourceJob {
         if ($null-ne$private:jobStore['FirstErrorRecord']) { throw $private:jobStore['FirstErrorRecord'] }
         return
     }
-    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner
+    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner @private:jobNamed
     $process=Get-Process -Id $PID
     $priority=$process.PriorityClass
     try {
@@ -1072,16 +1253,18 @@ function Invoke-IW7QueuedResourceJob {
         [ValidateSet('Build','Extract','Analysis')][string]$Kind='Build',
         [long]$PhysicalBytes=4GB,[long]$CommitBytes=6GB,[string]$Owner='native build',
         [Parameter(Mandatory)][ValidateRange(1,86400)][int]$WaitForSlotSeconds,
-        [ValidateRange(0,120)][int]$ShortSeconds=0)
+        [ValidateRange(0,120)][int]$ShortSeconds=0,
+        [string[]]$Resources,[ValidateRange(0,1024)][int]$Cores=0,[switch]$Long)
     $waited=[Diagnostics.Stopwatch]::StartNew()
     $said=-60
     $short=@{}; if ($ShortSeconds) { $short.ShortSeconds=$ShortSeconds }
+    foreach ($key in @('Resources','Cores','Long')) { if ($PSBoundParameters.ContainsKey($key)) { $short[$key]=$PSBoundParameters[$key] } }
     while ($true) {
         try {
             $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner @short
             break
         } catch {
-            $busy=$_.Exception.Message -like 'Resource busy:*' -or
+            $busy=$_.Exception.Message -like 'Resource busy:*' -or $_.Exception.Message -like 'Resource admission lock busy*' -or
                 $_.Exception.Message -like 'An existing compiler/extractor/Java analysis is running;*'
             if (!$busy -or $waited.Elapsed.TotalSeconds -ge $WaitForSlotSeconds) { throw }
             # One line a minute while waiting, with the place in the queue.
