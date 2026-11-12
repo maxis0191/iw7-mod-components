@@ -347,7 +347,7 @@ foreach ($field in @('Image','CreatedUtc')) {
         # The identity check keeps its force everywhere else.
         Assert (Refused { Enter-Share a -Bytes 10GB } 'Reserved process identity unavailable*') 'Re-entry of the SAME lease still refuses.'
         Assert (Refused { Exit-IW7ResourceLease -Token $a.Token } 'Reserved process identity unavailable*') 'Release still refuses.'
-        Assert (Refused { Enter-Share x -Plain -Bytes 1GB } 'Reserved process identity unavailable*') 'An exclusive request keeps the hard identity refusal (strict path unchanged).'
+        Assert (Refused { Enter-Share x -Plain -Bytes 1GB } 'Resource busy: Runtime owned by*') 'An exclusive request beside it is refused as busy (the unreadable lease is held), not by a hard identity error (named resources).'
         $status=Get-IW7ResourceStatus
         Assert ($status.ShareableUnloadedBytes -eq 12.5GB) 'Status counts the unreadable lease as fully untaken (conservative), no exception.'
     }
