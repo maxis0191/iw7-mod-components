@@ -854,7 +854,7 @@ function Enter-IW7ResourceLease {
             throw $augmented
         }
         if (!$same.Count) {
-            $identity = @($processes | Where-Object PID -EQ $PID)[0]
+            $identity = @($processes | Where-Object PID -EQ (Get-IW7CallerPid))[0]   # $PID in production; a seam for tests
             if (!$identity.Image -or !$identity.CreatedUtc) { throw 'Launcher identity unavailable.' }
             $lease = [pscustomobject]@{Token=[guid]::NewGuid().ToString('N');Scope=$canonical;Kind=$Kind;Owner=$Owner;
                 OwnerIdentity=$identity;CreatedUtc=(Get-IW7SchedulerUtcNow).ToString('o');Phase='Pending';
@@ -909,7 +909,7 @@ function Exit-IW7ResourceLease {
         } else {
             $owner=@($processes | Where-Object PID -EQ $lease[0].OwnerIdentity.PID)
             if ($owner.Count -and (!$owner[0].Image -or !$owner[0].CreatedUtc)) { throw 'Heavy job owner identity unavailable; lease retained.' }
-            if ($owner.Count -and $PID -ne $owner[0].PID -and (Test-IW7ResourceIdentity $lease[0].OwnerIdentity $owner[0])) { throw 'Heavy job owner is still alive.' }
+            if ($owner.Count -and (Get-IW7CallerPid) -ne $owner[0].PID -and (Test-IW7ResourceIdentity $lease[0].OwnerIdentity $owner[0])) { throw 'Heavy job owner is still alive.' }
             # Only this lease's own compilers keep it (below its owner or a registered process); another lease's
             # build running beside it no longer does (named resources, 12 Nov 2026).
             $builders=@($processes | Where-Object { Test-IW7BuilderProcess $_ })

@@ -7,7 +7,7 @@ if ($InitialAdmissionSourceOnly) {
     if($parseErrors.Count){throw 'Production Source parse failed.'}
     $definitions=@(foreach($name in @('Get-IW7CanonicalScope','Read-IW7ResourceState','Enter-IW7ResourceLease',
         'Get-IW7ProcessListing','Update-IW7ProcessListing','Find-IW7Process',
-        'Resolve-IW7RequestResources','ConvertTo-IW7ResourceName','Get-IW7DefaultResources','Test-IW7BuilderProcess')){
+        'Resolve-IW7RequestResources','ConvertTo-IW7ResourceName','Get-IW7DefaultResources','Test-IW7BuilderProcess','Get-IW7CallerPid')){
         $matches=@($ast.FindAll({param($n)$n-is[Management.Automation.Language.FunctionDefinitionAst]-and$n.Name-ceq$name},$true))
         if($matches.Count-ne1){throw ('One actual Source function required: '+$name)}
         $matches[0].Extent.Text

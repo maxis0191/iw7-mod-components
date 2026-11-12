@@ -60,7 +60,11 @@ function Ask([string]$Name,[string]$Kind='Runtime',[long]$Bytes=2GB,[switch]$Pla
     catch { $_.Exception.Message }
     finally { $script:caller=$PID }
 }
-function Release([string]$Name) { Exit-IW7ResourceLease -Token $script:leases[$Name].Token; $script:leases.Remove($Name) }
+# The holder releases its own lease (a build's owner may release it; another live process may not).
+function Release([string]$Name) {
+    $script:caller=$script:callers[$Name].Process.PID
+    try { Exit-IW7ResourceLease -Token $script:leases[$Name].Token; $script:leases.Remove($Name) } finally { $script:caller=$PID }
+}
 function Queue { @((Read-IW7ResourceQueue).Tickets | Sort-Object { [long]$_.FirstMs },{ [long]$_.Seq }) }
 function Log { @([IO.File]::ReadAllLines((Get-IW7AdmissionLogPath)) | ForEach-Object { $_ | ConvertFrom-Json }) }
 
