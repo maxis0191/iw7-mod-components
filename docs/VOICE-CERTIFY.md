@@ -490,36 +490,46 @@ Commands: `voicetest_play <wav>`, `voicetest_stop`, `voicetest_mute <n>`,
 
 ## Who runs it
 
-In-game runs are delegated to Codex (`codex exec`, GPT-6.1 Sol, medium reasoning)
-with a self-contained brief; agents never drive the game window, and the harness
-is driven by files only. The Zombies join copies the server repository's network lab, which joins `-cpMode`
-lab clients through the fixture's `connect` request on bench roots. Earlier,
-Codex's client method (2026-11-09) connected only once the menu was up (`cpMode;`
-about 25 s, `connect` about 50 s after launch); `+connect` on the command line
-fires too early. The Multiplayer join (`connect` through `commands.txt` from 25 s,
-repeated every 10 s) is not proven: the first real MP run must show it.
+Any agent, from files only: the server repository's
+`ops/voicecert/Invoke-VoiceCertifyBench.ps1 -ComponentsRoot <this checkout> -LabImage <image>`
+makes the benches, runs this harness and removes them. No window is driven. Both modes
+join through the lab fixture's request file (`connect` for Zombies, `connect_mp`
+for Multiplayer). Images come from the server repository's
+`ops/enginelab/Get-LabClient.ps1 -BuildSwitch 'ServerModules,IsolatedLab,VoiceCertify[,VoiceRelay]' -Json`.
 
-Still unproven until the first live run: the voice_test connection state numbers
-the resend rule relies on (3 to 8 joining, 9 active), the 120 s join budget for
-two clients on one machine, the 8.5 GB / 20 GB declaration, and whether the game
-writes anything into a shared (linked) file of a bench (the bench check after the
-run says so).
+## Live results, 11 and 12 Nov 2026
 
-## First live run, 2026-11-11 (base image, Zombies)
+Images built from components `8df627f`: certify base `B69F8FDA…` (no relay) and
+certify relay `5ACE010E…` (iw7-mod `fbf1753`, patch `C705EC49`). Private
+passworded unadvertised dedicated on loopback, three bench roots, Spaceland
+`cp_zmb` (map change to `cp_rave`) and `mp_frontier`. Agent evidence, not
+owner acceptance.
 
-Benches, reservation, link guard and restore worked. Two problems:
+| Run | Image | Windows | Result |
+|---|---|---|---|
+| relay-full-2 | relay | Zombies C0 to C6 | 11 of 11 PASS: both directions heard (word recognition 100% in 6 of the 7 heard windows, 80% in C4b), mute and `cl_voice 0` silent, reconnect and map change heard |
+| final-base-1 | base | Zombies C0 to C6 | 11 of 11 silent, the talker encoding throughout |
+| mp-relay-5 | relay | Multiplayer M0, M1, M2, M4 | 8 of 8 PASS: same team heard both ways (100%), opposite teams alive silent (the game's own rule), free-for-all heard both ways (100%) |
+| mp-base-7 | base | Multiplayer M0, M1, M2, M4 | 8 of 8 silent: 0 samples received while the talker encoded 106 to 132 voice frames in each talk window (mp-base-7; mp-base-5 lost its dedicated to an engine stall loading `ui_boot`, ledger "dedicated stalls loading zone ui_boot") |
 
-1. Each client's first launch answered the connect request but its fixture never
-   printed `Ready loopback join`: it never called connect. The fixture calls it only
-   once `Live_SyncOnlineDataFlags(0) == 0`; probably a first launch on a fresh
-   bench (which also creates the client's key: "Private key file not found") never
-   gets there. Not proven. The client loaded its own front end and reached
-   state 9 with clientNum -1. The relaunch, with the key now present, joined in
-   about 29 s. Hence the stricter in-game proof and the 40 s early stall above.
-2. When B (relaunched) joined as client 1, the server dropped A (client 0) within
-   about 250 ms. The client stdout stops early (buffered), so the reason is
-   unknown; the console log and the join evidence above are meant to show it.
+M3 (intermission) runs only with `-IncludeEndOfGame`; it was not run.
 
+Measured per run: a Zombies run is about 4 min of game once admitted; peaks
+1.11 GB (server) and 3.68 / 3.65 GB (clients) working set, 18.8 GB private in all.
+
+Faults met on the way, each read from the run's own evidence and fixed in the tool:
+
+| Fault | Fix |
+|---|---|
+| Reservation of a guessed 11 GB waited an hour | measured 8.5 GB / 20 GB; peaks recorded per process |
+| Retail Zombies watchdog kicked an idle client | native `paris_test_protect` exception (a GSC replacement of the gametype queue was tried and reverted: Spaceland and Rave carry their own copies) |
+| "thunderstorm" scored as 60% of "thunder storm" | neighbouring words written as one count |
+| MP console `connect` failed silently | `connect_mp` request action |
+| Harness deleted iw7-mod's cdata scripts: MP players kicked (invalid team) | only `iw7-mod\custom_scripts` removed |
+| MP idle check and 15 bots | fixture turns both off, `ai=N` in the heartbeat |
+| Both MP players on one team forfeited the match | `level.disableforfeit` |
+| Retry pauses of 300 s lost the queue place at every ask | asks again every 60 s |
+| Admitted session died on a busy admission lock | scheduler on main (components PR 140, which contains 136): registration and release wait for the lock |
 Where the console log is: iw7-mod writes every console line to `g_consoleLog`
 (default `iw7-mod/logs/console.log`, relative to the process folder, so
 `<root>\iw7-mod\logs\console.log` for a bench) and the game log to `g_log`
