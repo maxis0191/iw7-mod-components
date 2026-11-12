@@ -28,7 +28,7 @@ function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
 if ($Debugger -and (!$ServerModules -or !$IsolatedLab)) { throw 'Debugger requires ServerModules and IsolatedLab.' }
 if ($Perf -and (!$ServerModules -or !$IsolatedLab)) { throw 'Perf requires ServerModules and IsolatedLab.' }
 if ($Capacity64 -and !$ServerModules) { throw 'Capacity64 requires the current ServerModules profile.' }
-if ($VoiceRelay -and !$ServerModules) { throw 'VoiceRelay requires ServerModules (native pin 485842f).' }
+if ($VoiceRelay -and !$ServerModules) { throw 'VoiceRelay requires ServerModules (native pin fa305a1).' }
 if ($VoiceCertify -and (!$ServerModules -or !$IsolatedLab)) { throw 'VoiceCertify requires ServerModules and IsolatedLab.' }
 if ($CollisionProvider -and (!$ServerModules -or !$IsolatedLab)) { throw 'CollisionProvider requires ServerModules and IsolatedLab.' }
 if ($WordProvenance -and (!$ServerModules -or !$IsolatedLab -or !$Debugger)) { throw 'WordProvenance requires ServerModules, IsolatedLab and Debugger.' }
@@ -77,7 +77,7 @@ Remove-IW7CutsceneOverlay $root
 Remove-IW7OwnerCheatsOverlay $root
 $commit = $null
 if ($RhinoExperiment -or $EnemyExperiment) { $commit = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
-if ($ServerModules) { $commit = '485842f53fb3d6765f87176c1ca4a434863432f7' }
+if ($ServerModules) { $commit = 'fa305a1afcf4b7d05bb58eebd394c1a232fc9f5b' }
 if (!$TestsOnly) {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 if (!(Test-Path -LiteralPath "$root/.git")) {

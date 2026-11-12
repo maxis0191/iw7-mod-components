@@ -75,7 +75,7 @@ try {
     # ---- the production pin is internally consistent
     $production = Get-IW7VoiceRelayPin
     Assert ((Get-Hash (Join-Path $repo $production.PatchPath)) -ceq $production.PatchSHA256) 'The tracked relay patch differs from its pin.'
-    Assert ($production.NativeCommit -ceq '485842f53fb3d6765f87176c1ca4a434863432f7') 'The relay pin must name the ServerModules native pin.'
+    Assert ($production.NativeCommit -ceq 'fa305a1afcf4b7d05bb58eebd394c1a232fc9f5b') 'The relay pin must name the ServerModules native pin.'
 
     # ---- refusals before any write
     Assert-IW7VoiceOverlayAbsent -NativeRoot $native -Commit $base; $script:checks++
