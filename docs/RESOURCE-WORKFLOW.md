@@ -408,6 +408,8 @@ Now (`Remove-IW7FinishedRuntimeLeases`, `Enter-IW7ResourceLease`):
   (`ChildlessSeconds`) it is reclaimed. A child back in scope clears the mark. A Pending lease (no child yet), a
   lease with an unreadable child identity and a Build/Extract/Analysis lease are never reclaimed by this rule.
   The runner that held it gets `Resource lease not found` if it registers another child; its release is a no-op.
+  Both rules cover a Runtime lease written by an older core (no `Shareable`, no `Resources`: it holds `machine`
+  under named resources) like any other Runtime lease.
 - Every reclaim is one `reclaim` line in `admission-log.jsonl` (owner, scope, owner PID, held seconds, why).
 
 Proof on a copy of the live registry (12 Nov 04:14): the old core kept 'gamelab headless session' through a
