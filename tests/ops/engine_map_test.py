@@ -496,5 +496,32 @@ class EngineMapTest(unittest.TestCase):
         self.assertIn('missing input', str(ctx.exception))
 
 
+class ImageRelativeRefsTest(unittest.TestCase):
+    """refs --image-relative: [reg + index + disp32] accesses through the image base, invisible to the rip-relative table."""
+
+    def test_finds_indexed_access_and_ignores_rip_relative(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            text = bytearray(bytes([0xCC]) * 0x40)
+            # 0x10: cmp dword ptr [r10 + r14 + 0x2246C34], 0   (the usercmd UI gate of 0x1403597F0)
+            text[0x10:0x19] = bytes.fromhex('4383bc32346c240200')
+            # 0x20: mov eax, dword ptr [rip + 0x2246C34]   (same displacement, rip-relative: not an image-relative access)
+            text[0x20:0x26] = bytes.fromhex('8b05346c2402')
+            Path(tmp, 'unpacked-text.bin').write_bytes(bytes(text))
+
+            class FakeMap:
+                base = BASE
+                meta = {'text_va': str(TEXT_VA)}
+
+                @staticmethod
+                def func(va):
+                    return TEXT_VA
+
+            rows = em.image_relative_refs(FakeMap(), tmp, BASE + 0x2246C34, 1)
+            self.assertEqual([(f, a) for f, a, _ in rows], [(TEXT_VA, TEXT_VA + 0x10)])
+            self.assertIn('0x2246c34', rows[0][2])
+            self.assertEqual(em.image_relative_refs(FakeMap(), tmp, BASE + 0x2246C30, 5)[0][1], TEXT_VA + 0x10)
+            self.assertEqual(em.image_relative_refs(FakeMap(), tmp, BASE + 0x2246C30, 1), [])
+
+
 if __name__ == '__main__':
     unittest.main()

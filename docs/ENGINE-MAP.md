@@ -113,6 +113,20 @@ sub_14009B7F0  at 14009B930  (call)
 sub_14009E780  at 14009E7AA  (call)
 ```
 
+`refs ADDRESS --image-relative --reference-root <reference root> [--span N]` also scans the code for accesses of the
+form `[reg + index + disp32]` where a register holds the image base (`lea r14, [rip - X]` = 0x140000000), the form the
+compiler uses for arrays indexed by a client number (`clientUIActives[lc].keyCatchers`, kbuttons, `cg`). The
+rip-relative table above cannot see them. `--span N` takes the targets ADDRESS to ADDRESS + N - 1 (fields of a struct).
+About 0.2 s on the real map. On 11 Nov 2026 it found, in one call, the usercmd gate that keeps a player still while any
+menu is open (`cmp dword ptr [r10 + r14 + 0x2246c34], 0` in 0x1403597F0, components `docs/MENU-MOVEMENT.md`), after
+two lab builds had gone to the wrong functions.
+
+```
+$ refs 0x142246C34 --image-relative --reference-root <reference root>
+...
+sub_1403597F0  at 140359A0C  (image-relative: cmp dword ptr [r10 + r14 + 0x2246c34], 0)
+```
+
 `names --like TEXT` lists the known names that contain TEXT.
 
 ```

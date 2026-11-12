@@ -572,11 +572,48 @@ def cmd_dvars(args):
     return 0
 
 
+def image_relative_refs(m, root, va, span):
+    """Instructions that reach va (to va + span - 1) as [reg + index + disp32] with a register holding the image base
+    (lea reg, [rip - X] = 0x140000000), the form the compiler uses for arrays indexed by a client number. The rip-relative
+    refs table cannot see them: on 11 Nov 2026 the usercmd gate on keyCatchers (`cmp [r10 + r14 + 0x2246C34], 0` in
+    0x1403597F0) was found only by this scan."""
+    import capstone
+    text = read_bytes(os.path.join(root, 'unpacked-text.bin'))
+    text_va = int(m.meta['text_va'])
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
+    md.detail = True
+    out, seen = [], set()
+    for target in range(va, va + span):
+        pat = struct.pack('<I', (target - m.base) & 0xFFFFFFFF)
+        i = text.find(pat)
+        while i != -1:
+            for back in range(10, 1, -1):   # the longest decoding first: a REX prefix also decodes from one byte later
+                a = text_va + i - back
+                ins = next(md.disasm(text[i - back:i - back + 16], a), None)
+                if ins is None or a in seen or not (a + ins.size >= text_va + i + 4):
+                    continue
+                if any(op.type == capstone.x86.X86_OP_MEM and op.mem.disp == target - m.base and op.mem.base != capstone.x86.X86_REG_RIP
+                       for op in ins.operands):
+                    seen.add(a)
+                    out.append((m.func(a), a, '%s %s' % (ins.mnemonic, ins.op_str)))
+                    break
+            i = text.find(pat, i + 1)
+    return sorted(out, key=lambda r: r[1])
+
+
 def cmd_refs(args):
     m = Map(args.db)
     va = m.addr(args.address)
     rows = m.db.execute('select src, site, mnem from refs where target = ? union all select src, site, kind from calls where target = ? order by 2', (va, va)).fetchall()
-    emit(args, [dict(function=m.label(s), site='%X' % a, how=k) for s, a, k in rows], ['%s  at %X  (%s)' % (m.label(s), a, k) for s, a, k in rows[:args.max]] or ['no direct reference in mapped code'])
+    found = [dict(function=m.label(s), site='%X' % a, how=k) for s, a, k in rows]
+    lines = ['%s  at %X  (%s)' % (m.label(s), a, k) for s, a, k in rows]
+    if args.image_relative:
+        if not args.reference_root:
+            raise SystemExit('--image-relative needs --reference-root')
+        for f, a, text in image_relative_refs(m, args.reference_root, va, max(1, args.span)):
+            found.append(dict(function=m.label(f) if f is not None else None, site='%X' % a, how='image-relative', instruction=text))
+            lines.append('%s  at %X  (image-relative: %s)' % (m.label(f) if f is not None else '(not in a mapped function)', a, text))
+    emit(args, found, lines[:args.max] or ['no direct reference in mapped code'])
     return 0
 
 
@@ -716,6 +753,9 @@ def main(argv=None):
     s = add('refs', cmd_refs)
     s.add_argument('address')
     s.add_argument('--max', type=int, default=60)
+    s.add_argument('--image-relative', action='store_true', help='also scan for [reg + index + disp32] accesses through the image base')
+    s.add_argument('--span', type=int, default=1, help='with --image-relative: also targets up to address + span - 1 (fields of a struct)')
+    s.add_argument('--reference-root')
     s = add('name', cmd_name)
     s.add_argument('address')
     s.add_argument('name')
