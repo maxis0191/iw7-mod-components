@@ -6,7 +6,7 @@
 # anything is compiled, so this check asks again every five seconds for a bounded time, and only on that
 # refusal: the judge waits for another session's build instead of failing. Any other error is thrown at once.
 # The AddressSanitizer variants (-Sanitizers) are not run here; the hosted recipe in .github/ still names them.
-param([ValidateRange(0,540)][int]$WaitForSlotSeconds=420)
+param([ValidateRange(0,3600)][int]$WaitForSlotSeconds=2100)   # within the check's 2400 s timeout, as cutscene_test and owner_cheats_test
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path -LiteralPath "$PSScriptRoot/../..").Path
 $waited=[Diagnostics.Stopwatch]::StartNew()

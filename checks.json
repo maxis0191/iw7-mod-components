@@ -710,7 +710,8 @@
         "-NonInteractive",
         "-File",
         "tests/ops/native_unit_tests.ps1"
-      ]
+      ],
+      "timeout_seconds": 2400
     }
   ],
   "retained_checks": [
