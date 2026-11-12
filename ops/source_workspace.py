@@ -87,6 +87,42 @@ def safe_relative(value):
         raise ValueError('Runtime, binary or commercial payload refused')
     return path
 
+def export_pattern(value):
+    """An export "<folder>/*<suffix>" owns every tracked file directly in that folder whose name ends with suffix (one file
+    per entry folders: parallel branches add files there without editing product.json). -> (folder, suffix) or None."""
+    if not isinstance(value, str) or '*' not in value:
+        return None
+    folder, _, leaf = value.rpartition('/')
+    suffix = leaf[1:]
+    if not folder or not leaf.startswith('*') or any(c in folder + suffix for c in '*?[]') or not suffix.startswith('.'):
+        raise ValueError('Export pattern must be <folder>/*.<extension>: ' + value)
+    safe_relative(folder + '/x' + suffix)
+    return folder, suffix
+
+
+def expand_exports(exports, names):
+    """Literal exports plus the tracked names each pattern owns, in the order given; a path named twice is refused."""
+    patterns = [(e, export_pattern(e)) for e in exports]
+    owned = [p for _, p in patterns if p]
+    if not owned:
+        return list(exports)                         # no pattern: the list exactly as before
+    out, seen = [], set()
+    for entry, pattern in patterns:
+        if pattern is None:
+            if any(entry.rpartition('/')[0] == f and entry.endswith(s) for f, s in owned):
+                raise ValueError('Export listed by name and by pattern: ' + entry)
+            matched = [entry]
+        else:
+            folder, suffix = pattern
+            matched = sorted(n for n in names if n.rpartition('/')[0] == folder and n.endswith(suffix) and len(n) > len(folder) + 1 + len(suffix))
+        for name in matched:
+            if name.casefold() in seen:
+                raise ValueError('Duplicate product export: ' + name)
+            seen.add(name.casefold())
+            out.append(name)
+    return out
+
+
 def ordinary(path, *, missing=False):
     path = Path(os.path.abspath(path))
     for part in (path, *path.parents):
@@ -199,7 +235,7 @@ def prepare(project, revision, bindings, output, cache=None, package=None):
     product = json.loads(git(project, 'show', revision + ':product.json'))
     if product.get('schema') != 'iw7.product/1':
         raise ValueError('Unknown product contract')
-    requests = [{'id': product['id'], 'revision': revision, 'files': product['exports'], 'root': project}]
+    requests = [{'id': product['id'], 'revision': revision, 'files': product['exports'], 'root': project, 'patterns': True}]
     for dependency in ([] if package else product['dependencies']):
         if dependency['id'] not in bindings:
             if cache is None:
@@ -223,7 +259,8 @@ def prepare(project, revision, bindings, output, cache=None, package=None):
             if kind == 'blob' and mode in ('100644', '100755'):
                 tree[name] = blob
         revisions[source['id']] = commit
-        for relative in source['files']:
+        names = expand_exports(source['files'], tree) if source.get('patterns') else source['files']
+        for relative in names:
             safe_relative(relative)
             if relative not in tree:
                 raise ValueError('Untracked or absent declared source: ' + relative)
@@ -251,7 +288,6 @@ def prepare(project, revision, bindings, output, cache=None, package=None):
                             blob=tree[relative], bytes=len(raw), sha256=digest)))
         # Batch Git's own attribute/filter-aware hash calculation: preserve CRLF
         # source contracts without pretending a Git blob is a checkout-byte hash.
-        names = source['files']
         if names:
             hashes = subprocess.check_output(['git', '-C', str(root), '--attr-source=' + commit,
                                               'hash-object', '--stdin-paths'],
