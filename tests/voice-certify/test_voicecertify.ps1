@@ -226,6 +226,7 @@ function Test-IW7BenchRoot([string]$Root) {
         $diagText = $diagOutput -join "`n"
         $text.Contains('[collect] from each root, before the restore: iw7-mod/logs/*.log') -and $text.Contains('[diagnostics] off') -and
         !$text.Contains('+set developer 1') -and $diagText.Contains('[diagnostics] on') -and
+        !$text.Contains('-paris-hang') -and @($diagOutput | Where-Object { $_ -match '^\[start\] ' -and $_.Contains('-paris-hang ') }).Count -eq 3 -and
         @($diagOutput | Where-Object { $_ -match '^\[start\] ' -and $_.Contains('+set developer 1 +set logfile 1 +set g_consoleLog iw7-mod/logs/console.log') }).Count -eq 3 -and
         @($diagOutput | Where-Object { $_ -match '^\[start\] client' -and $_.Contains('+set cl_noprint 0 +set cl_lessprint 0') }).Count -eq 2
     }

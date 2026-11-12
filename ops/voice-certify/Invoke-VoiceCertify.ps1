@@ -76,6 +76,10 @@ $Marker = 'iw7-paris-isolated-lab-v1'
 # Built in two pieces: the scheduler reads running command lines, and a runner whose
 # own command line carried the whole flag would count as a foreign laboratory.
 $LabFlag = '-paris-' + 'isolated-lab'
+# With -Diagnostics the lab images' freeze reporter (components docs/HANG.md) writes
+# iw7-mod/paris-hang/*.json, which is collected. 30 s keeps ordinary map loads out of it
+# (a dedicated stalled in DB_LoadXAssets for 5 min in live run mp-base-5; read only from a manual dump).
+if ($Diagnostics) { $env:PARIS_HANG_MS = '30000' }
 $CdataDir = 'iw7-mod/lab-appdata/cdata'
 $SettleSeconds = 1.5; $TailSeconds = 2.5; $IdleSeconds = 5
 $ConnectFirstSeconds = @{ CP = 20; MP = 25 }; $ConnectEverySeconds = 10
@@ -162,14 +166,14 @@ function Get-ServerConfig([string]$Mode, [string]$Password) {
 
 function Get-ServerArguments([string]$Mode) {
     $cp = if ($Mode -eq 'CP') { '-cpMode ' } else { '' }
-    "-dedicated -allow_root_io -noupdate -nosteam ${cp}-stdout -paris-server-test $(if ($Diagnostics) { '-paris-incident-log ' })$LabFlag -voicetest $(Get-RoleDir $Mode 'server') " +
+    "-dedicated -allow_root_io -noupdate -nosteam ${cp}-stdout -paris-server-test $(if ($Diagnostics) { '-paris-incident-log -paris-hang ' })$LabFlag -voicetest $(Get-RoleDir $Mode 'server') " +
     "+set sv_lanOnly 1 +set net_ip 127.0.0.1 +set net_port $ServerPort $(if ($Diagnostics) { $DiagnosticDvars.Server + ' ' })+exec voicecert_server.cfg +map_rotate"
 }
 
 function Get-ClientArguments([string]$Mode, [string]$Role, [string]$Password, [string]$Dir) {
     $cp = if ($Mode -eq 'CP') { '-cpMode ' } else { '' }
     $port = if ($Role -eq 'A') { $ClientAPort } else { $ClientBPort }
-    "-noupdate -nosteam ${cp}-stdout -paris-server-client-test $LabFlag -voicetest $Dir " +
+    "-noupdate -nosteam ${cp}-stdout -paris-server-client-test $(if ($Diagnostics) { '-paris-hang ' })$LabFlag -voicetest $Dir " +
     "+set net_ip 127.0.0.1 +set net_port $port +set paris_lab_server_port $ServerPort +set password `"$Password`" +set name voicecert$Role " +
     '+set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 1280 +set vid_height 720 +set r_mode 1280x720 ' +
     '+set com_maxfps 30 +set r_picmip 2 +set r_picmip_bump 2 +set r_picmip_spec 2' + $(if ($Diagnostics) { ' ' + $DiagnosticDvars.Client } else { '' })
