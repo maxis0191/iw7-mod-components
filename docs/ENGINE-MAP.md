@@ -260,6 +260,18 @@ Measured on the real inputs on 2026-11-10 (names from `symbols.hpp` only):
 `--like snaps` gives 7 `sv_*snapshot*` texts used by one function, `--like packet` gives `cl_maxpackets`, `cl_packetdup` and 3 more.
 `--like rate` also matches words that only contain `rate` (for example `bribe_crates_enabled`).
 
+## Companions: C, every reference form, live spans
+
+`refs` lists only rip-relative references. The engine also reaches big tables through a disp32 on an image-base register, such as `[r10+rcx*4+0x60B22F2]`, and those are not in `refs`. Three companion tools answer what the map alone cannot:
+
+| Question | Tool | Command |
+|---|---|---|
+| What does this function do (C)? | `ops/engine-map/iw7_decomp.py` | `<RE-lab pyghidra python> -B ops/engine-map/iw7_decomp.py --ghidra <ghidra 12.1.4> --work <folder> --reference-root <refs> ADDR...` (JAVA_HOME = the RE lab JDK). First call about 70 s (imports a flat image of the unpacked sections without auto-analysis), then about 35 s for five functions. The RE-lab project made in October is of the packed exe: do not use it |
+| Who touches this global, in any addressing form? | `ops/engine-map/iw7_xref32.py` | `python -B ops/engine-map/iw7_xref32.py --reference-root <refs> --db <engine map> ADDR[:SPAN] ...` (rip-relative and image-base-relative disp32; 1 to 10 s) |
+| The protected code spans of a live process | `ops/engine-map/iw7_dump_spans.py` | `python -B ops/engine-map/iw7_dump_spans.py --pid <your own game process> --out <new folder>`; then `iw7_xref32.py --extra 14B2B4000=<file>` |
+
+Test of the xref tool: `tests/ops/engine_xref32_test.py`.
+
 ## What it cannot know
 
 - Calls through registers and tables are not in the map. A function that is only reached that way shows no caller.

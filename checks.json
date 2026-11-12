@@ -325,6 +325,14 @@
       ]
     },
     {
+      "id": "engine_xref32_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_xref32_test.py"
+      ]
+    },
+    {
       "id": "engine_map_names_test",
       "command": [
         "python",

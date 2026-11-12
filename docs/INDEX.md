@@ -8,6 +8,7 @@ server repository (`docs/DEVKIT.md`, `docs/TOOLS-INDEX.md`). Paths are relative 
 | Question | Tool | Document | Source test |
 |---|---|---|---|
 | What is at an address, who calls it, which function mentions a text, console variables | `ops/engine-map/iw7_engine_map.py` | [ENGINE-MAP.md](ENGINE-MAP.md) | `tests/ops/engine_map_test.py`, `tests/ops/engine_map_names_test.py` |
+| What a function does, as C (no whole-program analysis); who touches a global in any addressing form; the protected code spans of a live process | `ops/engine-map/iw7_decomp.py`, `iw7_xref32.py`, `iw7_dump_spans.py` | [ENGINE-MAP.md](ENGINE-MAP.md), "Companions" | `tests/ops/engine_xref32_test.py` |
 | Where does the game keep a value | `ops/engine-map/iw7_watch.py` with `src/native/paris_watch.cpp`, `paris_watch.hpp` | [MEMORY-WATCH.md](MEMORY-WATCH.md) | `tests/ops/memory_watch_test.py` |
 | Frame rate, and which functions cost the time | `ops/engine-map/iw7_perf.py` with `src/native/paris_perf.cpp` | [PERF.md](PERF.md) | `tests/ops/perf_window_test.py` |
 | Server frame time, and which script functions and threads cost it (lab dedicated server) | `ops/engine-map/iw7_sperf.py` with `src/native/paris_sperf.cpp` | [SERVER-PERF.md](SERVER-PERF.md) | `tests/ops/sperf_report_test.py` |
