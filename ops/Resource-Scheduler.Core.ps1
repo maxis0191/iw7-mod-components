@@ -262,6 +262,16 @@ function Get-IW7LeaseLiveProcesses($Lease, $Processes) {
         if ($current.Count -and (Test-IW7ResourceIdentity $record $current[0])) { $current[0] }
     }
 }
+function Clear-IW7LeaseChildless($Lease) {
+    if ($Lease.PSObject.Properties['ChildlessSinceUtc']) { $Lease.PSObject.Properties.Remove('ChildlessSinceUtc'); $script:IW7LeaseStateChanged = $true }
+}
+function Add-IW7ReclaimLog($Lease, [string]$Why) {
+    $script:IW7LeaseStateChanged = $true
+    $held = $null
+    try { $held = [math]::Round(((Get-IW7SchedulerUtcNow) - ([datetimeoffset]$Lease.CreatedUtc).UtcDateTime).TotalSeconds, 1) } catch { }
+    Add-IW7AdmissionLog ([pscustomobject]@{Event='reclaim';Kind=$Lease.Kind;Shareable=(Test-IW7ShareableRuntimeLease $Lease);Owner=$Lease.Owner;
+        Scope=$Lease.Scope;OwnerPid=$Lease.OwnerIdentity.PID;HeldSeconds=$held;Why=$Why})
+}
 function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOtherAmbiguity, [string]$ExceptScope, [string]$ExceptKind, $ListedUtc=$null) {
     $State.Leases = @($State.Leases | Where-Object {
         $lease = $_
@@ -282,8 +292,32 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOt
         # A crashed builder might have detached children outside its root. Keep it
         # quarantined until explicit release; runtime children must be inside scope.
         # The scope scan (700 processes, about 100 ms) runs only when it decides.
-        if ($lease.Kind -ne 'Runtime' -or $ownerAlive -or $ownerUnknown -or $live.Count) { $true }
-        else { [bool](@($Processes).Where({ Test-IW7ReservedProcess $_ $lease }, 'First')).Count }
+        if ($lease.Kind -ne 'Runtime' -or $live.Count) { Clear-IW7LeaseChildless $lease; return $true }
+        if (@(@($Processes).Where({ Test-IW7ReservedProcess $_ $lease }, 'First')).Count) { Clear-IW7LeaseChildless $lease; return $true }
+        if (!$ownerAlive -and !$ownerUnknown) {
+            Add-IW7ReclaimLog $lease 'its owner process and every registered child are gone'
+            return $false
+        }
+        # Owner alive, but the session it registered has ended and nothing runs in its scope (12 Nov 2026: a
+        # runner whose release failed held 'gamelab headless session' 2 h with its server dead, while it queued
+        # for its next session behind a build that waited for that lease: nothing ever moved). Only a lease that
+        # had children (Phase Running) counts; after ChildlessSeconds it is reclaimed. A runner that then
+        # registers a child gets 'Resource lease not found' and stops; its release finds nothing to do.
+        if ($lease.Phase -ne 'Running' -or !@($lease.Processes).Count) { return $true }
+        $now = Get-IW7SchedulerUtcNow
+        $since = $null
+        $p = $lease.PSObject.Properties['ChildlessSinceUtc']
+        if ($p -and $p.Value) { try { $since = ([datetimeoffset]$p.Value).UtcDateTime } catch { $since = $null } }
+        if ($null -eq $since) {
+            Add-Member -InputObject $lease -NotePropertyName ChildlessSinceUtc -NotePropertyValue $now.ToString('o') -Force
+            $script:IW7LeaseStateChanged = $true
+            return $true
+        }
+        $idle = ($now - $since).TotalSeconds
+        $limit = (Get-IW7QueuePolicy).ChildlessSeconds; if (!$limit) { $limit = 600 }
+        if ($idle -lt $limit) { return $true }
+        Add-IW7ReclaimLog $lease ("its owner is alive but every registered child is gone and nothing has run in its scope for $(Format-IW7Age $idle)")
+        return $false
         } catch {
             if ($lenient -and $_.Exception.Message -like 'Reserved process identity unavailable*') { $true } else { throw }
         }
@@ -315,7 +349,7 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOt
 function Get-IW7SchedulerUtcNow { [datetime]::UtcNow }
 function Get-IW7CallerPid { $PID }
 function Get-IW7QueuePolicy {
-    [pscustomobject]@{FirstGraceSeconds=90;MinGraceSeconds=90;MaxGraceSeconds=660;AgingSeconds=600;MaxOvertakeSeconds=300;MaxShortSeconds=120;LogRotateBytes=8MB}
+    [pscustomobject]@{FirstGraceSeconds=90;MinGraceSeconds=90;MaxGraceSeconds=660;AgingSeconds=600;MaxOvertakeSeconds=300;MaxShortSeconds=120;LogRotateBytes=8MB;ChildlessSeconds=600}
 }
 function Get-IW7NowMs { [DateTimeOffset]::new([datetime]::SpecifyKind((Get-IW7SchedulerUtcNow),'Utc')).ToUnixTimeMilliseconds() }
 function Get-IW7QueuePath { Join-Path (Get-IW7ResourceRoot) 'queue.json' }
@@ -602,6 +636,7 @@ function Enter-IW7ResourceLease {
         try {
         $reclaim = @{ListedUtc=$listing.Utc}
         if ($Shareable) { $reclaim += @{TolerateOtherAmbiguity=$true; ExceptScope=$canonical; ExceptKind=$Kind} }
+        $script:IW7LeaseStateChanged = $false
         Remove-IW7FinishedRuntimeLeases $state $processes @reclaim
         $same = @($state.Leases | Where-Object { $_.Scope -eq $canonical -and $_.Kind -eq $Kind })
         $other = @($state.Leases | Where-Object { $_.Scope -ne $canonical -or $_.Kind -ne $Kind })
@@ -684,6 +719,10 @@ function Enter-IW7ResourceLease {
         }
         } catch {
             $message = $_.Exception.Message
+            # A reclaim (or a childless mark) is saved also when this request is refused. Until 12 Nov 2026 it was
+            # saved only by a grant, so a dead lease stayed in leases.json while every request was refused for
+            # another reason: a build at the head of the queue waited 2 h behind two finished sessions.
+            if ($script:IW7LeaseStateChanged) { try { Save-IW7ResourceState $state } catch { } ; $script:IW7LeaseStateChanged = $false }
             # A request that can never fit is refused at once: its ticket leaves the queue.
             if ($message -like 'Refused: this session can never fit*') {
                 Remove-IW7NeverFitTicket $queue $message $canonical $Kind $Owner $PhysicalBytes
