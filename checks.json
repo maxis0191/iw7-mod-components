@@ -532,6 +532,17 @@
       ]
     },
     {
+      "id": "resource_scheduler_resources_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_resources_test.ps1"
+      ]
+    },
+    {
       "id": "resource_scheduler_shareable_test",
       "command": [
         "pwsh",
