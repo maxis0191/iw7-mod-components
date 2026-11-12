@@ -46,18 +46,25 @@ function Remove-Caller([string]$Name,[switch]$Parent) {
 }
 function Bench([string]$Name) { Join-Path $TestRoot ('bench-'+$Name) }
 # Ask once as caller $Name. Returns 'granted' or the refusal text.
-function Ask([string]$Name,[string]$Kind='Runtime',[long]$Bytes=2GB,[switch]$Plain,[int]$Short=0) {
+# Builds here ask for the machine alone ('machine', the old exclusive rule): these cases are about the waiting
+# order between requests that cannot run together. What runs side by side by name is resource_scheduler_resources_test.
+function Ask([string]$Name,[string]$Kind='Runtime',[long]$Bytes=2GB,[switch]$Plain,[int]$Short=0,[string[]]$Res=$null) {
     if (!$script:callers.ContainsKey($Name)) { New-Caller $Name }
     $script:caller=$script:callers[$Name].Process.PID
     $shareable=($Kind -eq 'Runtime' -and !$Plain)
     $arguments=@{Scope=(Bench $Name);Kind=$Kind;PhysicalBytes=$Bytes;CommitBytes=$Bytes;Owner=$Name}
     if ($shareable) { $arguments.Shareable=$true }
     if ($Short) { $arguments.ShortSeconds=$Short }
+    if ($null -ne $Res) { $arguments.Resources=$Res } elseif ($Kind -ne 'Runtime') { $arguments.Resources=@('machine') }
     try { $lease=Enter-IW7ResourceLease @arguments; $script:leases[$Name]=$lease; 'granted' }
     catch { $_.Exception.Message }
     finally { $script:caller=$PID }
 }
-function Release([string]$Name) { Exit-IW7ResourceLease -Token $script:leases[$Name].Token; $script:leases.Remove($Name) }
+# The holder releases its own lease (a build's owner may release it; another live process may not).
+function Release([string]$Name) {
+    $script:caller=$script:callers[$Name].Process.PID
+    try { Exit-IW7ResourceLease -Token $script:leases[$Name].Token; $script:leases.Remove($Name) } finally { $script:caller=$PID }
+}
 function Queue { @((Read-IW7ResourceQueue).Tickets | Sort-Object { [long]$_.FirstMs },{ [long]$_.Seq }) }
 function Log { @([IO.File]::ReadAllLines((Get-IW7AdmissionLogPath)) | ForEach-Object { $_ | ConvertFrom-Json }) }
 
@@ -111,7 +118,7 @@ Case 'sessions are not starved by a chain of builds' {
 }
 Case 'a fitting session passes an older session that does not fit' {
     Ask big Runtime 14GB | Out-Null                  # admitted: 14 GB of a 24 GB budget
-    Assert ((Ask big2 Runtime 12GB) -like 'Resource busy: shareable declared memory budget exceeded*Queue: place 1*') 'A second big one does not fit and is queued.'
+    Assert ((Ask big2 Runtime 12GB) -like 'Resource busy: declared memory budget exceeded*Queue: place 1*') 'A second big one does not fit and is queued.'
     Advance 30
     Assert ((Ask small Runtime 2GB) -eq 'granted') 'A small session that fits and has no older exclusive ticket is admitted at once.'
 }
@@ -285,7 +292,7 @@ Case 'an aged ticket that could fit by waiting still holds back later sessions; 
     Assert ((Ask small Runtime 1.5GB) -eq 'granted') 'The aged 8 GB ticket can no longer be satisfied: the fitting session goes first.'
     Assert ((Queue)[0].Owner -eq 'c') 'The 8 GB ticket keeps its place.'
     $s=Get-IW7ResourceStatus
-    Assert ($s.Why -like "Head of queue: 'c'*needs 8.0 GB*held 7.5 GB by 2 running shareable session(s)*") "Status gives need, free and held: $($s.Why)"
+    Assert ($s.Why -like "Head of queue: 'c'*needs 8.0 GB*held 7.5 GB by 2 running reservation(s)*") "Status gives need, free and held: $($s.Why)"
 }
 Case 'a build is not held back by an older session ticket that cannot fit' {
     $script:avail=9GB

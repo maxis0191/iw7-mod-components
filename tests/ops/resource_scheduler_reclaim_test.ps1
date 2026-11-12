@@ -94,6 +94,21 @@ Case 'a pending lease (no child yet) is never reclaimed while its owner lives' {
     foreach ($i in 1..3) { $null=Ask; Advance 900 }
     Assert ((Owners) -join ',' -eq 'd') 'A pending lease was reclaimed.'
 }
+Case 'an old-core Runtime lease (no Shareable, no Resources: holds machine) is reclaimed by both rules' {
+    $o=Proc 70071 'C:\fake\pwsh.exe'; $c=Proc 70072 (Join-Path $TestRoot 'bench-f\server\iw7.exe')
+    $l=Lease 'f' $o $c; $l.PSObject.Properties.Remove('Shareable'); $l.PSObject.Properties.Remove('BaseClientImage')
+    Assert ((Get-IW7HeldResources $l) -join ',' -eq 'machine') 'The old-core lease does not hold machine.'
+    Save @($l); $script:processes=@($script:me,$o)
+    $r=Ask
+    Assert ($r -like 'Resource busy:*') "An old-core machine lease with its owner alive was released at once: $r"
+    Advance 601; $r=Ask
+    Assert ($r -eq 'granted') "Old-core childless machine lease not reclaimed after 600 s: $r"
+    $o2=Proc 70073 'C:\fake\pwsh.exe'; $c2=Proc 70074 (Join-Path $TestRoot 'bench-g\server\iw7.exe')
+    $l2=Lease 'g' $o2 $c2; $l2.PSObject.Properties.Remove('Shareable'); $l2.PSObject.Properties.Remove('BaseClientImage')
+    Save @($l2); $script:processes=@($script:me)
+    $r=Ask
+    Assert ($r -eq 'granted') "Old-core machine lease with owner and child gone not reclaimed at once: $r"
+}
 Case 'a build lease is never reclaimed by these rules' {
     $o=Proc 70061 'C:\fake\pwsh.exe'
     $l=[pscustomobject]@{Token=([guid]::NewGuid().ToString('N'));Scope=(Join-Path $TestRoot 'bench-e').ToLowerInvariant();Kind='Build';Owner='e';

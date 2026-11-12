@@ -6,7 +6,8 @@ if ($InitialAdmissionSourceOnly) {
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../../ops/Resource-Scheduler.Core.ps1'),[ref]$tokens,[ref]$parseErrors)
     if($parseErrors.Count){throw 'Production Source parse failed.'}
     $definitions=@(foreach($name in @('Get-IW7CanonicalScope','Read-IW7ResourceState','Enter-IW7ResourceLease',
-        'Get-IW7ProcessListing','Update-IW7ProcessListing','Find-IW7Process')){
+        'Get-IW7ProcessListing','Update-IW7ProcessListing','Find-IW7Process',
+        'Resolve-IW7RequestResources','ConvertTo-IW7ResourceName','Get-IW7DefaultResources','Test-IW7BuilderProcess','Get-IW7CallerPid')){
         $matches=@($ast.FindAll({param($n)$n-is[Management.Automation.Language.FunctionDefinitionAst]-and$n.Name-ceq$name},$true))
         if($matches.Count-ne1){throw ('One actual Source function required: '+$name)}
         $matches[0].Extent.Text
@@ -309,7 +310,8 @@ if ($RetainedReleaseSourceOnly) {
     }
     try {
         $legacy=@(
-            '    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner',
+            # Named resources (12 Nov 2026) pass the caller's -Resources/-Cores/-Long through, as the retained form does.
+            '    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner @private:jobNamed',
             '    $process=Get-Process -Id $PID','    $priority=$process.PriorityClass','    try {',
             '        $process.PriorityClass=''BelowNormal''','        & $Body','    } finally {',
             '        $process.PriorityClass=$priority','        Exit-IW7ResourceLease -Token $lease.Token','    }','}'
@@ -438,7 +440,7 @@ function Get-IW7ResourceProcesses { $script:fakeProcesses }
 function Open-IW7ResourceQueue { param($Processes,[switch]$ReadOnly) [pscustomobject]@{Queue=$null;NowMs=0L;Processes=$Processes;Overtook=@()} }
 if ($Contender) {
     try {
-        $lease=Enter-IW7ResourceLease -Scope (Join-Path $TestRoot ('lab-'+$PID)) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner "contender-$PID"
+        $lease=Enter-IW7ResourceLease -Scope (Join-Path $TestRoot ('lab-'+$PID)) -Kind Build -PhysicalBytes 4GB -CommitBytes 6GB -Owner "contender-$PID" -Resources 'contender-slot'
         [IO.File]::WriteAllText($ResultPath,'admitted')
         # Keep the winner pending until both launchers have tried admission.
     } catch { [IO.File]::WriteAllText($ResultPath,'refused: '+$_.Exception.Message) }
