@@ -293,6 +293,38 @@ void plan_client() {
     for (auto a : {0x14086FE70ull, 0x14086FE78ull, 0x14086FE87ull, 0x140870670ull, 0x1408706D0ull}) add1(a, 0x40, 0x60);
 }
 
+// ---- 3b. per-sentient pool of 0x4D0-byte objects (71 static, built by the static constructor sub_140004650) ---------
+// Run h2 (12 Nov 2026): with 100 agents the 72nd sentient-owning agent got a null object from the allocator
+// sub_1403EE550 (it scans the 71 for a free one, flag +0x8B) and SV_AddAgent crashed writing +0x9C. The pool moves to
+// sentient-slot size; the new objects are built with the same constructor (sub_1403EAC70); the old 71 stay built and unused.
+constexpr std::uintptr_t ai_pool = 0x143C34440, ai_pool_end = 0x143C499F0;
+constexpr std::uint32_t ai_stride = 0x4D0, ai_stock = 71;
+buffer ai_objects;
+void plan_ai_pool() {
+    static_assert(ai_pool + ai_stock * ai_stride == ai_pool_end);
+    const auto base = ai_objects.data, end = ai_objects.data + L.sentient_slots() * ai_stride;
+    struct r { std::uintptr_t field, before; std::int64_t off; bool at_end; };
+    for (const auto& i : {r{0x1403EB90D, ai_pool + 0xA0, 0xA0, false}, r{0x1403EB917, ai_pool_end + 0xA0, 0xA0, true},
+             r{0x1403EBAA5, ai_pool, 0, false}, r{0x1403EBAAC, ai_pool_end, 0, true},
+             r{0x1403EBB4A, ai_pool, 0, false}, r{0x1403EBB51, ai_pool_end, 0, true},
+             r{0x1403F0259, ai_pool, 0, false}, r{0x1403F0260, ai_pool_end, 0, true},
+             r{0x1403EE55A, ai_pool + 0x8B, 0x8B, false}, r{0x1403EE567, ai_pool_end + 0x8B, 0x8B, true},
+             r{0x1403EE59F, ai_pool, 0, false},
+             r{0x1403EE629, ai_pool + 0x30, 0x30, false}, r{0x1403EE630, ai_pool_end + 0x30, 0x30, true},
+             r{0x1403EE9A4, ai_pool + 0x8B, 0x8B, false}, r{0x1403EE9AB, ai_pool_end + 0x8B, 0x8B, true},
+             r{0x1403EF012, ai_pool, 0, false}})
+        rip(i.field, i.before, (i.at_end ? end : base) + i.off);
+}
+void build_ai_objects() {
+    // the constructor's first bytes, checked like every patched site, then one call per new object
+    readable(0x1403EAC70, 8);
+    const std::uint8_t head[8] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c};
+    if (std::memcmp(reinterpret_cast<void*>(0x1403EAC70), head, sizeof(head)))
+        throw std::runtime_error("agent capacity: the sentient object constructor differs");
+    const auto construct = reinterpret_cast<void* (*)(void*)>(0x1403EAC70);
+    for (std::uint32_t i = 0; i < L.sentient_slots(); ++i) construct(reinterpret_cast<void*>(ai_objects.data + i * ai_stride));
+}
+
 // ---- 4. reserved scriptable parts (server): one free list of 2,048 u16 links -----------------------------------------
 // ScriptableSv_LinkReservedScriptable (sub_140BF96A0) takes one slot a part; an agent's model takes 31, so 24 agents
 // hold 744 and 78 would need 2,418 ("Too many reserved scriptable parts", ERR_DROP). Free (sub_140BF9A70), init
@@ -331,7 +363,7 @@ std::uint32_t parse_count(const wchar_t* flag, std::uint32_t fallback) {
 }
 
 void check_guards() {
-    for (const auto& pool : {agent_pool, sentient_pool, table8, table20, parts_pool})
+    for (const auto& pool : {agent_pool, sentient_pool, table8, table20, parts_pool, ai_objects})
         for (unsigned i = 0; i < 16; ++i)
             if (*reinterpret_cast<const unsigned char*>(pool.data - 16 + i) != 0xA7 ||
                 *reinterpret_cast<const unsigned char*>(pool.data + pool.bytes + i) != 0xA7) {
@@ -354,10 +386,13 @@ public:
         table8 = reserve(L.table8_bytes());
         table20 = reserve(L.table20_bytes());
         parts_pool = reserve(L.parts * 4);
+        ai_objects = reserve(L.sentient_slots() * ai_stride);
+        build_ai_objects();
         plan_agents();
         plan_archive();
         plan_client();
         plan_parts();
+        plan_ai_pool();
         std::sort(plan.begin(), plan.end(), [](const patch& a, const patch& b) { return a.address < b.address; });
         for (std::size_t i = 1; i < plan.size(); ++i)
             if (plan[i - 1].address + plan[i - 1].width > plan[i].address)
