@@ -161,7 +161,9 @@ function Test-IW7ScopeOverlap([string]$Left, [string]$Right) {
 function Invoke-IW7ResourceLock([scriptblock]$Body) {
     $root = Get-IW7ResourceRoot
     [IO.Directory]::CreateDirectory($root) | Out-Null
-    $deadline = [datetime]::UtcNow.AddSeconds(10)
+    # 45 s, not 10: with 20+ waiters asking every few seconds the lock is often held for over 10 s in a row, and a
+    # refusal here never refreshes the caller's waiting ticket (gaps of 85-91 s expired build tickets on 12 Nov 2026).
+    $deadline = [datetime]::UtcNow.AddSeconds(45)
     $handle = $null
     do {
         try { $handle = [IO.File]::Open((Join-Path $root 'admission.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
