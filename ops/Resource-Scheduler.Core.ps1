@@ -734,7 +734,10 @@ function Enter-IW7ResourceLease {
         $same = @()
         try {
         $reclaim = @{ListedUtc=$listing.Utc}
-        if ($Shareable) { $reclaim += @{TolerateOtherAmbiguity=$true; ExceptScope=$canonical; ExceptKind=$Kind} }
+        # Every request may run beside other leases now (named resources): another lease whose process identity
+        # cannot be read right now is kept (held, its memory reserved) instead of failing this request. Only this
+        # request's own lease keeps the strict refusal.
+        $reclaim += @{TolerateOtherAmbiguity=$true; ExceptScope=$canonical; ExceptKind=$Kind}
         Remove-IW7FinishedRuntimeLeases $state $processes @reclaim
         $same = @($state.Leases | Where-Object { $_.Scope -eq $canonical -and $_.Kind -eq $Kind })
         $other = @($state.Leases | Where-Object { $_.Scope -ne $canonical -or $_.Kind -ne $Kind })
@@ -1265,7 +1268,8 @@ function Invoke-IW7QueuedResourceJob {
             break
         } catch {
             $busy=$_.Exception.Message -like 'Resource busy:*' -or $_.Exception.Message -like 'Resource admission lock busy*' -or
-                $_.Exception.Message -like 'An existing compiler/extractor/Java analysis is running;*'
+                $_.Exception.Message -like 'An existing compiler/extractor/Java analysis is running;*' -or
+                $_.Exception.Message -like 'Reserved process identity unavailable*'
             if (!$busy -or $waited.Elapsed.TotalSeconds -ge $WaitForSlotSeconds) { throw }
             # One line a minute while waiting, with the place in the queue.
             if ($waited.Elapsed.TotalSeconds -ge $said+60) { $said=$waited.Elapsed.TotalSeconds; Write-Host ("waiting {0:N0} s for the {1} reservation: {2}" -f $said,$Kind,$_.Exception.Message) }
