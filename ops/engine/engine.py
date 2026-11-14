@@ -404,7 +404,11 @@ def cmd_index(e, a):
     # Both code sections are covered, the protector's one included (Ghidra may not have analysed all of it).
     ranges = set()
     if e.db:
-        ranges |= {(r[0], r[1]) for r in e.db.execute("SELECT addr,end FROM functions ORDER BY addr")}
+        for b, en in e.db.execute("SELECT addr,end FROM functions ORDER BY addr"):
+            sec = img.section(b)
+            # a split function body can end far away (another section): keep the part inside its code section
+            if sec and sec[5] & 0x20000000:
+                ranges.add((b, min(en, sec[1] + sec[2], b + 0x100000)))
     for s in img.sections:
         if s[0] == ".pdata":
             raw = img.read(s[1], s[2])
@@ -478,7 +482,11 @@ def cmd_index(e, a):
                 if len(rows) > 200000:
                     idb.executemany("INSERT INTO insn VALUES(?,?,?,?,?)", rows)
                     rows = []
-            pos = last + 1 if last < end else end  # undecodable byte: resynchronise one byte further
+            if last >= end:
+                break
+            # the window ended inside the range: continue there; an undecodable byte: one byte further
+            window_end = pos + 0x4000
+            pos = last if last >= window_end - 15 and last > pos else last + 1
             if len(rows) > 500000:
                 idb.executemany("INSERT INTO insn VALUES(?,?,?,?,?)", rows)
                 rows = []

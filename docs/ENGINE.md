@@ -79,6 +79,9 @@ for Claude Code at user scope (`iw7-engine`); new sessions see the tools. The fu
 Both Ghidra steps hold the scheduler's named resource `ghidra:<project>` as a long holder with their real memory:
 builds and sessions run beside them; only another step on the same project waits.
 
+`grep` reads the decompiled form and `imm` the instructions: a loop bound can be `cmp rsi,0xa6b0` in the code and a
+pointer comparison in the C (`imm 0xa6b0` finds 8 sites, `grep 0xa6b0` 4). Use both.
+
 ## Measured (12-14 Nov 2026, this machine)
 
 | Step or query | Time | Memory |
@@ -88,9 +91,12 @@ builds and sessions run beside them; only another step on the same project waits
 | Image (`build_image.py`) | 0.3 s | small |
 | Names (`collect_names.py`: 10,975 names, 123 structs) | 1 to 2 s | small |
 | Ghidra import + names + auto-analysis + save | JVM 116 s, import 190 s, names 42 s, analysis 2,450 s (295,609 functions) | about 1.3 GB working set, JVM 441 MB used at the end |
-| Instruction index (`engine.py index`: 9.8 M instructions, both code sections) | 117 s | 150 MB peak, 280 MB file |
-| `imm`, `xrefs`, `disasm`, `mem`, `notes` | 0.05 to 0.2 s | small |
-| Ghidra export (tables, then every function decompiled) | running: see `engine.py status` | |
+| Instruction index (`engine.py index`: 9.8 M instructions, both code sections) | 38 s with the database, 117 s without | 150 MB peak, 280 MB file |
+| Ghidra export: tables (295,050 functions, 1.32 M references, 32,425 strings, 18,047 labels, 339 types) | 153 s | 0.8 GB |
+| Ghidra export: every function decompiled, 6 threads (295,016 ok, 34 failed) | 1,110 s | 1.65 GB peak; database 172 MB |
+| `imm`, `xrefs`, `disasm`, `mem`, `notes`, `callers`, `find`, `at` | 0.05 to 0.2 s | small |
+| `decomp` of one function | 0.3 s | small |
+| `grep` over all decompiled code | 1.2 s | small |
 
 The analysis ran 2,450 s only after its process stopped being power-throttled: at BelowNormal priority Windows 11
 gave it 0.6 s of CPU in 30 s (components pull request 139 removes that throttling for every scheduler job).
