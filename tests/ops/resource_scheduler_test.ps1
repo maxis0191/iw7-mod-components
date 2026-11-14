@@ -310,7 +310,8 @@ if ($RetainedReleaseSourceOnly) {
     }
     try {
         $legacy=@(
-            '    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner',
+            # Named resources (12 Nov 2026) pass the caller's -Resources/-Cores/-Long through, as the retained form does.
+            '    $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner @private:jobNamed',
             '    $process=Get-Process -Id $PID','    $priority=$process.PriorityClass','    try {',
             '        $process.PriorityClass=''BelowNormal''','        & $Body','    } finally {',
             '        $process.PriorityClass=$priority','        Exit-IW7ResourceLease -Token $lease.Token','    }','}'

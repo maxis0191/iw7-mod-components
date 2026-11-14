@@ -576,6 +576,18 @@
       ]
     },
     {
+      "id": "resource_scheduler_retained_release_source_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_test.ps1",
+        "-RetainedReleaseSourceOnly"
+      ]
+    },
+    {
       "id": "resource_scheduler_queue_test",
       "command": [
         "pwsh",
@@ -595,6 +607,17 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_scheduler_admission_lock_test.ps1"
+      ]
+    },
+    {
+      "id": "resource_scheduler_reclaim_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_reclaim_test.ps1"
       ]
     },
     {

@@ -241,6 +241,33 @@ the new one was granted at 16 s. Unit test: `tests/ops/resource_scheduler_admiss
 Callers on an older core still list processes under the lock and still die after 10 s on it: they take the fix
 with a new bootstrap (server) or workspace (SDK).
 
+### Finished sessions are reclaimed even when nobody is granted - 2026-11-12
+
+Why. At 04:08 on 12 Nov the registry held two shareable Runtime leases whose servers had died: 'Voice
+certification' (owner pwsh and server both gone) and 'gamelab headless session' (server gone, owner pwsh alive: a
+runner whose release had failed, now queued for its next session). A native build at the head of the queue and 28
+requests behind it waited for them for over 2 hours. Two faults: every request removed the dead lease in memory but
+only a grant saved `leases.json`, and every request was refused (behind the very leases it had just removed), so
+nothing was ever saved; and a lease whose owner is alive was kept forever, even with its session over.
+
+Now (`Remove-IW7FinishedRuntimeLeases`, `Enter-IW7ResourceLease`):
+
+- A Runtime lease whose owner process and every registered child are gone (by PID and creation time) and with no
+  process in its scope is reclaimed, and the registry is saved also when the asking request is refused.
+- A Runtime lease in phase Running whose owner is alive but whose registered children are all gone and with no
+  process in its scope is marked (`ChildlessSinceUtc`, saved); if it is still so after 600 s
+  (`ChildlessSeconds`) it is reclaimed. A child back in scope clears the mark. A Pending lease (no child yet), a
+  lease with an unreadable child identity and a Build/Extract/Analysis lease are never reclaimed by this rule.
+  The runner that held it gets `Resource lease not found` if it registers another child; its release is a no-op.
+  Both rules cover a Runtime lease written by an older core (no `Shareable`, no `Resources`: it holds `machine`
+  under named resources) like any other Runtime lease.
+- Every reclaim is one `reclaim` line in `admission-log.jsonl` (owner, scope, owner PID, held seconds, why).
+
+Proof on a copy of the live registry (12 Nov 04:14): the old core kept 'gamelab headless session' through a
+Build request an hour later; the new core marked it on the first request and reclaimed it 601 s later ("its owner is
+alive but every registered child is gone and nothing has run in its scope for 10m03s"), and the build was granted.
+Test: `tests/ops/resource_scheduler_reclaim_test.ps1` (6 cases; the first fails on the previous core).
+
 Evidence: `tests/ops/resource_scheduler_queue_test.ps1` (23 cases, synthetic callers, clock and memory: arrival
 order, a build not starved by sessions, sessions not starved by builds, aging, memory, expiry, a dead caller, a new
 process keeping the place, short requests and their bound, re-entry, an unreadable queue, older-core leases,
