@@ -418,7 +418,8 @@ std::uint32_t parse_count(const wchar_t* flag, std::uint32_t fallback) {
 // window as `jmp rel32 cave` + int3 fill in the same all-or-nothing transaction as every other patch.
 // A cave has no counter (a counter would change flags). `-agent-capacity-cave-fault [mask]` replaces the cave bytes of
 // the caves in the mask (bit k = cave k of the table; no value = all) by `ud2`: proof that a cave runs, by a crash
-// inside it (a test switch; without it nothing here is written differently).
+// inside it (a test switch; the environment variable IW7_AGENT_CAPACITY_CAVE_FAULT=<mask> does the same; without either
+// nothing here is written differently).
 struct cave_fixup { std::uint32_t offset, end; std::uintptr_t target; };
 struct cave_spec {
     std::uintptr_t window_start;
@@ -486,7 +487,10 @@ void plan_caves() {
     std::size_t total = 0;
     for (const auto& c : cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     code_region = reserve_code(total);
-    const auto fault = parse_count(L"-agent-capacity-cave-fault", 0xFFFFFFFFu);
+    auto fault = parse_count(L"-agent-capacity-cave-fault", 0xFFFFFFFFu);
+    wchar_t from_env[16]{};  // the game-lab plans pass only whitelisted flags: the same switch as an environment variable
+    if (!fault && GetEnvironmentVariableW(L"IW7_AGENT_CAPACITY_CAVE_FAULT", from_env, 16) && from_env[0])
+        fault = static_cast<std::uint32_t>(std::wcstoul(from_env, nullptr, 10));
     std::size_t k = 0;
     for (const auto& c : cave_table) {
         if (k < 32 && (fault >> k) & 1u) cave(c.window_start, c.old_bytes, {0x0F, 0x0B}, {});
