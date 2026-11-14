@@ -237,14 +237,14 @@ try {
     $record = Get-Content -LiteralPath (Join-Path $images.relay.Folder 'voice-certify-build.json') -Raw | ConvertFrom-Json
     Assert ($record.relay.patchSHA256 -ceq $pin.PatchSHA256 -and $record.overlays.voiceRelay -eq $true -and $record.voiceTestSHA256 -ceq $relayState.VoiceCertifyOverlay.Files[0].AfterSHA256) 'Relay record content differs.'
 
-    $server = Join-Path $sandbox 'server'; $peer = Join-Path $server 'agent-peer'; $clientA = Join-Path $sandbox 'client'
-    foreach ($root in @($server, $peer, $clientA)) { [IO.Directory]::CreateDirectory((Join-Path $root 'iw7-mod')) | Out-Null; [IO.File]::WriteAllText((Join-Path $root 'iw7_ship.exe'), 'x') }
-    foreach ($root in @($server, $peer)) { [IO.File]::WriteAllText((Join-Path $root 'iw7-mod\paris-isolated-lab.marker'), 'iw7-paris-isolated-lab-v1') }
+    $server = Join-Path $sandbox 'server'; $clientA = Join-Path $sandbox 'a'; $clientB = Join-Path $sandbox 'b'
+    foreach ($root in @($server, $clientA, $clientB)) { [IO.Directory]::CreateDirectory((Join-Path $root 'iw7-mod')) | Out-Null; [IO.File]::WriteAllText((Join-Path $root 'iw7_ship.exe'), 'x') }
+    foreach ($root in @($server, $clientA, $clientB)) { [IO.File]::WriteAllText((Join-Path $root 'iw7-mod\paris-isolated-lab.marker'), 'iw7-paris-isolated-lab-v1') }
     foreach ($map in @('cp_zmb', 'cp_rave', 'mp_frontier')) { [IO.File]::WriteAllText((Join-Path $server "$map.ff"), 'x') }
     $harness = Join-Path $repo 'ops/voice-certify/Invoke-VoiceCertify.ps1'
     foreach ($case in @(@('relay', $false, $true), @('base', $true, $true), @('relay', $true, $false), @('base', $false, $false))) {
         $baseline = [bool]$case[1]
-        $output = & $harness -ServerRoot $server -ClientARoot $clientA -LabImage $images[$case[0]].Image -OutputRoot (Join-Path $sandbox 'evidence') -Baseline:$baseline -DryRun
+        $output = & $harness -ServerRoot $server -ClientARoot $clientA -ClientBRoot $clientB -LabImage $images[$case[0]].Image -OutputRoot (Join-Path $sandbox 'evidence') -Baseline:$baseline -DryRun
         $problems = @($output | Where-Object { $_ -match '^\s+! .*(manifest|overlay|voice relay|image)' })
         Assert (($problems.Count -eq 0) -eq $case[2]) "Invoke-VoiceCertify preflight decision differs for the $($case[0]) image (Baseline=$($case[1])): $($problems -join ' | ')"
     }
