@@ -493,8 +493,7 @@ void plan_caves() {
         else cave(c.window_start, c.old_bytes, c.cave_bytes, c.fixups);
         ++k;
     }
-    if (fault) console::info("[agent capacity] cave fault switch: mask %X (ud2 instead of the instruction)
-", fault);
+    if (fault) console::info("[agent capacity] cave fault switch: mask %X (ud2 instead of the instruction)\n", fault);
 }
 
 void check_guards() {
