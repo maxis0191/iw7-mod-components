@@ -279,3 +279,14 @@ engine's longjmp unwinds through the grown frame and reads its unwind data and G
 **Not in the formula.** Loop B's list (`FUN_1404406B0`/`E0`) is a pool of 0x8FE = 2,302 links, so its firm bound is not the sentient
 count; the formula holds `slots` entries from each loop. A firm-bound X (76,096 bytes at 100 agents) would also work; the constant
 is the one function `frame_extra()`.
+
+### Frame grow proof (15 Nov 2026, components build `dfabf68`, headless, one lab client)
+
+| Run | Result |
+| --- | --- |
+| `fg-24` (held at 24, plan of `cave-ok`) | PASS 13/13 steps, 5/5 expectations, 24 agents alive, 144 hits on the bot, no crash; log `frame grow of 1403E61B0: extra 7136 bytes, 23 fields, probe caves 1`, patches=965, caves=49 |
+| `h7` (full plan to 78) | PASS 22/22 steps, 9/9 expectations, 78 agents alive (peak 78, 78 within 1500, killall 78), no crash. h6 died at the same step on the cookie check. Frame at 24 alive (400 frames): mean 4.15 ms, median 3.85, p99 6.88; at 78 alive: mean 10.64, median 10.06, p99 16.51, max 31.1 |
+| `fg-unwind` | armed (`unwind probe armed: 60 s`), but `FUN_1403E5700` was never called in the 24-agent run, so no error was raised: the unwind data is rewritten and checked offline only (decoded before and after), not exercised in the game |
+
+Note: the agent count of the engine is 100 in every run (the held-at-24 plan only holds the cap), so X was 7136 in all three.
+Build fault fixed on the way: the build script copied only the first `.inc`; `Build-Voice.ps1` and `product.json` now list the two frame tables.
