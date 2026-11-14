@@ -322,3 +322,16 @@ sentient count. Per array: start, stride, room in entries up to the cookie and u
 OVERRUNS ABOVE N / UNKNOWN under `-agent-capacity 100`. A reading aid (linear stack model, bound heuristics; every OVERRUNS and UNKNOWN is read in the
 decompile). Result of 15 Nov 2026 over the three ranges: `a14-stack-arrays.md` (notes folder): 247 candidates by frame and cookie, 48 with such a loop or
 iterator, SAFE 9, OVERRUNS 3 (the three known, all handled), UNKNOWN 36 (14 needing eyes).
+
+
+### Measured state after a14 (15 Nov 2026, components `claude/capacity-78-hardening`, build `f7660f8`, headless, one lab client)
+
+**Works in the running game (measured):**
+- All three frame-grown functions (`FUN_1403E61B0`, `FUN_140ADB8E0`, `FUN_140ADDED0`) are applied at start (log: `frame grow of 1403E61B0: extra 7136 bytes, 23 fields, probe caves 1`, `140ADB8E0: extra 1216 bytes, 28 fields, probe caves 0`, `140ADDED0: extra 2432 bytes, 40 fields, probe caves 1`; `patches=1040 caves=50`).
+- Held at 24 agents with these patches (`capacity-agents-held24-headless.json`, the `fg-24` plan now in the repository): PASS 13/13 steps, 5/5 expectations, 24 alive, no crash.
+- The unwind data of `FUN_1403E61B0` is exercised for the first time (`capacity-agents-unwind-headless.json`, run `h8-unwind`): at 78 alive the probe raised `Com_Error(ERR_DROP)` from inside `FUN_1403E6B10` (a callee only `FUN_1403E61B0` calls; 163,046 calls of `FUN_1403E5700` and 110,003 of `FUN_1403E6B10` had run before it); the engine handled it as an ERR_DROP on a dedicated server (`==== ShutdownGame (1) ====`, then `Loading zone cp_frontend`), the error text `agent capacity unwind probe` is in the budget meter's last-error record, and there is no crash dump. The first try (probe on `FUN_1403E5700` only, build `4d0725d`) never raised and no log line shows why (the second build's counters show both callees are called continuously at 78, so the cause is not that they were not reached; not found); the second build hooks both callees, logs every first call and prints the call counts when the command runs.
+- The soak and the dismemberment run: `docs/ZOMBIE-CAPACITY.md` of the server repository, section "a14".
+
+**Built, not proven:** the unwind data of `FUN_140ADB8E0` and `FUN_140ADDED0` has been checked offline (decoded before and after, self-check for every agent count) and the functions run at 78 without a crash, but no error has been raised through them (the probe covers `FUN_1403E61B0` only: its callees `FUN_140ADBC10` / `FUN_140ADB7A0` (`FUN_140ADB8E0`) and `FUN_140ADCF00` (`FUN_140ADDED0`) are called by those functions alone and are the next probe targets). Whether `FUN_140ADB8E0` or `FUN_140ADDED0` ever receive more than 71 candidates in a run is not measured.
+
+**Does not exist:** a scan verdict for the 36 UNKNOWN functions of `a14-stack-arrays.md` (14 need a reading of the decompile); the A8 collector's caller `FUN_140B69E20` (a 6-int stack array, outside the scan ranges); a frame-grown save archive (`FUN_140B30730` loops over a hard-coded 66 sentients).
