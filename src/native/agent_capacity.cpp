@@ -409,6 +409,102 @@ std::uint32_t parse_count(const wchar_t* flag, std::uint32_t fallback) {
     return result;
 }
 
+// ---- 5. code caves: an instruction that must grow is moved, with its neighbours, into a cave --------------------------
+// Planned offline by ops/engine/cave_plan.py (docs/CAVE-REWRITER.md): `agent_capacity_caves.inc` holds, per cave, the
+// stock bytes of a window of whole instructions (5 bytes or more), the cave bytes (the same instructions, one of them
+// re-encoded, rip-relative fields still holding their stock displacement) and the fixups {offset of the 32-bit field,
+// offset of the instruction end, absolute target}. At start: check the stock window, copy the cave bytes into executable
+// memory within 2 GB, re-base each fixup (new = target - (cave address + end)), append `jmp rel32` back, and queue the
+// window as `jmp rel32 cave` + int3 fill in the same all-or-nothing transaction as every other patch.
+// A cave has no counter (a counter would change flags). `-agent-capacity-cave-fault [mask]` replaces the cave bytes of
+// the caves in the mask (bit k = cave k of the table; no value = all) by `ud2`: proof that a cave runs, by a crash
+// inside it (a test switch; the environment variable IW7_AGENT_CAPACITY_CAVE_FAULT=<mask> does the same; without either
+// nothing here is written differently).
+struct cave_fixup { std::uint32_t offset, end; std::uintptr_t target; };
+struct cave_spec {
+    std::uintptr_t window_start;
+    std::vector<std::uint8_t> old_bytes, cave_bytes;
+    std::vector<cave_fixup> fixups;
+};
+const std::vector<cave_spec> cave_table = {
+#include "agent_capacity_caves.inc"
+};
+buffer code_region;
+std::size_t code_used{};
+std::size_t caves_planned{};
+
+buffer reserve_code(std::size_t bytes) {
+    const auto committed = (bytes + 4095) & ~std::size_t(4095);
+    for (unsigned attempt = 0; attempt < 4096; ++attempt) {
+        const auto wanted = 0x150000000ull + static_cast<std::uintptr_t>(attempt) * 0x10000;
+        auto memory = VirtualAlloc(reinterpret_cast<void*>(wanted), committed, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        if (!memory) continue;
+        std::memset(memory, 0xCC, committed);
+        return {reinterpret_cast<std::uintptr_t>(memory), committed};
+    }
+    throw std::runtime_error("agent capacity: no code memory within 2 GB of the image");
+}
+
+void cave(std::uintptr_t window_start, const std::vector<std::uint8_t>& old_bytes, const std::vector<std::uint8_t>& cave_bytes,
+          const std::vector<cave_fixup>& fixups) {
+    const auto length = old_bytes.size();
+    if (length < 5 || length > 64 || cave_bytes.empty()) throw std::runtime_error("agent capacity: bad cave window");
+    readable(window_start, static_cast<unsigned>(length));
+    if (std::memcmp(reinterpret_cast<void*>(window_start), old_bytes.data(), length)) {
+        char text[96];
+        sprintf_s(text, "agent capacity: the shipped code differs in the cave window at %llX", static_cast<unsigned long long>(window_start));
+        throw std::runtime_error(text);
+    }
+    const auto size = (cave_bytes.size() + 5 + 15) & ~std::size_t(15);
+    if (code_used + size > code_region.bytes) throw std::runtime_error("agent capacity: code cave memory exhausted");
+    const auto at = code_region.data + code_used;
+    code_used += size;
+    auto* out = reinterpret_cast<std::uint8_t*>(at);
+    std::memcpy(out, cave_bytes.data(), cave_bytes.size());
+    for (const auto& f : fixups) {
+        std::int32_t rel{};
+        if (f.offset + 4 > cave_bytes.size() || f.end > cave_bytes.size() || f.end < f.offset + 4 ||
+            !relative32(f.target, at + f.end, rel))
+            throw std::runtime_error("agent capacity: cave fixup out of range");
+        std::memcpy(out + f.offset, &rel, 4);
+    }
+    std::int32_t back{}, forth{};
+    if (!relative32(window_start + length, at + cave_bytes.size() + 5, back) || !relative32(at, window_start + 5, forth))
+        throw std::runtime_error("agent capacity: cave is not within 2 GB of its window");
+    out[cave_bytes.size()] = 0xE9;
+    std::memcpy(out + cave_bytes.size() + 1, &back, 4);
+    // the window: jmp rel32 to the cave, the rest int3 (checked against the stock bytes by add1)
+    std::uint8_t window[64];
+    window[0] = 0xE9;
+    std::memcpy(window + 1, &forth, 4);
+    std::memset(window + 5, 0xCC, length - 5);
+    for (std::size_t i = 0; i < length; ++i) add1(window_start + i, old_bytes[i], window[i]);
+    // one line a cave (short tables only): a fault at an address in cave memory maps back to its window by this range
+    if (cave_table.size() <= 32)
+        console::info("[agent capacity] cave %zu: window %llX+%zu -> cave %llX..%llX\n", caves_planned,
+            static_cast<unsigned long long>(window_start), length, static_cast<unsigned long long>(at),
+            static_cast<unsigned long long>(at + cave_bytes.size() + 5 - 1));
+    ++caves_planned;
+}
+
+void plan_caves() {
+    if (cave_table.empty()) return;
+    std::size_t total = 0;
+    for (const auto& c : cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
+    code_region = reserve_code(total);
+    auto fault = parse_count(L"-agent-capacity-cave-fault", 0xFFFFFFFFu);
+    wchar_t from_env[16]{};  // the game-lab plans pass only whitelisted flags: the same switch as an environment variable
+    if (!fault && GetEnvironmentVariableW(L"IW7_AGENT_CAPACITY_CAVE_FAULT", from_env, 16) && from_env[0])
+        fault = static_cast<std::uint32_t>(std::wcstoul(from_env, nullptr, 10));
+    std::size_t k = 0;
+    for (const auto& c : cave_table) {
+        if (k < 32 && (fault >> k) & 1u) cave(c.window_start, c.old_bytes, {0x0F, 0x0B}, {});
+        else cave(c.window_start, c.old_bytes, c.cave_bytes, c.fixups);
+        ++k;
+    }
+    if (fault) console::info("[agent capacity] cave fault switch: mask %X (ud2 instead of the instruction)\n", fault);
+}
+
 void check_guards() {
     for (const auto& pool : {agent_pool, sentient_pool, table8, table20, parts_pool, ai_pools[0].storage, ai_pools[1].storage})
         for (unsigned i = 0; i < 16; ++i)
@@ -439,6 +535,7 @@ public:
         plan_client();
         plan_parts();
         plan_ai_pool();
+        plan_caves();
         std::sort(plan.begin(), plan.end(), [](const patch& a, const patch& b) { return a.address < b.address; });
         for (std::size_t i = 1; i < plan.size(); ++i)
             if (plan[i - 1].address + plan[i - 1].width > plan[i].address)
@@ -462,8 +559,8 @@ public:
             game::Dvar_RegisterString("scr_default_maxagents", value.data(), game::DVAR_FLAG_NONE, "Agents this server can hold");
             game::Dvar_RegisterInt("agent_capacity", L.agents, L.agents, L.agents, game::DVAR_FLAG_NONE, "Engine agent records");
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
-            console::info("[agent capacity] agents=%u characters=%u map_start=%u parts=%u patches=%zu\n",
-                L.agents, L.characters, L.map_start, L.parts, plan.size());
+            console::info("[agent capacity] agents=%u characters=%u map_start=%u parts=%u patches=%zu caves=%zu\n",
+                L.agents, L.characters, L.map_start, L.parts, plan.size(), caves_planned);
         }, scheduler::main);
         scheduler::loop(check_guards, scheduler::main, 500ms);
     }

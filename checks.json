@@ -325,6 +325,22 @@
       ]
     },
     {
+      "id": "cave_plan_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/cave_plan_test.py"
+      ]
+    },
+    {
+      "id": "agent_capacity_sites_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/agent_capacity_sites_test.py"
+      ]
+    },
+    {
       "id": "engine_xref32_test",
       "command": [
         "python",
