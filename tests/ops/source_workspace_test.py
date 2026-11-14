@@ -422,5 +422,56 @@ class WorkspaceTests(unittest.TestCase):
         with mock.patch.object(w, 'git', return_value=json.dumps(lock)), self.assertRaisesRegex(ValueError, 'manifest too large'):
             w.read_dependencies(self.repo, revision, dict(dependencies=[]), archive)
 
+    # Folder patterns (12 Nov 2026): "<folder>/*.<ext>" owns that folder's files, so two branches that each add one file
+    # there (a changelog entry, a plan step) do not both edit product.json.
+    def add(self, rel, text):
+        (self.repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (self.repo / rel).write_text(text)
+
+    def test_folder_pattern_owns_its_files_and_nothing_else(self):
+        self.add('docs/changelog/a.md', '## a\n')
+        self.add('docs/changelog/b.md', '## b\n')
+        self.contract['exports'] = ['docs/changelog/*.md', 'hello.py']
+        sha = self.commit()
+        boundary = self.boundary()
+        self.assertEqual(boundary.check(self.repo)['exports'], 3)
+        output = self.root / 'patterned'
+        result = w.prepare(self.repo, sha, {}, output)
+        self.assertEqual(sorted(e['path'] for e in result['files']), ['docs/changelog/a.md', 'docs/changelog/b.md', 'hello.py'])
+        self.add('docs/changelog/sub/c.md', '## c\n')        # a subfolder is not owned
+        self.add('docs/changelog/c.txt', 'c\n')              # another extension is not owned
+        for rel in ('docs/changelog/sub/c.md', 'docs/changelog/c.txt'):
+            self.run_git('add', rel)
+            with self.assertRaisesRegex(ValueError, 'Unclassified'):
+                boundary.check(self.repo)
+            self.run_git('rm', '-q', '--cached', rel)
+
+    def test_folder_pattern_refuses_a_path_also_listed_and_a_bad_pattern(self):
+        self.add('docs/changelog/a.md', '## a\n')
+        for exports, message in ((['docs/changelog/*.md', 'docs/changelog/a.md', 'hello.py'], 'by name and by pattern'),
+                                 (['docs/*/x.md', 'hello.py'], 'pattern must be'), (['docs/changelog/a*', 'hello.py'], 'pattern must be')):
+            self.contract['exports'] = exports
+            self.commit()
+            with self.assertRaisesRegex(ValueError, message):
+                self.boundary().check(self.repo)
+
+    def test_two_branches_adding_adjacent_fragments_merge_without_conflict(self):
+        self.add('docs/changelog/a.md', '## a\n')
+        self.contract['exports'] = ['docs/changelog/*.md', 'hello.py']
+        self.commit()
+        base = self.run_git('rev-parse', 'HEAD')
+        tips = []
+        for name in ('unpushed-work-is-checked.md', 'unpushed-work-is-counted.md'):     # names that sort next to each other
+            self.run_git('checkout', '-q', '--detach', base)
+            self.add('docs/changelog/' + name, '## ' + name + '\n')
+            self.run_git('add', '.')
+            self.run_git('-c', 'commit.gpgsign=false', 'commit', '-qm', name)
+            tips.append(self.run_git('rev-parse', 'HEAD'))
+        merged = subprocess.run(['git', '-C', str(self.repo), 'merge-tree', '--write-tree', tips[0], tips[1]], capture_output=True, text=True)
+        self.assertEqual(merged.returncode, 0, merged.stdout)
+        self.run_git('checkout', '-q', '--detach', tips[0])
+        self.run_git('-c', 'commit.gpgsign=false', 'merge', '-q', '--no-edit', tips[1])
+        self.assertEqual(self.boundary().check(self.repo)['exports'], 4)
+
 if __name__ == '__main__':
     unittest.main()

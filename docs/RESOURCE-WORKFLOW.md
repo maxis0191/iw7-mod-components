@@ -7,17 +7,22 @@ IW7 product shares on one Windows account. In short, as of 2026-11-10:
   shareable is admitted while the declared and the measured free memory allow it, with a reserve kept for the
   owner's desktop. This is the normal case; read [Shareable runtime leases](#shareable-runtime-leases---2026-11-10)
   first.
-- **Builds, extractions and analyses are exclusive.** One at a time on the whole account, and never beside a
-  live session. A check or a script that can wait uses `Invoke-IW7QueuedResourceJob -WaitForSlotSeconds <n>`;
-  callers in the server repository pass `-WaitForSlotSeconds`. Never write a retry loop around a refusal.
+- **Exclusivity follows what is really shared (named resources, since 2026-11-12).** A request names what it
+  needs alone (its work folder or bench root always; a ZoneTool folder, a Ghidra project, the GPU, the machine
+  when it says so) and runs beside every lease that names nothing in common with it, when memory fits. A native
+  compile, a zone build, a dump, headless sessions and an analysis run side by side. Read
+  [Named resources](#named-resources---2026-11-12) first. A check or a script that can wait uses
+  `Invoke-IW7QueuedResourceJob -WaitForSlotSeconds <n>`; callers in the server repository pass
+  `-WaitForSlotSeconds`. Never write a retry loop around a refusal.
 - **Waiting is served in arrival order** (since 2026-11-11). A refused request that asks again keeps its place;
   a waiting build stops new sessions so the running ones drain, and the sessions that waited behind it go before
   any newer build. Read [Waiting order](#waiting-order---2026-11-11). `-Action Status` shows the queue,
   `-Action Waits` the waits as data.
-- **An exclusive (not shareable) Runtime lease** still exists for scenarios that cannot share (a declared base
-  client image, the voice certification). It excludes everything else while held.
-- **Outside the shareable admission, memory figures are telemetry only** (owner update of 2026-10-13): no
-  estimate, reserve or percentage refuses or stops an exclusive job. Fresh telemetry is still required; missing
+- **An exclusive (not shareable) Runtime lease** that names nothing holds the machine (a declared base client
+  image, the voice certification). One that names its resources (`-Resources gpu`) runs beside what it does not
+  share.
+- **A request admitted alone is never refused for memory** (owner update of 2026-10-13): the first lease on an
+  empty machine is granted whatever the numbers. Beside other leases every request is admitted by memory. Fresh telemetry is still required; missing
   or impossible telemetry and unknown process identities are diagnosed, they are not a capacity refusal.
   The compatibility fields `Allowed=true`, `PhysicalReserve=0`, `CommitReserve=0`, `HighWater=false` apply to
   valid telemetry and `Policy=TelemetryOnly` identifies this decision; `Memory-Budget.ps1` uses the same policy.
@@ -37,6 +42,82 @@ mechanisms (leases, owned processes, the retained-release form, telemetry). Wher
 base client, `AGENTS.md` (first section) takes precedence: tests run from bench roots. The October policy prose,
 its validation and rollout records are in
 [archive/RESOURCE-WORKFLOW-HISTORY-2026-10.md](archive/RESOURCE-WORKFLOW-HISTORY-2026-10.md).
+
+## Named resources - 2026-11-12
+
+Why. "A build needs the machine alone" stalled the machine three times on 11-12 Nov 2026 (admission log): at 21:45
+one 1.5 GB headless soak session held its lease while 12 builds and 10 sessions waited up to 55 minutes with
+12.8 GB free; at 23:30 a native C++ compile held the single build reservation for about 90 minutes while 21
+requests waited, nearly all ZoneTool builds and dumps that share nothing with a compile (10.8 GB free; a client
+session gave up after 60 minutes); at 01:30 a Ghidra analysis (kind Analysis, hours long) held the machine 40+
+minutes while 17 builds waited, one for 87 minutes. `tests/ops/resource_scheduler_resources_test.ps1` replays the
+three from the log: they fail on the core before this change and pass on it.
+
+What each kind of work really shares (read from the code and the log):
+
+| Work | Writes or holds alone | Shares with others |
+|---|---|---|
+| native compile (MSBuild, cl, link) | its build tree (`build/`, `runtime/` of its worktree) | memory, cores |
+| ZoneTool build or dump (`zt.ps1`) | its work folder: `zonetool.exe` runs there and writes `zone/`, `dump/` there | memory; reads the stock game files (read only) |
+| headless session | its bench root, a random loopback port | memory |
+| client session | its bench root, the GPU (one window) | memory |
+| Ghidra analysis | its Ghidra project | memory (Java heap), mostly one core |
+| policy and unit tests (`-ShortSeconds`) | their own `runtime/` folder | memory |
+
+Nothing in this table needs "the machine". The rule:
+
+1. **Names.** A request carries `-Resources <names>`: `class` or `class:value` (letters, digits, `.`, `_`, `-`
+   for the class; a path value is canonical, so `zonetool:C:\w\zt` equals `zonetool:c:\w\zt\`). Two names
+   conflict when their classes are equal and a value is missing or `*`, or both values are paths that overlap
+   (one inside the other), or the values are equal. `machine` conflicts with every name. Every request also holds
+   its own scope: `runtime:<scope>` for a Runtime lease, `work:<scope>` for the others. Names in use: `machine`,
+   `gpu`, `analysis`, `zonetool:<folder>`, `native-build:<tree>`, `ghidra:<project>`; any other class is allowed.
+2. **Admission.** A new lease is refused (retryable: `Resource busy: <Kind> owned by <owner>. It holds '<name>',
+   which this request needs too ('<name>').`) only by a held lease that names a conflicting resource. Beside other
+   leases it must fit in memory: the declared total stays within the budget (total minus the 8 GB reserve) and
+   measured free memory, minus what running leases have declared and not taken yet, covers it. A build's or an
+   analysis's taken memory is the working set of its owner and every process below it; a session's is its
+   registered processes. `-Cores <n>` (optional) are counted against the logical processors. Alone on the machine
+   a request is admitted whatever the memory, as before.
+3. **Defaults for callers that name nothing** (nobody has to change at once): a shareable Runtime holds its bench
+   root; a Build or an Extract its work folder; an Analysis its work folder and `analysis` (one undeclared analysis
+   at a time); an exclusive Runtime `machine`. A lease or a queue ticket written by a core before this change has
+   no `Resources` field and holds `machine` (that core assumed it was alone and still refuses everything while
+   another lease is held, so its holders keep their old guarantees).
+4. **Waiting order.** An older ticket holds a request back only when it names a conflicting resource (arrival order
+   between jobs that cannot run together; a short request may still pass within the 300 s bound), or when it has
+   waited the aging time (600 s), is not declared long, and would no longer fit in memory beside the request (later
+   requests stop taking memory so the machine drains for it), or when it was written by an older core and has
+   waited the aging time. An older ticket that cannot fit even when every running lease ends never holds anything
+   back. A holder that releases and asks again waits behind older conflicting tickets like anyone.
+5. **Long holders.** `-Long` marks a soak, an analysis or a long compile. Its lease never delays requests it shares
+   nothing with (rule 2), and its waiting ticket never stops later requests for memory (rule 4).
+6. **Compilers belong to the lease that started them.** A compiler, ZoneTool or Java process below a held lease's
+   owner or registered process (parent links, each parent no younger than its child) is that lease's own: it no
+   longer refuses other admissions, and it keeps only its own lease from being released. One that no lease started
+   still refuses every admission (`An existing compiler/extractor/Java analysis is running`).
+
+`-Action Status` shows what each lease `Holds`, and for each waiting ticket its `Resources`, `Long` and a `Why` that
+names the holder and the shared name, or the memory numbers. The admission log records the names and the declared
+memory of every grant and refusal.
+
+How a caller declares (examples):
+
+```powershell
+# a ZoneTool run in its own work folder (zt.ps1)
+Enter-IW7ResourceLease -Scope $Work -Kind Build -PhysicalBytes 6GB -CommitBytes 8GB -Owner $Owner -Resources "zonetool:$Work"
+# a native compile of a worktree
+Invoke-IW7ResourceJob -Scope $repo -Owner 'native build' -PhysicalBytes 4GB -CommitBytes 6GB -Resources "native-build:$repo" -Body { ... }
+# an hours-long Ghidra analysis of one project
+Invoke-IW7ResourceJob -Scope $repo -Kind Analysis -Owner 'engine database analyze' -PhysicalBytes 10GB -CommitBytes 12GB -Resources "ghidra:$project" -Long -Body { ... }
+# a client session (needs the GPU, not the machine)
+Enter-IW7ResourceLease -Scope $bench -Kind Runtime -PhysicalBytes 5GB -CommitBytes 6GB -Owner 'client' -BaseClientImage $exe -Resources gpu
+# a measurement that must have the machine alone
+Enter-IW7ResourceLease ... -Resources machine
+```
+
+Callers that may load an older core feature-detect with
+`(Get-Command Enter-IW7ResourceLease).Parameters.ContainsKey('Resources')` and pass the names only when present.
 
 ## Waiting order - 2026-11-11
 
@@ -86,6 +167,9 @@ The rules, all applied inside the admission lock:
    5.5 GB and running shareable sessions hold 0.0 GB, so waiting can give at most 5.5 GB (...). Not queued. ...`
    (until 11 Nov only a request above the budget was refused, with a `Resource busy:` text that runners waited
    on until their bound). `-RequireNewLease` refusals are not queued.
+   A request above the declared budget is refused at once even while an exclusive build or session holds the
+   machine (before 11 Nov evening it was queued behind the holder and refused only on its next ask). Below the
+   budget, while an exclusive lease holds, it waits: the holder's memory comes back when it ends.
 7. The queue is advisory: an unreadable or foreign `queue.json` reads as empty, a queue or log write that fails
    is ignored, and no queue error ever refuses, grants or removes a reservation.
 
@@ -123,6 +207,39 @@ new runner process); nothing breaks in between.
 
 Callers that poll by reading Status and asking only when nothing is held (the SDK's `zt.ps1` before 11 Nov) never
 get a ticket and are starved as before: callers ask `Enter-IW7ResourceLease` itself, every 5 to 60 s.
+
+### The admission lock is part of the wait - 2026-11-11, evening
+
+Why. Every request, refusal, release and Status takes `admission.lock` (an exclusive handle on a file in the
+registry folder; every core, old and new, uses the same file). Until this change a caller that did not get it in
+10 s threw `Resource admission lock busy; retry later.`, a text no runner waits on, so queued callers died after
+waiting their turn: the engine loop after 1,718 s, a headless runner after 23 min, the SDK `zt.ps1` after 9 min.
+Measured on the live registry (19 queued callers): the lock was busy 89 % of a minute (57 holds, median 0.73 s,
+longest 3.0 s), because each holder listed the machine's ~700 processes through WMI (0.4-0.8 s, more under load)
+and scanned them once per ticket and per lease inside the lock. Reproduced with 16 callers asking every 5 s on a
+test registry with the live queue: 23 of 97 asks died on the busy lock, the lock was busy 96.5 % of the time.
+
+What changed (`Invoke-IW7ResourceLock`, `Enter-IW7ResourceLease`, `Get-IW7ResourceStatus`):
+
+- **The process list is taken before the lock** (`Get-IW7ProcessListing`), and the native memory reader is
+  compiled before it. A lease created, or a ticket asked, after the list was taken is never judged finished or
+  gone from it. A list that aged over 3 s while its caller waited is taken again outside the lock (twice at
+  most). Release and child registration keep their list inside the lock (a child may have just started).
+- **Scans are indexed**: one process by PID is a `.Where(...,'First')`, not a pipeline; the scope scan of a lease
+  runs only when it decides whether the lease is finished.
+- **Waiting for the lock is fair and bounded by the caller's queue wait**: new cores first take a named mutex
+  (one per registry folder), which Windows hands over in arrival order, then the file. A request that still has
+  no lock after 60 s gets `Resource busy: the scheduler admission lock is held by other callers (waited 60 s).
+  Continue light work; retry when released.`: every runner and `Invoke-IW7QueuedResourceJob` wait on
+  `Resource busy`, so they ask again. Release, registration and Status wait up to 300 s. The old text is also
+  retryable in `Test-IW7RetryableRefusal`.
+
+Measured after (same 16-caller load): 0 of 152 asks refused for the lock; lock busy 26 % of the time; a hold
+takes 35-60 ms (was 0.4-3 s); after the first two asks of each process, lock wait plus hold is 54 ms median,
+221 ms at the 95th percentile. A lock held 15 s by another caller: the old core's queued caller died at 10.6 s,
+the new one was granted at 16 s. Unit test: `tests/ops/resource_scheduler_admission_lock_test.ps1`.
+Callers on an older core still list processes under the lock and still die after 10 s on it: they take the fix
+with a new bootstrap (server) or workspace (SDK).
 
 Evidence: `tests/ops/resource_scheduler_queue_test.ps1` (23 cases, synthetic callers, clock and memory: arrival
 order, a build not starved by sessions, sessions not starved by builds, aging, memory, expiry, a dead caller, a new
