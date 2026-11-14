@@ -223,6 +223,17 @@ class EngineDb:
     def __init__(self, path):
         import sqlite3
         self.db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        self._starts = self._rows = None
+
+    def function_range(self, address):
+        """(start, end) of the analysed function that contains `address`, or None."""
+        if self._starts is None:
+            rows = self.db.execute("SELECT addr,end FROM functions ORDER BY addr").fetchall()
+            self._starts, self._rows = [r[0] for r in rows], rows
+        i = bisect.bisect_right(self._starts, address) - 1
+        if i >= 0 and address < self._rows[i][1]:
+            return self._rows[i]
+        return None
 
     def into(self, lo, hi):
         out = []
@@ -230,6 +241,40 @@ class EngineDb:
             for at, dst, kind in self.db.execute(f"SELECT at,dst,kind FROM {table} WHERE dst>=? AND dst<?", (lo, hi)):
                 out.append((f"db:{table}/{kind}", at, dst))
         return out
+
+
+class Boundaries:
+    """Instruction starts of the analysed function around an address, to drop byte-scan hits that are not branches.
+
+    A raw scan reads every byte as a possible opcode (`shl rdx, 6` is `48 c1 e2 06`, and `e2 06` looks like a loop).
+    A hit is dropped only when the linear decode of its whole function (from the database's function table) ends
+    exactly at the function's end and the hit is not an instruction start in it; anywhere else it stays."""
+
+    def __init__(self, image, db):
+        self.image, self.db, self.cache = image, db, {}
+
+    def starts(self, address):
+        if self.db is None or not hasattr(self.db, "function_range"):
+            return None
+        fr = self.db.function_range(address)
+        if fr is None or fr[1] - fr[0] > 0x10000:
+            return None
+        if fr[0] not in self.cache:
+            code = self.image.read(fr[0], fr[1] - fr[0])
+            starts, pos = set(), fr[0]
+            while code and pos < fr[1]:
+                got = list(MD.disasm(code[pos - fr[0]:pos - fr[0] + 16], pos, 1))
+                if not got:
+                    starts = None
+                    break
+                starts.add(pos)
+                pos += got[0].size
+            self.cache[fr[0]] = starts if starts is not None and pos == fr[1] else None
+        return self.cache[fr[0]]
+
+    def is_spurious(self, at):
+        starts = self.starts(at)
+        return starts is not None and at not in starts
 
 
 # ------------------------------------------------------------------------------------------------ planning
@@ -319,10 +364,10 @@ def plan(requests, image, db=None, scan=True):
             prev[1].append(r)
         else:
             groups.append([win, [r]])
-    caves = []
+    caves, bounds = [], Boundaries(image, db)
     for win, rs in groups:
         try:
-            caves.append(_cave_for(image, win, rs, db, scan))
+            caves.append(_cave_for(image, win, rs, db, scan, bounds))
         except Refusal as e:
             reasons += e.reasons
     if reasons:
@@ -338,7 +383,7 @@ def _window_from(image, pos):
     return [got[0]]
 
 
-def _cave_for(image, win, rs, db, scan):
+def _cave_for(image, win, rs, db, scan, bounds=None):
     start = win[0].address
     end = win[-1].address + win[-1].size
     why = []
@@ -357,7 +402,11 @@ def _cave_for(image, win, rs, db, scan):
     interior = [i.address for i in win[1:]]
     hits = []
     if scan:
-        hits += raw_branches_into(image, lo, hi)
+        raw = raw_branches_into(image, lo, hi)
+        own = bounds.starts(start) if bounds else None
+        if bounds and (own is None or start in own):  # the decode agrees with the window start: trust it for the hits
+            raw = [h for h in raw if not bounds.is_spurious(h[1])]
+        hits += raw
         hits += data_pointers_to(image, interior)
     if db is not None:
         hits += db.into(lo, hi)

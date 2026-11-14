@@ -190,6 +190,26 @@ class Refusals(unittest.TestCase):
             cp.plan([req(at, new_disp=0x3F08)], img, Db())
         self.assertIn('db:refs/code', str(ctx.exception))
 
+    def test_a_byte_that_only_looks_like_a_branch_is_dropped_with_the_function_decode(self):
+        # shl rdx,6 is 48 c1 e2 06: `e2 06` read as a loop lands inside the next instruction's window
+        code = bytes.fromhex('48c1e206') + bytes.fromhex('2b4c1a14') + bytes.fromhex('83e964') + bytes.fromhex('90909090')
+        img, at = image(code, pad=0)
+
+        class Db:
+            def function_range(self, address):
+                return (BASE, BASE + len(code) + 0x40)
+
+            def into(self, lo, hi):
+                return []
+        refused(self, [req(BASE + 4, new_disp=0x14, force32=True)], img, 'rel8', 'inside the window')
+        (cave,) = cp.plan([req(BASE + 4, new_disp=0x14, force32=True)], img, Db())
+        self.assertEqual(cave['cave_bytes'][:14], '2b8c1a14000000')
+
+        class Desync(Db):  # a function range that does not start on an instruction of the window: no trust
+            def function_range(self, address):
+                return (BASE + 1, BASE + len(code) + 0x40)
+        refused(self, [req(BASE + 4, new_disp=0x14, force32=True)], img, 'rel8')
+
     def test_a_branch_to_the_window_start_is_fine(self):
         code = bytes.fromhex('8b4310') + b'\x90\x90\x90' + b'\x90' * 0x1D + b'\xe9' + struct.pack('<i', -(0x23 + 5))
         img, at = image(code)
