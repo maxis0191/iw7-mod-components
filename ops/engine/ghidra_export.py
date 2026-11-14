@@ -163,6 +163,8 @@ def export_decomp(program, db, threads, deadline, log):
     done = {r[0] for r in db.execute("SELECT addr FROM decomp")}
     fm = program.getFunctionManager()
     todo = [f for f in fm.getFunctions(True) if u(f.getEntryPoint()) not in done and not f.isExternal()]
+    # the game code first; the protector section (obfuscated moved fragments) last
+    todo.sort(key=lambda f: u(f.getEntryPoint()) >= 0x14B2B4000)
     log("decomp todo", len(todo), 0)
     lock = threading.Lock()
     out = []

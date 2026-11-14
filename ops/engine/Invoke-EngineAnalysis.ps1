@@ -3,10 +3,10 @@
 Runs one Ghidra step of the engine database (analyze or export) under the scheduler's Analysis reservation.
 
 .DESCRIPTION
-Ghidra is a Java analysis: the machine runs one at a time, and builds wait for it. This wrapper queues for the
-Analysis slot (arrival order, -WaitForSlotSeconds), runs the Python step with the PyGhidra environment, and
-releases the slot when the step ends. A long export is cut into slices with -MaxMinutes so waiting builds get
-the slot between slices; the export resumes where it stopped.
+The step holds the named resource ghidra:<project> as a long holder (-Long) with its measured memory (analysis
+peak 1.3 GB working set, heap capped at -Heap; the export adds one decompiler process per -Threads), so builds,
+sessions and other analyses run beside it; only another step on the same project waits. The export resumes
+where it stopped; -MaxMinutes bounds one run.
 
   pwsh -File ops/engine/Invoke-EngineAnalysis.ps1 -Step analyze -WaitForSlotSeconds 3600
   pwsh -File ops/engine/Invoke-EngineAnalysis.ps1 -Step export -MaxMinutes 25 -WaitForSlotSeconds 3600
@@ -22,11 +22,11 @@ param(
     [string]$Database,
     [string]$Names,
     [string]$Knowledge = (Join-Path $PSScriptRoot 'knowledge\engine-knowledge.json'),
-    [string]$Heap = '8g',
+    [string]$Heap = '4g',
     [int]$Threads = 6,
     [int]$MaxMinutes = 25,
-    [long]$PhysicalBytes = 10GB,
-    [long]$CommitBytes = 12GB,
+    [long]$PhysicalBytes = 4GB,
+    [long]$CommitBytes = 6GB,
     [Parameter(Mandatory)][ValidateRange(1,86400)][int]$WaitForSlotSeconds,
     [string[]]$Extra = @()
 )
@@ -59,6 +59,7 @@ $log = Join-Path $Lab ("engine\logs\{0}-{1:yyyyMMdd-HHmmss}.log" -f $Step, (Get-
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 $watch = [Diagnostics.Stopwatch]::StartNew()
 Invoke-IW7QueuedResourceJob -Scope $repo -Kind Analysis -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes `
+    -Resources "ghidra:$Project" -Long -Cores ([math]::Max(1, $Threads)) `
     -Owner "engine database $Step" -WaitForSlotSeconds $WaitForSlotSeconds -Body {
         Write-Host ("slot granted after {0:N0} s; log {1}" -f $watch.Elapsed.TotalSeconds, $log)
         & $python @arguments 2>&1 | Tee-Object -FilePath $log | Where-Object { $_ -match '^\{|^done|Error|Exception|^export' }
