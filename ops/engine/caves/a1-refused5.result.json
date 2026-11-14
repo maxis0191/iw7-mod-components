@@ -1,0 +1,79 @@
+{
+ "version": 1,
+ "dry_run": true,
+ "accepted": 5,
+ "refused": 0,
+ "sites": [
+  {
+   "address": "0x140454343",
+   "note": "A.2  FUN_1404542f0@1404542F0 DIRECT: sub eax, dword ptr [rdx + rbx + 0x24]",
+   "status": "accepted",
+   "window_start": "0x140454343",
+   "window_len": 9,
+   "window_kind": "forward",
+   "retargets": 0,
+   "reasons": [],
+   "tried": []
+  },
+  {
+   "address": "0x1404A3AB1",
+   "note": "A.11  FUN_1404a3960@1404A3960 FORM (lea): lea rcx, [rdi + 0x10]",
+   "status": "accepted",
+   "window_start": "0x1404a3aaf",
+   "window_len": 6,
+   "window_kind": "backward",
+   "retargets": 0,
+   "reasons": [],
+   "tried": [
+    {
+     "window": "0x1404a3ab1+7",
+     "kind": "forward",
+     "reasons": [
+      "window 0x1404a3ab1+7: rva32 at 0x1405dd687 reaches 0x1404a3ab5 inside the window (code)"
+     ]
+    }
+   ]
+  },
+  {
+   "address": "0x1404A4A7D",
+   "note": "A.12  FUN_1404a4900@1404A4900 DIRECT: mov dword ptr [rdx + rsi + 0x28], ecx",
+   "status": "accepted",
+   "window_start": "0x1404a4a79",
+   "window_len": 8,
+   "window_kind": "backward",
+   "retargets": 0,
+   "reasons": [],
+   "tried": [
+    {
+     "window": "0x1404a4a7d+9",
+     "kind": "forward",
+     "reasons": [
+      "window 0x1404a4a7d+9: rel8 at 0x1404a4a49 reaches 0x1404a4a81 inside the window (a rel8 branch cannot be retargeted)"
+     ]
+    }
+   ]
+  },
+  {
+   "address": "0x1405ECAE6",
+   "note": "A.13  PlayerCmd_getclosestenemysqdist@1405EC9D0 DIRECT: cmp dword ptr [rdx + rax + 0x24], esi",
+   "status": "accepted",
+   "window_start": "0x1405ecae6",
+   "window_len": 6,
+   "window_kind": "forward",
+   "retargets": 0,
+   "reasons": [],
+   "tried": []
+  },
+  {
+   "address": "0x140AE202D",
+   "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: cmp dword ptr [rbx + rcx + 0x24], eax",
+   "status": "accepted",
+   "window_start": "0x140ae202d",
+   "window_len": 10,
+   "window_kind": "forward",
+   "retargets": 0,
+   "reasons": [],
+   "tried": []
+  }
+ ]
+}
