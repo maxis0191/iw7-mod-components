@@ -445,6 +445,14 @@
       ]
     },
     {
+      "id": "fixture_frame_request_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/fixture_frame_request_test.py"
+      ]
+    },
+    {
       "id": "ui_dump_test",
       "command": [
         "python",

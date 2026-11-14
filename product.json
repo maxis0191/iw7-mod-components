@@ -308,6 +308,7 @@
     "tests/ops/engine_map_test.py",
     "tests/ops/engine_test.py",
     "tests/ops/engine_xref32_test.py",
+    "tests/ops/fixture_frame_request_test.py",
     "tests/ops/fixtures/word_provenance_main_77e.cpp.txt",
     "tests/ops/frame_grow_test.py",
     "tests/ops/hang_report_test.py",
