@@ -28,7 +28,8 @@ std::atomic_bool active{};
 std::string contract = "24";
 
 struct buffer { std::uintptr_t data{}; std::size_t bytes{}; };
-buffer agent_pool, sentient_pool, table8, table20, parts_pool;
+buffer agent_pool, sentient_pool, table8, table20, parts_pool, entity_queue;
+std::size_t queue_references{};
 
 struct patch { std::uintptr_t address{}; unsigned width{}; std::uint32_t before{}, after{}; bool code{true}; };
 std::vector<patch> plan;
@@ -452,6 +453,23 @@ void plan_tables() {
               static_cast<std::uint8_t>(l.table1_offset()), static_cast<std::uint8_t>(l.table1_offset() >> 8), 0, 0, 0xc3});
 }
 
+// ---- 3g. the server's entity queue table ---------------------------------------------------------------------------------
+// Static table at 0x144EB2B70: 42 rows x 0x208 bytes (16 slots x 0x20, ring head +0x200, count +0x204), one row per entity number
+// (clients 0..17, agents from 18). FUN_1405ee9e0 (every server frame) walks rows 0..svs_numclients and then rows 18 .. 17 + the
+// agent count: 100 agents read and write up to row 117, 76 rows past the table's end 0x144EB8090 (the next module's globals; the
+// capacity client died there in its first server frame, 14 Nov). The whole table moves to `characters` zeroed rows. The code is
+// FUN_1405ee500 (clear a row), ee530 (clear all: memset 0x5550), ee550, ee590, ee6e0 (enqueue), ee880, ee960, ee9e0; every
+// access is [row * 0x208 + base + field] with the base loaded by one of the 10 encoded references below (docs: a16 note).
+void plan_entity_queue() {
+    for (auto f : {0x1405EE50Full, 0x1405EE535ull, 0x1405EE556ull, 0x1405EE5B2ull, 0x1405EE6FFull, 0x1405EE968ull, 0x1405EE9F4ull})
+        rip(f, 0x144EB2B70, entity_queue.data);
+    rip(0x1405EEA03, 0x144EB2D70, entity_queue.data + 0x200);                 // loop 1: head of row 0
+    rip(0x1405EEA8A, 0x144EB5200, entity_queue.data + 18 * 0x208 + 0x200);    // loop 2: head of row 18 (the first agent)
+    rva(0x1405EE8B5, 0x4EB2D74, entity_queue.data + 0x204);                   // ee880: count of row 0, image-base relative
+    add(0x1405EE53B, 0x5550, L.queue_bytes());                                // ee530: memset length 42 x 0x208
+    queue_references = 10;
+}
+
 // ---- 3e. hooks for the grown record: zero the new table area, and the bot client's death reset ------------------------
 utils::hook::detour init_record_hook, death_reset_hook;
 
@@ -790,7 +808,7 @@ void plan_caves() {
 }
 
 void check_guards() {
-    for (const auto& pool : {agent_pool, sentient_pool, table8, table20, parts_pool, ai_pools[0].storage, ai_pools[1].storage})
+    for (const auto& pool : {agent_pool, sentient_pool, table8, table20, parts_pool, entity_queue, ai_pools[0].storage, ai_pools[1].storage})
         for (unsigned i = 0; i < 16; ++i)
             if (*reinterpret_cast<const unsigned char*>(pool.data - 16 + i) != 0xA7 ||
                 *reinterpret_cast<const unsigned char*>(pool.data + pool.bytes + i) != 0xA7) {
@@ -813,6 +831,7 @@ public:
         table8 = reserve(L.table8_bytes());
         table20 = reserve(L.table20_bytes());
         parts_pool = reserve(L.parts * 4);
+        entity_queue = reserve(L.queue_bytes());
         build_ai_objects();
         plan_agents();
         plan_archive();
@@ -820,6 +839,7 @@ public:
         plan_parts();
         plan_ai_pool();
         plan_tables();
+        plan_entity_queue();
         plan_fastfail();
         plan_caves();
         std::sort(plan.begin(), plan.end(), [](const patch& a, const patch& b) { return a.address < b.address; });
@@ -848,6 +868,8 @@ public:
             game::Dvar_RegisterString("scr_default_maxagents", value.data(), game::DVAR_FLAG_NONE, "Agents this server can hold");
             game::Dvar_RegisterInt("agent_capacity", L.agents, L.agents, L.agents, game::DVAR_FLAG_NONE, "Engine agent records");
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
+            console::info("[agent capacity] entity queue: rows %u at %p, %zu references\n", L.queue_rows(),
+                reinterpret_cast<void*>(entity_queue.data), queue_references);
             console::info("[agent capacity] fast-fail sites patched to ud2: %zu\n", fastfail_sites);
             for (const auto& set : frame_sets)
                 console::info("[agent capacity] frame grow of %s: extra %u bytes, %zu fields, probe caves %zu\n", set.name, set.extra,
