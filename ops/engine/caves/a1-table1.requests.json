@@ -1,0 +1,331 @@
+[
+ {
+  "address": "0x1403DD7DA",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.1  FUN_1403dd710@1403DD710 DIRECT: cmp dword ptr [rdx + rbx + 0x24], 0"
+ },
+ {
+  "address": "0x140454343",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.2  FUN_1404542f0@1404542F0 DIRECT: sub eax, dword ptr [rdx + rbx + 0x24]"
+ },
+ {
+  "address": "0x14045940D",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.3  FUN_140459360@140459360 FORM (lea): lea rcx, [rbx + 0x10]"
+ },
+ {
+  "address": "0x14045C392",
+  "kind": "bytes",
+  "new_bytes": "488d9c0bf83e0000",
+  "note": "A.4  FUN_14045c340@14045C340 FORM-BIAS (add -> lea): add rbx, rcx  (dry run: the change set's own new bytes)"
+ },
+ {
+  "address": "0x14045C627",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.5  FUN_14045c4c0@14045C4C0 FORM (lea): lea r8, [rbx + 0x10]"
+ },
+ {
+  "address": "0x14045CC82",
+  "kind": "bytes",
+  "new_bytes": "488db41ef83e0000",
+  "note": "A.6  FUN_14045cbf0@14045CBF0 FORM-BIAS (add -> lea): add rsi, rbx  (dry run: the change set's own new bytes)"
+ },
+ {
+  "address": "0x140466BFC",
+  "kind": "disp",
+  "new_disp": 16144,
+  "force32": true,
+  "note": "A.7  FUN_140466b90@140466B90 DIRECT: mov ecx, dword ptr [rdx + rbx + 0x18]"
+ },
+ {
+  "address": "0x14046C796",
+  "kind": "bytes",
+  "new_bytes": "488db41ef83e0000",
+  "note": "A.8  FUN_14046c640@14046C640 FORM-BIAS (add -> lea): add rsi, rbx  (dry run: the change set's own new bytes)"
+ },
+ {
+  "address": "0x14046DE2F",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.9  FUN_14046dcc0@14046DCC0 FORM (lea): lea r8, [rdi + 0x10]"
+ },
+ {
+  "address": "0x140473CD7",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.10  PlayerCmd_clearenemy@140473C60 DIRECT: mov dword ptr [rdx + rdi + 0x24], 0"
+ },
+ {
+  "address": "0x1404A3A46",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.11  FUN_1404a3960@1404A3960 DIRECT: sub eax, dword ptr [r15 + rdi + 0x24]"
+ },
+ {
+  "address": "0x1404A3AB1",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.11  FUN_1404a3960@1404A3960 FORM (lea): lea rcx, [rdi + 0x10]"
+ },
+ {
+  "address": "0x1404A3ADD",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.11  FUN_1404a3960@1404A3960 DIRECT: cmp byte ptr [r15 + rdi + 0x10], 0"
+ },
+ {
+  "address": "0x1404A4A7D",
+  "kind": "disp",
+  "new_disp": 16160,
+  "force32": true,
+  "note": "A.12  FUN_1404a4900@1404A4900 DIRECT: mov dword ptr [rdx + rsi + 0x28], ecx"
+ },
+ {
+  "address": "0x1405ECAE6",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.13  PlayerCmd_getclosestenemysqdist@1405EC9D0 DIRECT: cmp dword ptr [rdx + rax + 0x24], esi"
+ },
+ {
+  "address": "0x140AC49AD",
+  "kind": "disp",
+  "new_disp": 16152,
+  "force32": true,
+  "note": "A.14  FUN_140ac4920@140AC4920 DIRECT: mov dword ptr [rdx + rdi + 0x20], eax"
+ },
+ {
+  "address": "0x140AC4E57",
+  "kind": "disp",
+  "new_disp": 16152,
+  "force32": true,
+  "note": "A.15  FUN_140ac4dd0@140AC4DD0 DIRECT: mov dword ptr [rdx + rdi + 0x20], eax"
+ },
+ {
+  "address": "0x140AC50A0",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.16  FUN_140ac4fe0@140AC4FE0 DIRECT: sub eax, dword ptr [rdx + rbx + 0x24]"
+ },
+ {
+  "address": "0x140AC543C",
+  "kind": "disp",
+  "new_disp": 16152,
+  "force32": true,
+  "note": "A.17  FUN_140ac5410@140AC5410 DIRECT: mov dword ptr [rdx + rcx + 0x20], eax"
+ },
+ {
+  "address": "0x140ADA146",
+  "kind": "disp",
+  "new_disp": 16140,
+  "force32": true,
+  "note": "A.18  FUN_140ada100@140ADA100 DIRECT: mov edx, dword ptr [rcx + rbx + 0x14]"
+ },
+ {
+  "address": "0x140ADA164",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.18  FUN_140ada100@140ADA100 DIRECT: movzx eax, byte ptr [rcx + rbx + 0x10]"
+ },
+ {
+  "address": "0x140ADA8BB",
+  "kind": "bytes",
+  "new_bytes": "4981c0083f0000",
+  "note": "A.19  FUN_140ada2b0@140ADA2B0 FORM (add imm): add r8, 0x10  (dry run: the change set's own new bytes)"
+ },
+ {
+  "address": "0x140ADABFC",
+  "kind": "disp",
+  "new_disp": 16140,
+  "force32": true,
+  "note": "A.20  FUN_140adabd0@140ADABD0 DIRECT: mov eax, dword ptr [rdx + rcx + 0x14]"
+ },
+ {
+  "address": "0x140ADAC0F",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.20  FUN_140adabd0@140ADABD0 DIRECT: movzx eax, byte ptr [rdx + rcx + 0x10]"
+ },
+ {
+  "address": "0x140ADB27F",
+  "kind": "disp",
+  "new_disp": 16140,
+  "force32": true,
+  "note": "A.21  FUN_140adb240@140ADB240 DIRECT: mov eax, dword ptr [r9 + rbx + 0x14]"
+ },
+ {
+  "address": "0x140ADB297",
+  "kind": "disp",
+  "new_disp": 16144,
+  "force32": true,
+  "note": "A.21  FUN_140adb240@140ADB240 DIRECT: mov eax, dword ptr [r9 + rbx + 0x18]"
+ },
+ {
+  "address": "0x140ADB30F",
+  "kind": "disp",
+  "new_disp": 16140,
+  "force32": true,
+  "note": "A.22  FUN_140adb2e0@140ADB2E0 DIRECT: mov eax, dword ptr [rdx + rcx + 0x14]"
+ },
+ {
+  "address": "0x140ADB324",
+  "kind": "disp",
+  "new_disp": 16144,
+  "force32": true,
+  "note": "A.22  FUN_140adb2e0@140ADB2E0 DIRECT: mov eax, dword ptr [rdx + r11 + 0x18]"
+ },
+ {
+  "address": "0x140ADBA7E",
+  "kind": "disp",
+  "new_disp": 16140,
+  "force32": true,
+  "note": "A.23  FUN_140adb8e0@140ADB8E0 DIRECT: sub ecx, dword ptr [rdx + rbx + 0x14]"
+ },
+ {
+  "address": "0x140ADBAA5",
+  "kind": "bytes",
+  "new_bytes": "4881c2083f0000",
+  "note": "A.23  FUN_140adb8e0@140ADB8E0 FORM (add imm): add rdx, 0x10  (dry run: the change set's own new bytes)"
+ },
+ {
+  "address": "0x140ADBB57",
+  "kind": "disp",
+  "new_disp": 16140,
+  "force32": true,
+  "note": "A.24  FUN_140adb8e0@140ADB8E0 DIRECT: mov eax, dword ptr [rdx + rbx + 0x14]"
+ },
+ {
+  "address": "0x140ADC274",
+  "kind": "disp",
+  "new_disp": 16140,
+  "force32": true,
+  "note": "A.25  FUN_140adc1e0@140ADC1E0 DIRECT: mov eax, dword ptr [rdx + rbx + 0x14]"
+ },
+ {
+  "address": "0x140ADC286",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.25  FUN_140adc1e0@140ADC1E0 DIRECT: movzx eax, byte ptr [rdx + rbx + 0x10]"
+ },
+ {
+  "address": "0x140ADCC96",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.26  FUN_140adcc70@140ADCC70 DIRECT: mov r8d, dword ptr [rdx + rcx + 0x24]"
+ },
+ {
+  "address": "0x140ADE605",
+  "kind": "disp",
+  "new_disp": 16160,
+  "force32": true,
+  "note": "A.27  FUN_140ade590@140ADE590 DIRECT: mov dword ptr [rdx + rdi + 0x28], ebp"
+ },
+ {
+  "address": "0x140ADE7CD",
+  "kind": "disp",
+  "new_disp": 16160,
+  "force32": true,
+  "note": "A.28  FUN_140ade770@140ADE770 DIRECT: mov dword ptr [rdx + rbx + 0x28], r8d"
+ },
+ {
+  "address": "0x140AE2029",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: mov eax, dword ptr [rbx + rdx + 0x24]"
+ },
+ {
+  "address": "0x140AE202D",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: cmp dword ptr [rbx + rcx + 0x24], eax"
+ },
+ {
+  "address": "0x140AE2037",
+  "kind": "bytes",
+  "new_bytes": "4881c1083f0000",
+  "note": "A.29  FUN_140ae2000@140AE2000 FORM (add imm): add rcx, 0x10  (dry run: the change set's own new bytes)"
+ },
+ {
+  "address": "0x140AE2041",
+  "kind": "disp",
+  "new_disp": 16168,
+  "force32": true,
+  "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: mov eax, dword ptr [rbx + rdx + 0x30]"
+ },
+ {
+  "address": "0x140AE2048",
+  "kind": "disp",
+  "new_disp": 16172,
+  "force32": true,
+  "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: mov eax, dword ptr [rbx + rdx + 0x34]"
+ },
+ {
+  "address": "0x140AE204F",
+  "kind": "disp",
+  "new_disp": 16176,
+  "force32": true,
+  "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: mov eax, dword ptr [rbx + rdx + 0x38]"
+ },
+ {
+  "address": "0x140AE2056",
+  "kind": "disp",
+  "new_disp": 16194,
+  "force32": true,
+  "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: movzx eax, word ptr [rbx + rdx + 0x4a]"
+ },
+ {
+  "address": "0x140AE205F",
+  "kind": "disp",
+  "new_disp": 16184,
+  "force32": true,
+  "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: mov rax, qword ptr [rbx + rdx + 0x40]"
+ },
+ {
+  "address": "0x140AE2076",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: mov ebx, dword ptr [rbx + rsi + 0x24]"
+ },
+ {
+  "address": "0x140AE29A0",
+  "kind": "bytes",
+  "new_bytes": "480359084881c3f83e0000",
+  "note": "A.30  FUN_140ae2960@140AE2960 FORM-BIAS (add + inserted add): add rbx, qword ptr [rcx + 8]  (dry run: the change set's own new bytes)"
+ },
+ {
+  "address": "0x140C333AF",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.32  FUN_140c33370@140C33370 FORM (lea): lea r8, [r10 + 0x10]"
+ },
+ {
+  "address": "0x140454E99",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.W  FUN_140454E40 WALK start: lea rdi, [rcx + 0x24]"
+ }
+]

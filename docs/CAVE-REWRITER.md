@@ -1,6 +1,6 @@
 # Cave rewriter: grow an instruction by moving it to a code cave
 
-Status (14 Nov 2026): built and proven in the headless game, see "Proof" below. Not used for the A1 change set yet.
+Status (14 Nov 2026): version 1 built and proven in the headless game (see "Proof"). Version 2 (branches in windows, backward and mixed windows, retargets) is proven offline only; its C++ part is not built yet.
 
 ## What it is for
 
@@ -62,9 +62,9 @@ The planner refuses the whole plan (reasons on stderr, exit code 2, nothing writ
 | Rule | Why |
 | --- | --- |
 | the window contains `ret`, `int3` (or another `int`), `iret` | execution would leave the cave or trap inside it; a `ret` also ends the window's flow so the jump back is never reached |
-| the window contains a relative `jmp`, `jcc`, `loop`, `jrcxz`, `xbegin` | its displacement is relative to the old address; copied to the cave it jumps somewhere else. (Indirect `jmp reg` and `jmp [mem]` are allowed; rip-relative memory operands become fixups) |
+| the window contains `loop*`, `jrcxz`, `jecxz`, `xbegin`, a branch with prefixes, or a branch into the middle of a window instruction | these have no rel32 form or no matching cave instruction. Direct `jmp`/`jcc` are allowed and re-encoded (see "Windows, branches and retargets"); indirect `jmp` is allowed; rip-relative memory operands become fixups |
 | the window contains a `call` of ANY form (relative, through a register, through memory, rip-relative memory) | a call executed from the cave leaves a return address INSIDE cave memory, which has no unwind data. The engine unwinds the stack on its error path (`Com_Error` uses longjmp, which on x64 Windows walks unwind data), so an error raised below such a call would mis-unwind. Rule: no call and no instruction that pushes a return address in a window |
-| any byte of the window after its first is the target of a branch, call or data reference from anywhere in the image | the window after the first byte becomes `jmp` operand bytes and `int3`: a jump into it crashes. Checked by (1) the engine database's `refs` and `calls` tables over the whole range, (2) a byte scan of every executable section for rel32 and rel8 branches landing in it, (3) a scan of all sections for 8-byte absolute pointers and 4-byte image-relative values (jump tables) equal to an interior instruction start |
+| any byte of the window after its first is the target of a branch, call or data reference from anywhere in the image (unless every such reference can be retargeted and no other window avoids it) | the window after the first byte becomes `jmp` operand bytes and `int3`: a jump into it crashes. Checked by (1) the engine database's `refs` and `calls` tables over the whole range, (2) a byte scan of every executable section for rel32 and rel8 branches landing in it, (3) a scan of all sections for 8-byte absolute pointers and 4-byte image-relative values (jump tables) equal to an interior instruction start |
 | two requests ask for the same instruction | ambiguous |
 | a request is not at an instruction boundary of its window | the decode disagrees with the request |
 | `disp` kind: the instruction has no single ModRM memory operand, has a register operand (`mod 11`), is rip-relative (its displacement is an address, not a table offset) or is EVEX (its 8-bit displacement is scaled) | the re-encoding is not defined for these |
@@ -73,7 +73,8 @@ The planner refuses the whole plan (reasons on stderr, exit code 2, nothing writ
 | the self-check below finds any difference | an encoder bug must never reach the game |
 
 Merging: requests whose windows overlap are merged into one cave (the window runs from the first start to cover the last
-changed instruction, at least 5 bytes); the rules apply to the merged window.
+changed instruction, at least 5 bytes); the rules apply to the merged window. No cave may branch to, or have an incoming
+branch retargeted from, the interior of another cave's window (refused).
 
 The encoder handles ModRM `mod 00 -> 01 -> 10` with and without SIB and REX, `mod 00` with no displacement (base not
 rbp/r13: that form is rip-relative or disp32 and is handled as such), and SIB with no base (disp32 kept, value replaced).
@@ -116,22 +117,60 @@ Test switch `-agent-capacity-cave-fault [mask]` (bit k = cave k of the table, no
 It proves that a cave runs without a counter: the process must die with an illegal instruction inside the cave memory. It
 is inert unless given.
 
-## Dry run over the A1 change set (14 Nov 2026, no build, no game)
+## Windows, branches and retargets (second version, 14 Nov 2026)
 
-`ops/engine/caves/a1-dry-run.requests.json` holds the 49 table-1 instructions of `a1-change-set.md` (parts A, B, C: part C has none):
-DIRECT, FORM-lea and WALK rows as `disp` requests with `force32` and the unchanged displacement, the add forms (imm8 to imm32,
-add to lea, the inserted add, the accessor) as `bytes` requests carrying the change set's own new bytes. Result
-`a1-dry-run.result.json`: **44 accepted, 5 refused**, each site planned alone (two neighbours that would merge are not
-combined). Refused:
+**Branches inside a window.** `jmp` and `jcc` (rel8 or rel32) are allowed in a window. In the cave each is the rel32 form
+(`E9 rel32`, `0F 8x rel32`). A target outside the window becomes a fixup of kind `branch` (same arithmetic as the rip
+fixups: `target - (cave + end)`, `end` = end of the branch instruction); a target inside the window becomes a cave-internal
+displacement to the matching instruction (no fixup). A target that is the middle of a window instruction, a branch with
+prefixes (hint bytes), `jrcxz`, `loop*` and `xbegin` are refused. `call` stays refused in every form. The self-check compares
+branch targets by resolved address (outside) or by the matching cave instruction (inside).
 
-- `0x140454343` (A.2  FUN_1404542f0@1404542F0 DIRECT): window 0x140454343+9: rel8 at 0x1404542ee reaches 0x140454346 inside the window
-- `0x1404A3AB1` (A.11  FUN_1404a3960@1404A3960 FORM (lea)): window 0x1404a3ab1+7: rva32 at 0x1405dd687 reaches 0x1404a3ab5 inside the window
-- `0x1404A4A7D` (A.12  FUN_1404a4900@1404A4900 DIRECT): window 0x1404a4a7d+9: rel32 at 0x1404a491b reaches 0x1404a4a81 inside the window; window 0x1404a4a7d+9: rel8 at 0x1404a4a49 reaches 0x1404a4a81 inside the window
-- `0x1405ECAE6` (A.13  PlayerCmd_getclosestenemysqdist@14): window 0x1405ecae6: 0x1405ecaea jle 0x1405ecb47: relative jle
-- `0x140AE202D` (A.29  FUN_140ae2000@140AE2000 DIRECT): window 0x140ae202d: 0x140ae2031 jge 0x140ae20bf: relative jge
+**Window choice.** The planner tries, in order, and takes the first window that passes every rule: (1) forward from the
+changed instruction (at least 5 bytes); (2) backward, ending at the end of the changed instruction (the nearest earlier
+instruction boundary that gives 5 bytes); (3) every mixed window that contains the changed instruction and is at most 24
+bytes, shortest first. Boundaries before the site come from the linear decode of its function (database function range,
+trusted only when it ends exactly at the function's end and lands on the site; otherwise only forward windows are tried). The
+window START may be a branch target (the jump to the cave sits there); no other instruction of the window may be one.
+Several requests whose chosen windows overlap are re-planned as one group.
 
-The refusals are real branch or table references into the window, or a relative branch in it; those sites need another technique
-(a window that starts earlier, an in-place rewrite of a neighbour, or a detour of the branch target).
+**Retargeting.** Only when no window of the list avoids an incoming reference: each reference is rewritten to the matching
+cave instruction, recorded in the plan (`retargets`: kind, instruction address, field, stock bytes, original target, cave
+offset) and in `agent_capacity_caves.inc` (`{field, kind, stock value, cave offset}`). Forms: a `jmp/jcc rel32` (new rel32 =
+cave + offset - (field + 4); the branch must be an instruction start of its function's decode) and a 4-byte, 4-aligned
+image-relative jump-table entry in a non-code section (new value = cave + offset - image base). A rel8 branch, a call, an
+8-byte pointer, a 4-byte value inside code or unaligned, and any database reference of another form stay refusals with that
+reason. The run time (`cave()`) checks each field against its stock value in the same transaction and refuses at start, with
+a clear message, if the cave is not above the image base and within 2 GB for a table entry. `reserve_code` takes memory from
+`0x150000000` upward: above the image base (`0x140000000`) and within 2 GB of every window of the image.
+
+Status: the retarget code in `agent_capacity.cpp` and the emitter/parser are tested offline only (unit tests and the sites
+test); the C++ of this piece is NOT built or run (no build was part of it). None of the real A1 sites needs a retarget (below).
+
+Alignment gaps: a byte-scan hit lying between two analysed functions less than 16 bytes apart is padding, not an
+instruction, and is dropped.
+
+## Dry runs over the A1 change set (14 Nov 2026, no build, no game)
+
+(a) The five sites the first version refused, each alone, with the table-1 REAL new values (`a1-refused5.requests.json`,
+`a1-refused5.result.json`): all five are accepted, none needs a retarget.
+
+| Site | Window | Chosen | Why |
+| --- | --- | --- | --- |
+| `140454343` | `140454343`+9 | forward | forward window; the rel8 at `1404542EE` that blocked it lies in the 5-byte alignment gap between two functions (not an instruction): dropped |
+| `1404A3AB1` | `1404A3AAF`+6 | backward | forward window refused (a 4-byte value equal to the image-relative address sits at `1405DD687`, inside code, unaligned: not a table); backward window passes |
+| `1404A4A7D` | `1404A4A79`+8 | backward | forward window refused (rel8 at `1404A4A49` into it cannot be retargeted); backward window passes |
+| `1405ECAE6` | `1405ECAE6`+6 | forward | forward window; the `jle` inside it is re-encoded as rel32 to the original target |
+| `140AE202D` | `140AE202D`+10 | forward | forward window; the `jge` inside it is re-encoded as rel32 to the original target |
+
+(b) All 48 cave instructions of the 49 table-1 instructions in ONE plan (`a1-table1.requests.json`, `a1-table1.plan.json`),
+real new values: DIRECT and FORM-lea displacement d becomes d + 0x3EF8 (disp32); the add forms, FORM-BIAS, the inserted add
+and the WALK start are the change set's own new bytes. The accessor `FUN_140AE2D10` is the 49th: part B's 16-byte in-place
+rewrite at `140AE2D32` (stock bytes checked: `488b41084883c01048c1e2064803c2c3`; new bytes
+`48c1e20648035108488d82083f0000c3` decode as shl, add, lea, ret) needs no cave. Result: **47 caves** for 48 changes,
+**1 merged window** (`140AE2029`: two changes), 45 forward and 2 backward windows, **0 references retargeted**,
+**0 sites refused**, 2 branch fixups, 1 rip fixup, longest window 11 bytes. The first version (`a1-dry-run.*`, kept as the
+record) accepted 44 of 49 with unchanged displacements.
 
 ## Proof (14 Nov 2026, components `585b04f`, one lab client, headless, 24 agents)
 
