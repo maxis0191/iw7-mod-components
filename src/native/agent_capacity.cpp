@@ -681,6 +681,41 @@ void plan_frames() {
     }
 }
 
+// ---- 5c. lab-only unwind probe of the grown frame ---------------------------------------------------------------------------------
+// The frame-grow change rewrites the function's unwind data, which nothing else exercises. `-agent-capacity-unwind-probe [n]`
+// (or IW7_AGENT_CAPACITY_UNWIND_PROBE=n; default 60) makes the process raise a script-level error, Com_Error(ERR_DROP), n seconds
+// after the first call of FUN_1403E5700, from INSIDE that call. FUN_1403E5700 has one caller, FUN_1403E61B0 (its copy loop), so the
+// engine's longjmp unwinds through the grown frame: the unwinder reads its UNWIND_INFO (sizes, saved registers) and calls its GS
+// handler (cookie check at the new offset). A wrong field ends in a crash or a fast-fail; a right one in the normal error path.
+// Inert unless given.
+utils::hook::detour unwind_probe_hook;
+std::atomic<unsigned long long> unwind_probe_due{};
+std::atomic_bool unwind_probe_done{};
+unsigned unwind_probe_seconds{};
+void unwind_probe_stub(void* a, std::intptr_t b, float* c, float* d) {
+    if (!unwind_probe_done) {
+        const auto now = GetTickCount64();
+        unsigned long long unset = 0;
+        unwind_probe_due.compare_exchange_strong(unset, now + unwind_probe_seconds * 1000ull);
+        if (now >= unwind_probe_due && !unwind_probe_done.exchange(true)) {
+            console::info("[agent capacity] unwind probe: raising ERR_DROP inside FUN_1403E5700 (called from FUN_1403E61B0)%s", "\n");
+            game::Com_Error(game::ERR_DROP, "agent capacity unwind probe");
+            return;
+        }
+    }
+    unwind_probe_hook.invoke<void>(a, b, c, d);
+}
+void plan_unwind_probe() {
+    auto seconds = parse_count(L"-agent-capacity-unwind-probe", 60);
+    wchar_t from_env[16]{};
+    if (!seconds && GetEnvironmentVariableW(L"IW7_AGENT_CAPACITY_UNWIND_PROBE", from_env, 16) && from_env[0])
+        seconds = static_cast<std::uint32_t>(std::wcstoul(from_env, nullptr, 10));
+    if (!seconds) return;
+    unwind_probe_seconds = seconds;
+    unwind_probe_hook.create(0x1403E5700, unwind_probe_stub);   // queued: main applies every queued hook after post_unpack
+    console::info("[agent capacity] unwind probe armed: %u s after the first call of FUN_1403E5700%s", seconds, "\n");
+}
+
 void plan_caves() {
     std::size_t total = 0;
     for (const auto& c : cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
@@ -751,6 +786,7 @@ public:
             }
         init_record_hook.create(0x140C2A080, init_record_stub);   // queued: main applies every queued hook after post_unpack
         death_reset_hook.create(0x140C3BDD0, death_reset_stub);
+        plan_unwind_probe();
         active = true;
         contract = "agents-" + std::to_string(L.agents);
         scheduler::once([] {
