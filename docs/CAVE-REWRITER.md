@@ -201,3 +201,81 @@ refill, protected bot, round 30, 20 s window), run folders `IW7-Runtime\capacity
 - Only the cave 0 crash left a dump (the others ended by exit code; the dump writer did not fire for those).
 - One build served all runs: the fault switch makes the "second build with `ud2`" unnecessary.
 
+
+## Frame grow: more stack room at the top of a frame (15 Nov 2026)
+
+Status: planner, tests and run-time application built; see "Frame grow proof" below for what the game has shown.
+
+**What it is for.** A function whose overrun array is its highest local (the array ends at the stack-protector cookie) cannot be
+fixed by widening the array in place. Frame grow moves everything BELOW the array top down by X bytes and leaves everything at or
+above it where it was relative to the CALLER, so the array gains X bytes at its top. First user: `FUN_1403E61B0` (a 71-entry array
+of 32-byte entries under the cookie, filled by two unbounded loops; run h6 died on its cookie check with 78 agents alive). Facts and
+the full access table: `a13-frame-facts.md` (notes folder).
+
+```
+python -B ops/engine/cave_plan.py frame-grow --function 0x1403E61B0 --array-top 0xCC0 --extra 2272 --max-extra 7136 -o plan.json
+python -B ops/engine/cave_plan.py --emit-cpp plan.json -o src/native/agent_capacity_frame_fields.inc              # field table
+python -B ops/engine/cave_plan.py --emit-cpp --frame-cave plan.json -o src/native/agent_capacity_frame_cave.inc  # probe cave line
+python -B ops/engine/unwind_info.py 0x1403E61B0                                                                   # the unwind data of any function
+python -B tests/ops/frame_grow_test.py            # hand-built functions, every change kind and every refusal
+python -B tests/ops/agent_capacity_sites_test.py  # includes "FrameGrow": the tables against the shipped bytes
+```
+The command lines of the live plan are in `ops/engine/caves/frame-1403e61b0.command.txt`; the plan is `frame-1403e61b0.frame.json`.
+`--array-top` is the offset from rsp after the prologue (S) where the grown region ends (here the cookie, S+0xCC0). `--extra` is X
+for the self-check, `--max-extra` the largest X the run time may use (the probe cave is planned for it).
+
+**What changes (every item is a field: address, width, stock value, unit in bytes, sign; at run time new = stock + sign * X / unit).**
+
+| Change | Field | Sign |
+| --- | --- | --- |
+| `sub rsp, F` | imm32 (or, when the grown frame reaches a page, the cave below) | + |
+| every `add rsp, F` epilogue | imm32 | + |
+| frame base `lea rbp,[r11-d]` (or `[rsp+d]` before the `sub`) | disp32 | - |
+| every `[rsp/rbp+d]` access at or above the array top (cookie store and load, xmm saves restored through rsp) | disp32 | + |
+| every access through a register that holds the ENTRY rsp (`r11`/`rax` copies) that lies BELOW the array top | disp32 | - |
+| UNWIND_INFO ALLOC_LARGE size | 16-bit (units of 8) or 32-bit operand | + |
+| UNWIND_INFO SAVE_NONVOL / SAVE_XMM128 at or above the array top (in every chained chunk) | 16/32-bit operand (units 8/16/1) | + |
+| GS handler data (`__GSHandlerCheck`): cookie offset from the establisher frame | dword, low 3 bits are flags | + |
+
+Accesses through `r11` at or above the top (the xmm saves at `[r11-0x58]`) and accesses through `rsp`/`rbp` below the top need no change.
+X must be a multiple of 16 (movaps alignment, the 16-unit xmm operands).
+
+**How the planner reads the function.** A linear symbolic walk (`walk()` in `frame_grow.py`) follows rsp, the frame base `rbp`
+and the volatile copies of the entry rsp (`rax`, `r10`, `r11`, valid until a call, a branch or a write) through prologue, body and
+epilogue (stage `pro` until the one `sub rsp, imm32`, `body`, `epi` after `add rsp, F` until `ret`/`jmp`). Every stack access gets
+its offset from the caller's stack pointer and from S, and whether its base moves with the frame; the change of its displacement
+follows (moving base: +X at or above the top, 0 below; non-moving base: 0 at or above, -X below).
+
+**The page-touch cave.** A frame of one page or more must touch its pages in order (the stock 0xD58 frame needs no probe, the grown
+one does, already at 24 agents: X = 2272). When F + max X >= 0x1000 the `sub rsp` goes through the existing cave machinery as a `bytes`
+request: `test byte [rsp-0x1000*k], 0` for k = 1..ceil((F+Xmax)/0x1000), then `sub rsp, F+Xmax`. The probes read below the pushed
+registers, top down, one per page, so the guard page moves one page at a time; they come BEFORE the `sub`, which overwrites all six
+arithmetic flags, so no flag analysis is needed, and no register is used and nothing is written. The cave is planned for the largest
+X; the run time patches only the immediate (offset in the table) and refuses an X above the planned maximum. A smaller actual X
+just probes some pages below its frame (harmless reads of unused stack).
+
+**Refusals** (exit 2, nothing written; each has a unit test): a field that must change but is 8 bits wide (`sub rsp, imm8`, `add rsp,
+imm8`, a disp8 at or above the top); dynamic stack adjustment (`sub rsp, reg`, `lea rsp`, `mov rsp, ..`, `leave`, `push`/`pop` in the
+body, a second `sub rsp`); an epilogue that is not `add rsp, F`; `lea` of stack memory at or above the array top (the pointer
+would escape); a stack pointer copied into a register or memory; an indexed stack access; an access that straddles the top; rbp used
+without a frame base; unwind data not handled (ALLOC_SMALL, unknown exception handler, handler flag bits, version 2, chunks not
+chained to the primary, a cookie offset the code does not access, an ALLOC_LARGE that differs from the code's frame, a size operand
+that overflows 16 bits); a return outside an epilogue.
+
+**Self-check (built in, before anything is written).** The plan is applied to a copy of the function for X = the plan's X, its largest
+X and 16 (and, in the sites test, for every agent count 24..100): the decode of the copy equals the original instruction by
+instruction except the listed fields; the walk is repeated on the copy and every stack access that was at or above the top has the
+same offset from the CALLER's stack pointer, every one below has that offset minus X; the unwind data (re-read from the patched
+bytes) has the new ALLOC_LARGE, every SAVE at or above the top moved by X, every other code unchanged, the GS cookie offset +X.
+
+**Run time** (`agent_capacity.cpp`, `plan_frames`): X = `layout::frame_extra()` = `((2 * sentient_slots() - 71) * 32 + 15) & ~15`
+(room for one entry per sentient slot from each of the two loops; 2272 at 24 agents, 7136 at 100). Fields are queued with `add()` in the
+same all-or-nothing transaction (instruction fields as code, unwind fields as data: `VirtualProtect` read/write, checked against
+their stock value first), the probe cave through `cave()`. The log line `[agent capacity] frame grow of 1403E61B0: extra N bytes, 23 fields,
+probe caves 1` shows it ran. The unwind probe (`-agent-capacity-unwind-probe [n]`, env `IW7_AGENT_CAPACITY_UNWIND_PROBE`) raises
+`Com_Error(ERR_DROP)` n seconds after the first call of `FUN_1403E5700` (called only from `FUN_1403E61B0`) from inside that call, so the
+engine's longjmp unwinds through the grown frame and reads its unwind data and GS handler.
+
+**Not in the formula.** Loop B's list (`FUN_1404406B0`/`E0`) is a pool of 0x8FE = 2,302 links, so its firm bound is not the sentient
+count; the formula holds `slots` entries from each loop. A firm-bound X (76,096 bytes at 100 agents) would also work; the constant
+is the one function `frame_extra()`.
