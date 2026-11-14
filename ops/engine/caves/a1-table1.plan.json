@@ -1166,6 +1166,31 @@
    "tried": []
   },
   {
+   "window_start": "0x140c2a310",
+   "window_len": 14,
+   "old_bytes": "488d4b49c78368340000ffffff7f",
+   "cave_bytes": "488d8b413f0000c78368340000ffffff7f",
+   "fixups": [],
+   "return_address": "0x140c2a31e",
+   "changes": [
+    {
+     "address": "0x140c2a310",
+     "kind": "disp",
+     "old_bytes": "488d4b49",
+     "new_bytes": "488d8b413f0000",
+     "new_disp": 16193,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140c2a310": 0,
+    "0x140c2a314": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
    "window_start": "0x140c333af",
    "window_len": 11,
    "old_bytes": "4d8d4210482b0de6520603",

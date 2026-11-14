@@ -327,5 +327,12 @@
   "new_disp": 16156,
   "force32": true,
   "note": "A.W  FUN_140454E40 WALK start: lea rdi, [rcx + 0x24]"
+ },
+ {
+  "address": "0x140C2A310",
+  "kind": "disp",
+  "new_disp": 16193,
+  "force32": true,
+  "note": "D.2  SV_InitAgentRecord@140C2A080 T1 start for the init loop: lea rcx, [rbx + 0x49] -> [rbx + 0x3F08 + 0x39]"
  }
 ]
