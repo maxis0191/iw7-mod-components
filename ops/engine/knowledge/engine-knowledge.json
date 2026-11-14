@@ -1,0 +1,670 @@
+{
+ "schema": "iw7.engine-knowledge/1",
+ "names": [
+  {
+   "address": "1400A97C0",
+   "name": "G_CollectFlaggedAgents_Unbounded",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm: entities 18..41, agent rec+0x4B10 != 0 appended to caller array without bound"
+  },
+  {
+   "address": "140AF6310",
+   "name": "G_InitSentients",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm: memset 0x2C60 of 0x145C6F5A0, stores pointer and two counts (66/24 in CP)"
+  },
+  {
+   "address": "140BF7770",
+   "name": "ScriptableSv_InitReserved",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm: clears reserved scriptable blocks, builds 2048 u16 part free list"
+  },
+  {
+   "address": "140BF96A0",
+   "name": "ScriptableSv_LinkReservedScriptable",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "its error strings 0x14150CC50/CCC0/CD50/CDD0/CE40/CEF0 name it"
+  },
+  {
+   "address": "140C18D00",
+   "name": "G_GetMaxAgents",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm: reads scr_%s_maxagents/scr_default_maxagents, atoi, byte, clamp 24"
+  },
+  {
+   "address": "140C2A080",
+   "name": "SV_InitAgentRecord",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm: memset 0x3798 of a 0x3F08 SV agent record, clears +0x3F00, fills the 66-entry sentient tables"
+  },
+  {
+   "address": "140C68A00",
+   "name": "SV_InitSnapshotBufferSizes",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm: computes ring sizes from frames x clients (24 agents, 255, 0xA40+0x400 entities, 768 cap)"
+  },
+  {
+   "address": "140C68B00",
+   "name": "SV_AllocSnapshotBuffers",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm: hunk allocs sized from the globals set by 0x140C68A00"
+  },
+  {
+   "address": "143C986A0",
+   "name": "level_sentientPool",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "set by 0x140AF6310; index = (p-[..])/0xA0 in 0x140C3E350; live 0x145C6F5A0"
+  },
+  {
+   "address": "143C986B8",
+   "name": "level_agentPool",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "xrefs: written 14BFE5A29 with lea 0x145C9E590; readers imul 0x5010 index; live 0x145C9E590"
+  },
+  {
+   "address": "143C986C0",
+   "name": "level_numAgents",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "xrefs: written by CP G_InitGame fragment 14C1ED666; loop bound of 0x140449450; live 24"
+  },
+  {
+   "address": "143FA1A30",
+   "name": "ai_corpseCount",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "dvar pointer stored at 0x140489B6F after register of name 0x14147F020"
+  },
+  {
+   "address": "144C6F208",
+   "name": "g_maxCharacters",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "set 42 by 0x1405AFFC0 in MP/CP; live 42"
+  },
+  {
+   "address": "144C6F20C",
+   "name": "g_maxClients",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "set 18 by 0x1405AFFC0; live 18"
+  },
+  {
+   "address": "144C6F210",
+   "name": "g_firstMapEntity",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "set 58 by 0x1405AFFC0; compared in 0x140073C90; live 58"
+  },
+  {
+   "address": "145C6F5A0",
+   "name": "g_sentientPoolStatic",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "lea 0x140AF6321/0x140AF6F27; memset 0x2C60 = 71*0xA0"
+  },
+  {
+   "address": "145C9E590",
+   "name": "g_agentPoolStatic",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "lea at 14C1ED65F; memset 0x78180 = 24*0x5010 at 0x140406F75"
+  },
+  {
+   "address": "145D5F9D8",
+   "name": "scriptableMap",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "ptr; +0x244 reserved record count (live 200), +0x250 records of 0x1D0"
+  },
+  {
+   "address": "1460A8BE0",
+   "name": "scriptableSv_replicatedState",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "u16 fixed part count (live 557) then 1016-dword state block, 0x17E8 bytes"
+  },
+  {
+   "address": "1460A9BC4",
+   "name": "scriptableSv_replicatedInstanceCount",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "u16 count < 512; live 23"
+  },
+  {
+   "address": "1460AA3C8",
+   "name": "scriptableSv_reservedPartFreeHead",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "u16 free head; live 31"
+  },
+  {
+   "address": "1460B22F0",
+   "name": "scriptableSv_reservedPartLinks",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "2048 x u32 links built by 0x140BF7770, used by 0x140BF96A0"
+  },
+  {
+   "address": "146B2C508",
+   "name": "sv_agentPool",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm 0x140C18DC0: imul (entnum-18)*0x3F08 + [..]; heap pointer live"
+  },
+  {
+   "address": "146B2D240",
+   "name": "sv_errorOnMaxSnapshotEntities",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "dvar pointer stored at 0x140C55A43 after register of name 0x1415130F8"
+  },
+  {
+   "address": "146B2D248",
+   "name": "sv_sendOverMaxSnapshotEntities",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "dvar pointer stored at 0x140C55A5B after register of name 0x141513188"
+  },
+  {
+   "address": "146B3985C",
+   "name": "sv_maxSnapshotEntities",
+   "kind": "function",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "set 0x300 at 0x140C68A34, compared at 0x140C67478; live 768"
+  }
+ ],
+ "notes": [
+  {
+   "address": "140007780",
+   "text": "reset loop over 24 agent records (rec+0x4D10 = 0x145CA32A0); PR137 patches 0x140007781 and rip 0x140007788",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "24",
+   "evidence": "disasm 0x140007770 --here: mov ecx,0x18; lea rax,[0x145CA32A0]; mov [rax],edx; lea rax,[rax+0x5010]; sub rcx,1; jne"
+  },
+  {
+   "address": "140073C90",
+   "text": "is-map-entity test: [0x144C6F210] <= n < 0x7FE",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "2046",
+   "evidence": "disasm 0x140073C90: cmp ecx,[0x144C6F210]; jl; cmp ecx,0x7fe; jae"
+  },
+  {
+   "address": "1400A9862",
+   "text": "collector over characters 18..41 (cmp r9,0xa6b0), appends agents with rec+0x4B10 != 0 to caller array with NO bound; caller 0x140B69E20 passes a 6-int stack array [rbp-0x30] (cookie at [rbp-0x18]); NOT patched by PR137",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "disasm 0x1400A97C0: mov r10d,0x12; mov r9d,0x4770; ... mov [rdi+rax*4],r8d; inc dword [rbx]; add r9,0x3f8; cmp r9,0xa6b0; disasm 0x140B69F90 --here: lea rdx,[rbp-0x30]; call 0x1400A97C0; mov [rbp+rdx*4-0x30],eax"
+  },
+  {
+   "address": "1402409D9",
+   "text": "client cg object size 0xFDEA8 x local clients (8 sites); PR137 patches all 8 + 3 tails 0xFD7F8 + 5 flag sites +0x86B17",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0xFDEA8",
+   "evidence": "imm 0xfdea8: 8 rows; imm 0xfd7f8 --disp: 3 rows; imm 0x86b17 --disp: 5 rows"
+  },
+  {
+   "address": "1403464E3",
+   "text": "per-frame animated-bone bump buffer cap 0xFFFF0 bytes (returns null past it)",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0xFFFF0",
+   "evidence": "disasm 0x1403464D0: lock xadd [0x141FE5F10],ecx; cmp eax,0xffff0; ja -> xor eax,eax"
+  },
+  {
+   "address": "140406F75",
+   "text": "G agent pool memset size (CP G_InitGame fragment, outside any .pdata function: NOT listed by imm 0x78180)",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0x78180",
+   "evidence": "disasm 0x140406F75 --here: mov r8d,0x78180; jmp 0x140B20AF2"
+  },
+  {
+   "address": "140445B43",
+   "text": "lag-compensation archive per-character loop cmp ebp,0x2a inside the 0x2077F0 object at [0x143C98468]; PR137 plan_archive relayouts it (0x140445B45 and 30 more sites)",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "disasm 0x140445B40 --here: inc rdi; cmp ebp,0x2a; jl"
+  },
+  {
+   "address": "1404494FB",
+   "text": "G_WriteStruct agent index bound cmp edx,0x18 (also 0x140449693 cmp rsi,0x18); PR137 patches both",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "24",
+   "evidence": "disasm 0x1404494F0 --here: mov edx,[rcx]; cmp edx,0x18; ja; disasm 0x140449690 --here: cmp rsi,0x18; jbe"
+  },
+  {
+   "address": "140489B43",
+   "text": "ai_corpseCount dvar (\"Scriptable maximum number of AI corpses\"): Dvar_RegisterInt default 28 min 0 max 28, pointer 0x143FA1A30. SP game band: pointer is NULL in both CP snapshots, so not a CP zombie limit",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "28",
+   "evidence": "disasm 0x140489B20 --here: lea rcx,[0x14147F020] (ai_corpseCount); lea rax,[0x14147EFF8]; mov r9d,0x1c; xor r8d,r8d; mov edx,r9d; call 0x140CEB920; mov [0x143FA1A30],rax; mem 0x143FA1A30 = 0x0 (server and client CP snapshots)"
+  },
+  {
+   "address": "1405AFFE6",
+   "text": "MAX_CLIENTS for MP/CP (game mode 2/3) -> [0x144C6F20C]",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "18",
+   "evidence": "disasm 0x1405AFFC0: mov dword [0x144C6F20C],0x12"
+  },
+  {
+   "address": "1405AFFF0",
+   "text": "MAX_CHARACTERS (players+agents) -> [0x144C6F208]; PR137 patches imm 0x1405AFFF6",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "disasm 0x1405AFFC0: mov dword [0x144C6F208],0x2a; mem server snapshot 0x144C6F208 = 42 18 58"
+  },
+  {
+   "address": "1405AFFFA",
+   "text": "first map entity / end of corpse range -> [0x144C6F210]; PR137 patches imm 0x1405B0000",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "58",
+   "evidence": "disasm 0x1405AFFC0: mov dword [0x144C6F210],0x3a"
+  },
+  {
+   "address": "140AC6AC0",
+   "text": "table8 (8 B x 42) at 0x145C51580 memset 0x150; table20 (100 B x 42) 0x145C516D0 memset 0x1068 at 0x140AC6B0C; cmp edx,0xd2 at 0x140AC6931; PR137 relocates both and patches counts",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "xrefs 0x145C51580: 11 lea; xrefs 0x145C516D0: 4 lea + 1 rva read; imm 0x1068 row 140AC6B0C; imm 0xd2 row 140AC6931"
+  },
+  {
+   "address": "140AF632F",
+   "text": "sentient storage memset 0x2C60 = 71*0xA0 (static 0x145C6F5A0); PR137 patches 0x140AF6331 and repoints 0x140AF6324/0x140AF6F2A",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "71",
+   "evidence": "imm 0x2c60: 140AF632F mov r8d,0x2c60 (and 140477ECF add rax,0x2c60 in SP band); xrefs 0x145C6F5A0: data refs 140AF6321, 140AF6F27 only"
+  },
+  {
+   "address": "140B1F4FD",
+   "text": "server character object size 0x7A0D8 (also 0x140449EE8); PR137 patches both and 0x140449EAB, 0x14044A0CA, 0x140B205B4",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0x7A0D8",
+   "evidence": "imm 0x7a0d8: 2 rows; imm 0x2b7130 --disp: 140B205B2 lea edi,[rax+0x2b7130]"
+  },
+  {
+   "address": "140B1F5AC",
+   "text": "character reference table alloc 0xA88 = 8+42*0x40 (also 140B1F5C1, 140486F34/49/61); PR137 patches all 5. A 6th 0xA88 at protector 14BEBF0A6 is an unrelated mov [rsp+0x28],0xa88 argument (string args 0x1415E4D78/0x14152FAFC)",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "imm 0xa88: 9 rows; 3 add rax,0xa88 in 140A0E260/140A44EE0/140A6B750 are struct offsets"
+  },
+  {
+   "address": "140B309C8",
+   "text": "save archive loops: 66 sentients (0x140B309C8, 0x140B314F1 cmp eax,0x42) and 24 agents (0x140B31860 cmp ecx,0x18); NOT patched by PR137",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "66",
+   "evidence": "disasm 0x140B309C0 --here: cmp eax,0x42; disasm 0x140B31858 --here: cmp ecx,0x18; imm 0x42 rows 140B309C8, 140B314F1"
+  },
+  {
+   "address": "140B6686D",
+   "text": "G_Spawn side bound cmp rax,58*0x3F8 (byte offset into g_entities); PR137 patches 0x140B6686F",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0xE630",
+   "evidence": "disasm 0x140B66860 --here: sub rax,[0x143C98678]; cmp rax,0xe630; jl"
+  },
+  {
+   "address": "140B67400",
+   "text": "player corpse entity = idx+42 (ClonePlayer); PR137 patches 0x140B67402",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "disasm 0x140B67400: lea eax,[rdx+0x2a]; imul rdi,rcx,0x3f8; add rdi,[0x143C98678]"
+  },
+  {
+   "address": "140BB1630",
+   "text": "DObj pool alloc scans in-use byte map 0x146007240 up to count [0x146007224]",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "2048",
+   "evidence": "disasm 0x140BB1630; mem server-20261111-cpzmb 0x146007224 = 2048"
+  },
+  {
+   "address": "140BBFAB3",
+   "text": "agent-state delta writer: explicit character index 6 bits (also 0x140BBFB04); readers 0x1409B7541, 0x140C655D7, 0x140C65C50; PR137 6->7 at all 5",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "6",
+   "evidence": "disasm 0x140BBFAB3 --here: mov r8d,6; disasm 0x140BBFB04 --here: mov dword [rsp+0x38],6; disasm 0x1409B7541/0x140C655D7/0x140C65C50 --here: mov edx,6"
+  },
+  {
+   "address": "140BF7798",
+   "text": "reserved scriptable init clears 0x1460A8BE0 (0x17E8 B replicated-state block), 0x1460AA3D0 (0x1FC2 B), 0x1460AC3A0 (0x5F4E B, 0xFE0 x 6-byte entries), builds the 2048 part free list",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0x17E8",
+   "evidence": "disasm 0x140BF7770"
+  },
+  {
+   "address": "140BF9725",
+   "text": "reserved scriptable RECORDS per map: count = [[0x145D5F9D8]+0x244] (records of 0x1D0 at [+0x250], free when u16 +0x3C == 0x7FF); ERR_DROP \"Could not allocate a reserved scriptable for entity %i - limit is %i - try increasing the number in the worldspawn entity in Radiant\" (0x14150CCC0). Map asset data, not code. Live cp_zmb: 200. NOT patched by PR137",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "200",
+   "evidence": "disasm 0x140BF96A0: loop 0x140BDDEF0(i) cmp word [rax+0x3c],0x7ff; i < 0x140BDE030() -> else lea rdx,[0x14150CCC0]; disasm 0x140BDE030: mov rax,[0x145D5F9D8]; mov eax,[rax+0x244]; mem server snapshot [[0x145D5F9D8]+0x240] = 523 200 414"
+  },
+  {
+   "address": "140BF97F9",
+   "text": "ScriptableSv_LinkReservedScriptable: reserved scriptable PART links pool 2048 u32 {u16 owner,u16 next} at 0x1460B22F0, free head u16 [0x1460AA3C8]; ERR_DROP \"Too many reserved scriptable parts\" (0x14150CD50). PR137 plan_parts patches 0x140BF97FB/0x140BF77C4 and relocates the pool",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "2048",
+   "evidence": "disasm 0x140BF96A0: 140BF97F9 mov r9d,0x800; movzx edx,word [0x1460AA3C8]; cmp dx,r9w; jae 0x140BF9898 -> lea rdx,[0x14150CD50]; ecx=1; call 0x140B8D830. mem server snapshot [0x1460AA3C8] = 31"
+  },
+  {
+   "address": "140BF9857",
+   "text": "ScriptableSv_LinkReservedScriptable: reserved scriptable INSTANCES with replicated parts: u16 count [0x1460A9BC4] < 512; tables u16 entnum+1 at 0x1460A9BC6[512] and u16 start dword at 0x1460A9FC6[512]; ERR_DROP \"Too many reserved scriptable instances\" (0x14150CDD0). NOT patched by PR137",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "512",
+   "evidence": "disasm 0x140BF96A0: movzx eax,word [0x1460A9BC4]; mov ecx,0x200; cmp ax,cx; jb 0x140BF98C9 else ERR_DROP 0x14150CDD0. mem server snapshot: count 23, ids 212..781 (map entities, no agent 18..41)"
+  },
+  {
+   "address": "140BF98CC",
+   "text": "replicated part STATE budget: 1016 dwords (0x3F8) of 1-byte part states (4064 = the 0xFE0 init loop at 0x140BF77FD) shared by fixed (Radiant) parts from the bottom ((fixed*8-8)>>5)+1 and reserved instances from the top; ERR_DROP \"Too many replicated parts ... with a total of %i supported\" (0x14150CE40). Client mirror at 0x140BF64DE (mov ebp,0x3f8) with \"ScriptableCl_LinkReservedScriptable: Too many parts\" (0x14150C520, jbe at 0x140BF6527). NOT patched by PR137",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "1016",
+   "evidence": "disasm 0x140BF98C9 --here: mov ecx,0x3f8 ... cmp ecx,eax; ja else ERR_DROP 0x14150CE40; disasm 0x140BF6400 --here: mov ebp,0x3f8; xrefs 0x14150C520 -> 140BF6603; mem server snapshot [0x1460A8BE0] = 557 fixed parts, starts 1015..993"
+  },
+  {
+   "address": "140C139C3",
+   "text": "mov ecx,0x42 here is an argument to 0x1405AFDE0 (game-mode/feature test, also called with 3 and 2), not a sentient count",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm 0x140C139B0: mov ecx,0x42; call 0x1405AFDE0; test al,al"
+  },
+  {
+   "address": "140C14B25",
+   "text": "agent pool end checks cmp reg,0x78180 (4 sites: 140C14B25, 140C14BF0, 140C14C93, 141238586); PR137 patches all",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0x78180",
+   "evidence": "imm 0x78180: 4 instructions"
+  },
+  {
+   "address": "140C18D77",
+   "text": "agent maximum clamp: min(byte(atoi(scr_<gt>_maxagents)), 24); atoi result is truncated to a byte by movzx ecx,al at 0x140C18D73, so a dvar value above 255 wraps",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "24",
+   "evidence": "disasm 0x140C18D60: 140C18D6E call atoi; 140C18D73 movzx ecx,al; 140C18D76 mov eax,0x18; cmp ecx,eax; cmovae ecx,eax"
+  },
+  {
+   "address": "140C18E4F",
+   "text": "SV agent helper scans the 18 player entities (0x4770 = 18*0x3F8)",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "18",
+   "evidence": "disasm 0x140C18DC0: imul r13,rax,0x3f08; add r13,[0x146B2C508]; add rsi,0x3f8; cmp rsi,0x4770"
+  },
+  {
+   "address": "140C19B22",
+   "text": "max agents stored as ONE BYTE at GameStateInfo(0x140E7AD70())+0x546; read back by getmaxagents 0x140C1DD90 and SV init 0x140C56AF8",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "byte",
+   "evidence": "disasm 0x140C19B00: call 0x140E7AD70; call 0x140C18D00; mov byte ptr [rdi+0x546],al"
+  },
+  {
+   "address": "140C1BB20",
+   "text": "agent corpse entity = idx+50 (CloneAgent); PR137 patches 0x140C1BB22",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "50",
+   "evidence": "disasm 0x140C1BB20: lea eax,[rcx+0x32]; imul rdi,rdx,0x3f8"
+  },
+  {
+   "address": "140C217CA",
+   "text": "per-frame round-robin character index [0x146B2C54C] wraps at 42; PR137 patches 0x140C217CD",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "disasm 0x140C217C0 --here: inc r9d; mov [0x146B2C54C],r9d; cmp r9d,0x2a; jl"
+  },
+  {
+   "address": "140C22AE0",
+   "text": "server AI loops cmp reg,0xa6b0 (42*0x3F8): 140C22AE0, 140C29141, 140C390F5, 140C3A936, 140C3CB59, 140C3D178, 140C481FB patched by PR137; 1400A9862 not",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "imm 0xa6b0: 8 rows"
+  },
+  {
+   "address": "140C266A6",
+   "text": "character bit test bt on a 32-bit word at +0x300 bounded by 42 (aliases characters 32..41 today); NOT patched by PR137",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "disasm 0x140C26690 --here: cmp edx,0x2a; jge (bt eax,edx follows)"
+  },
+  {
+   "address": "140C2A31E",
+   "text": "SV agent record (0x3F08) holds two per-SENTIENT tables of 66 entries: +0x48 stride 0x40 (byte 0xFF at +0x49) and +0x2408 stride 0x3C (dword 0x80000001); indexed by sentient index (sentient-[0x143C986A0])/0xA0. With more than 66 sentients (PR137 makes n+47) index >= 66 writes past the table into the rest of the record (+0x3380..), >= ~115 into the next record. NOT patched by PR137",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "66",
+   "evidence": "disasm 0x140C2A300 --here: lea eax,[rbx+0x2408]; mov edx,0x42; loop mov byte [rcx],0xff; lea rcx,[rcx+0x40]; mov dword [rax],0x80000001; lea rax,[rax+0x3c]. imm 0x2408 --disp: writers 140C3E396 (index = (rbx-[0x143C986A0])*magic 0x6666666666666667 sar 6 -> /0xA0, imul 0x3c), readers 140C216D0/140C216DA"
+  },
+  {
+   "address": "140C3F3A8",
+   "text": "gametype table loop over 42 characters; PR137 patches 0x140C3F3AA",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "42",
+   "evidence": "disasm 0x140C3F3A8 --here: cmp edi,0x2a; jl"
+  },
+  {
+   "address": "140C51633",
+   "text": "mov edx,0x47 (71) is a BYTE VALUE written into a message buffer by 0x140BB4320 (MSG_WriteByte-like: [rcx+8][[rcx+0x1c]++]=dl), not a 71-entry bound: CLOSED lead (not an agent limit)",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "71",
+   "evidence": "disasm 0x140C51611: mov edx,0x47; lea rcx,[rsp+0x20]; call 0x140BB4320; disasm 0x140BB4320: mov byte [r8+rax],dl; inc dword [rcx+0x1c]"
+  },
+  {
+   "address": "140C688DB",
+   "text": "CLOSED lead: 0x17E8 is NOT 24*0xFF; it is the per-client snapshot frame record size (6120 B), allocated frames*clients times at 0x140C68BC2 and clients times at 0x140C68C59 (30 imul/mov sites use it as a stride)",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0x17E8",
+   "evidence": "imm 0x17e8: 30 rows (imul rbx,rcx,0x17e8 in snapshot code); disasm 0x140C68B8A --here: imul edx,[0x146B398E8],0x17e8; mem 0x146B398E8 = 256 (16 frames x 16 clients)"
+  },
+  {
+   "address": "140C68901",
+   "text": "snapshot hunk budget for agent rings frames*clients*0x1200 (=24*0xC0) at 0x140C68901 and 0x140C68977; PR137 replaces both",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "24*0xC0",
+   "evidence": "disasm 0x140C688D0 --here: lea eax,[rsi+rsi*8]; shl eax,9 / lea eax,[r15+r15*8]; shl eax,9"
+  },
+  {
+   "address": "140C68A28",
+   "text": "two more snapshot budgets of 1024: [0x146B39858] (read 0x140C64371) and [0x146B39860] (cmp esi at 0x140C6483B; also entity ring sizing imul 0x110 at 0x140C68D12); meaning not read",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "1024",
+   "evidence": "disasm 0x140C68A00: mov dword [0x146B39858],0x400; mov dword [0x146B39860],0x400; xrefs 0x146B39858 / 0x146B39860"
+  },
+  {
+   "address": "140C68A34",
+   "text": "per-snapshot entity cap [0x146B3985C] = 768 set by SV snapshot init; checked in 0x140C67230 at 0x140C67478 (count >= cap): sv_errorOnMaxSnapshotEntities (dvar 0x146B2D240, default 0) -> ERR_DROP EXE_DISCONNECTED; else unless sv_sendOverMaxSnapshotEntities (0x146B2D248, default 0) the list is closed (write 0x7FF in 11 bits at 0x140C6764B): entities past 768 are silently NOT SENT. NOT patched by PR137",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "768",
+   "evidence": "disasm 0x140C68A00: mov dword [0x146B3985C],0x300; disasm 0x140C67440 --here: cmp eax,[0x146B3985C]; setae; [0x146B2D240]+0x10 -> call 0x140B8D830(1,\"EXE_DISCONNECTED\"); [0x146B2D248]+0x10==0 -> 0x140C6764B mov edx,0x7ff; mov r8d,0xb; disasm 0x140C55A10 --here (dvar names decoded with mem --type u8 at 0x1415130F8/0x141513188); mem server snapshot 0x146B3985C = 768"
+  },
+  {
+   "address": "140C68A52",
+   "text": "SV entity-state ring [0x146B39810] = frames*0xA40 + clients*0x400 records of 0x110 (16 frames, 16 clients live: 58368); ring shared by all clients, averages 228 entities per client frame before delta bases are overwritten",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "58368",
+   "evidence": "disasm 0x140C68A00: imul r8d,ecx,0xa40; shl eax,0xa; add r8d,eax; mov [0x146B39810],r8d; disasm 0x140C68B00: imul edx,[0x146B39810],0x110; mem server snapshot 0x146B39810 = 58368"
+  },
+  {
+   "address": "140C68A82",
+   "text": "SV snapshot agent-state rings: [0x146B39890]=frames*clients*24, [0x146B398A0]=clients*24 (lea r*3; shl 3); PR137 replaces with imul agents",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "24",
+   "evidence": "disasm 0x140C68A00; mem server-20261111-cpzmb 0x146B39890=6144 (=24*16*16), 0x146B398A0=384"
+  },
+  {
+   "address": "140C68AA3",
+   "text": "SV per-frame ring of 255 x 16-byte records: [0x146B398B0] = frames*clients*255, [0x146B398C0] = clients*255 (allocated shl 4 at 0x140C68B96/0x140C68C47); meaning not read",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "255",
+   "evidence": "disasm 0x140C68A00: imul eax,r10d,0xff -> [0x146B398B0]; imul eax,r11d,0xff -> [0x146B398C0]"
+  },
+  {
+   "address": "140D83DF0",
+   "text": "XAnim anim-info heap init: data 0x147995420, 0x3FFC0 usable bytes, 16-byte units",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0x40000",
+   "evidence": "disasm 0x140D83DF0: mov dword [0x147994EE0],0x3ffc0; mov [0x147994EE4],0x10; mem server snapshot 0x147994ED8 = 262144 0 262080 16"
+  },
+  {
+   "address": "143C986C0",
+   "text": "level agent count (int). CP writer: protector fragment 14C1ED666 mov [..],eax (G_InitGame). Second writer 14BF2E854 mov [..],r13d belongs to the SP init path (sub_140488520, sentients 71/32), not CP. 15 readers.",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "24",
+   "evidence": "xrefs 0x143C986C0: 15 reads + write/addr 14BF2E854, 14C1ED666; mem server-20261111-cpzmb [0x143C986C0]=24"
+  },
+  {
+   "address": "14B3C5D01",
+   "text": "CP G_InitGame sentient init args: edx=24 (agents), ecx=edx+0x2a=66 (sentient count); PR137 patches 0x14B3C5D02 (24->n, ecx then n+42)",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "66",
+   "evidence": "disasm 0x14B3C5CF0 --here: mov edx,0x18; mov [0x143C986B0],r14; lea ecx,[rdx+0x2a]; jmp 0x140B20B37"
+  },
+  {
+   "address": "14B54FA76",
+   "text": "G_InitGame (protector) level.num_entities start = 58 (also mov edx,0x3a at 14B54FA71); PR137 patches 0x14B54FA72/7C",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "58",
+   "evidence": "disasm 0x14B54FA60 --here: 14B54FA71 mov edx,0x3a; 14B54FA76 mov dword [0x143C98680],0x3a"
+  },
+  {
+   "address": "14BF2E854",
+   "text": "second writer of the level agent count: SP init path. Fragment 14B2EF78D (mov edx,0x20; mov [0x143C986B8],r13) -> 14BF2E84D (lea rax,[0x143FA2E10]; mov [0x143C986C0],r13d; mov [0x143C986B0],rax; lea ecx,[rdx+0x27]) -> 0x14048898F call 0x140AF6310: sentients 71 with 32. Reached from sub_140488520 (called twice by 0x140C6D8B0). Not CP: [0x143C986B0]=0 in both CP snapshots, 0x143FA2E10 null",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "evidence": "disasm 0x14B2EF780 --here; disasm 0x14BF2E830 --here; disasm 0x14048898F --here; xrefs 0x14B2EF78D -> 14048896C in 140488520; mem 0x143C986B0 = 0 (both snapshots)"
+  },
+  {
+   "address": "14C1ED65F",
+   "text": "G agent pool storage lea rbx,[0x145C9E590] (24*0x5010 static); rbx later stored to [0x143C986B8] by 14BFE5A29; PR137 repoints rip 0x14C1ED662",
+   "by": "zombie-limits",
+   "date": "2026-11-12",
+   "tag": "limit",
+   "value": "0x78180",
+   "evidence": "disasm 0x14C1ED65F --here: lea rbx,[0x145C9E590]; mov [0x143C986C0],eax; jmp 0x140406F75; disasm 0x14BFE5A20 --here: mov [0x143C986B8],rbx; jmp 0x140B20B01"
+  }
+ ]
+}

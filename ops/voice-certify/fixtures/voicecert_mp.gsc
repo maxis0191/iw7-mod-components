@@ -1,6 +1,8 @@
 // Voice certification fixture for Multiplayer. Private test dedicated only, never deployed.
 // Installed by Invoke-VoiceCertify.ps1 as iw7-mod/custom_scripts/mp/voicecert_mp.gsc.
-// Protection: players take no damage. Team control uses the retail team
+// Protection: players take no damage, the retail idle check is off, no bots join and an empty
+// team does not forfeit the match.
+// Team control uses the retail team
 // change path (scripts\mp\menus::setteam), the same one the team menu runs.
 // Requests arrive in the dvar voicecert_req as "<seq> <verb> [arg]":
 //   status | teams same | teams opposite | endgame
@@ -11,6 +13,14 @@ init()
     if (!armed())
         return;
 
+    // A matchmaking server (every iw7-mod dedicated) runs scripts\mp\teams::watchafk: a player
+    // with no kill or assist who has not moved for 60 s of play is kicked (EXE_PLAYERKICKED_INACTIVE,
+    // live run final-base-1). It is the only copy in the retail scripts.
+    replacefunc(scripts\mp\teams::checkforafk, ::no_afk_check);
+    // iw7-mod's cdata/custom_scripts/mp/bots.gsc fills a dedicated with bots (bots_enabled is
+    // registered true and read-only): 15 bots took every free slot in final-base-1. This later
+    // replacement wins over its own; the heartbeat's ai= proves it.
+    replacefunc(scripts\mp\bots\bots::bot_connect_monitor, ::no_bot_monitor);
     level thread protect();
     level thread heartbeat();
     level thread requests();
@@ -40,8 +50,19 @@ protect()
     {
         // gametypes assign their own damage callback during init; keep ours on top
         level.callbackplayerdamage = ::no_player_damage;
+        // both players on one team empties the other: the retail updategameevents forfeits and
+        // restarts the map in a matchmaking game (live run mp-relay-2, window M0)
+        level.disableforfeit = 1;
         wait 0.25;
     }
+}
+
+no_afk_check()
+{
+}
+
+no_bot_monitor(num_ally_bots, num_enemy_bots)
+{
 }
 
 no_player_damage(inflictor, attacker, damage, flags, mod, weapon, point, dir, hitloc, timeoffset, modelindex, partname)
@@ -53,6 +74,13 @@ heartbeat()
     for (;;)
     {
         line = "[voicecert] hb t=" + gettime() + " mode=mp map=" + getdvar("mapname") + " gt=" + getdvar("g_gametype") + " n=" + level.players.size;
+        ai = 0;
+        foreach (player in level.players)
+        {
+            if (isdefined(player) && isai(player))
+                ai++;
+        }
+        line = line + " ai=" + ai;
 
         foreach (player in level.players)
         {

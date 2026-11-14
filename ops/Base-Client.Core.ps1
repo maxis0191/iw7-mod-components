@@ -98,6 +98,18 @@ function Get-IW7BaseFiles([string]$Root,[string]$RelativeDirectory) {
     }
 }
 
+# A plan may name ExcludeDirectories: disposable trees inside a profile directory
+# (a bench root's copied updater data) that are neither backed up nor restored.
+# An exclusion applies only while enumerating a directory that contains it, so a
+# profile directory listed inside an excluded tree is still tracked in full.
+function Test-IW7BaseExcluded([string]$Relative,[string]$Directory,[string[]]$Excludes) {
+    foreach ($exclude in @($Excludes | Where-Object { $_ })) {
+        if (!$exclude.StartsWith($Directory+'/',[StringComparison]::OrdinalIgnoreCase)) { continue }
+        if ($Relative.Equals($exclude,[StringComparison]::OrdinalIgnoreCase) -or $Relative.StartsWith($exclude+'/',[StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    $false
+}
+
 function Save-IW7BaseTransaction {
     param([Parameter(Mandatory)]$Plan,[Parameter(Mandatory)][string]$BackupRoot)
     $backup=[IO.Path]::GetFullPath($BackupRoot)
@@ -106,13 +118,15 @@ function Save-IW7BaseTransaction {
     $null=Resolve-IW7BasePath (Split-Path $backup) (Split-Path $backup -Leaf)
     $directories=@($Plan.ProfileDirectory)
     if ($Plan.PSObject.Properties.Name -contains 'ProfileDirectories') { $directories=@($Plan.ProfileDirectories) }
+    $excludes=@()
+    if ($Plan.PSObject.Properties.Name -contains 'ExcludeDirectories') { $excludes=@($Plan.ExcludeDirectories | Where-Object { $_ }) }
     $profiles=@();$directoryBefore=@()
     foreach ($relativeDirectory in $directories) {
-        $profiles+=@(Get-IW7BaseFiles $Plan.GameRoot $relativeDirectory)
+        $profiles+=@(Get-IW7BaseFiles $Plan.GameRoot $relativeDirectory | Where-Object { !(Test-IW7BaseExcluded $_ $relativeDirectory $excludes) })
         $path=Resolve-IW7BasePath $Plan.GameRoot $relativeDirectory
         if (Test-Path -LiteralPath $path) {
             $directoryBefore+=$relativeDirectory
-            $directoryBefore+=@(Get-ChildItem -LiteralPath $path -Directory -Recurse -Force | ForEach-Object {$_.FullName.Substring($Plan.GameRoot.Length+1).Replace('\','/')})
+            $directoryBefore+=@(Get-ChildItem -LiteralPath $path -Directory -Recurse -Force | ForEach-Object {$_.FullName.Substring($Plan.GameRoot.Length+1).Replace('\','/')} | Where-Object { !(Test-IW7BaseExcluded $_ $relativeDirectory $excludes) })
         }
     }
     $relativeFiles=@(@($Plan.MutableFiles)+$profiles | Select-Object -Unique)
@@ -139,7 +153,7 @@ function Save-IW7BaseTransaction {
         $path=Resolve-IW7BasePath $Plan.GameRoot $relative
         $protected+=[pscustomobject]@{Path=$relative;SHA256=(Get-FileHash -LiteralPath $path).Hash}
     }
-    $transaction=[pscustomobject]@{Schema='iw7.base-transaction/1';GameRoot=$Plan.GameRoot;BackupRoot=$backup;ProfileDirectory=$Plan.ProfileDirectory;ProfileDirectories=$directories;DirectoryBefore=$directoryBefore;ProfileBefore=$profiles;Files=$entries;ProtectedFiles=$protected;Restored=$false}
+    $transaction=[pscustomobject]@{Schema='iw7.base-transaction/1';GameRoot=$Plan.GameRoot;BackupRoot=$backup;ProfileDirectory=$Plan.ProfileDirectory;ProfileDirectories=$directories;ExcludeDirectories=$excludes;DirectoryBefore=$directoryBefore;ProfileBefore=$profiles;Files=$entries;ProtectedFiles=$protected;Restored=$false}
     $transaction | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $backup 'recovery.local.json') -Encoding utf8
     $transaction
 }
@@ -155,12 +169,14 @@ function Restore-IW7BaseTransaction($Transaction) {
             if (!(Test-Path -LiteralPath $source -PathType Leaf) -or (Get-FileHash -LiteralPath $source).Hash -ne $entry.SHA256) { throw 'Restoration backup is missing/corrupt; preserve current files.' }
         }
     }
+    $excludes=@()
+    if ($Transaction.PSObject.Properties.Name -contains 'ExcludeDirectories') { $excludes=@($Transaction.ExcludeDirectories | Where-Object { $_ }) }
     $newProfiles=@();$newDirectories=@()
     foreach ($directory in $Transaction.ProfileDirectories) {
-        $newProfiles+=@(Get-IW7BaseFiles $Transaction.GameRoot $directory | Where-Object { $_ -notin $Transaction.ProfileBefore })
+        $newProfiles+=@(Get-IW7BaseFiles $Transaction.GameRoot $directory | Where-Object { $_ -notin $Transaction.ProfileBefore -and !(Test-IW7BaseExcluded $_ $directory $excludes) })
         $path=Resolve-IW7BasePath $Transaction.GameRoot $directory
         if (Test-Path -LiteralPath $path) {
-            $allDirectories=@($directory)+@(Get-ChildItem -LiteralPath $path -Directory -Recurse -Force | ForEach-Object {$_.FullName.Substring($Transaction.GameRoot.Length+1).Replace('\','/')})
+            $allDirectories=@($directory)+@(Get-ChildItem -LiteralPath $path -Directory -Recurse -Force | ForEach-Object {$_.FullName.Substring($Transaction.GameRoot.Length+1).Replace('\','/')} | Where-Object { !(Test-IW7BaseExcluded $_ $directory $excludes) })
             $newDirectories+=@($allDirectories | Where-Object {$_ -notin $Transaction.DirectoryBefore})
         }
     }

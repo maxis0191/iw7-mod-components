@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <bit>
 #include <charconv>
+#include <cstdarg>
+#include <intrin.h>
 #include <share.h>
 
 // Private voice certification probe. It is never part of an upstream branch: lab builds copy it
@@ -56,6 +58,11 @@ namespace voice_test
 		constexpr std::uintptr_t lobby_is_running = 0x1409C3EC0;
 		constexpr std::uintptr_t lobby_get_session = 0x1409C3E30;
 		constexpr std::uintptr_t party_is_in_game = 0x1409CD3F0;
+		constexpr std::uintptr_t com_error_format_call = 0x140B8D88E; // Com_Error: format(code, fmt, va) into com_errorMessage
+		constexpr std::uintptr_t com_error_format = 0x140B8DDB0;
+		// SV_DropClient(client, reason, tellThem): its entry is a protected thunk that iw7-mod
+		// already detours (patches.cpp), so the drop is observed at its direct call sites.
+		constexpr std::uintptr_t sv_drop_client = 0x140C4FBA0;
 
 		// Engine data
 		auto* const playback_streams = reinterpret_cast<void* const*>(0x1477A01C0); // [talker], created by Voice_Init
@@ -143,6 +150,12 @@ namespace voice_test
 				0xE9, 0x4C, 0xFF, 0xFF, 0xFF}, role_client},
 			{"Sys_Milliseconds", 0x140D58110, {0x83, 0x3D, 0xA5, 0x7E, 0xA4, 0x06, 0x00, 0x49, 0xB9, 0x00, 0x00, 0x00, 0x00, 0x00,
 				0x00, 0x00}, role_both},
+			// Com_Error: rdx = format, r8 = &varargs, ecx = code still live; the call formats the message
+			{"Com_Error format call", 0x140B8D884, {0x48, 0x8B, 0x54, 0x24, 0x48, 0x4C, 0x8D, 0x44, 0x24, 0x50, 0xE8, 0x1D, 0x05, 0x00,
+				0x00}, role_both},
+			// the formatter: ecx code, rdx format, r8 va_list; vsnprintf into 0x146005DA0 (0x1000 bytes)
+			{"Com_Error formatter", 0x140B8DDB0, {0x40, 0x53, 0x55, 0x57, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x28, 0x48, 0x89, 0x74, 0x24,
+				0x50, 0x4C, 0x8D, 0x2D, 0xDA, 0x7F, 0x47, 0x05}, role_both},
 			{"Cbuf_AddText", 0x140B7C290, {0x4C, 0x63, 0xC1, 0x48, 0x8D, 0x05, 0x8E, 0x3A, 0x1F, 0x05, 0x49, 0xC1, 0xE0, 0x04, 0x4C,
 				0x03, 0xC0, 0xE9, 0x0A, 0x00, 0x00, 0x00}, role_both},
 			// svs: client pointer table 0x146B22950, count 0x146B229E0, state +8, remoteAddress +0x9E990
@@ -155,6 +168,41 @@ namespace voice_test
 			// GSC "sessionteam" and "sessionstate" getters: gclient +0x4BE0 and +0x4A94
 			{"server session team", 0x140447B90, {0x8B, 0x91, 0xE0, 0x4B, 0x00, 0x00}, role_server},
 			{"server session state", 0x140447C70, {0x8B, 0x91, 0x94, 0x4A, 0x00, 0x00}, role_server},
+		};
+
+		// Direct calls (E8) and tail jumps (E9) of SV_DropClient, all 27 in the retail code. Each
+		// is hooked only when its bytes still match at startup (another component may own one);
+		// the "drop_hooks" event lists what was installed. The offline checker verifies them all.
+		const std::vector<code_check> drop_call_sites =
+		{
+			{"drop site 140C1237C (tail)", 0x140C1237C, {0xE9, 0x1F, 0xD8, 0x03, 0x00}, role_server},
+			{"drop site 140C4CC89", 0x140C4CC89, {0xE8, 0x12, 0x2F, 0x00, 0x00}, role_server},
+			{"drop site 140C4CDD5", 0x140C4CDD5, {0xE8, 0xC6, 0x2D, 0x00, 0x00}, role_server},
+			{"drop site 140C4E1D9", 0x140C4E1D9, {0xE8, 0xC2, 0x19, 0x00, 0x00}, role_server},
+			// a stub outside the mapped functions: SV_DropClient(client, "EXE_DISCONNECTED", true)
+			{"drop site 140C4E05A (tail, EXE_DISCONNECTED)", 0x140C4E05A, {0xE9, 0x41, 0x1B, 0x00, 0x00}, role_server},
+			{"drop site 140C4F4F5 (direct connect)", 0x140C4F4F5, {0xE8, 0xA6, 0x06, 0x00, 0x00}, role_server},
+			{"drop site 140C4FC94", 0x140C4FC94, {0xE8, 0x07, 0xFF, 0xFF, 0xFF}, role_server},
+			{"drop site 140C4FCD9 (tail)", 0x140C4FCD9, {0xE9, 0xC2, 0xFE, 0xFF, 0xFF}, role_server},
+			{"drop site 140C4FFD5", 0x140C4FFD5, {0xE8, 0xC6, 0xFB, 0xFF, 0xFF}, role_server},
+			{"drop site 140C500D7", 0x140C500D7, {0xE8, 0xC4, 0xFA, 0xFF, 0xFF}, role_server},
+			{"drop site 140C512F9", 0x140C512F9, {0xE8, 0xA2, 0xE8, 0xFF, 0xFF}, role_server},
+			{"drop site 140C51828", 0x140C51828, {0xE8, 0x73, 0xE3, 0xFF, 0xFF}, role_server},
+			{"drop site 140C52CBF", 0x140C52CBF, {0xE8, 0xDC, 0xCE, 0xFF, 0xFF}, role_server},
+			{"drop site 140C53429", 0x140C53429, {0xE8, 0x72, 0xC7, 0xFF, 0xFF}, role_server},
+			{"drop site 140C53781", 0x140C53781, {0xE8, 0x1A, 0xC4, 0xFF, 0xFF}, role_server},
+			{"drop site 140C56043", 0x140C56043, {0xE8, 0x58, 0x9B, 0xFF, 0xFF}, role_server},
+			{"drop site 140C562A6", 0x140C562A6, {0xE8, 0xF5, 0x98, 0xFF, 0xFF}, role_server},
+			{"drop site 140C56988", 0x140C56988, {0xE8, 0x13, 0x92, 0xFF, 0xFF}, role_server},
+			{"drop site 140C569B3", 0x140C569B3, {0xE8, 0xE8, 0x91, 0xFF, 0xFF}, role_server},
+			{"drop site 140C56F14", 0x140C56F14, {0xE8, 0x87, 0x8C, 0xFF, 0xFF}, role_server},
+			{"drop site 140C57E9C (timeouts)", 0x140C57E9C, {0xE8, 0xFF, 0x7C, 0xFF, 0xFF}, role_server},
+			{"drop site 140C5A360", 0x140C5A360, {0xE8, 0x3B, 0x58, 0xFF, 0xFF}, role_server},
+			{"drop site 140C5A797", 0x140C5A797, {0xE8, 0x04, 0x54, 0xFF, 0xFF}, role_server},
+			{"drop site 140C6706B", 0x140C6706B, {0xE8, 0x30, 0x8B, 0xFE, 0xFF}, role_server},
+			{"drop site 140C67207", 0x140C67207, {0xE8, 0x94, 0x89, 0xFE, 0xFF}, role_server},
+			{"drop site 140C6866D", 0x140C6866D, {0xE8, 0x2E, 0x75, 0xFE, 0xFF}, role_server},
+			{"drop site 140C699C5", 0x140C699C5, {0xE8, 0xD6, 0x61, 0xFE, 0xFF}, role_server},
 		};
 
 		// Built by the capture poll 0x140B7A300 and passed to the device callback
@@ -231,6 +279,16 @@ namespace voice_test
 			std::uint32_t active_clients = 0xFFFFFFFF;
 			std::uint64_t command_offset{};
 		} watch{};
+
+		// The last Com_Error of this process, for the client's "disconnect" event.
+		std::mutex error_mutex;
+		struct
+		{
+			int code = -1;
+			std::string text;
+			int time = 0;
+			std::int64_t wall = 0;
+		} last_error{};
 
 		// Events
 
@@ -967,11 +1025,27 @@ namespace voice_test
 			const auto state = static_cast<int>(game::clientUIActives[0].connectionState);
 			if (state != watch.connection_state)
 			{
+				const auto previous = watch.connection_state;
 				watch.connection_state = state;
 				emit("connection", [&](json_writer& w)
 				{
 					put(w, "state", state); // 9 = active
 				});
+
+				// Left a server: 3 connecting .. 9 active back to 0..2. The last Com_Error (if
+				// any) usually carries the reason (EXE_SERVER_DISCONNECTED, EXE_TIMEDOUT, ...).
+				if (previous >= 3 && state < 3)
+				{
+					std::lock_guard _(error_mutex);
+					emit("disconnect", [&](json_writer& w)
+					{
+						put(w, "from_state", previous);
+						put(w, "to_state", state);
+						put(w, "code", last_error.code);
+						put(w, "reason", std::string_view(last_error.text));
+						put(w, "error_age_ms", last_error.wall ? wall_clock() - last_error.wall : -1);
+					});
+				}
 			}
 
 			const auto initialized = *voice_initialized != 0 ? 1 : 0;
@@ -1049,6 +1123,117 @@ namespace voice_test
 
 			LocalFree(args);
 			return result;
+		}
+
+		std::string address_text(const game::netadr_s& address)
+		{
+			if (address.type == game::NA_IP || address.type == game::NA_BROADCAST)
+			{
+				return utils::string::va("%u.%u.%u.%u:%u", address.ip[0], address.ip[1], address.ip[2], address.ip[3], ntohs(address.port));
+			}
+
+			return utils::string::va("type%d:%u", static_cast<int>(address.type), ntohs(address.port));
+		}
+
+		// Com_Error(code, fmt, ...) formats through this call. The text is recorded as a
+		// "com_error" event (not "error": that name stops the harness) and kept for the
+		// client's next "disconnect" event; the original formatter then runs unchanged.
+		void com_error_format_stub(const int code, const char* format, va_list args)
+		{
+			char text[0x400]{};
+			if (format)
+			{
+				vsnprintf_s(text, sizeof(text), _TRUNCATE, format, args);
+			}
+
+			{
+				std::lock_guard _(error_mutex);
+				last_error.code = code;
+				last_error.text = text;
+				last_error.time = now();
+				last_error.wall = wall_clock();
+			}
+
+			emit("com_error", [&](json_writer& w)
+			{
+				put(w, "code", code); // 1 drop, 2 server disconnect, 3 disconnect, ...
+				put(w, "text", std::string_view(text));
+				if (current_role == role_client)
+				{
+					put(w, "connection_state", static_cast<int>(game::clientUIActives[0].connectionState));
+				}
+			});
+
+			utils::hook::invoke<void>(com_error_format, code, format, args);
+		}
+
+		// Every direct SV_DropClient call lands here first: the slot, reason, address and
+		// GUID are read before the native cleanup frees the slot.
+		void __declspec(noinline) drop_client_stub(game::client_t* client, const char* reason, const bool tell_them)
+		{
+			const auto from = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+			auto slot = -1;
+			for (auto i = 0u; i < std::min(*game::svs_numclients, static_cast<unsigned int>(max_talkers)); i++)
+			{
+				if (game::svs_clients[i] == client)
+				{
+					slot = static_cast<int>(i);
+					break;
+				}
+			}
+
+			emit("drop", [&](json_writer& w)
+			{
+				put(w, "client_num", slot);
+				put(w, "reason", std::string_view(reason ? reason : ""));
+				put(w, "tell_them", tell_them);
+				put(w, "from", utils::string::va("%llX", static_cast<unsigned long long>(from)));
+				if (client)
+				{
+					put(w, "state", client->header.state);
+					put(w, "name", std::string_view(client->name, strnlen(client->name, sizeof(client->name))));
+					put(w, "guid", std::string_view(client->playerGuid, strnlen(client->playerGuid, sizeof(client->playerGuid))));
+					put(w, "address", address_text(client->remoteAddress));
+				}
+			});
+
+			utils::hook::invoke<void>(sv_drop_client, client, reason, tell_them);
+		}
+
+		void install_drop_observer()
+		{
+			std::vector<std::string> installed, skipped;
+			for (const auto& site : drop_call_sites)
+			{
+				if (std::memcmp(reinterpret_cast<const void*>(site.address), site.bytes.data(), site.bytes.size()) != 0)
+				{
+					skipped.emplace_back(utils::string::va("%llX", static_cast<unsigned long long>(site.address)));
+					continue;
+				}
+
+				if (site.bytes[0] == 0xE9)
+				{
+					utils::hook::jump(site.address, drop_client_stub);
+				}
+				else
+				{
+					utils::hook::call(site.address, drop_client_stub);
+				}
+
+				installed.emplace_back(utils::string::va("%llX", static_cast<unsigned long long>(site.address)));
+			}
+
+			emit("drop_hooks", [&](json_writer& w)
+			{
+				put(w, "installed", installed.size());
+				w.Key("skipped");
+				w.StartArray();
+				for (const auto& address : skipped)
+				{
+					w.String(address.data(), static_cast<rapidjson::SizeType>(address.size()));
+				}
+				w.EndArray();
+			});
 		}
 
 		void install_client()
@@ -1154,6 +1339,8 @@ namespace voice_test
 				return;
 			}
 
+			utils::hook::call(com_error_format_call, com_error_format_stub);
+
 			if (current_role == role_client)
 			{
 				install_client();
@@ -1161,6 +1348,7 @@ namespace voice_test
 			else
 			{
 				command::add("voicetest_snapshot", server_snapshot);
+				install_drop_observer();
 			}
 
 			command::add("voicetest_mark", mark_command);

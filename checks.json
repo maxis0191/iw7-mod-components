@@ -317,6 +317,38 @@
       ]
     },
     {
+      "id": "engine_db_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_test.py"
+      ]
+    },
+    {
+      "id": "engine_collect_names_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_collect_names_test.py"
+      ]
+    },
+    {
+      "id": "static_tables_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/static_tables_test.py"
+      ]
+    },
+    {
+      "id": "engine_live_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_live_test.py"
+      ]
+    },
+    {
       "id": "engine_map_test",
       "command": [
         "python",
@@ -600,6 +632,18 @@
       ]
     },
     {
+      "id": "resource_scheduler_retained_release_source_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_test.ps1",
+        "-RetainedReleaseSourceOnly"
+      ]
+    },
+    {
       "id": "resource_scheduler_queue_test",
       "command": [
         "pwsh",
@@ -619,6 +663,17 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_scheduler_admission_lock_test.ps1"
+      ]
+    },
+    {
+      "id": "resource_scheduler_reclaim_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_reclaim_test.ps1"
       ]
     },
     {
