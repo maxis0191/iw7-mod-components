@@ -1,5 +1,6 @@
 [
-  {"address": "0x140ADB30F", "kind": "disp", "new_disp": 20, "force32": true},
   {"address": "0x140ADABFC", "kind": "disp", "new_disp": 20, "force32": true},
-  {"address": "0x140ADBA7E", "kind": "disp", "new_disp": 20, "force32": true}
+  {"address": "0x140ADBA7E", "kind": "disp", "new_disp": 20, "force32": true},
+  {"address": "0x140ADC274", "kind": "disp", "new_disp": 20, "force32": true},
+  {"address": "0x140AE2029", "kind": "disp", "new_disp": 36, "force32": true}
 ]
