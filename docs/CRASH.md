@@ -69,6 +69,15 @@ So the scan can show a call that finished long ago.
 The first verified entries after the crash point are the most reliable. Entries far from `rsp` are less reliable.
 Without `--map` and `--reference-root` nothing in the game image can be verified. All values in modules then show as `unverified`.
 
+## A fast-fail (exit code 0xC0000409) and the lab switch
+
+Exit code `0xC0000409` is `int 0x29` (`CD 29`): the compiler's stack-cookie failure (`__report_gsfailure`, reached by `jmp` from `__security_check_cookie`), or the CRT's abort and watson paths.
+A fast-fail bypasses the crash handler, so the process leaves no dump (run h5 of 14 Nov 2026 is the example).
+In a lab build (`-paris-debugger` and `-paris-isolated-lab`) with `-agent-capacity`, the component patches the five confirmed `int 0x29` of the CRT (`__report_gsfailure`, `__report_securityfailure`, `__scrt_fastfail`, `abort`, `_invoke_watson`) to `ud2` at start and prints `[agent capacity] fast-fail sites patched to ud2: 5`.
+The failure then reports as an illegal instruction (`0xC000001D`) with the stack intact.
+Read it as follows: the crashing frame is `__report_gsfailure` (or another CRT function above); the first verified entry of the return list below it is the function whose stack cookie check failed, that is the function whose stack buffer was overrun. Disassemble that function: its loops and copies that write into its `sub rsp, N` frame are the candidates.
+The sites in the protector span (`0x14B...`, `0x14C...`) and two hits that are data bytes are not patched (their instruction boundary is not known).
+
 ## What it cannot do
 
 - No full unwinding with the unwind data of each function. A real frame chain may differ from this list.

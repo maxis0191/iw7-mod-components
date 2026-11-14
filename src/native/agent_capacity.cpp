@@ -510,6 +510,23 @@ void death_reset_stub(std::uint8_t* client) {
     std::memcpy(record + L.table1_offset(), saved.data() + bytes2, bytes1);
 }
 
+// ---- 3f. fast-fail exits leave a dump (lab builds only) --------------------------------------------------------------------
+// Exit code 0xC0000409 is `int 0x29` (CD 29): the compiler's stack-cookie failure (__report_gsfailure, reached by jmp from
+// __security_check_cookie) and the CRT's abort / watson paths. A fast-fail bypasses the exception handler, so no minidump
+// (run h5, 14 Nov 2026). In a lab build (-paris-debugger and -paris-isolated-lab) each of the CRT's five `int 0x29` becomes
+// `ud2` (0F 0B), same length: an illegal instruction goes through the normal crash handler with the stack intact, and the frame
+// above __report_gsfailure is the function whose cookie check failed. Found by a raw scan for CD 29 in the unpacked code and
+// the instruction index (`engine.py imm 0x29 --mnemonic int`): all are preceded by `mov ecx, N`. Not patched: 140BABD61 and
+// 1412505D9 (random data bytes, not instructions) and 26 hits in the protector span 0x14B.. / 0x14C.. (obfuscated bytes, the
+// instruction boundary is not known).
+//   1412BA464 __report_gsfailure   1412BA54C __report_securityfailure   1412BB073 __scrt_fastfail
+//   1412D7624 abort                1412E291F _invoke_watson
+std::size_t fastfail_sites{};
+void plan_fastfail() {
+    if (!utils::flags::has_flag("paris-debugger") || !utils::flags::has_flag("paris-isolated-lab")) return;
+    for (auto a : {0x1412BA464ull, 0x1412BA54Cull, 0x1412BB073ull, 0x1412D7624ull, 0x1412E291Full}) { add(a, 0x29CD, 0x0B0F, 2); ++fastfail_sites; }
+}
+
 std::uint32_t parse_count(const wchar_t* flag, std::uint32_t fallback) {
     int count{};
     auto args = CommandLineToArgvW(GetCommandLineW(), &count);
@@ -676,6 +693,7 @@ public:
         plan_parts();
         plan_ai_pool();
         plan_tables();
+        plan_fastfail();
         plan_caves();
         std::sort(plan.begin(), plan.end(), [](const patch& a, const patch& b) { return a.address < b.address; });
         for (std::size_t i = 1; i < plan.size(); ++i)
@@ -702,6 +720,7 @@ public:
             game::Dvar_RegisterString("scr_default_maxagents", value.data(), game::DVAR_FLAG_NONE, "Agents this server can hold");
             game::Dvar_RegisterInt("agent_capacity", L.agents, L.agents, L.agents, game::DVAR_FLAG_NONE, "Engine agent records");
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
+            console::info("[agent capacity] fast-fail sites patched to ud2: %zu\n", fastfail_sites);
             console::info("[agent capacity] agents=%u characters=%u map_start=%u parts=%u patches=%zu caves=%zu\n",
                 L.agents, L.characters, L.map_start, L.parts, plan.size(), caves_planned);
         }, scheduler::main);
