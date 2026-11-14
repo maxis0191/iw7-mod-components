@@ -822,6 +822,8 @@ def main(argv=None):
     ap.add_argument("input", help="requests JSON (plan mode) or plan JSON (--emit-cpp)")
     ap.add_argument("-o", "--output", help="output file (default: stdout)")
     ap.add_argument("--emit-cpp", action="store_true", help="input is a plan: write the C++ array initialiser")
+    ap.add_argument("--frame-cave", action="store_true",
+                    help="with --emit-cpp on a frame-grow plan: write the probe cave line (default: the field table)")
     ap.add_argument("--dry-run", action="store_true",
                     help="plan every request alone and write a per-request accepted/refused table (exit 0)")
     ap.add_argument("--image", default=DEFAULT_IMAGE)
@@ -829,7 +831,10 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         doc = json.load(open(a.input, encoding="utf-8"))
-        if a.emit_cpp:
+        if a.emit_cpp and doc.get("kind") == "frame-grow":
+            import frame_grow
+            text = (frame_grow.emit_cave_cpp if a.frame_cave else frame_grow.emit_cpp)(doc, os.path.basename(a.input))
+        elif a.emit_cpp:
             text = emit_cpp(doc, os.path.basename(a.input))
         else:
             if not os.path.exists(a.image):

@@ -641,10 +641,51 @@ void cave(std::uintptr_t window_start, const std::vector<std::uint8_t>& old_byte
     ++caves_planned;
 }
 
+// ---- 5b. frame grow of FUN_1403E61B0 (ops/engine/cave_plan.py frame-grow, docs/CAVE-REWRITER.md) -------------------------------
+// The function's 71-entry stack array sits directly under its stack cookie and two loops fill it without a bound. The frame grows
+// at the array's top by X = layout::frame_extra() bytes: the planner's field table gives every instruction field and every unwind
+// field that must move (stock value, unit in bytes, sign: new = stock + sign * X / unit), all written in the same transaction
+// as every other patch. The `sub rsp` goes through a cave that first reads one byte in every 0x1000 step below the stack pointer
+// (the new frame is larger than a page), planned for the largest X; only its immediate is set here.
+struct frame_field { std::uintptr_t address; unsigned width; std::uint32_t stock; unsigned unit; int sign; bool code; };
+const std::vector<frame_field> frame_fields = {
+#include "agent_capacity_frame_fields.inc"
+};
+struct frame_cave_spec {
+    std::uintptr_t window_start;
+    std::vector<std::uint8_t> old_bytes, cave_bytes;
+    std::uint32_t imm_offset, stock_frame, max_extra, probes;
+};
+const std::vector<frame_cave_spec> frame_caves = {
+#include "agent_capacity_frame_cave.inc"
+};
+std::size_t frame_fields_planned{};
+
+void plan_frames() {
+    const auto extra = L.frame_extra();
+    for (const auto& f : frame_fields) {
+        if (!f.unit || extra % f.unit) throw std::runtime_error("agent capacity: frame grow X does not fit the unit of a field");
+        const auto wide = static_cast<std::int64_t>(f.stock) + static_cast<std::int64_t>(f.sign) * static_cast<std::int64_t>(extra / f.unit);
+        const std::int64_t mask = f.width >= 4 ? 0xFFFFFFFFll : ((1ll << (8 * f.width)) - 1);
+        if (f.width < 4 && (wide < 0 || wide > mask)) throw std::runtime_error("agent capacity: frame grow value does not fit its field");
+        add(f.address, f.stock, static_cast<std::uint32_t>(wide & mask), f.width, f.code);
+        ++frame_fields_planned;
+    }
+    for (const auto& c : frame_caves) {
+        if (extra > c.max_extra) throw std::runtime_error("agent capacity: frame grow X is above the largest X its probe cave was planned for");
+        auto bytes = c.cave_bytes;
+        const std::uint32_t frame = c.stock_frame + extra;
+        if (c.imm_offset + 4 > bytes.size()) throw std::runtime_error("agent capacity: bad frame cave");
+        std::memcpy(bytes.data() + c.imm_offset, &frame, 4);
+        cave(c.window_start, c.old_bytes, bytes, {}, {});
+    }
+}
+
 void plan_caves() {
-    if (cave_table.empty()) return;
     std::size_t total = 0;
     for (const auto& c : cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
+    for (const auto& c : frame_caves) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
+    if (!total) return;
     code_region = reserve_code(total);
     auto fault = parse_count(L"-agent-capacity-cave-fault", 0xFFFFFFFFu);
     wchar_t from_env[16]{};  // the game-lab plans pass only whitelisted flags: the same switch as an environment variable
@@ -660,6 +701,7 @@ void plan_caves() {
         ++k;
     }
     if (fault) console::info("[agent capacity] cave fault switch: mask %X (ud2 instead of the instruction)\n", fault);
+    plan_frames();
 }
 
 void check_guards() {
@@ -721,6 +763,8 @@ public:
             game::Dvar_RegisterInt("agent_capacity", L.agents, L.agents, L.agents, game::DVAR_FLAG_NONE, "Engine agent records");
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
             console::info("[agent capacity] fast-fail sites patched to ud2: %zu\n", fastfail_sites);
+            console::info("[agent capacity] frame grow of 1403E61B0: extra %u bytes, %zu fields, probe caves %zu\n", L.frame_extra(),
+                frame_fields_planned, frame_caves.size());
             console::info("[agent capacity] agents=%u characters=%u map_start=%u parts=%u patches=%zu caves=%zu\n",
                 L.agents, L.characters, L.map_start, L.parts, plan.size(), caves_planned);
         }, scheduler::main);

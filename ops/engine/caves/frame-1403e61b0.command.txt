@@ -1,0 +1,3 @@
+python -B ops/engine/cave_plan.py frame-grow --function 0x1403E61B0 --array-top 0xCC0 --extra 2272 --max-extra 7136 -o ops/engine/caves/frame-1403e61b0.frame.json
+python -B ops/engine/cave_plan.py --emit-cpp ops/engine/caves/frame-1403e61b0.frame.json -o src/native/agent_capacity_frame_fields.inc
+python -B ops/engine/cave_plan.py --emit-cpp --frame-cave ops/engine/caves/frame-1403e61b0.frame.json -o src/native/agent_capacity_frame_cave.inc
