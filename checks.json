@@ -333,6 +333,14 @@
       ]
     },
     {
+      "id": "static_tables_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/static_tables_test.py"
+      ]
+    },
+    {
       "id": "engine_live_test",
       "command": [
         "python",
