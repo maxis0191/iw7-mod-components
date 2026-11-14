@@ -114,6 +114,47 @@ ntdll crashed another (ledger: "tool: live trace freezes or crashes the server")
 log (10 hits of `PlayerCmd_spawnagent`). A safe design must stop only from inside a breakpoint (`bc *; qd`) and use a
 counted hardware breakpoint on a per-frame function as its clock; it is not built.
 
+## Static tables: find the next "per character" array by reading
+
+The engine keeps static tables (`.data` / `.bss`) with one row per character (42 = 18 clients + 24 agents), per agent
+(24), per sentient (66 / 71). With `-agent-capacity` the counts grow (characters 118, agents 100, sentients 147) and a
+table that is not moved is overrun. Each one used to be found by a crash (the last: the entity queue, 42 x 0x208 at
+0x144EB2B70, which killed a client in its first frame after a headless server had passed twelve minutes).
+
+```
+python -B ops/engine/static_tables.py                    # about 3.5 minutes; prints the prioritised candidates
+python -B ops/engine/static_tables.py --json out.json    # every candidate with evidence, room, handled column
+python -B ops/engine/static_tables.py --unhandled        # only what agent_capacity.cpp does not patch
+python -B ops/engine/static_tables.py --capacity-source <file or git:REF:PATH>
+```
+
+It reads the analysed image, the function table, the instruction index and the decompiled code of this database. Three
+independent passes, reported per candidate:
+
+1. loop bounds: a function with a loop that reads a capacity-dependent count (`[*(0x146B22AC8)+0x30]`, MAX_CHARACTERS,
+   sentient / agent count, svs_numclients followed by an agent loop starting at 18) or compares with 24, 42, 66, 71, 41,
+   65, 70 and indexes or walks a static array;
+2. sizes: memset / memcpy / `rep stos` of a static destination whose length is k x stride (k = 24, 42, 66, 71), and two
+   static `lea` of one function whose difference is k x a stride the function also uses (start and end of a scan);
+3. index sources: an index taken from an entity (`(entity - g_entities) / 0x3F8`, the entity number read at offset 0 of an
+   argument pointer) or from a sentient (`(sentient - [0x143C986A0]) / 0xA0`) and scaled into a static base.
+
+Reader forms understood: `lea r,[rip+X]` then `[r+idx*s+d]`, `[r+d]`, `add r,S` cursors, and the image-base relative
+`[a+b+disp32]`. Strides come from `imul r,r,S`, `shl`, `lea r,[r+r*k]` and the access scale. Per candidate: base, stride,
+rows implied, the functions that index it, evidence lines, the room (rows from the base to the next static address that
+no function of the table uses through a table register; `room_rows_far` looks past the first two rows), whether
+`agent_capacity.cpp` patches the encoded references (`handled`: yes / partly / no with the open sites listed) and a
+priority: A room is exactly 24, 42, 66 or 71 rows, A-size the same with only a size as evidence (a buffer, usually not a
+table), A18 room 18 with a loop from 18 or a capacity count, B a capacity-bounded loop over a table with less than 118
+rows of room, C an entity/sentient index with less than 147 rows of room.
+
+It is a reading aid: a candidate still needs its decompile read (`decomp`, `xrefs --range`). It cannot see a table
+reached only through a pointer stored in a global (the SV agent pool 0x145C9E590 is set by one protector stub and read
+through a pointer: recorded in `pointer_globals` when the store is a `mov [rip+P],reg`), arrays of structures indexed by
+a field of another structure, and arrays whose index comes from an argument of a function nobody here calls directly.
+Known tables are the test ground truth (`tests/ops/static_tables_test.py`: the entity queue by all three passes, the
+per-character work tables, the sentient pool and the two 71-object pools).
+
 ## What it cannot know
 
 - Ghidra's call graph misses calls through registers and tables (virtual calls, script builtin tables); `callers`
