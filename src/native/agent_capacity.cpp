@@ -868,8 +868,7 @@ public:
             game::Dvar_RegisterString("scr_default_maxagents", value.data(), game::DVAR_FLAG_NONE, "Agents this server can hold");
             game::Dvar_RegisterInt("agent_capacity", L.agents, L.agents, L.agents, game::DVAR_FLAG_NONE, "Engine agent records");
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
-            console::info("[agent capacity] entity queue: rows %u at %p, %zu references
-", L.queue_rows(),
+            console::info("[agent capacity] entity queue: rows %u at %p, %zu references\n", L.queue_rows(),
                 reinterpret_cast<void*>(entity_queue.data), queue_references);
             console::info("[agent capacity] fast-fail sites patched to ud2: %zu\n", fastfail_sites);
             for (const auto& set : frame_sets)
