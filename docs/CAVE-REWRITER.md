@@ -2,6 +2,8 @@
 
 Status (14 Nov 2026): version 1 built and proven in the headless game (see "Proof"). Version 2 (branches in windows, backward and mixed windows, retargets) is proven offline only; its C++ part is not built yet.
 
+A1 stage 2 (14 Nov 2026, commit 8c195ee): the 49 table-1 instructions (a1-table1.*, 48 caves) are the live table of `agent_capacity_caves.inc`, built and run: headless run at 24 agents passes 13/13 and a fault in cave 29 (`-agent-capacity-cave-fault`, mask 1<<29, env `IW7_AGENT_CAPACITY_CAVE_FAULT=536870912`) exits with an illegal instruction at the first zombies. The proof plan (`proof-zero-change.*`) stays in the repository, not in the build; the sites test takes the live plan from the header line of the `.inc`.
+
 ## What it is for
 
 The engine's 8-bit displacements and immediates (`mov eax, [rdx+rbx+0x24]`) cannot hold the values the capacity patch
