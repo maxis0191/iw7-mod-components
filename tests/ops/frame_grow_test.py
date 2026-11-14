@@ -102,6 +102,19 @@ def store_rsp_idx(d):      # mov [rsp+rax*8+d32], rcx
     return bytes.fromhex('488984c4') + i32(d)
 
 
+
+def add_rbp(n):            # add rbp, imm8
+    return bytes.fromhex('4883c5') + bytes([n])
+
+
+def lea_rbp_rsp(d):        # lea rbp, [rsp+d8]
+    return bytes.fromhex('488d6c24') + struct.pack('<b', d)
+
+
+def store_rbp_cursor(d):   # mov [rbp+d8], rcx  (rbp as an array cursor)
+    return bytes.fromhex('48894d') + struct.pack('<b', d)
+
+
 # ---- unwind records ----------------------------------------------------------------------------------------------
 def code_push(off, reg):
     return bytes([off, 0x00 | (reg << 4)])
@@ -390,7 +403,69 @@ class Refusals(unittest.TestCase):
         fn = Fn(chunks=build)
         with self.assertRaises(cp.Refusal) as ctx:
             plan(fn, 0x40, end=fn.end)
-        self.assertIn('chains to something other than the primary chunk', ' '.join(ctx.exception.reasons))
+        self.assertIn('chains to something that is not a chunk of this function', ' '.join(ctx.exception.reasons))
+
+
+class Generalised(unittest.TestCase):
+    """Two forms the first function did not have: rbp as an array cursor (`add rbp, imm`) and chunks chained through other chunks."""
+
+    @staticmethod
+    def cursor_body(frame=0x300):
+        # no frame base: rbp = lea [rsp+0x40] (below the top) steps by 16 through the array; the cookie goes through rsp
+        return [PUSH_RBX, sub_rsp(frame), store_rsp(0x30), lea_rbp_rsp(0x40), store_rbp_cursor(-8),
+                store_rbp_cursor(0), add_rbp(0x10), CALL, XOR_RAX_RSP, movaps_load_rsp(0x2E0), add_rsp(frame), POP_RBX, RET]
+
+    def test_a_cursor_register_is_accepted_and_changes_nothing_itself(self):
+        body = self.cursor_body()
+        fn = Fn(body=body, flags=0, handler_data=None, unwind_codes=[code_alloc_large(1 + 7, 0x300), code_push(1, 3)], prolog=8)
+        # the cursor-based stores keep their displacements (they move with the frame); only the xmm restore above the top changes
+        img = fn.image()
+        try:
+            doc = fg.plan_frame_grow(img, fn.addr, 0x2C0, 0x40, gs_handlers=(HANDLER,))
+        except cp.Refusal as e:
+            self.fail('cursor refused: %s' % e.reasons)
+        addrs = {int(f['address'], 0) - fn.addr for f in doc['fields']}
+        self.assertNotIn(1 + 7 + 4 + 5 + 3, addrs)
+
+    def test_a_cursor_that_reaches_beyond_one_entry_or_starts_high_is_refused(self):
+        body = self.cursor_body()
+        body[4] = store_rbp_cursor(0x50)
+        refused(self, Fn(body=body, flags=0, handler_data=None, unwind_codes=[code_alloc_large(8, 0x300), code_push(1, 3)], prolog=8), 'more than one entry')
+        high = Fn(body=[PUSH_RBX, sub_rsp(0x300), store_rsp(0x30), bytes.fromhex('488dac24d0020000'), store_rbp_cursor(-8), add_rbp(0x10),
+                        CALL, XOR_RAX_RSP, movaps_load_rsp(0x2E0), add_rsp(0x300), POP_RBX, RET],
+                  flags=0, handler_data=None, unwind_codes=[code_alloc_large(8, 0x300), code_push(1, 3)], prolog=8)
+        refused(self, high, 'starts at or above the array top')
+
+    def test_a_large_or_variable_step_is_still_a_stack_pointer_copy(self):
+        body = self.cursor_body()
+        body[6] = bytes.fromhex('4881c500020000')       # add rbp, 0x200: more than one entry
+        refused(self, Fn(body=body, flags=0, handler_data=None, unwind_codes=[code_alloc_large(8, 0x300), code_push(1, 3)], prolog=8),
+                'copies a stack pointer')
+
+    def test_chunks_chained_through_other_chunks(self):
+        def build(fn_, _records):
+            a = CODE + 3 + 1 + 1 + 7 + 7 + 7
+            b = a + 12
+            first = unwind([code_alloc_large(19, fn_.frame), code_push(5, 3), code_push(4, 5)], 26, 3, HANDLER, 0x2C0)
+            second = unwind([code_save_xmm(5, 6, 0x2E0)], 0x14, 4, chain=(CODE - BASE, a - BASE, XDATA - BASE))
+            third = unwind([code_save_xmm(5, 7, 0x2F0)], 0x14, 4, chain=(a - BASE, b - BASE, 0))      # chains to the SECOND chunk
+            return [first, second, third], [(CODE - BASE, a - BASE, 0), (a - BASE, b - BASE, 1), (b - BASE, fn_.end - BASE, 2)]
+        fn = Fn(chunks=build)
+        doc, _ = plan(fn, 0x40, end=fn.end)
+        self.assertTrue(any(f['role'] == 'unwind-save' for f in doc['fields']))
+        self.assertEqual(len(doc['unwind_chunks']), 3)
+
+    def test_a_chain_that_does_not_end_at_the_primary_is_refused(self):
+        def build(fn_, _records):
+            a = CODE + 3 + 1 + 1 + 7 + 7 + 7
+            first = unwind([code_alloc_large(19, fn_.frame), code_push(5, 3), code_push(4, 5)], 26, 3, HANDLER, 0x2C0)
+            second = unwind([code_save_xmm(5, 6, 0x2E0)], 0x14, 4, chain=(a - BASE, fn_.end - BASE, 0))   # chains to the third, which chains back
+            third = unwind([code_save_xmm(5, 7, 0x2F0)], 0x14, 4, chain=(a - BASE, fn_.end - BASE, 0))
+            return [first, second, third], [(CODE - BASE, a - BASE, 0), (a - BASE, a - BASE + 12, 1), (a - BASE + 12, fn_.end - BASE, 2)]
+        fn = Fn(chunks=build)
+        with self.assertRaises(cp.Refusal) as ctx:
+            plan(fn, 0x40, end=fn.end)
+        self.assertIn('chain does not end there', ' '.join(ctx.exception.reasons))
 
 
 class SelfCheck(unittest.TestCase):

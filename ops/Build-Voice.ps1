@@ -254,7 +254,7 @@ foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp', 'paris_sperf.cpp')) {
     elseif (Test-Path -LiteralPath $perfTarget) { Remove-Item -LiteralPath $perfTarget -Force }
 }
 # Engine agent capacity (agent_capacity.cpp): inert unless the game starts with -agent-capacity <n>; compiled only when asked.
-foreach ($capFile in @('agent_capacity.cpp', 'agent_capacity.hpp', 'agent_capacity_caves.inc', 'agent_capacity_frame_fields.inc', 'agent_capacity_frame_cave.inc')) {
+foreach ($capFile in @('agent_capacity.cpp', 'agent_capacity.hpp', 'agent_capacity_caves.inc', 'agent_capacity_frame_fields.inc', 'agent_capacity_frame_cave.inc', 'agent_capacity_frame_fields_adb8e0.inc', 'agent_capacity_frame_fields_added0.inc', 'agent_capacity_frame_cave_added0.inc')) {
     $capTarget = Join-Path $root "src/client/component/$capFile"
     if ($AgentCapacity) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$capFile") -Destination $capTarget -Force; $nativeSources += @($capFile) }
     elseif (Test-Path -LiteralPath $capTarget) { Remove-Item -LiteralPath $capTarget -Force }

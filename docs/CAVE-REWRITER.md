@@ -290,3 +290,48 @@ is the one function `frame_extra()`.
 
 Note: the agent count of the engine is 100 in every run (the held-at-24 plan only holds the cap), so X was 7136 in all three.
 Build fault fixed on the way: the build script copied only the first `.inc`; `Build-Voice.ps1` and `product.json` now list the two frame tables.
+
+
+### Two more functions and two planner generalisations (a14, 15 Nov 2026)
+
+The same fault was found in `FUN_140ADB8E0` (frame 0x4F0, 71 x 16-byte entries under the cookie) and `FUN_140ADDED0` (frame 0x9E0, 71 x 32 bytes): one
+loop each over the sentients, one entry per accepted sentient, so `X = (slots - 71) x entry size` (**0 at 24 agents**: nothing is patched, 1,216 and
+2,432 bytes at 100 agents). Facts, access tables and the overlap check with the table-1 caves (three of them live in `FUN_140ADB8E0`; no byte is
+shared): `a14-frame-facts.md` (notes folder). The planner refused both for reasons that were limits of the tool, now removed:
+
+| Refusal | Function | Generalisation | Tests |
+| --- | --- | --- | --- |
+| `add rbp, 0x10`: "copies a stack pointer" | `FUN_140ADB8E0` (rbp is an array cursor, `lea rbp,[rsp+0x48]` stepped by 16) | `add rbp, imm` (1..0x100) is accepted when rbp came from `lea rbp,[rsp+d]` below the array top; every rbp access of the function must then stay within 0x40 bytes of the cursor and the cursor must start below the top, else refused | `Generalised` in `tests/ops/frame_grow_test.py` |
+| "chunk chains to something other than the primary chunk" | `FUN_140ADDED0` (11 chunks, chains of chains) | a chunk may chain to any chunk of the function as long as the chain ends at the primary (no cycle); the default end follows such chunks | same class |
+
+`plan_frames` in `agent_capacity.cpp` now applies three `frame_set`s (fields, probe cave, X each; a set with X = 0 is skipped); the log has one line per
+function: `[agent capacity] frame grow of 140ADB8E0: extra 1216 bytes, 28 fields, probe caves 0`. Tables: `agent_capacity_frame_fields_adb8e0.inc`,
+`agent_capacity_frame_fields_added0.inc`, `agent_capacity_frame_cave_added0.inc` (the probe cave of `FUN_140ADDED0`, 2 page probes). The sites test
+checks all three tables against the shipped bytes, reproduces the plans, runs the self-check for every agent count 28..100 and finds no overlap
+between the fields and cave windows of the three functions and any other patch.
+
+## Scan for the next one (`ops/engine/stack_arrays.py`)
+
+```
+python -B ops/engine/stack_arrays.py [--range LO HI]... --json out.json --markdown out.md        (2 s, no game)
+python -B tests/ops/stack_arrays_test.py
+```
+Lists every function of the code ranges whose unwind data shows the GS handler (or whose code reads the security cookie), with a frame of at least
+71 x 8 bytes, that has a loop writing the stack through an index or a cursor, or that calls a sentient iterator or reads a character / agent /
+sentient count. Per array: start, stride, room in entries up to the cookie and up to the next other stack access, what bounds the loop, verdict SAFE /
+OVERRUNS ABOVE N / UNKNOWN under `-agent-capacity 100`. A reading aid (linear stack model, bound heuristics; every OVERRUNS and UNKNOWN is read in the
+decompile). Result of 15 Nov 2026 over the three ranges: `a14-stack-arrays.md` (notes folder): 247 candidates by frame and cookie, 48 with such a loop or
+iterator, SAFE 9, OVERRUNS 3 (the three known, all handled), UNKNOWN 36 (14 needing eyes).
+
+
+### Measured state after a14 (15 Nov 2026, components `claude/capacity-78-hardening`, build `f7660f8`, headless, one lab client)
+
+**Works in the running game (measured):**
+- All three frame-grown functions (`FUN_1403E61B0`, `FUN_140ADB8E0`, `FUN_140ADDED0`) are applied at start (log: `frame grow of 1403E61B0: extra 7136 bytes, 23 fields, probe caves 1`, `140ADB8E0: extra 1216 bytes, 28 fields, probe caves 0`, `140ADDED0: extra 2432 bytes, 40 fields, probe caves 1`; `patches=1040 caves=50`).
+- Held at 24 agents with these patches (`capacity-agents-held24-headless.json`, the `fg-24` plan now in the repository): PASS 13/13 steps, 5/5 expectations, 24 alive, no crash.
+- The unwind data of `FUN_1403E61B0` is exercised for the first time (`capacity-agents-unwind-headless.json`, run `h8-unwind`): at 78 alive the probe raised `Com_Error(ERR_DROP)` from inside `FUN_1403E6B10` (a callee only `FUN_1403E61B0` calls; 163,046 calls of `FUN_1403E5700` and 110,003 of `FUN_1403E6B10` had run before it); the engine handled it as an ERR_DROP on a dedicated server (`==== ShutdownGame (1) ====`, then `Loading zone cp_frontend`), the error text `agent capacity unwind probe` is in the budget meter's last-error record, and there is no crash dump. The first try (probe on `FUN_1403E5700` only, build `4d0725d`) never raised and no log line shows why (the second build's counters show both callees are called continuously at 78, so the cause is not that they were not reached; not found); the second build hooks both callees, logs every first call and prints the call counts when the command runs.
+- The soak and the dismemberment run: `docs/ZOMBIE-CAPACITY.md` of the server repository, section "a14".
+
+**Built, not proven:** the unwind data of `FUN_140ADB8E0` and `FUN_140ADDED0` has been checked offline (decoded before and after, self-check for every agent count) and the functions run at 78 without a crash, but no error has been raised through them (the probe covers `FUN_1403E61B0` only: its callees `FUN_140ADBC10` / `FUN_140ADB7A0` (`FUN_140ADB8E0`) and `FUN_140ADCF00` (`FUN_140ADDED0`) are called by those functions alone and are the next probe targets). Whether `FUN_140ADB8E0` or `FUN_140ADDED0` ever receive more than 71 candidates in a run is not measured.
+
+**Does not exist:** a scan verdict for the 36 UNKNOWN functions of `a14-stack-arrays.md` (14 need a reading of the decompile); the A8 collector's caller `FUN_140B69E20` (a 6-int stack array, outside the scan ranges); a frame-grown save archive (`FUN_140B30730` loops over a hard-coded 66 sentients).
