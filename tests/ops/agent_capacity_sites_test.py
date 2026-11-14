@@ -287,7 +287,7 @@ class Sites(unittest.TestCase):
         plans = {}
         for name in (sorted(os.listdir(PLANS)) if os.path.isdir(PLANS) else []):
             if name.endswith('.json') and not name.endswith('.requests.json'):
-                for c in json.load(open(os.path.join(PLANS, name), encoding='utf-8'))['caves']:
+                for c in json.load(open(os.path.join(PLANS, name), encoding='utf-8')).get('caves', []):
                     plans[int(c['window_start'], 0)] = c
         for c in caves:
             stock = self.image.read(c['start'], len(c['old']))

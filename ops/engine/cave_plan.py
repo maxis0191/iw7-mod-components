@@ -124,9 +124,11 @@ def classify_block(ins):
         return "int3/int"
     if CS_GRP_INT in g:
         return "int3/int"
+    if CS_GRP_CALL in g or ins.mnemonic == "call":
+        return "call (it leaves a return address in cave memory, which has no unwind data)"
     if CS_GRP_BRANCH_RELATIVE in g or ins.mnemonic.startswith(("loop", "jrcxz", "jecxz", "xbegin")):
         return "relative " + ins.mnemonic
-    if (CS_GRP_JUMP in g or CS_GRP_CALL in g) and ins.operands and ins.operands[0].type == CS_OP_IMM:
+    if CS_GRP_JUMP in g and ins.operands and ins.operands[0].type == CS_OP_IMM:
         return "relative " + ins.mnemonic  # a direct jump or call is relative in 64-bit mode
     return None
 
@@ -520,6 +522,20 @@ def self_check(entry, win):
         raise Refusal([f"self-check of window {entry['window_start']}: {e}" for e in errs])
 
 
+def dry_run(requests, image, db=None):
+    """Each request planned ALONE (no merging with the others): [{address, status, window_len, reasons}]."""
+    rows = []
+    for r in requests:
+        row = {"address": str(r.get("address")), "note": r.get("note", "")}
+        try:
+            (c,) = plan([r], image, db)
+            row.update(status="accepted", window_len=c["window_len"], window_start=c["window_start"], reasons=[])
+        except Refusal as e:
+            row.update(status="refused", reasons=e.reasons)
+        rows.append(row)
+    return rows
+
+
 # ------------------------------------------------------------------------------------------------ C++ fragment
 def emit_cpp(plan_doc, source_name):
     def arr(h):
@@ -539,6 +555,8 @@ def main(argv=None):
     ap.add_argument("input", help="requests JSON (plan mode) or plan JSON (--emit-cpp)")
     ap.add_argument("-o", "--output", help="output file (default: stdout)")
     ap.add_argument("--emit-cpp", action="store_true", help="input is a plan: write the C++ array initialiser")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="plan every request alone and write a per-request accepted/refused table (exit 0)")
     ap.add_argument("--image", default=DEFAULT_IMAGE)
     ap.add_argument("--db", default=DEFAULT_DB, help="engine database for cross references (skipped when absent)")
     a = ap.parse_args(argv)
@@ -555,7 +573,14 @@ def main(argv=None):
             if db is None:
                 print("note: no engine database: cross references come from the byte scans only", file=sys.stderr)
             reqs = doc["requests"] if isinstance(doc, dict) else doc
-            caves = plan(reqs, image, db)
+            if a.dry_run:
+                rows = dry_run(reqs, image, db)
+                text = json.dumps({"version": 1, "dry_run": True, "accepted": sum(r["status"] == "accepted" for r in rows),
+                                   "refused": sum(r["status"] == "refused" for r in rows), "sites": rows}, indent=1) + chr(10)
+                caves = None
+            else:
+                caves = plan(reqs, image, db)
+        if not a.emit_cpp and caves is not None:
             text = json.dumps({"version": 1, "image": os.path.basename(image.path),
                                "xrefs": "engine database refs+calls and byte scans" if db else "byte scans only",
                                "caves": caves}, indent=1) + "\n"

@@ -146,8 +146,8 @@ class Fixups(unittest.TestCase):
         self.assertEqual(fx['end'], fx['offset'] + 4 + 1)
         self.assertEqual(int(fx['target'], 0), at + 3 + 7 + 0x40)
 
-    def test_indirect_call_through_rip_memory_is_allowed(self):
-        code = bytes.fromhex('8b4310') + bytes.fromhex('ff1520000000')  # call [rip+0x20]
+    def test_other_rip_relative_forms_become_fixups(self):
+        code = bytes.fromhex('8b4310') + bytes.fromhex('8b0520000000')  # mov eax,[rip+0x20]
         cave, at = one(code, {'new_disp': 0x3F08})
         self.assertEqual(len(cave['fixups']), 1)
         self.assertEqual(int(cave['fixups'][0]['target'], 0), at + 3 + 6 + 0x20)
@@ -164,9 +164,26 @@ class Refusals(unittest.TestCase):
 
     def test_relative_jmp_jcc_call_loop(self):
         for tail, name in ((b'\xeb\x05', 'jmp'), (b'\x74\x05', 'je'), (b'\xe9\x10\x00\x00\x00', 'jmp'),
-                           (b'\x0f\x84\x10\x00\x00\x00', 'je'), (b'\xe8\x10\x00\x00\x00', 'call'), (b'\xe2\xfe', 'loop')):
+                           (b'\x0f\x84\x10\x00\x00\x00', 'je'), (b'\xe2\xfe', 'loop')):
             img, at = image(bytes.fromhex('8b4310') + tail)
             refused(self, [req(at, new_disp=0x3F08)], img, 'relative ' + name)
+
+    def test_no_call_of_any_form(self):
+        """A call leaves a return address in cave memory (no unwind data): refused, relative or through a register or memory."""
+        for tail in ('e810000000', 'ffd0', 'ff1520000000', 'ff5008', '41ffd3'):
+            img, at = image(bytes.fromhex('8b4310') + bytes.fromhex(tail))
+            refused(self, [req(at, new_disp=0x3F08)], img, 'call', 'unwind')
+        img, at = image(bytes.fromhex('ff5008') + bytes.fromhex('909090'))
+        refused(self, [req(at, new_disp=0x3F08)], img, 'call')
+        img, at = image(bytes.fromhex('8b4310') + bytes.fromhex('9090'))
+        refused(self, [req(at, kind='bytes', new_bytes='ffd0')], img, 'position independent')
+
+    def test_dry_run_reports_each_site_alone(self):
+        code = bytes.fromhex('8b4310') + bytes.fromhex('90' * 10) + bytes.fromhex('8b4310') + bytes.fromhex('ffd0')
+        img, at = image(code)
+        rows = cp.dry_run([req(at, new_disp=0x3F08), req(at + 13, new_disp=0x3F08)], img)
+        self.assertEqual([r['status'] for r in rows], ['accepted', 'refused'])
+        self.assertIn('call', ' '.join(rows[1]['reasons']))
 
     def test_interior_target_by_rel8_rel32_and_jump_table(self):
         code = bytes.fromhex('8b4310') + b'\x90\x90\x90'  # interior instruction at at+3

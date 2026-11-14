@@ -157,6 +157,8 @@
     "ops/engine-map/iw7_world_live.py",
     "ops/engine-map/iw7_xref32.py",
     "ops/engine/cave_plan.py",
+    "ops/engine/caves/a1-dry-run.requests.json",
+    "ops/engine/caves/a1-dry-run.result.json",
     "ops/engine/caves/proof-zero-change.json",
     "ops/engine/caves/proof-zero-change.requests.json",
     "ops/ghidra/DecompileSelected.java",

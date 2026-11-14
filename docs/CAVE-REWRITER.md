@@ -33,6 +33,8 @@ given bytes of any length; they must be position independent: no rip-relative op
 JSON list or `{"requests": [...]}`. Image and database default to the RE lab (`docs/ENGINE.md`, `IW7_RE_LAB`); without the
 database the planner still runs, with the byte scans only (it says so).
 
+`--dry-run` plans every request ALONE and writes a per-request accepted/refused table (exit 0): used to ask, before any build, which sites of a change set the cave technique can serve.
+
 ### How to add a site
 
 1. Find the instruction (A1 change set row, or `engine.py disasm`), write one request per instruction. Two requests whose
@@ -60,7 +62,8 @@ The planner refuses the whole plan (reasons on stderr, exit code 2, nothing writ
 | Rule | Why |
 | --- | --- |
 | the window contains `ret`, `int3` (or another `int`), `iret` | execution would leave the cave or trap inside it; a `ret` also ends the window's flow so the jump back is never reached |
-| the window contains a relative `jmp`, `jcc`, `call`, `loop`, `jrcxz`, `xbegin` | its displacement is relative to the old address; copied to the cave it jumps somewhere else. A `call`/`jmp` with a rip-relative MEMORY operand (`call [rip+x]`) is allowed: it becomes a fixup |
+| the window contains a relative `jmp`, `jcc`, `loop`, `jrcxz`, `xbegin` | its displacement is relative to the old address; copied to the cave it jumps somewhere else. (Indirect `jmp reg` and `jmp [mem]` are allowed; rip-relative memory operands become fixups) |
+| the window contains a `call` of ANY form (relative, through a register, through memory, rip-relative memory) | a call executed from the cave leaves a return address INSIDE cave memory, which has no unwind data. The engine unwinds the stack on its error path (`Com_Error` uses longjmp, which on x64 Windows walks unwind data), so an error raised below such a call would mis-unwind. Rule: no call and no instruction that pushes a return address in a window |
 | any byte of the window after its first is the target of a branch, call or data reference from anywhere in the image | the window after the first byte becomes `jmp` operand bytes and `int3`: a jump into it crashes. Checked by (1) the engine database's `refs` and `calls` tables over the whole range, (2) a byte scan of every executable section for rel32 and rel8 branches landing in it, (3) a scan of all sections for 8-byte absolute pointers and 4-byte image-relative values (jump tables) equal to an interior instruction start |
 | two requests ask for the same instruction | ambiguous |
 | a request is not at an instruction boundary of its window | the decode disagrees with the request |
@@ -97,11 +100,8 @@ extra instruction.
 - A target computed at run time (`jmp rax` from a table the scan does not recognise, a return address, an exception
   handler resuming at an address) is not seen. The engine's own jump tables are 4-byte image-relative values and are
   found; tables built at run time are not.
-- Exception and unwind data: the cave has no `RUNTIME_FUNCTION` entry. A C++ exception or a stack walk that crosses the cave
-  cannot unwind through it. A window must not contain code that can throw (calls into callees are fine only because the
-  callee's own unwind data covers its frames, and the walker then stops in the cave). The crash reader shows an
-  access/illegal-instruction fault in a cave correctly (it reports the cave address), which is how the proof below works.
-- Calls inside a window push a return address into the cave: code that inspects its own return address would see it.
+- Exception and unwind data: the cave has no `RUNTIME_FUNCTION` entry, so no stack walk or longjmp may cross it. That is why a window may contain no call of any form (see the refusal table): with no call, nothing below the cave can run while its frame is on the stack, and the cave itself cannot throw except by a fault of its own instructions.
+- A fault inside a cave is reported by the crash handler with an address in cave memory and "not in any module" (the proof below: rip `0x150280000`). To map it back: at start the component prints one line per cave (up to 32 caves), `[agent capacity] cave k: window <start>+<length> -> cave <first>..<last>`; the cave whose range holds the address is the window to look at (`window_start` in the plan and in `agent_capacity_caves.inc`, same order). The crash report's caller list still names the engine function that jumped to the window.
 - No other thread may be running the window while it is patched: the patch is made at start, before game threads run.
 
 ## Run time (`agent_capacity.cpp`)
@@ -115,6 +115,23 @@ check and the all-or-nothing transaction cover it. Nothing is counted inside a c
 Test switch `-agent-capacity-cave-fault [mask]` (bit k = cave k of the table, no value = all): the cave bytes become `ud2`.
 It proves that a cave runs without a counter: the process must die with an illegal instruction inside the cave memory. It
 is inert unless given.
+
+## Dry run over the A1 change set (14 Nov 2026, no build, no game)
+
+`ops/engine/caves/a1-dry-run.requests.json` holds the 49 table-1 instructions of `a1-change-set.md` (parts A, B, C: part C has none):
+DIRECT, FORM-lea and WALK rows as `disp` requests with `force32` and the unchanged displacement, the add forms (imm8 to imm32,
+add to lea, the inserted add, the accessor) as `bytes` requests carrying the change set's own new bytes. Result
+`a1-dry-run.result.json`: **44 accepted, 5 refused**, each site planned alone (two neighbours that would merge are not
+combined). Refused:
+
+- `0x140454343` (A.2  FUN_1404542f0@1404542F0 DIRECT): window 0x140454343+9: rel8 at 0x1404542ee reaches 0x140454346 inside the window
+- `0x1404A3AB1` (A.11  FUN_1404a3960@1404A3960 FORM (lea)): window 0x1404a3ab1+7: rva32 at 0x1405dd687 reaches 0x1404a3ab5 inside the window
+- `0x1404A4A7D` (A.12  FUN_1404a4900@1404A4900 DIRECT): window 0x1404a4a7d+9: rel32 at 0x1404a491b reaches 0x1404a4a81 inside the window; window 0x1404a4a7d+9: rel8 at 0x1404a4a49 reaches 0x1404a4a81 inside the window
+- `0x1405ECAE6` (A.13  PlayerCmd_getclosestenemysqdist@14): window 0x1405ecae6: 0x1405ecaea jle 0x1405ecb47: relative jle
+- `0x140AE202D` (A.29  FUN_140ae2000@140AE2000 DIRECT): window 0x140ae202d: 0x140ae2031 jge 0x140ae20bf: relative jge
+
+The refusals are real branch or table references into the window, or a relative branch in it; those sites need another technique
+(a window that starts earlier, an in-place rewrite of a neighbour, or a detour of the branch target).
 
 ## Proof (14 Nov 2026, components `585b04f`, one lab client, headless, 24 agents)
 

@@ -479,6 +479,11 @@ void cave(std::uintptr_t window_start, const std::vector<std::uint8_t>& old_byte
     std::memcpy(window + 1, &forth, 4);
     std::memset(window + 5, 0xCC, length - 5);
     for (std::size_t i = 0; i < length; ++i) add1(window_start + i, old_bytes[i], window[i]);
+    // one line a cave (short tables only): a fault at an address in cave memory maps back to its window by this range
+    if (cave_table.size() <= 32)
+        console::info("[agent capacity] cave %zu: window %llX+%zu -> cave %llX..%llX\n", caves_planned,
+            static_cast<unsigned long long>(window_start), length, static_cast<unsigned long long>(at),
+            static_cast<unsigned long long>(at + cave_bytes.size() + 5 - 1));
     ++caves_planned;
 }
 
