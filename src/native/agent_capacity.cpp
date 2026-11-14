@@ -421,10 +421,14 @@ std::uint32_t parse_count(const wchar_t* flag, std::uint32_t fallback) {
 // inside it (a test switch; the environment variable IW7_AGENT_CAPACITY_CAVE_FAULT=<mask> does the same; without either
 // nothing here is written differently).
 struct cave_fixup { std::uint32_t offset, end; std::uintptr_t target; };
+// An incoming reference to an interior instruction of the window, rewritten to point into the cave: kind 0 = the rel32 of a
+// jmp/jcc (new = cave + cave_offset - (field + 4)), kind 1 = a 4-byte image-relative jump-table entry (new = cave + offset - image base).
+struct cave_retarget { std::uintptr_t field; std::uint32_t kind, old_value, cave_offset; };
 struct cave_spec {
     std::uintptr_t window_start;
     std::vector<std::uint8_t> old_bytes, cave_bytes;
     std::vector<cave_fixup> fixups;
+    std::vector<cave_retarget> retargets;
 };
 const std::vector<cave_spec> cave_table = {
 #include "agent_capacity_caves.inc"
@@ -446,7 +450,7 @@ buffer reserve_code(std::size_t bytes) {
 }
 
 void cave(std::uintptr_t window_start, const std::vector<std::uint8_t>& old_bytes, const std::vector<std::uint8_t>& cave_bytes,
-          const std::vector<cave_fixup>& fixups) {
+          const std::vector<cave_fixup>& fixups, const std::vector<cave_retarget>& retargets) {
     const auto length = old_bytes.size();
     if (length < 5 || length > 64 || cave_bytes.empty()) throw std::runtime_error("agent capacity: bad cave window");
     readable(window_start, static_cast<unsigned>(length));
@@ -479,11 +483,25 @@ void cave(std::uintptr_t window_start, const std::vector<std::uint8_t>& old_byte
     std::memcpy(window + 1, &forth, 4);
     std::memset(window + 5, 0xCC, length - 5);
     for (std::size_t i = 0; i < length; ++i) add1(window_start + i, old_bytes[i], window[i]);
+    for (const auto& t : retargets) {
+        if (t.cave_offset >= cave_bytes.size()) throw std::runtime_error("agent capacity: cave retarget outside its cave");
+        const auto target = at + t.cave_offset;
+        if (t.kind == 0) {
+            std::int32_t rel{};
+            if (!relative32(target, t.field + 4, rel)) throw std::runtime_error("agent capacity: retargeted branch cannot reach its cave");
+            add(t.field, t.old_value, static_cast<std::uint32_t>(rel), 4, true);
+        } else {
+            // a jump-table entry is image base + a 32-bit value: the cave must lie above the image base, within 2 GB of it
+            if (target <= image_base || target - image_base > 0x7FFFFFFFull)
+                throw std::runtime_error("agent capacity: a jump-table entry cannot point into the cave (cave not above the image base within 2 GB)");
+            add(t.field, t.old_value, static_cast<std::uint32_t>(target - image_base), 4, false);
+        }
+    }
     // one line a cave (short tables only): a fault at an address in cave memory maps back to its window by this range
     if (cave_table.size() <= 32)
-        console::info("[agent capacity] cave %zu: window %llX+%zu -> cave %llX..%llX\n", caves_planned,
+        console::info("[agent capacity] cave %zu: window %llX+%zu -> cave %llX..%llX (retargets %zu)\n", caves_planned,
             static_cast<unsigned long long>(window_start), length, static_cast<unsigned long long>(at),
-            static_cast<unsigned long long>(at + cave_bytes.size() + 5 - 1));
+            static_cast<unsigned long long>(at + cave_bytes.size() + 5 - 1), retargets.size());
     ++caves_planned;
 }
 
@@ -498,8 +516,11 @@ void plan_caves() {
         fault = static_cast<std::uint32_t>(std::wcstoul(from_env, nullptr, 10));
     std::size_t k = 0;
     for (const auto& c : cave_table) {
-        if (k < 32 && (fault >> k) & 1u) cave(c.window_start, c.old_bytes, {0x0F, 0x0B}, {});
-        else cave(c.window_start, c.old_bytes, c.cave_bytes, c.fixups);
+        if (k < 32 && (fault >> k) & 1u) {
+            std::vector<std::uint8_t> trap(c.cave_bytes.size(), 0xCC);  // ud2 at the start of a cave of the same size
+            trap[0] = 0x0F; trap[1] = 0x0B;
+            cave(c.window_start, c.old_bytes, trap, {}, c.retargets);
+        } else cave(c.window_start, c.old_bytes, c.cave_bytes, c.fixups, c.retargets);
         ++k;
     }
     if (fault) console::info("[agent capacity] cave fault switch: mask %X (ud2 instead of the instruction)\n", fault);

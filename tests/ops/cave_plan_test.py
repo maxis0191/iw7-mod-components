@@ -162,11 +162,9 @@ class Refusals(unittest.TestCase):
         img, at = image(bytes.fromhex('8b4310') + b'\xcc\x90')
         refused(self, [req(at, new_disp=0x3F08)], img, 'int3')
 
-    def test_relative_jmp_jcc_call_loop(self):
-        for tail, name in ((b'\xeb\x05', 'jmp'), (b'\x74\x05', 'je'), (b'\xe9\x10\x00\x00\x00', 'jmp'),
-                           (b'\x0f\x84\x10\x00\x00\x00', 'je'), (b'\xe2\xfe', 'loop')):
-            img, at = image(bytes.fromhex('8b4310') + tail)
-            refused(self, [req(at, new_disp=0x3F08)], img, 'relative ' + name)
+    def test_loop_is_refused(self):
+        img, at = image(bytes.fromhex('8b4310') + bytes.fromhex('e2fe'))
+        refused(self, [req(at, new_disp=0x3F08)], img, 'relative loop')
 
     def test_no_call_of_any_form(self):
         """A call leaves a return address in cave memory (no unwind data): refused, relative or through a register or memory."""
@@ -193,10 +191,6 @@ class Refusals(unittest.TestCase):
                 ('rel32', lambda at: b'\x0f\x85' + struct.pack('<i', at + 3 - (at + 0x20 + 6)))):
             img, at = image(code + b'\x90' * (0x20 - len(code)) + build(BASE + 0x40))
             refused(self, [req(at, new_disp=0x3F08)], img, label, 'inside the window')
-        img, at = image(code, data=struct.pack('<I', at_rva(BASE + 0x40 + 3)))
-        refused(self, [req(at, new_disp=0x3F08)], img, 'rva32')
-        img, at = image(code, data=struct.pack('<Q', BASE + 0x40 + 3))
-        refused(self, [req(at, new_disp=0x3F08)], img, 'abs64')
 
     def test_interior_target_from_the_database(self):
         class Db:
@@ -284,6 +278,209 @@ class Merging(unittest.TestCase):
         img, at = image(bytes.fromhex('8b4310') + bytes.fromhex('8b4b18') + bytes.fromhex('90909090'))
         caves = cp.plan([req(at, new_disp=0x3F08), req(at + 3, new_disp=0x3F10)], img)
         self.assertEqual(caves[0]['window_len'], 6)
+
+
+class FunctionDb:
+    """A database stub: one analysed function that covers the whole fixture, no cross references of its own."""
+
+    def __init__(self, length):
+        self.length = length
+
+    def function_range(self, address):
+        return (BASE, BASE + self.length)
+
+    def into(self, lo, hi):
+        return []
+
+
+def fixture(code, tail=0x40):
+    """`code` at BASE (so the function starts at the site's neighbourhood) followed by `tail` nops."""
+    body = code + bytes.fromhex('90' * tail)
+    return cp.PlainImage([(BASE, body, True)]), FunctionDb(len(body))
+
+
+class Branches(unittest.TestCase):
+    """jmp/jcc inside a window are re-encoded as rel32; loop/jrcxz stay refused."""
+
+    def test_jcc_rel8_to_outside_becomes_rel32_with_a_branch_fixup(self):
+        code = bytes.fromhex('8b4310') + bytes.fromhex('7405')                       # mov ; je +5
+        cave, at = one(code + bytes.fromhex('90' * 12), {'new_disp': 0x3F08})
+        self.assertEqual(cave['cave_bytes'], '8b83083f0000' + '0f84' + '00000000')
+        (fx,) = cave['fixups']
+        self.assertEqual((fx['kind'], fx['offset'], fx['end']), ('branch', 8, 12))
+        self.assertEqual(int(fx['target'], 0), at + 5 + 5)
+        b = cp.apply_fixups(bytes.fromhex(cave['cave_bytes']), cave['fixups'], 0x150002000)
+        je = cp.decode(b, 0x150002000)[1]
+        self.assertEqual((je.mnemonic, je.operands[0].imm), ('je', at + 10))
+
+    def test_jmp_rel8_and_rel32_and_every_condition_code(self):
+        for tail, op in (('eb05', 'e9'), ('e905000000', 'e9')):
+            cave, at = one(bytes.fromhex('8b4310' + tail + '90' * 12), {'new_disp': 0x3F08})
+            self.assertEqual(cave['cave_bytes'][12:14], op)
+        for cc in range(16):
+            cave, at = one(bytes.fromhex('8b4310' + '%02x05' % (0x70 + cc) + '90' * 12), {'new_disp': 0x3F08})
+            self.assertEqual(cave['cave_bytes'][12:16], '0f%02x' % (0x80 + cc))
+            cave, at = one(bytes.fromhex('8b4310' + '0f%02x05000000' % (0x80 + cc) + '90' * 12), {'new_disp': 0x3F08})
+            self.assertEqual(cave['cave_bytes'][12:16], '0f%02x' % (0x80 + cc))
+
+    def test_branch_to_an_instruction_inside_the_window_is_cave_internal(self):
+        # mov eax,[rbx] ; jmp +0 (to the next instruction) ; mov ecx,[rbx+0x18]: both movs change, one window of 7 bytes
+        code = bytes.fromhex('8b03' + 'eb00' + '8b4318') + bytes.fromhex('90' * 12)
+        img, at = image(code)
+        (cave,) = cp.plan([req(at, new_disp=0x3F08), req(at + 4, new_disp=0x3F20)], img)
+        self.assertEqual(cave['window_len'], 7)
+        self.assertEqual(cave['fixups'], [])
+        self.assertEqual(cave['cave_bytes'], '8b83083f0000' + 'e9' + '00000000' + '8b83203f0000')
+    def test_backward_branch_to_the_window_start_is_inside(self):
+        code = bytes.fromhex('8b03' + 'ebfc' + '90') + bytes.fromhex('90' * 12)     # jmp back to the first instruction
+        cave, at = one(code, {'new_disp': 0x3F08})
+        self.assertEqual(cave['fixups'], [])
+        self.assertEqual(cave['cave_bytes'], '8b83083f0000' + 'e9' + struct.pack('<i', -11).hex() + '90')
+    def test_branch_into_the_middle_of_a_window_instruction_is_refused(self):
+        code = bytes.fromhex('8b03' + 'eb01' + '8b4318') + bytes.fromhex('90' * 12)   # jmp into the middle of the next mov
+        img, at = image(code)
+        refused(self, [req(at, new_disp=0x3F08), req(at + 4, new_disp=0x3F20)], img, 'inside an instruction')
+    def test_loop_and_jrcxz_stay_refused_and_so_does_a_prefixed_branch(self):
+        for tail, name in (('e2fe', 'loop'), ('e305', 'jrcxz')):
+            img, at = image(bytes.fromhex('8b4310' + tail))
+            refused(self, [req(at, new_disp=0x3F08)], img, 'relative ' + name)
+        img, at = image(bytes.fromhex('8b4310' + '3e7405') + bytes.fromhex('90' * 12))   # branch hint prefix
+        refused(self, [req(at, new_disp=0x3F08)], img, 'prefixes')
+
+    def test_self_check_compares_branch_targets(self):
+        code = bytes.fromhex('8b4310' + '7405') + bytes.fromhex('90' * 12)
+        img, at = image(code)
+        (cave,) = cp.plan([req(at, new_disp=0x3F08)], img)
+        win = cp._window(img, at)
+        bad = copy.deepcopy(cave)
+        bad['fixups'][0]['target'] = hex(int(bad['fixups'][0]['target'], 0) + 1)
+        with self.assertRaises(cp.Refusal) as ctx:
+            cp.self_check(bad, win)
+        self.assertIn('branch', str(ctx.exception))
+        bad = copy.deepcopy(cave)                                     # a condition changed: je -> jne
+        bad['cave_bytes'] = bad['cave_bytes'][:13] + '5' + bad['cave_bytes'][14:]
+        with self.assertRaises(cp.Refusal):
+            cp.self_check(bad, win)
+
+
+class WindowChoice(unittest.TestCase):
+    """Forward, then backward, then mixed windows up to 24 bytes; the first that passes every rule."""
+
+    def test_backward_window_when_the_forward_one_has_a_return(self):
+        code = bytes.fromhex('909090' + '8b4310' + 'c3')                    # nop nop nop ; mov ; ret
+        img, db = fixture(code)
+        with self.assertRaises(cp.Refusal):
+            cp.plan([req(BASE + 3, new_disp=0x3F08)], img)                  # no function range: no backward window
+        (cave,) = cp.plan([req(BASE + 3, new_disp=0x3F08)], img, db)
+        self.assertEqual((cave['window_kind'], cave['window_start'], cave['window_len']), ('backward', hex(BASE + 1), 5))
+        self.assertEqual(cave['cave_bytes'], '9090' + '8b83083f0000')
+        self.assertEqual(cave['return_address'], hex(BASE + 6))
+
+    def test_backward_window_needs_the_decode_to_land_on_the_site(self):
+        code = bytes.fromhex('48c7c0') + bytes.fromhex('8b4310' + 'c3')      # the function starts in the middle of a mov
+        img, db = fixture(code)
+
+        class Off(FunctionDb):
+            def function_range(self, address):
+                return (BASE + 1, BASE + self.length)
+        text = refused(self, [req(BASE + 3, new_disp=0x3F08)], img, 'return')
+        with self.assertRaises(cp.Refusal):
+            cp.plan([req(BASE + 3, new_disp=0x3F08)], img, Off(len(code) + 0x40))
+
+    def test_mixed_window_when_forward_and_backward_both_fail(self):
+        # call rax ; nop ; MOV ; nop ; xor eax,eax ; ... jmp rel8 -> the xor (an interior target of the forward window)
+        code = bytes.fromhex('ffd0' + '90' + '8b4310' + '90' + '31c0') + bytes.fromhex('90' * 10)
+        n = len(code)
+        code += bytes.fromhex('eb') + bytes([(BASE + 7 - (BASE + n + 2)) & 0xFF])
+        img, db = fixture(code)
+        (cave,) = cp.plan([req(BASE + 3, new_disp=0x3F08)], img, db)
+        self.assertEqual(cave['window_kind'], 'mixed')
+        self.assertEqual((cave['window_start'], cave['window_len']), (hex(BASE + 2), 5))
+        self.assertEqual(cave['cave_bytes'], '90' + '8b83083f0000' + '90')
+
+    def test_window_start_may_be_a_branch_target_and_a_cap_of_24_bytes(self):
+        code = bytes.fromhex('8b4310' + 'c3')
+        img, db = fixture(bytes.fromhex('90' * 30) + code)
+        # 30 nops before: backward needs 2 of them; the window is far below the cap
+        (cave,) = cp.plan([req(BASE + 30, new_disp=0x3F08)], img, db)
+        self.assertEqual(cave['window_len'], 5)
+        self.assertLessEqual(cave['window_len'], 24)
+
+    def test_windows_of_two_groups_that_overlap_after_choosing_are_merged(self):
+        # the second site has a ret behind it: its backward window reaches into the first site's window: merged
+        code = bytes.fromhex('8b4310' + 'ffc0' + '8b4310' + 'c3')
+        img, db = fixture(code)
+        caves = cp.plan([req(BASE, new_disp=0x3F08), req(BASE + 5, new_disp=0x3F08)], img, db)
+        self.assertEqual(len(caves), 1)
+        self.assertEqual(len(caves[0]['changes']), 2)
+
+
+class Retargets(unittest.TestCase):
+    """Incoming references to an interior instruction, only when no window avoids them."""
+
+    def window(self, extra, tail=0x40):
+        code = bytes.fromhex('8b4310' + '90' + '90') + bytes.fromhex('90' * 30) + extra
+        return fixture(code, tail)
+
+    def jump_to(self, opcode, target):
+        end_len = {'e9': 5, '0f85': 6}[opcode]
+        return bytes.fromhex(opcode) + struct.pack('<i', target - (BASE + 35 + end_len))
+
+    def test_jmp_rel32_is_retargeted(self):
+        img, db = self.window(self.jump_to('e9', BASE + 3 + 0))                # points at the first nop (interior)
+        (cave,) = cp.plan([req(BASE, new_disp=0x3F08)], img, db)
+        (t,) = cave['retargets']
+        self.assertEqual((t['kind'], t['at'], t['field'], t['length']), ('rel32', hex(BASE + 35), hex(BASE + 36), 5))
+        self.assertEqual(t['old_bytes'], struct.pack('<i', BASE + 3 - (BASE + 40)).hex())
+        self.assertEqual(t['cave_offset'], 6)                                   # the mov is 6 bytes in the cave
+        self.assertEqual(t['target'], hex(BASE + 3))
+
+    def test_jcc_rel32_is_retargeted_with_its_six_byte_form(self):
+        img, db = self.window(self.jump_to('0f85', BASE + 4))
+        (cave,) = cp.plan([req(BASE, new_disp=0x3F08)], img, db)
+        (t,) = cave['retargets']
+        self.assertEqual((t['kind'], t['field'], t['length'], t['cave_offset']), ('rel32', hex(BASE + 37), 6, 7))
+
+    def test_rel8_call_and_unconfirmed_incoming_are_refused(self):
+        img, db = self.window(bytes.fromhex('eb') + bytes([(BASE + 3 - (BASE + 37)) & 0xFF]))
+        refused(self, [req(BASE, new_disp=0x3F08)], img, 'rel8', 'cannot be retargeted')
+        img, db = self.window(bytes.fromhex('e8') + struct.pack('<i', BASE + 3 - (BASE + 40)))
+        with self.assertRaises(cp.Refusal) as ctx:
+            cp.plan([req(BASE, new_disp=0x3F08)], img, db)
+        self.assertIn('a call cannot be retargeted', str(ctx.exception))
+        img, db = self.window(self.jump_to('e9', BASE + 3))
+        refused(self, [req(BASE, new_disp=0x3F08)], img, 'cannot confirm')       # no function decode: not retargeted
+        img, db = self.window(bytes.fromhex('e9') + struct.pack('<i', BASE + 2 - (BASE + 40)))
+        with self.assertRaises(cp.Refusal) as ctx:
+            cp.plan([req(BASE, new_disp=0x3F08)], img, db)
+        self.assertIn('instruction boundary', str(ctx.exception))
+
+    def test_jump_table_entry_is_retargeted_and_other_pointers_are_refused(self):
+        code = bytes.fromhex('8b4310' + '90' + '90') + bytes.fromhex('90' * 11)
+        rva = BASE + 3 - 0x140000000
+        img, at = image(code, pad=0, data=struct.pack('<I', rva))
+        (cave,) = cp.plan([req(at, new_disp=0x3F08)], img)
+        (t,) = cave['retargets']
+        self.assertEqual((t['kind'], t['field'], t['old_bytes'], t['cave_offset']), ('rva32', hex(0x141000000), struct.pack('<I', rva).hex(), 6))
+        img, at = image(code, pad=0, data=b'\x00' + struct.pack('<I', rva))     # not 4-aligned
+        refused(self, [req(at, new_disp=0x3F08)], img, 'rva32', 'unaligned')
+        img, at = image(code, pad=0, data=struct.pack('<Q', BASE + 3))
+        refused(self, [req(at, new_disp=0x3F08)], img, 'abs64')
+        img, at = image(code + struct.pack('<I', rva), pad=0)                    # the dword lies in code
+        refused(self, [req(at, new_disp=0x3F08)], img, 'rva32', 'code')
+
+    def test_dry_run_records_the_window_and_the_retargets(self):
+        img, db = self.window(self.jump_to('e9', BASE + 3))
+        (row,) = cp.dry_run([req(BASE, new_disp=0x3F08)], img, db)
+        self.assertEqual((row['status'], row['window_kind'], row['retargets']), ('accepted', 'forward', 1))
+        self.assertTrue(row['tried'] == [] or isinstance(row['tried'], list))
+
+    def test_emit_cpp_has_the_retarget_table(self):
+        img, db = self.window(self.jump_to('e9', BASE + 3))
+        caves = cp.plan([req(BASE, new_disp=0x3F08)], img, db)
+        text = cp.emit_cpp({'caves': caves}, 'x.json')
+        self.assertIn(f'{{{BASE + 36:#x}ull,0,', text)
+        self.assertIn(',6}}', text)
 
 
 class SelfCheck(unittest.TestCase):

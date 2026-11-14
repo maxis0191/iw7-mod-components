@@ -1,0 +1,37 @@
+[
+ {
+  "address": "0x140454343",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.2  FUN_1404542f0@1404542F0 DIRECT: sub eax, dword ptr [rdx + rbx + 0x24]"
+ },
+ {
+  "address": "0x1404A3AB1",
+  "kind": "disp",
+  "new_disp": 16136,
+  "force32": true,
+  "note": "A.11  FUN_1404a3960@1404A3960 FORM (lea): lea rcx, [rdi + 0x10]"
+ },
+ {
+  "address": "0x1404A4A7D",
+  "kind": "disp",
+  "new_disp": 16160,
+  "force32": true,
+  "note": "A.12  FUN_1404a4900@1404A4900 DIRECT: mov dword ptr [rdx + rsi + 0x28], ecx"
+ },
+ {
+  "address": "0x1405ECAE6",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.13  PlayerCmd_getclosestenemysqdist@1405EC9D0 DIRECT: cmp dword ptr [rdx + rax + 0x24], esi"
+ },
+ {
+  "address": "0x140AE202D",
+  "kind": "disp",
+  "new_disp": 16156,
+  "force32": true,
+  "note": "A.29  FUN_140ae2000@140AE2000 DIRECT: cmp dword ptr [rbx + rcx + 0x24], eax"
+ }
+]

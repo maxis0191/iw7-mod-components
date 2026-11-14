@@ -116,7 +116,7 @@ def rip_operand(ins):
 
 
 def classify_block(ins):
-    """Why an instruction cannot be moved to a cave (None: it can)."""
+    """Why an instruction cannot be moved to a cave (None: it can). Direct jmp/jcc are allowed (re-encoded as rel32)."""
     g = set(ins.groups)
     if CS_GRP_RET in g or CS_GRP_IRET in g or ins.mnemonic in ("ret", "retf", "retn"):
         return "return"
@@ -126,10 +126,8 @@ def classify_block(ins):
         return "int3/int"
     if CS_GRP_CALL in g or ins.mnemonic == "call":
         return "call (it leaves a return address in cave memory, which has no unwind data)"
-    if CS_GRP_BRANCH_RELATIVE in g or ins.mnemonic.startswith(("loop", "jrcxz", "jecxz", "xbegin")):
-        return "relative " + ins.mnemonic
-    if CS_GRP_JUMP in g and ins.operands and ins.operands[0].type == CS_OP_IMM:
-        return "relative " + ins.mnemonic  # a direct jump or call is relative in 64-bit mode
+    if ins.mnemonic.startswith(("loop", "jrcxz", "jecxz", "xbegin")):
+        return "relative " + ins.mnemonic + " (rel8 only: no rel32 form)"
     return None
 
 
@@ -180,42 +178,73 @@ def reencode_disp(raw, ins, new_disp, force32=False):
 
 
 # ------------------------------------------------------------------------------------------------ cross references
+def _cache(image):
+    if not hasattr(image, "_cave_cache"):
+        image._cave_cache = {}
+    return image._cave_cache
+
+
+def _rel32_index(image):
+    """Every rel32 branch of the code regions, sorted by target: (target, at, info). Conservative: every byte is read
+    as a possible opcode (E8 call, E9 jmp, 0F 80..8F jcc)."""
+    c = _cache(image)
+    if "rel32" not in c:
+        rows = []
+        pat = re.compile(rb"[\xe8\xe9]|\x0f[\x80-\x8f]", re.S)
+        for base, data in image.code_regions():
+            for m in pat.finditer(data):
+                p = m.start()
+                n = 1 if data[p] != 0x0F else 2
+                if p + n + 4 > len(data):
+                    continue
+                rel = struct.unpack_from("<i", data, p + n)[0]
+                info = "call" if data[p] == 0xE8 else ("jmp" if data[p] == 0xE9 else "jcc")
+                rows.append((base + p + n + 4 + rel, base + p, info))
+        rows.sort()
+        c["rel32"] = (rows, [r[0] for r in rows])
+    return c["rel32"]
+
+
 def raw_branches_into(image, lo, hi):
-    """Every rel32/rel8 branch in the code regions whose target is in [lo, hi). Conservative: it reads the bytes at
-    every offset, so a data byte that looks like a jump is reported too (a spurious refusal, never a missed branch)."""
+    """Every rel32/rel8 branch in the code regions whose target is in [lo, hi): (kind, at, target, info) with info
+    jmp, jcc, call or loop. Conservative (a data byte that looks like a jump is reported too)."""
     hits = []
-    r32 = re.compile(rb"[\xe8\xe9]|\x0f[\x80-\x8f]", re.S)
+    rows, keys = _rel32_index(image)
+    i = bisect.bisect_left(keys, lo)
+    while i < len(rows) and rows[i][0] < hi:
+        hits.append(("rel32", rows[i][1], rows[i][0], rows[i][2]))
+        i += 1
     for base, data in image.code_regions():
-        for m in r32.finditer(data):
-            p = m.start()
-            op_len = 1 if data[p] != 0x0F else 2
-            if p + op_len + 4 > len(data):
-                continue
-            rel = struct.unpack_from("<i", data, p + op_len)[0]
-            target = base + p + op_len + 4 + rel
-            if lo <= target < hi:
-                hits.append(("rel32", base + p, target))
-        # rel8: only branch bytes within reach of the window (+-130 bytes) can land in it
         a, b = max(0, lo - base - 130), min(len(data), hi - base + 130)
         for p in range(a, b - 1):
-            if 0x70 <= data[p] <= 0x7F or data[p] in (0xEB, 0xE0, 0xE1, 0xE2, 0xE3):
+            op = data[p]
+            if 0x70 <= op <= 0x7F or op in (0xEB, 0xE0, 0xE1, 0xE2, 0xE3):
                 rel = struct.unpack_from("<b", data, p + 1)[0]
                 target = base + p + 2 + rel
                 if lo <= target < hi:
-                    hits.append(("rel8", base + p, target))
+                    info = "jmp" if op == 0xEB else ("jcc" if op >= 0x70 else "loop")
+                    hits.append(("rel8", base + p, target, info))
     return hits
 
 
 def data_pointers_to(image, addresses):
-    """Absolute 8-byte pointers and image-base relative 4-byte values (jump tables) equal to an address."""
+    """8-byte absolute pointers and image-base relative 4-byte values (jump tables) equal to an address:
+    (kind, at, address, info) with info = "table" (4-aligned, in a non-code region), "code" or "unaligned"."""
+    c = _cache(image).setdefault("ptr", {})
     hits = []
     for a in addresses:
-        for pat, kind in ((struct.pack("<Q", a), "abs64"), (struct.pack("<I", (a - image.base) & 0xFFFFFFFF), "rva32")):
-            for base, data in image.all_regions():
-                i = data.find(pat)
-                while i >= 0:
-                    hits.append((kind, base + i, a))
-                    i = data.find(pat, i + 1)
+        if a not in c:
+            found = []
+            for pat, kind in ((struct.pack("<Q", a), "abs64"), (struct.pack("<I", (a - image.base) & 0xFFFFFFFF), "rva32")):
+                for base, data, is_code in image.regions:
+                    i = data.find(pat)
+                    while i >= 0:
+                        at = base + i
+                        info = "code" if is_code else ("table" if at % 4 == 0 else "unaligned")
+                        found.append((kind, at, a, info))
+                        i = data.find(pat, i + 1)
+            c[a] = found
+        hits += c[a]
     return hits
 
 
@@ -237,25 +266,34 @@ class EngineDb:
             return self._rows[i]
         return None
 
+    def gap(self, address):
+        """(end of the previous function, start of the next) when `address` is in no analysed function, else None."""
+        self.function_range(address)
+        i = bisect.bisect_right(self._starts, address) - 1
+        if i >= 0 and address < self._rows[i][1]:
+            return None
+        return (self._rows[i][1] if i >= 0 else None, self._starts[i + 1] if i + 1 < len(self._starts) else None)
+
     def into(self, lo, hi):
         out = []
         for table in ("refs", "calls"):
             for at, dst, kind in self.db.execute(f"SELECT at,dst,kind FROM {table} WHERE dst>=? AND dst<?", (lo, hi)):
-                out.append((f"db:{table}/{kind}", at, dst))
+                out.append((f"db:{table}/{kind}", at, dst, "db"))
         return out
 
 
 class Boundaries:
-    """Instruction starts of the analysed function around an address, to drop byte-scan hits that are not branches.
+    """Instruction starts of the analysed function around an address (the database's function range, decoded linearly).
 
-    A raw scan reads every byte as a possible opcode (`shl rdx, 6` is `48 c1 e2 06`, and `e2 06` looks like a loop).
-    A hit is dropped only when the linear decode of its whole function (from the database's function table) ends
-    exactly at the function's end and the hit is not an instruction start in it; anywhere else it stays."""
+    Used (1) to drop byte-scan hits that are not instructions (`shl rdx, 6` is `48 c1 e2 06`, and `e2 06` looks like a
+    loop), (2) to confirm that an incoming branch really is a jmp/jcc before it is retargeted, (3) for the instructions
+    BEFORE a site (backward windows). The decode is trusted only when it ends exactly at the function's end."""
 
     def __init__(self, image, db):
         self.image, self.db, self.cache = image, db, {}
 
-    def starts(self, address):
+    def function(self, address):
+        """(starts set, instruction list) or None."""
         if self.db is None or not hasattr(self.db, "function_range"):
             return None
         fr = self.db.function_range(address)
@@ -263,20 +301,41 @@ class Boundaries:
             return None
         if fr[0] not in self.cache:
             code = self.image.read(fr[0], fr[1] - fr[0])
-            starts, pos = set(), fr[0]
+            insns, pos = [], fr[0]
             while code and pos < fr[1]:
                 got = list(MD.disasm(code[pos - fr[0]:pos - fr[0] + 16], pos, 1))
                 if not got:
-                    starts = None
+                    insns = None
                     break
-                starts.add(pos)
+                insns.append(got[0])
                 pos += got[0].size
-            self.cache[fr[0]] = starts if starts is not None and pos == fr[1] else None
+            ok = insns is not None and pos == fr[1]
+            self.cache[fr[0]] = ({i.address for i in insns}, insns) if ok else None
         return self.cache[fr[0]]
 
+    def starts(self, address):
+        f = self.function(address)
+        return f[0] if f else None
+
     def is_spurious(self, at):
+        """A byte-scan hit that cannot be an instruction: not an instruction start of its (trusted) function, or inside
+        the alignment gap (under 16 bytes) between two analysed functions."""
         starts = self.starts(at)
-        return starts is not None and at not in starts
+        if starts is not None:
+            return at not in starts
+        if self.db is not None and hasattr(self.db, "gap"):
+            g = self.db.gap(at)
+            return bool(g and g[0] is not None and g[1] is not None and g[1] - g[0] < 16)
+        return False
+
+    def before(self, site, count=12):
+        """Up to `count` instructions that end exactly at `site`, or None when the decode does not land on it."""
+        f = self.function(site)
+        if f is None or site not in f[0]:
+            return None
+        insns = f[1]
+        k = bisect.bisect_left([i.address for i in insns], site)
+        return insns[max(0, k - count):k]
 
 
 # ------------------------------------------------------------------------------------------------ planning
@@ -284,20 +343,25 @@ def _int(v):
     return int(v, 0) if isinstance(v, str) else int(v)
 
 
+def _insn_at(image, pos):
+    raw = image.read(pos, 16) or image.read(pos, 1)
+    got = list(MD.disasm(raw, pos, 1)) if raw else []
+    if not got:
+        raise Refusal([f"no instruction at {pos:#x}" + (f": {raw[:8].hex()}" if raw else "")])
+    return got[0]
+
+
 def _window(image, address):
     """Smallest run of whole instructions from `address` covering at least MIN_WINDOW bytes."""
-    insns, total = [], 0
-    pos = address
+    insns, total, pos = [], 0, address
     while total < MIN_WINDOW:
-        raw = image.read(pos, 16) or image.read(pos, 1)
-        if raw is None:
-            raise Refusal([f"{address:#x}: no readable bytes at {pos:#x}"])
-        got = list(MD.disasm(raw, pos, 1))
-        if not got:
-            raise Refusal([f"{address:#x}: no instruction at {pos:#x}: {raw[:8].hex()}"])
-        insns.append(got[0])
-        total += got[0].size
-        pos += got[0].size
+        try:
+            ins = _insn_at(image, pos)
+        except Refusal as e:
+            raise Refusal([f"{address:#x}: {r}" for r in e.reasons])
+        insns.append(ins)
+        total += ins.size
+        pos += ins.size
     return insns
 
 
@@ -318,11 +382,11 @@ def validate_request(req):
 
 
 def _new_encoding(image, req, ins):
-    """(new bytes of the changed instruction, note) or raises Refusal."""
+    """Bytes of the changed instruction, or raises Refusal."""
     raw = bytes(ins.bytes)
     if req["kind"] == "bytes":
         for i in decode(req["new_bytes"], req["address"]):
-            if classify_block(i) or rip_operand(i):
+            if classify_block(i) or rip_operand(i) or direct_branch(i):
                 raise Refusal([f"{req['address']:#x}: new_bytes must be position independent ({i.mnemonic} {i.op_str})"])
         return req["new_bytes"]
     if rip_operand(ins):
@@ -336,110 +400,283 @@ def _new_encoding(image, req, ins):
         raise Refusal([f"{req['address']:#x}: {r}" for r in e.reasons])
 
 
+def direct_branch(ins):
+    """True for jmp/jcc with an immediate target (rel8 or rel32)."""
+    return (CS_GRP_JUMP in ins.groups or CS_GRP_BRANCH_RELATIVE in ins.groups) and bool(ins.operands) \
+        and ins.operands[0].type == CS_OP_IMM and not ins.mnemonic.startswith(("loop", "jrcxz", "jecxz", "xbegin"))
+
+
+def _branch_rel32(ins):
+    """The rel32 encoding of a direct jmp/jcc: (opcode bytes, length). Refuses prefixed or odd forms."""
+    raw = bytes(ins.bytes)
+    if len(raw) == 2 and raw[0] == 0xEB or len(raw) == 5 and raw[0] == 0xE9:
+        return b"\xe9"
+    if len(raw) == 2 and 0x70 <= raw[0] <= 0x7F:
+        return bytes([0x0F, 0x80 | (raw[0] & 0x0F)])
+    if len(raw) == 6 and raw[0] == 0x0F and 0x80 <= raw[1] <= 0x8F:
+        return bytes(raw[:2])
+    raise Refusal([f"{ins.address:#x}: {ins.mnemonic} {ins.op_str}: branch form with prefixes is not handled"])
+
+
+def build_cave(image, win, rs):
+    """The cave for one window: re-encode the changed instructions, branches as rel32 (outside targets become fixups,
+    targets inside the window become cave-internal displacements). Returns the entry (without retargets)."""
+    start, end = win[0].address, win[-1].address + win[-1].size
+    by_addr = {r["address"]: r for r in rs}
+    why = []
+    for ins in win:
+        b = classify_block(ins)
+        if b:
+            why.append(f"window {start:#x}: {ins.address:#x} {ins.mnemonic} {ins.op_str}: {b}")
+    for r in rs:
+        if not any(i.address == r["address"] for i in win):
+            why.append(f"{r['address']:#x}: not at an instruction boundary of the window")
+    if why:
+        raise Refusal(why)
+    starts = {i.address for i in win}
+    pieces, changes = [], []
+    for ins in win:
+        raw = bytes(ins.bytes)
+        r = by_addr.get(ins.address)
+        if r:
+            new = _new_encoding(image, r, ins)
+            changes.append({"address": f"{ins.address:#x}", "kind": r["kind"], "old_bytes": raw.hex(), "new_bytes": new.hex(),
+                            **({"new_disp": r["new_disp"], "force32": r["force32"]} if r["kind"] == "disp" else {})})
+            pieces.append(["plain", new, ins])
+        elif direct_branch(ins):
+            target = ins.operands[0].imm
+            if start <= target < end and target not in starts:
+                raise Refusal([f"window {start:#x}: {ins.address:#x} {ins.mnemonic} {ins.op_str}: target is inside an instruction of the window"])
+            opc = _branch_rel32(ins)
+            pieces.append(["branch", opc, ins])
+        else:
+            pieces.append(["plain", raw, ins])
+    offs, pos = {}, 0
+    for kind, data, ins in pieces:
+        offs[ins.address] = pos
+        pos += len(data) + (4 if kind == "branch" else 0)
+    cave, fixups = bytearray(), []
+    for kind, data, ins in pieces:
+        base = len(cave)
+        if kind == "plain":
+            op = rip_operand(ins)
+            if op is not None and ins.address not in by_addr:
+                if ins.disp_size != 4:
+                    raise Refusal([f"{ins.address:#x}: rip-relative operand without a 32-bit displacement"])
+                fixups.append({"kind": "rip", "offset": base + ins.disp_offset, "size": 4, "end": base + ins.size,
+                               "target": f"{ins.address + ins.size + op.mem.disp:#x}"})
+            cave += data
+        else:
+            target = ins.operands[0].imm
+            length = len(data) + 4
+            if start <= target < end:
+                cave += data + struct.pack("<i", offs[target] - (base + length))
+            else:
+                fixups.append({"kind": "branch", "offset": base + length - 4, "size": 4, "end": base + length,
+                               "target": f"{target:#x}"})
+                cave += data + b"\0\0\0\0"
+    old = b"".join(bytes(i.bytes) for i in win)
+    entry = {"window_start": f"{start:#x}", "window_len": end - start, "old_bytes": old.hex(), "cave_bytes": bytes(cave).hex(),
+             "fixups": fixups, "return_address": f"{end:#x}", "changes": changes, "retargets": [],
+             "offsets": {f"{a:#x}": o for a, o in offs.items()}}
+    return entry
+
+
+def incoming(image, win, bounds, db):
+    """References from outside the window to its bytes after the first: (retargets, hard reasons).
+    A retarget is a jmp/jcc rel32 or a 4-byte image-relative jump-table entry; everything else is a hard reason."""
+    start, end = win[0].address, win[-1].address + win[-1].size
+    lo, hi = start + 1, end
+    starts = {i.address for i in win}
+    hits = [h for h in raw_branches_into(image, lo, hi) if not (start <= h[1] < end)]
+    own = bounds.starts(start) if bounds else None
+    if bounds and (own is None or start in own):
+        hits = [h for h in hits if not bounds.is_spurious(h[1])]
+    hits += [h for h in data_pointers_to(image, [i.address for i in win[1:]]) if not (start <= h[1] < end)]
+    seen_at = {h[1] for h in hits}
+    if db is not None:
+        for h in db.into(lo, hi):
+            h = h if len(h) == 4 else (*h, "db")
+            if not (start <= h[1] < end) and h[1] not in seen_at:
+                hits.append(h)
+    retargets, hard = [], []
+    for kind, at, dst, info in hits:
+        where = f"window {start:#x}+{end - start}: {kind} at {at:#x} reaches {dst:#x} inside the window"
+        if kind in ("rel32", "rel8") and start <= at < end:
+            continue
+        if dst not in starts and kind != "rva32" and kind != "abs64":
+            hard.append(where + " (not at an instruction boundary)")
+        elif kind == "rel32" and info in ("jmp", "jcc"):
+            f = bounds.starts(at) if bounds else None
+            if f is None or at not in f:
+                hard.append(where + " (cannot confirm that it is a branch instruction: no function decode)")
+                continue
+            length = 5 if info == "jmp" else 6
+            field = at + length - 4
+            old = image.read(field, 4)
+            retargets.append({"kind": "rel32", "at": f"{at:#x}", "field": f"{field:#x}", "length": length,
+                              "old_bytes": old.hex() if old else "", "target": f"{dst:#x}"})
+        elif kind == "rel32" and info == "call":
+            hard.append(where + " (a call cannot be retargeted)")
+        elif kind == "rel8":
+            hard.append(where + " (a rel8 branch cannot be retargeted)")
+        elif kind == "rva32" and info == "table" and dst in starts:
+            old = image.read(at, 4)
+            retargets.append({"kind": "rva32", "at": f"{at:#x}", "field": f"{at:#x}", "length": 4,
+                              "old_bytes": old.hex() if old else "", "target": f"{dst:#x}"})
+        else:
+            hard.append(where + (f" ({info})" if info else ""))
+    return retargets, hard
+
+
+def _candidates(core, pre, post, cap=24):
+    """Windows that contain `core`: forward, then backward, then every mixed one up to `cap` bytes, shortest first.
+    -> list of (kind, instruction list)."""
+    size = lambda l: sum(i.size for i in l)
+    out, seen = [], set()
+    has_pre, pre = pre is not None, list(pre or [])
+
+    def add(kind, i, j):
+        if (i, j) in seen or i > len(pre) or j > len(post):
+            return
+        seen.add((i, j))
+        out.append((kind, pre[len(pre) - i:] + core + post[:j]))
+
+    for j in range(len(post) + 1):
+        if size(core) + size(post[:j]) >= MIN_WINDOW:
+            add("forward", 0, j)
+            break
+    if has_pre:
+        for i in range(len(pre) + 1):
+            if size(pre[len(pre) - i:]) + size(core) >= MIN_WINDOW:
+                add("backward", i, 0)
+                break
+        mixed = []
+        for i in range(len(pre) + 1):
+            for j in range(len(post) + 1):
+                n = size(pre[len(pre) - i:]) + size(core) + size(post[:j])
+                if MIN_WINDOW <= n <= cap and (i, j) not in seen:
+                    mixed.append((n, i, j))
+        for _, i, j in sorted(mixed):
+            add("mixed", i, j)
+    return out
+
+
+def _solve_group(image, rs, db, scan, bounds):
+    """-> (entry, tried): the first candidate window that passes every rule, else the first one that passes with
+    retargeted incoming references, else raises Refusal (reasons of the forward window)."""
+    addrs = sorted(r["address"] for r in rs)
+    cs = addrs[0]
+    core, pos = [], cs
+    while True:
+        ins = _insn_at(image, pos)
+        core.append(ins)
+        pos += ins.size
+        if pos > addrs[-1]:
+            break
+    pre = bounds.before(cs) if bounds else None
+    post, pos = [], core[-1].address + core[-1].size
+    for _ in range(14):
+        try:
+            ins = _insn_at(image, pos)
+        except Refusal:
+            break
+        post.append(ins)
+        pos += ins.size
+    tried, fallback, first_reasons = [], None, None
+    for kind, win in _candidates(core, pre, post):
+        try:
+            entry = build_cave(image, win, rs)
+        except Refusal as e:
+            tried.append({"window": f"{win[0].address:#x}+{sum(i.size for i in win)}", "kind": kind, "reasons": e.reasons[:2]})
+            first_reasons = first_reasons or e.reasons
+            continue
+        retargets, hard = incoming(image, win, bounds, db) if scan else ([], [])
+        if hard:
+            tried.append({"window": f"{win[0].address:#x}+{entry['window_len']}", "kind": kind, "reasons": hard[:2]})
+            first_reasons = first_reasons or hard
+            continue
+        entry["window_kind"] = kind
+        if not retargets:
+            self_check(entry, win)
+            entry["tried"] = tried
+            return entry
+        if fallback is None:
+            fallback = (entry, win, retargets, kind)
+        tried.append({"window": f"{win[0].address:#x}+{entry['window_len']}", "kind": kind,
+                      "reasons": [f"{len(retargets)} incoming reference(s) would have to be retargeted"]})
+    if fallback:
+        entry, win, retargets, kind = fallback
+        k = entry["offsets"]
+        for t in retargets:
+            t["cave_offset"] = k[t["target"]]
+        entry["retargets"] = retargets
+        self_check(entry, win)
+        entry["tried"] = tried
+        return entry
+    raise Refusal((first_reasons or ["no window"]) + [f"({len(tried)} windows tried; first reasons shown)"])
+
+
 def plan(requests, image, db=None, scan=True):
     """-> list of cave dicts. Raises Refusal with every reason found."""
     reasons = []
-    reqs = [validate_request(r) for r in requests]
-    reqs.sort(key=lambda r: r["address"])
+    reqs = sorted((validate_request(r) for r in requests), key=lambda r: r["address"])
     for a, b in zip(reqs, reqs[1:]):
         if a["address"] == b["address"]:
             reasons.append(f"{a['address']:#x}: two requests for the same instruction")
     if reasons:
         raise Refusal(reasons)
-    groups = []  # each: [window insns, [requests]]
+    bounds = Boundaries(image, db)
+    groups = []  # lists of requests; forward windows that overlap are one group
     for r in reqs:
         try:
             win = _window(image, r["address"])
         except Refusal as e:
             reasons += e.reasons
             continue
-        if groups and r["address"] < groups[-1][0][-1].address + groups[-1][0][-1].size:
-            # overlapping windows: one window from the first start that covers both
-            prev = groups[-1]
-            need_end = max(win[0].address + win[0].size, prev[0][-1].address + prev[0][-1].size)
-            merged = list(prev[0])
-            pos = merged[-1].address + merged[-1].size
-            while pos < need_end:
-                merged += _window_from(image, pos)
-                pos = merged[-1].address + merged[-1].size
-            prev[0][:] = merged
-            prev[1].append(r)
+        if groups and r["address"] < groups[-1]["end"]:
+            groups[-1]["reqs"].append(r)
+            groups[-1]["end"] = max(groups[-1]["end"], win[0].address + win[0].size)
         else:
-            groups.append([win, [r]])
-    caves, bounds = [], Boundaries(image, db)
-    for win, rs in groups:
-        try:
-            caves.append(_cave_for(image, win, rs, db, scan, bounds))
-        except Refusal as e:
-            reasons += e.reasons
+            groups.append({"reqs": [r], "end": win[-1].address + win[-1].size})
+    groups = [g["reqs"] for g in groups]
+    while True:
+        solved = []
+        for g in groups:
+            try:
+                solved.append((g, _solve_group(image, g, db, scan, bounds), None))
+            except Refusal as e:
+                solved.append((g, None, e.reasons))
+        spans = sorted((int(e["window_start"], 0), int(e["window_start"], 0) + e["window_len"], i)
+                       for i, (_, e, _) in enumerate(solved) if e)
+        merge = next(((a[2], b[2]) for a, b in zip(spans, spans[1:]) if b[0] < a[1]), None)
+        if not merge:
+            break
+        i, j = merge
+        merged = sorted(solved[i][0] + solved[j][0], key=lambda r: r["address"])
+        groups = [g for k, (g, _, _) in enumerate(solved) if k not in (i, j)] + [merged]
+    caves = []
+    for g, entry, why in solved:
+        if entry:
+            caves.append(entry)
+        else:
+            reasons += why
+    caves.sort(key=lambda c: int(c["window_start"], 0))
+    # no cave may jump to, or retarget from, the bytes another cave's window overwrites
+    for c in caves:
+        for o in caves:
+            if o is c:
+                continue
+            s, e = int(o["window_start"], 0), int(o["window_start"], 0) + o["window_len"]
+            for f in c["fixups"]:
+                if f["kind"] == "branch" and s < _int(f["target"]) < e:
+                    reasons.append(f"cave {c['window_start']}: a branch goes to {f['target']}, inside the window of cave {o['window_start']}")
+            for t in c["retargets"]:
+                if s <= _int(t["at"]) < e:
+                    reasons.append(f"cave {c['window_start']}: incoming branch at {t['at']} lies inside the window of cave {o['window_start']}")
     if reasons:
         raise Refusal(reasons)
     return caves
-
-
-def _window_from(image, pos):
-    raw = image.read(pos, 16) or image.read(pos, 1)
-    got = list(MD.disasm(raw, pos, 1)) if raw else []
-    if not got:
-        raise Refusal([f"no instruction at {pos:#x}"])
-    return [got[0]]
-
-
-def _cave_for(image, win, rs, db, scan, bounds=None):
-    start = win[0].address
-    end = win[-1].address + win[-1].size
-    why = []
-    for ins in win:
-        b = classify_block(ins)
-        if b:
-            why.append(f"window {start:#x}: {ins.address:#x} {ins.mnemonic} {ins.op_str}: {b}")
-    by_addr = {r["address"]: r for r in rs}
-    for r in rs:
-        if not any(i.address == r["address"] for i in win):
-            why.append(f"{r['address']:#x}: not at an instruction boundary of the window")
-    if why:
-        raise Refusal(why)
-    # branch targets into the bytes the jmp and the int3 fill overwrite (everything after the first byte)
-    lo, hi = start + 1, end
-    interior = [i.address for i in win[1:]]
-    hits = []
-    if scan:
-        raw = raw_branches_into(image, lo, hi)
-        own = bounds.starts(start) if bounds else None
-        if bounds and (own is None or start in own):  # the decode agrees with the window start: trust it for the hits
-            raw = [h for h in raw if not bounds.is_spurious(h[1])]
-        hits += raw
-        hits += data_pointers_to(image, interior)
-    if db is not None:
-        hits += db.into(lo, hi)
-    if hits:
-        raise Refusal([f"window {start:#x}+{end - start}: {kind} at {at:#x} reaches {dst:#x} inside the window"
-                       for kind, at, dst in hits])
-    cave, fixups, changes, spans = bytearray(), [], [], []
-    for ins in win:
-        raw = bytes(ins.bytes)
-        r = by_addr.get(ins.address)
-        base = len(cave)
-        if r:
-            new = _new_encoding(image, r, ins)
-            changes.append({"address": f"{ins.address:#x}", "kind": r["kind"], "old_bytes": raw.hex(),
-                            "new_bytes": new.hex(), "offset": base,
-                            **({"new_disp": r["new_disp"], "force32": r["force32"]} if r["kind"] == "disp" else {})})
-            cave += new
-        else:
-            op = rip_operand(ins)
-            if op is not None:
-                if ins.disp_size != 4:
-                    raise Refusal([f"{ins.address:#x}: rip-relative operand without a 32-bit displacement"])
-                fixups.append({"offset": base + ins.disp_offset, "size": 4, "end": base + ins.size,
-                               "target": f"{ins.address + ins.size + op.mem.disp:#x}"})
-            cave += raw
-        spans.append((ins.address, base, len(cave)))
-    old = b"".join(bytes(i.bytes) for i in win)
-    entry = {"window_start": f"{start:#x}", "window_len": end - start, "old_bytes": old.hex(),
-             "cave_bytes": bytes(cave).hex(), "fixups": fixups, "return_address": f"{end:#x}", "changes": changes}
-    self_check(entry, win)
-    return entry
 
 
 # ------------------------------------------------------------------------------------------------ self check
@@ -457,13 +694,14 @@ def apply_fixups(cave_bytes, fixups, cave_address):
 
 
 def _operand_key(ins, rip_absolute):
-    """Everything that defines what an instruction does, with rip-relative operands resolved to absolute targets."""
+    """Everything that defines what an instruction does, with rip-relative operands resolved to absolute targets and
+    the target of a direct branch left out (it is compared separately)."""
     ops = []
     for o in ins.operands:
         if o.type == CS_OP_REG:
             ops.append(("r", o.reg, o.size))
         elif o.type == CS_OP_IMM:
-            ops.append(("i", o.imm, o.size))
+            ops.append(("t",) if direct_branch(ins) else ("i", o.imm, o.size))
         elif o.type == CS_OP_MEM:
             m = o.mem
             if m.base == X86_REG_RIP:
@@ -476,13 +714,17 @@ def _operand_key(ins, rip_absolute):
 
 
 def self_check(entry, win):
-    """Decode the cave (fixups applied at a hypothetical cave address) and compare it, instruction by instruction,
-    with the original window decoded at its own address. Raises Refusal on any difference."""
+    """Decode the cave (fixups applied at a hypothetical cave address) and compare it instruction by instruction with the
+    original window decoded at its own address: same instruction and operands, rip-relative operands resolved to the same
+    absolute target, branch targets outside the window equal, branch targets inside the window equal to the matching
+    instruction of the cave; only the intended changes differ. Raises Refusal on any difference."""
     cave_bytes = bytes.fromhex(entry["cave_bytes"])
     fixed = apply_fixups(cave_bytes, entry["fixups"], HYPOTHETICAL_CAVE)
     new = decode(fixed, HYPOTHETICAL_CAVE)
+    start, end = win[0].address, win[-1].address + win[-1].size
     changes = {_int(c["address"]): c for c in entry["changes"]}
-    j, errs = 0, []
+    errs, match, pairs = [], {}, []
+    j = 0
     for ins in win:
         c = changes.get(ins.address)
         if c is None:
@@ -490,11 +732,14 @@ def self_check(entry, win):
                 errs.append(f"{ins.address:#x}: cave ends early")
                 break
             n = new[j]
+            match[ins.address] = n.address
+            pairs.append((ins, n))
             j += 1
             if _operand_key(ins, True) != _operand_key(n, True):
                 errs.append(f"{ins.address:#x}: {ins.mnemonic} {ins.op_str} became {n.mnemonic} {n.op_str}")
         elif c["kind"] == "disp":
             n = new[j]
+            match[ins.address] = n.address
             j += 1
             a, b = _operand_key(ins, True), _operand_key(n, True)
             want = list(a[2])
@@ -506,6 +751,7 @@ def self_check(entry, win):
                             f"{c['new_disp']:#x}, the cave has {n.mnemonic} {n.op_str}")
         else:
             nb = bytes.fromhex(c["new_bytes"])
+            match[ins.address] = new[j].address if j < len(new) else None
             got = bytearray()
             while len(got) < len(nb) and j < len(new):
                 got += bytes(new[j].bytes)
@@ -514,7 +760,14 @@ def self_check(entry, win):
                 errs.append(f"{ins.address:#x}: replacement bytes are not in the cave as given")
     if j != len(new):
         errs.append(f"the cave has {len(new) - j} instructions more than the window")
-    # position independence: no relative branch, no return left
+    for o, n in pairs:
+        if direct_branch(o):
+            t = o.operands[0].imm
+            expect = match.get(t) if start <= t < end else t
+            got = n.operands[0].imm if n.operands and n.operands[0].type == CS_OP_IMM else None
+            if expect is None or got != expect:
+                errs.append(f"{o.address:#x}: branch to {t:#x} goes to {got if got is None else hex(got)} in the cave, "
+                            f"expected {expect if expect is None else hex(expect)}")
     for n in new:
         if classify_block(n):
             errs.append(f"cave {n.address:#x}: {n.mnemonic} {n.op_str}: {classify_block(n)}")
@@ -523,13 +776,15 @@ def self_check(entry, win):
 
 
 def dry_run(requests, image, db=None):
-    """Each request planned ALONE (no merging with the others): [{address, status, window_len, reasons}]."""
+    """Each request planned ALONE (no merging with the others): one row each with the window chosen or the refusal."""
     rows = []
     for r in requests:
         row = {"address": str(r.get("address")), "note": r.get("note", "")}
         try:
             (c,) = plan([r], image, db)
-            row.update(status="accepted", window_len=c["window_len"], window_start=c["window_start"], reasons=[])
+            row.update(status="accepted", window_start=c["window_start"], window_len=c["window_len"],
+                       window_kind=c.get("window_kind", ""), retargets=len(c["retargets"]), reasons=[],
+                       tried=c.get("tried", []))
         except Refusal as e:
             row.update(status="refused", reasons=e.reasons)
         rows.append(row)
@@ -542,10 +797,14 @@ def emit_cpp(plan_doc, source_name):
         return "{" + ",".join(f"0x{b:02x}" for b in bytes.fromhex(h)) + "}"
 
     lines = [f"// Generated by ops/engine/cave_plan.py --emit-cpp from {source_name}; do not edit.",
-             "// Each entry: window start, stock window bytes, cave bytes, fixups {offset, end, target}."]
+             "// Each entry: window start, stock window bytes, cave bytes, fixups {offset, end, target},",
+             "// retargets {field, kind (0 rel32, 1 rva32), stock value, cave offset}."]
     for c in plan_doc["caves"]:
         fx = ",".join(f"{{{f['offset']},{f['end']},{_int(f['target']):#x}ull}}" for f in c["fixups"])
-        lines.append(f"{{{_int(c['window_start']):#x}ull, {arr(c['old_bytes'])}, {arr(c['cave_bytes'])}, {{{fx}}}}},")
+        rt = ",".join(f"{{{_int(t['field']):#x}ull,{0 if t['kind'] == 'rel32' else 1},"
+                      f"{int.from_bytes(bytes.fromhex(t['old_bytes']), 'little'):#x}u,{t['cave_offset']}}}"
+                      for t in c.get("retargets", []))
+        lines.append(f"{{{_int(c['window_start']):#x}ull, {arr(c['old_bytes'])}, {arr(c['cave_bytes'])}, {{{fx}}}, {{{rt}}}}},")
     return "\n".join(lines) + "\n"
 
 

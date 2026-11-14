@@ -1,0 +1,1202 @@
+{
+ "version": 1,
+ "image": "iw7_ship_live.exe",
+ "xrefs": "engine database refs+calls and byte scans",
+ "caves": [
+  {
+   "window_start": "0x1403dd7da",
+   "window_len": 5,
+   "old_bytes": "837c1a2400",
+   "cave_bytes": "83bc1a1c3f000000",
+   "fixups": [],
+   "return_address": "0x1403dd7df",
+   "changes": [
+    {
+     "address": "0x1403dd7da",
+     "kind": "disp",
+     "old_bytes": "837c1a2400",
+     "new_bytes": "83bc1a1c3f000000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x1403dd7da": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140454343",
+   "window_len": 9,
+   "old_bytes": "2b441a243d10270000",
+   "cave_bytes": "2b841a1c3f00003d10270000",
+   "fixups": [],
+   "return_address": "0x14045434c",
+   "changes": [
+    {
+     "address": "0x140454343",
+     "kind": "disp",
+     "old_bytes": "2b441a24",
+     "new_bytes": "2b841a1c3f0000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140454343": 0,
+    "0x140454347": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140454e99",
+   "window_len": 7,
+   "old_bytes": "488d79240f1f00",
+   "cave_bytes": "488db91c3f00000f1f00",
+   "fixups": [],
+   "return_address": "0x140454ea0",
+   "changes": [
+    {
+     "address": "0x140454e99",
+     "kind": "disp",
+     "old_bytes": "488d7924",
+     "new_bytes": "488db91c3f0000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140454e99": 0,
+    "0x140454e9d": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x14045940d",
+   "window_len": 8,
+   "old_bytes": "488d4b1048c1fa06",
+   "cave_bytes": "488d8b083f000048c1fa06",
+   "fixups": [],
+   "return_address": "0x140459415",
+   "changes": [
+    {
+     "address": "0x14045940d",
+     "kind": "disp",
+     "old_bytes": "488d4b10",
+     "new_bytes": "488d8b083f0000",
+     "new_disp": 16136,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14045940d": 0,
+    "0x140459411": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x14045c392",
+   "window_len": 7,
+   "old_bytes": "4803d9488d4b10",
+   "cave_bytes": "488d9c0bf83e0000488d4b10",
+   "fixups": [],
+   "return_address": "0x14045c399",
+   "changes": [
+    {
+     "address": "0x14045c392",
+     "kind": "bytes",
+     "old_bytes": "4803d9",
+     "new_bytes": "488d9c0bf83e0000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14045c392": 0,
+    "0x14045c395": 8
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x14045c627",
+   "window_len": 7,
+   "old_bytes": "4c8d4310488bcd",
+   "cave_bytes": "4c8d83083f0000488bcd",
+   "fixups": [],
+   "return_address": "0x14045c62e",
+   "changes": [
+    {
+     "address": "0x14045c627",
+     "kind": "disp",
+     "old_bytes": "4c8d4310",
+     "new_bytes": "4c8d83083f0000",
+     "new_disp": 16136,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14045c627": 0,
+    "0x14045c62b": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x14045cc82",
+   "window_len": 7,
+   "old_bytes": "4803f3807e1000",
+   "cave_bytes": "488db41ef83e0000807e1000",
+   "fixups": [],
+   "return_address": "0x14045cc89",
+   "changes": [
+    {
+     "address": "0x14045cc82",
+     "kind": "bytes",
+     "old_bytes": "4803f3",
+     "new_bytes": "488db41ef83e0000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14045cc82": 0,
+    "0x14045cc85": 8
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140466bfc",
+   "window_len": 6,
+   "old_bytes": "8b4c1a1885c9",
+   "cave_bytes": "8b8c1a103f000085c9",
+   "fixups": [],
+   "return_address": "0x140466c02",
+   "changes": [
+    {
+     "address": "0x140466bfc",
+     "kind": "disp",
+     "old_bytes": "8b4c1a18",
+     "new_bytes": "8b8c1a103f0000",
+     "new_disp": 16144,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140466bfc": 0,
+    "0x140466c00": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x14046c796",
+   "window_len": 7,
+   "old_bytes": "4803f3807e1000",
+   "cave_bytes": "488db41ef83e0000807e1000",
+   "fixups": [],
+   "return_address": "0x14046c79d",
+   "changes": [
+    {
+     "address": "0x14046c796",
+     "kind": "bytes",
+     "old_bytes": "4803f3",
+     "new_bytes": "488db41ef83e0000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14046c796": 0,
+    "0x14046c799": 8
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x14046de2f",
+   "window_len": 7,
+   "old_bytes": "4c8d47104c03c3",
+   "cave_bytes": "4c8d87083f00004c03c3",
+   "fixups": [],
+   "return_address": "0x14046de36",
+   "changes": [
+    {
+     "address": "0x14046de2f",
+     "kind": "disp",
+     "old_bytes": "4c8d4710",
+     "new_bytes": "4c8d87083f0000",
+     "new_disp": 16136,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14046de2f": 0,
+    "0x14046de33": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140473cd7",
+   "window_len": 8,
+   "old_bytes": "c7443a2400000000",
+   "cave_bytes": "c7843a1c3f000000000000",
+   "fixups": [],
+   "return_address": "0x140473cdf",
+   "changes": [
+    {
+     "address": "0x140473cd7",
+     "kind": "disp",
+     "old_bytes": "c7443a2400000000",
+     "new_bytes": "c7843a1c3f000000000000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140473cd7": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x1404a3a46",
+   "window_len": 5,
+   "old_bytes": "412b443f24",
+   "cave_bytes": "412b843f1c3f0000",
+   "fixups": [],
+   "return_address": "0x1404a3a4b",
+   "changes": [
+    {
+     "address": "0x1404a3a46",
+     "kind": "disp",
+     "old_bytes": "412b443f24",
+     "new_bytes": "412b843f1c3f0000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x1404a3a46": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x1404a3aaf",
+   "window_len": 6,
+   "old_bytes": "7370488d4f10",
+   "cave_bytes": "0f8300000000488d8f083f0000",
+   "fixups": [
+    {
+     "kind": "branch",
+     "offset": 2,
+     "size": 4,
+     "end": 6,
+     "target": "0x1404a3b21"
+    }
+   ],
+   "return_address": "0x1404a3ab5",
+   "changes": [
+    {
+     "address": "0x1404a3ab1",
+     "kind": "disp",
+     "old_bytes": "488d4f10",
+     "new_bytes": "488d8f083f0000",
+     "new_disp": 16136,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x1404a3aaf": 0,
+    "0x1404a3ab1": 6
+   },
+   "window_kind": "backward",
+   "tried": [
+    {
+     "window": "0x1404a3ab1+7",
+     "kind": "forward",
+     "reasons": [
+      "window 0x1404a3ab1+7: rva32 at 0x1405dd687 reaches 0x1404a3ab5 inside the window (code)"
+     ]
+    }
+   ]
+  },
+  {
+   "window_start": "0x1404a3add",
+   "window_len": 6,
+   "old_bytes": "41807c3f1000",
+   "cave_bytes": "4180bc3f083f000000",
+   "fixups": [],
+   "return_address": "0x1404a3ae3",
+   "changes": [
+    {
+     "address": "0x1404a3add",
+     "kind": "disp",
+     "old_bytes": "41807c3f1000",
+     "new_bytes": "4180bc3f083f000000",
+     "new_disp": 16136,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x1404a3add": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x1404a4a79",
+   "window_len": 8,
+   "old_bytes": "48c1e206894c3228",
+   "cave_bytes": "48c1e206898c32203f0000",
+   "fixups": [],
+   "return_address": "0x1404a4a81",
+   "changes": [
+    {
+     "address": "0x1404a4a7d",
+     "kind": "disp",
+     "old_bytes": "894c3228",
+     "new_bytes": "898c32203f0000",
+     "new_disp": 16160,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x1404a4a79": 0,
+    "0x1404a4a7d": 4
+   },
+   "window_kind": "backward",
+   "tried": [
+    {
+     "window": "0x1404a4a7d+9",
+     "kind": "forward",
+     "reasons": [
+      "window 0x1404a4a7d+9: rel8 at 0x1404a4a49 reaches 0x1404a4a81 inside the window (a rel8 branch cannot be retargeted)"
+     ]
+    }
+   ]
+  },
+  {
+   "window_start": "0x1405ecae6",
+   "window_len": 6,
+   "old_bytes": "397402247e5b",
+   "cave_bytes": "39b4021c3f00000f8e00000000",
+   "fixups": [
+    {
+     "kind": "branch",
+     "offset": 9,
+     "size": 4,
+     "end": 13,
+     "target": "0x1405ecb47"
+    }
+   ],
+   "return_address": "0x1405ecaec",
+   "changes": [
+    {
+     "address": "0x1405ecae6",
+     "kind": "disp",
+     "old_bytes": "39740224",
+     "new_bytes": "39b4021c3f0000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x1405ecae6": 0,
+    "0x1405ecaea": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ac49ad",
+   "window_len": 7,
+   "old_bytes": "89443a20488b07",
+   "cave_bytes": "89843a183f0000488b07",
+   "fixups": [],
+   "return_address": "0x140ac49b4",
+   "changes": [
+    {
+     "address": "0x140ac49ad",
+     "kind": "disp",
+     "old_bytes": "89443a20",
+     "new_bytes": "89843a183f0000",
+     "new_disp": 16152,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ac49ad": 0,
+    "0x140ac49b1": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ac4e57",
+   "window_len": 7,
+   "old_bytes": "89443a20488b07",
+   "cave_bytes": "89843a183f0000488b07",
+   "fixups": [],
+   "return_address": "0x140ac4e5e",
+   "changes": [
+    {
+     "address": "0x140ac4e57",
+     "kind": "disp",
+     "old_bytes": "89443a20",
+     "new_bytes": "89843a183f0000",
+     "new_disp": 16152,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ac4e57": 0,
+    "0x140ac4e5b": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ac50a0",
+   "window_len": 9,
+   "old_bytes": "2b441a243db80b0000",
+   "cave_bytes": "2b841a1c3f00003db80b0000",
+   "fixups": [],
+   "return_address": "0x140ac50a9",
+   "changes": [
+    {
+     "address": "0x140ac50a0",
+     "kind": "disp",
+     "old_bytes": "2b441a24",
+     "new_bytes": "2b841a1c3f0000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ac50a0": 0,
+    "0x140ac50a4": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ac543c",
+   "window_len": 7,
+   "old_bytes": "89440a20488b01",
+   "cave_bytes": "89840a183f0000488b01",
+   "fixups": [],
+   "return_address": "0x140ac5443",
+   "changes": [
+    {
+     "address": "0x140ac543c",
+     "kind": "disp",
+     "old_bytes": "89440a20",
+     "new_bytes": "89840a183f0000",
+     "new_disp": 16152,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ac543c": 0,
+    "0x140ac5440": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ada146",
+   "window_len": 6,
+   "old_bytes": "8b54191485d2",
+   "cave_bytes": "8b94190c3f000085d2",
+   "fixups": [],
+   "return_address": "0x140ada14c",
+   "changes": [
+    {
+     "address": "0x140ada146",
+     "kind": "disp",
+     "old_bytes": "8b541914",
+     "new_bytes": "8b94190c3f0000",
+     "new_disp": 16140,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ada146": 0,
+    "0x140ada14a": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ada164",
+   "window_len": 5,
+   "old_bytes": "0fb6441910",
+   "cave_bytes": "0fb68419083f0000",
+   "fixups": [],
+   "return_address": "0x140ada169",
+   "changes": [
+    {
+     "address": "0x140ada164",
+     "kind": "disp",
+     "old_bytes": "0fb6441910",
+     "new_bytes": "0fb68419083f0000",
+     "new_disp": 16136,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ada164": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ada8bb",
+   "window_len": 7,
+   "old_bytes": "4983c0104d03c7",
+   "cave_bytes": "4981c0083f00004d03c7",
+   "fixups": [],
+   "return_address": "0x140ada8c2",
+   "changes": [
+    {
+     "address": "0x140ada8bb",
+     "kind": "bytes",
+     "old_bytes": "4983c010",
+     "new_bytes": "4981c0083f0000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ada8bb": 0,
+    "0x140ada8bf": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adabfc",
+   "window_len": 6,
+   "old_bytes": "8b440a1485c0",
+   "cave_bytes": "8b840a0c3f000085c0",
+   "fixups": [],
+   "return_address": "0x140adac02",
+   "changes": [
+    {
+     "address": "0x140adabfc",
+     "kind": "disp",
+     "old_bytes": "8b440a14",
+     "new_bytes": "8b840a0c3f0000",
+     "new_disp": 16140,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adabfc": 0,
+    "0x140adac00": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adac0f",
+   "window_len": 5,
+   "old_bytes": "0fb6440a10",
+   "cave_bytes": "0fb6840a083f0000",
+   "fixups": [],
+   "return_address": "0x140adac14",
+   "changes": [
+    {
+     "address": "0x140adac0f",
+     "kind": "disp",
+     "old_bytes": "0fb6440a10",
+     "new_bytes": "0fb6840a083f0000",
+     "new_disp": 16136,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adac0f": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adb27f",
+   "window_len": 5,
+   "old_bytes": "418b441914",
+   "cave_bytes": "418b84190c3f0000",
+   "fixups": [],
+   "return_address": "0x140adb284",
+   "changes": [
+    {
+     "address": "0x140adb27f",
+     "kind": "disp",
+     "old_bytes": "418b441914",
+     "new_bytes": "418b84190c3f0000",
+     "new_disp": 16140,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adb27f": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adb297",
+   "window_len": 5,
+   "old_bytes": "418b441918",
+   "cave_bytes": "418b8419103f0000",
+   "fixups": [],
+   "return_address": "0x140adb29c",
+   "changes": [
+    {
+     "address": "0x140adb297",
+     "kind": "disp",
+     "old_bytes": "418b441918",
+     "new_bytes": "418b8419103f0000",
+     "new_disp": 16144,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adb297": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adb30f",
+   "window_len": 6,
+   "old_bytes": "8b440a1485c0",
+   "cave_bytes": "8b840a0c3f000085c0",
+   "fixups": [],
+   "return_address": "0x140adb315",
+   "changes": [
+    {
+     "address": "0x140adb30f",
+     "kind": "disp",
+     "old_bytes": "8b440a14",
+     "new_bytes": "8b840a0c3f0000",
+     "new_disp": 16140,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adb30f": 0,
+    "0x140adb313": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adb324",
+   "window_len": 5,
+   "old_bytes": "428b441a18",
+   "cave_bytes": "428b841a103f0000",
+   "fixups": [],
+   "return_address": "0x140adb329",
+   "changes": [
+    {
+     "address": "0x140adb324",
+     "kind": "disp",
+     "old_bytes": "428b441a18",
+     "new_bytes": "428b841a103f0000",
+     "new_disp": 16144,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adb324": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adba7e",
+   "window_len": 7,
+   "old_bytes": "2b4c1a1483e964",
+   "cave_bytes": "2b8c1a0c3f000083e964",
+   "fixups": [],
+   "return_address": "0x140adba85",
+   "changes": [
+    {
+     "address": "0x140adba7e",
+     "kind": "disp",
+     "old_bytes": "2b4c1a14",
+     "new_bytes": "2b8c1a0c3f0000",
+     "new_disp": 16140,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adba7e": 0,
+    "0x140adba82": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adbaa5",
+   "window_len": 7,
+   "old_bytes": "4883c2104803d3",
+   "cave_bytes": "4881c2083f00004803d3",
+   "fixups": [],
+   "return_address": "0x140adbaac",
+   "changes": [
+    {
+     "address": "0x140adbaa5",
+     "kind": "bytes",
+     "old_bytes": "4883c210",
+     "new_bytes": "4881c2083f0000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adbaa5": 0,
+    "0x140adbaa9": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adbb57",
+   "window_len": 6,
+   "old_bytes": "8b441a1485c0",
+   "cave_bytes": "8b841a0c3f000085c0",
+   "fixups": [],
+   "return_address": "0x140adbb5d",
+   "changes": [
+    {
+     "address": "0x140adbb57",
+     "kind": "disp",
+     "old_bytes": "8b441a14",
+     "new_bytes": "8b841a0c3f0000",
+     "new_disp": 16140,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adbb57": 0,
+    "0x140adbb5b": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adc274",
+   "window_len": 6,
+   "old_bytes": "8b441a1485c0",
+   "cave_bytes": "8b841a0c3f000085c0",
+   "fixups": [],
+   "return_address": "0x140adc27a",
+   "changes": [
+    {
+     "address": "0x140adc274",
+     "kind": "disp",
+     "old_bytes": "8b441a14",
+     "new_bytes": "8b841a0c3f0000",
+     "new_disp": 16140,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adc274": 0,
+    "0x140adc278": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adc286",
+   "window_len": 5,
+   "old_bytes": "0fb6441a10",
+   "cave_bytes": "0fb6841a083f0000",
+   "fixups": [],
+   "return_address": "0x140adc28b",
+   "changes": [
+    {
+     "address": "0x140adc286",
+     "kind": "disp",
+     "old_bytes": "0fb6441a10",
+     "new_bytes": "0fb6841a083f0000",
+     "new_disp": 16136,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adc286": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140adcc96",
+   "window_len": 5,
+   "old_bytes": "448b440a24",
+   "cave_bytes": "448b840a1c3f0000",
+   "fixups": [],
+   "return_address": "0x140adcc9b",
+   "changes": [
+    {
+     "address": "0x140adcc96",
+     "kind": "disp",
+     "old_bytes": "448b440a24",
+     "new_bytes": "448b840a1c3f0000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adcc96": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ade605",
+   "window_len": 6,
+   "old_bytes": "896c3a288bd3",
+   "cave_bytes": "89ac3a203f00008bd3",
+   "fixups": [],
+   "return_address": "0x140ade60b",
+   "changes": [
+    {
+     "address": "0x140ade605",
+     "kind": "disp",
+     "old_bytes": "896c3a28",
+     "new_bytes": "89ac3a203f0000",
+     "new_disp": 16160,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ade605": 0,
+    "0x140ade609": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ade7cd",
+   "window_len": 5,
+   "old_bytes": "4489441a28",
+   "cave_bytes": "4489841a203f0000",
+   "fixups": [],
+   "return_address": "0x140ade7d2",
+   "changes": [
+    {
+     "address": "0x140ade7cd",
+     "kind": "disp",
+     "old_bytes": "4489441a28",
+     "new_bytes": "4489841a203f0000",
+     "new_disp": 16160,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ade7cd": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ae2029",
+   "window_len": 8,
+   "old_bytes": "8b44132439440b24",
+   "cave_bytes": "8b84131c3f000039840b1c3f0000",
+   "fixups": [],
+   "return_address": "0x140ae2031",
+   "changes": [
+    {
+     "address": "0x140ae2029",
+     "kind": "disp",
+     "old_bytes": "8b441324",
+     "new_bytes": "8b84131c3f0000",
+     "new_disp": 16156,
+     "force32": true
+    },
+    {
+     "address": "0x140ae202d",
+     "kind": "disp",
+     "old_bytes": "39440b24",
+     "new_bytes": "39840b1c3f0000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae2029": 0,
+    "0x140ae202d": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ae2037",
+   "window_len": 7,
+   "old_bytes": "4883c1104803cb",
+   "cave_bytes": "4881c1083f00004803cb",
+   "fixups": [],
+   "return_address": "0x140ae203e",
+   "changes": [
+    {
+     "address": "0x140ae2037",
+     "kind": "bytes",
+     "old_bytes": "4883c110",
+     "new_bytes": "4881c1083f0000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae2037": 0,
+    "0x140ae203b": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ae2041",
+   "window_len": 7,
+   "old_bytes": "8b441330894120",
+   "cave_bytes": "8b8413283f0000894120",
+   "fixups": [],
+   "return_address": "0x140ae2048",
+   "changes": [
+    {
+     "address": "0x140ae2041",
+     "kind": "disp",
+     "old_bytes": "8b441330",
+     "new_bytes": "8b8413283f0000",
+     "new_disp": 16168,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae2041": 0,
+    "0x140ae2045": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ae2048",
+   "window_len": 7,
+   "old_bytes": "8b441334894124",
+   "cave_bytes": "8b84132c3f0000894124",
+   "fixups": [],
+   "return_address": "0x140ae204f",
+   "changes": [
+    {
+     "address": "0x140ae2048",
+     "kind": "disp",
+     "old_bytes": "8b441334",
+     "new_bytes": "8b84132c3f0000",
+     "new_disp": 16172,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae2048": 0,
+    "0x140ae204c": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ae204f",
+   "window_len": 7,
+   "old_bytes": "8b441338894128",
+   "cave_bytes": "8b8413303f0000894128",
+   "fixups": [],
+   "return_address": "0x140ae2056",
+   "changes": [
+    {
+     "address": "0x140ae204f",
+     "kind": "disp",
+     "old_bytes": "8b441338",
+     "new_bytes": "8b8413303f0000",
+     "new_disp": 16176,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae204f": 0,
+    "0x140ae2053": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ae2056",
+   "window_len": 5,
+   "old_bytes": "0fb744134a",
+   "cave_bytes": "0fb78413423f0000",
+   "fixups": [],
+   "return_address": "0x140ae205b",
+   "changes": [
+    {
+     "address": "0x140ae2056",
+     "kind": "disp",
+     "old_bytes": "0fb744134a",
+     "new_bytes": "0fb78413423f0000",
+     "new_disp": 16194,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae2056": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ae205f",
+   "window_len": 5,
+   "old_bytes": "488b441340",
+   "cave_bytes": "488b8413383f0000",
+   "fixups": [],
+   "return_address": "0x140ae2064",
+   "changes": [
+    {
+     "address": "0x140ae205f",
+     "kind": "disp",
+     "old_bytes": "488b441340",
+     "new_bytes": "488b8413383f0000",
+     "new_disp": 16184,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae205f": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ae2076",
+   "window_len": 9,
+   "old_bytes": "8b5c3324488d4c2420",
+   "cave_bytes": "8b9c331c3f0000488d4c2420",
+   "fixups": [],
+   "return_address": "0x140ae207f",
+   "changes": [
+    {
+     "address": "0x140ae2076",
+     "kind": "disp",
+     "old_bytes": "8b5c3324",
+     "new_bytes": "8b9c331c3f0000",
+     "new_disp": 16156,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae2076": 0,
+    "0x140ae207a": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140ae29a0",
+   "window_len": 8,
+   "old_bytes": "4803590848894310",
+   "cave_bytes": "480359084881c3f83e000048894310",
+   "fixups": [],
+   "return_address": "0x140ae29a8",
+   "changes": [
+    {
+     "address": "0x140ae29a0",
+     "kind": "bytes",
+     "old_bytes": "48035908",
+     "new_bytes": "480359084881c3f83e0000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae29a0": 0,
+    "0x140ae29a4": 11
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x140c333af",
+   "window_len": 11,
+   "old_bytes": "4d8d4210482b0de6520603",
+   "cave_bytes": "4d8d82083f0000482b0de6520603",
+   "fixups": [
+    {
+     "kind": "rip",
+     "offset": 10,
+     "size": 4,
+     "end": 14,
+     "target": "0x143c986a0"
+    }
+   ],
+   "return_address": "0x140c333ba",
+   "changes": [
+    {
+     "address": "0x140c333af",
+     "kind": "disp",
+     "old_bytes": "4d8d4210",
+     "new_bytes": "4d8d82083f0000",
+     "new_disp": 16136,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140c333af": 0,
+    "0x140c333b3": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  }
+ ]
+}

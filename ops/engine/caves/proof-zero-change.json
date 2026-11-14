@@ -16,11 +16,17 @@
      "kind": "disp",
      "old_bytes": "8b440a14",
      "new_bytes": "8b840a14000000",
-     "offset": 0,
      "new_disp": 20,
      "force32": true
     }
-   ]
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adabfc": 0,
+    "0x140adac00": 7
+   },
+   "window_kind": "forward",
+   "tried": []
   },
   {
    "window_start": "0x140adba7e",
@@ -35,11 +41,17 @@
      "kind": "disp",
      "old_bytes": "2b4c1a14",
      "new_bytes": "2b8c1a14000000",
-     "offset": 0,
      "new_disp": 20,
      "force32": true
     }
-   ]
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adba7e": 0,
+    "0x140adba82": 7
+   },
+   "window_kind": "forward",
+   "tried": []
   },
   {
    "window_start": "0x140adc274",
@@ -54,11 +66,17 @@
      "kind": "disp",
      "old_bytes": "8b441a14",
      "new_bytes": "8b841a14000000",
-     "offset": 0,
      "new_disp": 20,
      "force32": true
     }
-   ]
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140adc274": 0,
+    "0x140adc278": 7
+   },
+   "window_kind": "forward",
+   "tried": []
   },
   {
    "window_start": "0x140ae2029",
@@ -73,11 +91,17 @@
      "kind": "disp",
      "old_bytes": "8b441324",
      "new_bytes": "8b841324000000",
-     "offset": 0,
      "new_disp": 36,
      "force32": true
     }
-   ]
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140ae2029": 0,
+    "0x140ae202d": 7
+   },
+   "window_kind": "forward",
+   "tried": []
   }
  ]
 }

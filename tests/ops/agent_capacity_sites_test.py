@@ -176,11 +176,13 @@ def check_site(image, s):
 def parse_inc(text):
     """The generated cave table: window start, old bytes, cave bytes, fixups."""
     out = []
-    for m in re.finditer(r'^\{(0x[0-9a-f]+)ull, \{([^}]*)\}, \{([^}]*)\}, \{((?:\{[^}]*\},?)*)\}\},$', text, re.M):
+    for m in re.finditer(r'^\{(0x[0-9a-f]+)ull, \{([^}]*)\}, \{([^}]*)\}, \{((?:\{[^}]*\},?)*)\}, \{((?:\{[^}]*\},?)*)\}\},$', text, re.M):
         fix = [{'offset': int(a), 'end': int(b), 'target': int(t.replace('ull', ''), 16)}
                for a, b, t in re.findall(r'\{(\d+),(\d+),(0x[0-9a-f]+ull)\}', m.group(4))]
+        rt = [{'field': int(f.replace('ull', ''), 16), 'kind': int(k), 'old': int(o.replace('u', ''), 16), 'offset': int(c)}
+              for f, k, o, c in re.findall(r'\{(0x[0-9a-f]+ull),(\d+),(0x[0-9a-f]+u),(\d+)\}', m.group(5))]
         out.append({'start': int(m.group(1).replace('ull', ''), 16), 'old': byte_list(m.group(2)),
-                    'cave': byte_list(m.group(3)), 'fixups': fix})
+                    'cave': byte_list(m.group(3)), 'fixups': fix, 'retargets': rt})
     return out
 
 
@@ -282,6 +284,21 @@ class Sites(unittest.TestCase):
         self.assertEqual(bad, [], '\n'.join(bad))
         self.assertGreater(ok, 200)
 
+    def test_every_committed_plan_matches_the_shipped_bytes(self):
+        """The plan files under ops/engine/caves (a1-table1.plan.json is not in the .inc yet): stock windows, self-check, retarget fields."""
+        n = 0
+        for name in sorted(os.listdir(PLANS)):
+            if not name.endswith('.plan.json') and name != 'proof-zero-change.json':
+                continue
+            for c in json.load(open(os.path.join(PLANS, name), encoding='utf-8'))['caves']:
+                start = int(c['window_start'], 0)
+                self.assertEqual(self.image.read(start, c['window_len']).hex(), c['old_bytes'], f'{name} {start:#x}')
+                cp.self_check(c, cp.decode(bytes.fromhex(c['old_bytes']), start))
+                for t in c['retargets']:
+                    self.assertEqual(self.image.read(int(t['field'], 0), 4).hex(), t['old_bytes'])
+                n += 1
+        print(f'\ncommitted plans: {n} cave windows match the shipped bytes')
+
     def test_every_cave_window_matches_and_the_cave_means_the_same(self):
         caves = parse_inc(open(INC, encoding='utf-8').read())
         plans = {}
@@ -302,6 +319,11 @@ class Sites(unittest.TestCase):
             cp.self_check(plan, win)                       # raises Refusal on any difference
             self.assertEqual([(f['offset'], f['end'], int(f['target'], 0)) for f in plan['fixups']],
                              [(f['offset'], f['end'], f['target']) for f in c['fixups']])
+            self.assertEqual([(int(t['field'], 0), 0 if t['kind'] == 'rel32' else 1, int.from_bytes(bytes.fromhex(t['old_bytes']), 'little'), t['cave_offset'])
+                              for t in plan['retargets']],
+                             [(t['field'], t['kind'], t['old'], t['offset']) for t in c['retargets']])
+            for t in c['retargets']:                       # the incoming reference still has its stock value
+                self.assertEqual(int.from_bytes(self.image.read(t['field'], 4), 'little'), t['old'], f"retarget {t['field']:#x}")
         print(f'\ncave windows checked: {len(caves)}')
 
 
