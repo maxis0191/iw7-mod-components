@@ -71,17 +71,42 @@ for Claude Code at user scope (`iw7-engine`); new sessions see the tools. The fu
    (imports, resources and TLS stay from the shipped file).
 3. Names: `python -I ops/engine/collect_names.py --native-root <iw7-mod checkout> --rdata <snapshot>\141435000.bin --out <lab>\engine\names\names.json`
    (symbols.hpp, GSC builtin and LUI tables, the fork's structs and hook addresses).
-4. Ghidra: `pwsh -File ops/engine/Invoke-EngineAnalysis.ps1 -Step analyze -WaitForSlotSeconds 7200`, then
-   `pwsh -File ops/engine/Invoke-EngineAnalysis.ps1 -Step export -WaitForSlotSeconds 7200` (repeat the export until it
-   exits 0: each slice holds the Analysis slot at most `-MaxMinutes`, so waiting builds pass between slices; the
-   second and later slices take `-Extra '--only','decomp'`).
-5. Instruction index: `python -B ops/engine/engine.py index`.
+4. Ghidra: `pwsh -File ops/engine/Invoke-EngineAnalysis.ps1 -Step analyze -WaitForSlotSeconds 3600`, then
+   `pwsh -File ops/engine/Invoke-EngineAnalysis.ps1 -Step export -MaxMinutes 600 -WaitForSlotSeconds 3600`. The
+   export resumes where it stopped (exit 3 = functions remain: run it again with `-Extra '--only','decomp'`).
+5. Instruction index: `python -B ops/engine/engine.py index` (again after the export: it then uses Ghidra's functions).
 
-Both Ghidra steps run under the scheduler's Analysis reservation (one Java analysis at a time on the machine).
+Both Ghidra steps hold the scheduler's named resource `ghidra:<project>` as a long holder with their real memory:
+builds and sessions run beside them; only another step on the same project waits.
 
-## Measured
+## Measured (12-14 Nov 2026, this machine)
 
-(filled from the real run)
+| Step or query | Time | Memory |
+| --- | --- | --- |
+| Sections from the 10 GB client dump (`sections_from_dump.py`) | 19 s | small |
+| Live dump of a private lab server (`engine_live.py dump`) | 0.45 s for 178 MB | small |
+| Image (`build_image.py`) | 0.3 s | small |
+| Names (`collect_names.py`: 10,975 names, 123 structs) | 1 to 2 s | small |
+| Ghidra import + names + auto-analysis + save | JVM 116 s, import 190 s, names 42 s, analysis 2,450 s (295,609 functions) | about 1.3 GB working set, JVM 441 MB used at the end |
+| Instruction index (`engine.py index`: 9.8 M instructions, both code sections) | 117 s | 150 MB peak, 280 MB file |
+| `imm`, `xrefs`, `disasm`, `mem`, `notes` | 0.05 to 0.2 s | small |
+| Ghidra export (tables, then every function decompiled) | running: see `engine.py status` | |
+
+The analysis ran 2,450 s only after its process stopped being power-throttled: at BelowNormal priority Windows 11
+gave it 0.6 s of CPU in 30 s (components pull request 139 removes that throttling for every scheduler job).
+
+## Live (a running private lab server of our own)
+
+`ops/engine/live/engine_live.py`: `ps` (which iw7 processes are ours, by the bench manifest and the scheduler lease),
+`read` / `deref` (`"[0x146B22AC8]+0x30"`, 10 to 16 ms), `watch <expr>:<type>:<ms>:<count>` (JSONL), `dump --out <folder>`
+(every section of the module as it is in memory, the input of `build_image.py --live-dump`). All read-only, no
+suspension; proven on a private headless dedicated server on 11 Nov 2026.
+
+`trace` and `break` are disabled: the game ignores the debugger's break-in (every attach waits 30 s, then the
+debugger suspends it), stopping by killing the debugger froze one lab server, and a software stop breakpoint in
+ntdll crashed another (ledger: "tool: live trace freezes or crashes the server"). Hardware breakpoints do fire and
+log (10 hits of `PlayerCmd_spawnagent`). A safe design must stop only from inside a breakpoint (`bc *; qd`) and use a
+counted hardware breakpoint on a per-frame function as its clock; it is not built.
 
 ## What it cannot know
 

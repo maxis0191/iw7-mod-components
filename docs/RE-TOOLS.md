@@ -1,5 +1,7 @@
 # Persistent, scoped Ghidra inspection
 
+The engine database ([ENGINE.md](ENGINE.md)) is the current way to query the engine: a Ghidra project of the image taken from memory, exported once to SQLite, queried by `ops/engine/engine.py`. The old project `IW7-RE-Lab\projects\iw7_ship_a883ee28ee9f_*` was made from the packed executable: its pseudo-C is garbage past the entry stubs; do not use it.
+
 The primary goal is reusable control of IW7's own engine and rules. BO3 is an
 optional corpus, not a prerequisite. Follow the SDK's
 [engine strategy](https://github.com/maxis0191/iw7-creator-sdk/blob/main/docs/ENGINE-MODDING-STRATEGY.md).
