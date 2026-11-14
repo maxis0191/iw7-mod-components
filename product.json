@@ -196,6 +196,8 @@
     "src/native/agent_capacity.cpp",
     "src/native/agent_capacity.hpp",
     "src/native/agent_capacity_caves.inc",
+    "src/native/agent_capacity_frame_cave.inc",
+    "src/native/agent_capacity_frame_fields.inc",
     "src/native/agent_scenario.hpp",
     "src/native/collision_provider.cpp",
     "src/native/collision_provider.hpp",
