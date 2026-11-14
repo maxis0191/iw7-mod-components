@@ -747,8 +747,7 @@ void plan_unwind_probe() {
     command::add("agent_capacity_unwind_probe", [](const command::params& params) {
         const auto s = params.size() > 1 ? std::strtoul(params.get(1), nullptr, 10) : 0ul;
         unwind_probe_due = GetTickCount64() + s * 1000ull;
-        console::info("[agent capacity] unwind probe due in %lu s (the next call of FUN_1403E5700 after that raises it)
-", s);
+        console::info("[agent capacity] unwind probe due in %lu s (the next call of FUN_1403E5700 after that raises it)\n", s);
     });
     console::info("[agent capacity] unwind probe armed: %u s after the first call of FUN_1403E5700%s", seconds, "\n");
 }
