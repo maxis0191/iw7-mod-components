@@ -1,6 +1,6 @@
 # Cave rewriter: grow an instruction by moving it to a code cave
 
-Status (14 Nov 2026): built; proof run pending, see "Proof" below.
+Status (14 Nov 2026): built and proven in the headless game, see "Proof" below. Not used for the A1 change set yet.
 
 ## What it is for
 
@@ -116,6 +116,30 @@ Test switch `-agent-capacity-cave-fault [mask]` (bit k = cave k of the table, no
 It proves that a cave runs without a counter: the process must die with an illegal instruction inside the cave memory. It
 is inert unless given.
 
-## Proof
+## Proof (14 Nov 2026, components `585b04f`, one lab client, headless, 24 agents)
 
-(filled in with the measured runs, see below)
+Four zero-change caves (`ops/engine/caves/proof-zero-change.*`): each instruction is re-encoded from disp8 to disp32 with the
+SAME displacement (`force32`) and moved to a cave. Windows (stock bytes -> cave bytes):
+
+| Window | Function | Stock | Cave |
+| --- | --- | --- | --- |
+| `140ADABFC` (6) | FUN_140ADABD0 (A.20) | `8b440a1485c0` mov eax,[rdx+rcx+0x14]; test eax,eax | `8b840a1400000085c0` |
+| `140ADBA7E` (7) | FUN_140ADB8E0 (A.23) | `2b4c1a1483e964` sub ecx,[rdx+rbx+0x14]; sub ecx,0x64 | `2b8c1a1400000083e964` |
+| `140ADC274` (6) | FUN_140ADC1E0 (A.25) | `8b441a1485c0`-class window | not reached, see below |
+| `140AE2029` (7) | FUN_140AE2000 (A.29) | mov eax,[rbx+rdx+0x24] + next instruction | disp32 0x24 |
+
+Plan `capacity-agents-headless.json` copied with the 78 phase removed (cap held at 24, same conditions: normal zombies, damage
+refill, protected bot, round 30, 20 s window), run folders `IW7-Runtime\capacityuns\cave-ok` and `cave-ud2`.
+
+- Clean run (4 caves, 514 patches): PASS 13/13 steps, 5/5 expectations, 24 agents alive, 141 hits on the bot in the 20 s
+  window (h4: 162, no cave), 24 killed, no script error, no crash; server frame at 24 alive mean 3.72 ms, median 3.59, p99 5.0
+  (400 frames; h4 6.76 ms on a busier machine: no regression).
+- Execution by exclusion: `IW7_AGENT_CAPACITY_CAVE_FAULT=<mask>` (also `-agent-capacity-cave-fault`) turns one cave into `ud2`.
+  Cave 0: crash 76 s in, 0xC000001D at 0x150280000 (cave memory), from sub_140AFE4B0. Cave 1: exit code 0xC000001D at step 3
+  (15 s, first zombies). Cave 3: exit code 0xC000001D at step 5. Cave 2 (`140ADC274`): the run passed: that instruction is not
+  reached in a 105 s round-30 run (the function is only called under a condition the bot scenario does not meet). Earlier
+  builds: `140ADA146` and `140ADB30F` were also never reached, which is why they were replaced; a cave whose fault run passes is
+  not proven to run.
+- Only the cave 0 crash left a dump (the others ended by exit code; the dump writer did not fire for those).
+- One build served all runs: the fault switch makes the "second build with `ud2`" unnecessary.
+
