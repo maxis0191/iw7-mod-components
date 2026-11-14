@@ -29,6 +29,10 @@ struct layout {
     constexpr std::uint32_t reference_bytes() const { return 8 + characters * 0x40; }
     constexpr std::uint32_t table8_bytes() const { return characters * 8; }
     constexpr std::uint32_t table20_bytes() const { return characters * 5 * 20; }
+    // The server's per-entity queue (FUN_1405ee9e0 family): one 0x208-byte row per entity number (16 slots of 0x20 bytes, ring head
+    // and count), indexed by clients 0..17 and by agents from 18 (up to 17 + the agent count): one row per character.
+    constexpr std::uint32_t queue_rows() const { return characters; }
+    constexpr std::uint32_t queue_bytes() const { return queue_rows() * 0x208; }
     // client snapshot: the 24-row agent-state array stays; a full array is appended after the old end
     constexpr std::uint32_t snap_size() const { return 0x3DC78 + agents * 0xC0; }
     // lag-compensation archive (CP): per-character controllers and saved animation trees inside each history frame
@@ -103,6 +107,7 @@ static_assert(make(100, 0x800).table2_offset() == 0x3F08 + 147 * 0x40 && make(10
 static_assert(make(24, 0x800).frame_extra() == 2272 && make(100, 0x800).frame_extra() == 7136 && make(100, 0x800).frame_extra() % 16 == 0);
 static_assert(make(24, 0x800).frame_extra_b() == 0 && make(100, 0x800).frame_extra_b() == 1216 && make(24, 0x800).frame_extra_c() == 0 &&
               make(100, 0x800).frame_extra_c() == 2432);
+static_assert(make(24, 0x800).queue_bytes() == 0x5550 && make(100, 0x800).queue_rows() == 118 && 18 + 100 == make(100, 0x800).queue_rows());
 static_assert(refuse(100)[0] == 0 && refuse(78)[0] != 0 && refuse(104)[0] != 0 && refuse(96)[0] == 0);
 
 bool installed() noexcept;
