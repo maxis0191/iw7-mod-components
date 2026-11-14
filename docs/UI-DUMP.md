@@ -43,6 +43,7 @@ In a client started with `-paris-isolated-lab`, the lab request file `iw7-mod/pa
 |---|---|
 | `uilua:<name>` | `paris_ui_lua <name>` (`[a-z0-9_]{1,24}`) |
 | `uidump:<tag>` | `paris_ui_dump <tag>` (`[a-z0-9_]{1,24}`) |
+| `frame:<name>[:depth]` | the console commands of one frame, run on the main thread without Lua: `paris_see_depth` when `:depth` is given, then `capture_frame iwz_<name>` (`[a-z0-9_]{1,24}`). Prints `[Paris frame request] <name> depth=<0\|1> tick_ms=..`. Added because `uilua:` tasks run on `scheduler::lui`, which on a joined client did not run again after the first request (ledger, server repository) |
 | `rawkey:<key>:<0\|1>` | a real key event through `CL_KeyEvent` (0x1409A7980, the address the fork's `input.cpp` hooks, so its console, gui and custom-bind code run first, as for a physical key). `<key>`: a name `Key_KeynumToString` gives (any case) or one lowercase letter or digit (its ASCII code). Prints `[Paris rawkey] key=.. num=.. down=.. catchers=<before> after=<after> bind="<binding>" sys_ms=.. tick_ms=..` |
 | `rawchar:<code>` | one char event through `CL_CharEvent` (0x1409A7350); codes 8, 9, 13, 27, 32..126 |
 

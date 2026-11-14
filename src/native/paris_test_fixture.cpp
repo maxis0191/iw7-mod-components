@@ -727,6 +727,22 @@ namespace paris_test_fixture
             console::info("[Paris ui request] %s %s tick_ms=%llu\n", lua ? "lua" : "dump", name.c_str(), GetTickCount64());
             return true;
         }
+        // Lab frame request: "frame:<name>" or "frame:<name>:depth" (name [a-z0-9_]{1,24}): the console commands one frame needs, run here
+        // on the main thread and not through the Lua UI scheduler (whose later tasks did not run on a joined client): the depth switch when
+        // asked, then capture_frame iwz_<name> (iw7-mod/screenshots/iwz_<name>.bmp and the [Paris see] line). No other command text.
+        bool frame_request(const std::string& action)
+        {
+            const auto rest = action.substr(6);
+            const auto colon = rest.find(':');
+            const auto name = rest.substr(0, colon);
+            const bool depth = colon != std::string::npos;
+            if (depth && rest.substr(colon + 1) != "depth") return false;
+            if (name.empty() || name.size() > 24 || name.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_") != std::string::npos) return false;
+            if (depth) command::execute("paris_see_depth", true);
+            command::execute("capture_frame iwz_" + name, true);
+            console::info("[Paris frame request] %s depth=%d tick_ms=%llu\n", name.c_str(), depth ? 1 : 0, GetTickCount64());
+            return true;
+        }
         // Lab memory watch request: "watch:<address hex>:<size>:<interval_ms>:<count>", one token with exactly four fields
         // (hex without 0x, then three decimal numbers). paris_watch::start checks the ranges; nothing else is read here.
         bool parse_watch(const std::string& action, std::uintptr_t& address, std::size_t& size, unsigned& interval_ms, unsigned& count)
@@ -862,7 +878,7 @@ namespace paris_test_fixture
                 nonce.size() != 32 || nonce.find_first_not_of("0123456789abcdef") != std::string::npos) return;
             const bool vote_input = action == "votenext" || action == "voteprevious" || action == "voteboth" || action == "voteholdnext" || action == "voterelease" || action == "votewitness";
             const bool key_input = action.rfind("keydown:", 0) == 0 || action.rfind("keyup:", 0) == 0 ||
-                action.rfind("rawkey:", 0) == 0 || action.rfind("rawchar:", 0) == 0 || action.rfind("uilua:", 0) == 0 || action.rfind("uidump:", 0) == 0;
+                action.rfind("rawkey:", 0) == 0 || action.rfind("rawchar:", 0) == 0 || action.rfind("uilua:", 0) == 0 || action.rfind("uidump:", 0) == 0 || action.rfind("frame:", 0) == 0;
             const bool watch_input = action.rfind("watch:", 0) == 0;
             const bool afk_input = action == "afk";
             const bool teleport_input = action == "owner_tphere" || action == "owner_tp";
@@ -933,6 +949,10 @@ namespace paris_test_fixture
             else if (action.rfind("uilua:", 0) == 0 || action.rfind("uidump:", 0) == 0)
             {
                 if (!ui_request(action)) return;
+            }
+            else if (action.rfind("frame:", 0) == 0)
+            {
+                if (!frame_request(action)) return;
             }
             else if (key_input)
             {
