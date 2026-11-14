@@ -551,8 +551,8 @@ public:
             game::Dvar_RegisterString("scr_default_maxagents", value.data(), game::DVAR_FLAG_NONE, "Agents this server can hold");
             game::Dvar_RegisterInt("agent_capacity", L.agents, L.agents, L.agents, game::DVAR_FLAG_NONE, "Engine agent records");
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
-            console::info("[agent capacity] agents=%u characters=%u map_start=%u parts=%u patches=%zu\n",
-                L.agents, L.characters, L.map_start, L.parts, plan.size());
+            console::info("[agent capacity] agents=%u characters=%u map_start=%u parts=%u patches=%zu caves=%zu\n",
+                L.agents, L.characters, L.map_start, L.parts, plan.size(), caves_planned);
         }, scheduler::main);
         scheduler::loop(check_guards, scheduler::main, 500ms);
     }
