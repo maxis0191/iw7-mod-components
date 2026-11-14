@@ -324,6 +324,30 @@ class Sites(unittest.TestCase):
         clash = [(hex(a[0]), a[2], hex(b[0]), b[2]) for a, b in zip(spans, spans[1:]) if a[1] > b[0]]
         self.assertEqual(clash, [], 'overlapping patches')
 
+    def test_entity_queue_sites(self):
+        """The server entity queue table (FUN_1405ee500..ee9e0): its 10 encoded references and the memset length, each checked
+        against the shipped bytes, no other site of the plan overlaps them, and the loop-2 start is row 18's head."""
+        source = open(CPP, encoding='utf-8').read()
+        body = source[source.index('void plan_entity_queue()'):]
+        body = body[:body.index('\n}\n')]
+        sites, _ = extract_sites(body)
+        self.assertEqual(len(sites), 11, 'ten references (nine rip, one rva) and the memset length')
+        self.assertEqual(sorted(s['address'] for s in sites if s['kind'] == 'rip'),
+                         [0x1405EE50F, 0x1405EE535, 0x1405EE556, 0x1405EE5B2, 0x1405EE6FF, 0x1405EE968, 0x1405EE9F4,
+                          0x1405EEA03, 0x1405EEA8A])
+        for s in sites:
+            self.assertIsNone(check_site(self.image, s), hex(s['address']))
+            if s['kind'] == 'rip':
+                self.assertTrue(0x144EB2B70 <= s['before'] < 0x144EB8090)
+        self.assertEqual(0x144EB2B70 + 18 * 0x208 + 0x200, 0x144EB5200)   # loop 2 starts at the head of row 18
+        self.assertEqual(self.image.read(0x1405EE53B, 4), (42 * 0x208).to_bytes(4, 'little'))
+        inside = [(s['address'], s['address'] + 4) for s in sites]
+        others = [x for x in extract_sites(source)[0] if x['address'] not in {a for a, _ in inside}]
+        for x in others:
+            n = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
+            for a, b in inside:
+                self.assertFalse(x['address'] < b and a < x['address'] + n, f"{x['address']:#x} overlaps the entity queue site {a:#x}")
+
     def test_every_committed_plan_matches_the_shipped_bytes(self):
         """The plan files under ops/engine/caves (a1-table1.plan.json is not in the .inc yet): stock windows, self-check, retarget fields."""
         n = 0
