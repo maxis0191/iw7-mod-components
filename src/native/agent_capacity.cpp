@@ -5,6 +5,7 @@
 #include "scheduler.hpp"
 #include "console/console.hpp"
 #include <utils/flags.hpp>
+#include <utils/hook.hpp>
 #include <shellapi.h>
 #include <algorithm>
 #include <atomic>
@@ -391,6 +392,124 @@ void plan_parts() {
     rip(0x140BF731C, 0x1460B22F0, parts_pool.data); add(0x140BF7321, stock_parts * 4, l.parts * 4);
 }
 
+// ---- 3d. the two per-sentient tables of an SV agent record (map A1) ---------------------------------------------------
+// Each SV agent record (0x3F08 bytes, one per agent) holds table 1 (64-byte rows at +0x10) and table 2 (60-byte rows at +0x23E4),
+// 66 rows each, indexed by the sentient slot; with more than 24 agents a slot passes 65 and the stock code writes past the
+// tables. The tables move to the END of a grown record (record_bytes(): table 1 at 0x3F08, table 2 after it, one row per
+// sentient slot) and the old areas stay unused. A bot client's embedded record (inside client_t) has the same layout.
+//  - record size: every stride and allocation size 0x3F08 (`imul r, r, 0x3F08`, `add r, 0x3F08`, the hunk size function);
+//    the 0x3798 memset of SV_InitAgentRecord and the +0x3F00 flag stay;
+//  - table 2: 77 instructions carry its start in a 32-bit displacement: edited in place; the pointer add at 140C487F9 adds only
+//    the scaled slot (the accesses after it carry the displacement), so it stays;
+//  - table 1: 49 instructions (8-bit displacements, `add` forms) move to code caves (agent_capacity_caves.inc, planned
+//    offline from ops/engine/caves/a1-table1.*) and the accessor sub_140AE2D10 is rewritten in place (16 bytes);
+//  - SV_InitAgentRecord: row count 66 -> slots, table 2 start in place, table 1 start = the 49th cave instruction; the new
+//    area is zeroed by a hook (init_record_stub) because the 0x3798 memset no longer reaches the tables;
+//  - sub_140C3BDD0 (player death of a bot client: saves both tables, resets the embedded record, restores them) is replaced.
+void plan_tables() {
+    const auto& l = L;
+    // record size (24 immediates, all imm32 in place)
+    for (auto a : {
+        0x140C16C60ull, 0x140C16DAAull, 0x140C16DC6ull, 0x140C16DEAull, 0x140C182E4ull,
+        0x140C1893Full, 0x140C18DEBull, 0x140C190DAull, 0x140C19167ull, 0x140C192B3ull,
+        0x140C193B0ull, 0x140C19739ull, 0x140C1974Dull, 0x140C1983Bull, 0x140C199D1ull,
+        0x140C19A41ull, 0x140C19BDCull, 0x140C1A1BFull, 0x140C1A232ull, 0x140C1A25Aull,
+        0x140C1A2A0ull, 0x140C1A2FFull, 0x140C1A396ull, 0x140C1A3D7ull})
+        add(a, 0x3F08, l.record_bytes());
+    // table 2: displacement = old - 0x23E4 + new table 2 start
+    const std::uint32_t shift = l.table2_offset() - 0x23E4;
+    struct t2 { std::uintptr_t field; std::uint32_t before; };
+    for (const auto& i : {
+        t2{0x140C1F261,0x2400}, t2{0x140C1F4A0,0x2414}, t2{0x140C1F4AA,0x240C}, t2{0x140C1F4C6,0x240C},
+        t2{0x140C1F4D2,0x2414}, t2{0x140C1F4EA,0x2414}, t2{0x140C1F4F1,0x2414}, t2{0x140C216D4,0x2408},
+        t2{0x140C216DE,0x2408}, t2{0x140C21BB6,0x241C}, t2{0x140C23606,0x23E4}, t2{0x140C2363F,0x23E8},
+        t2{0x140C2B796,0x2404}, t2{0x140C2C6A2,0x23F4}, t2{0x140C2C6CA,0x23F4}, t2{0x140C2C6D3,0x23FC},
+        t2{0x140C2C6DD,0x23F8}, t2{0x140C2C7F4,0x2404}, t2{0x140C2C814,0x2404}, t2{0x140C2DAB1,0x241C},
+        t2{0x140C2FFD8,0x2410}, t2{0x140C2FFE5,0x2410}, t2{0x140C30008,0x2410}, t2{0x140C348F9,0x23E4},
+        t2{0x140C34920,0x23E8}, t2{0x140C34931,0x23EC}, t2{0x140C34C36,0x241C}, t2{0x140C34C7D,0x23E8},
+        t2{0x140C34C84,0x23EC}, t2{0x140C39A2C,0x2410}, t2{0x140C39B77,0x241C}, t2{0x140C39B85,0x2418},
+        t2{0x140C39BA1,0x2418}, t2{0x140C39BB4,0x241C}, t2{0x140C39BC6,0x241C}, t2{0x140C39BCD,0x241C},
+        t2{0x140C39D4A,0x241C}, t2{0x140C39D54,0x2418}, t2{0x140C39D70,0x2418}, t2{0x140C39D83,0x241C},
+        t2{0x140C39D95,0x241C}, t2{0x140C39D9C,0x241C}, t2{0x140C3A180,0x23E4}, t2{0x140C3A188,0x23EC},
+        t2{0x140C3A190,0x23F4}, t2{0x140C3A198,0x23FC}, t2{0x140C3A1A0,0x2404}, t2{0x140C3A1A8,0x240C},
+        t2{0x140C3A1B0,0x2414}, t2{0x140C3A1B8,0x241C}, t2{0x140C3B330,0x2400}, t2{0x140C3B462,0x23E8},
+        t2{0x140C3B471,0x23E4}, t2{0x140C3B489,0x23EC}, t2{0x140C3B496,0x23E4}, t2{0x140C3E39A,0x2408},
+        t2{0x140C3ED27,0x241C}, t2{0x140C3ED38,0x241C}, t2{0x140C3F9DA,0x23F0}, t2{0x140C3FA09,0x23F8},
+        t2{0x140C3FA41,0x23FC}, t2{0x140C3FA51,0x23FC}, t2{0x140C3FA5A,0x23F8}, t2{0x140C3FA64,0x23F0},
+        t2{0x140C4003B,0x23F8}, t2{0x140C40045,0x23F8}, t2{0x140C40053,0x23F0}, t2{0x140C487E3,0x23E4},
+        t2{0x140C487FF,0x23E4}, t2{0x140C48808,0x23F4}, t2{0x140C4880F,0x23F4}, t2{0x140C48818,0x2404},
+        t2{0x140C4881F,0x2404}, t2{0x140C48829,0x2414}, t2{0x140C48831,0x2414}, t2{0x140C48839,0x241C},
+        t2{0x140C4883F,0x241C}})
+        add(i.field, i.before, i.before + shift);
+    // SV_InitAgentRecord (sub_140C2A080): table 2 start `lea rax, [rbx + 0x2408]`, row count `mov edx, 0x42`
+    add(0x140C2A302, 0x2408, l.table2_offset() + 0x24);
+    add(0x140C2A31F, 0x42, l.table_slots());
+    // accessor sub_140AE2D10 (the entry of table 1 for a sentient slot): `mov rax,[rcx+8]; add rax,0x10; shl rdx,6; add rax,rdx; ret`
+    // -> `shl rdx,6; add rdx,[rcx+8]; lea rax,[rdx+0x3F08]; ret` (the same 16 bytes)
+    block(0x140AE2D32, std::array<std::uint8_t, 16>{0x48,0x8b,0x41,0x08,0x48,0x83,0xc0,0x10,0x48,0xc1,0xe2,0x06,0x48,0x03,0xc2,0xc3},
+          std::array<std::uint8_t, 16>{0x48,0xc1,0xe2,0x06,0x48,0x03,0x51,0x08,0x48,0x8d,0x82,
+              static_cast<std::uint8_t>(l.table1_offset()), static_cast<std::uint8_t>(l.table1_offset() >> 8), 0, 0, 0xc3});
+}
+
+// ---- 3e. hooks for the grown record: zero the new table area, and the bot client's death reset ------------------------
+utils::hook::detour init_record_hook, death_reset_hook;
+
+// SV_InitAgentRecord (sub_140C2A080, rcx = record, rdx = entity): the stock function clears record[0, 0x3798) (both old
+// tables) and then writes the first field of every table row. The new tables lie past that memset: clear them first. The
+// stock function has no return before its memset (the only branches before it skip the teardown of an old record), so
+// every path that later uses a table sees zeroed rows, exactly as in the stock layout.
+std::uintptr_t init_record_stub(std::uint8_t* record, void* entity) {
+    std::memset(record + L.table1_offset(), 0, L.record_bytes() - L.table1_offset());
+    return init_record_hook.invoke<std::uintptr_t>(record, entity);
+}
+
+// sub_140C3BDD0 (player-death handler of a bot client, rcx = client_t): the agent record is embedded in client_t at +0x4C4.
+// It saves table 2 and table 1 to a 0x2020-byte stack frame, resets the record (FUN_140C28510, SV_InitAgentRecord,
+// FUN_140C29FC0, FUN_140AF09D0) and restores both tables. The frame cannot hold the grown tables: this replacement keeps the
+// same calls in the same order, with the saved blocks on the heap. Original (Ghidra decompile, address 0x140C3BDD0):
+//
+//   void FUN_140c3bdd0(longlong param_1) {
+//     puVar16 = (undefined8 *)(param_1 + 0x4c4);                                      // [1] record
+//     FUN_140ac61b0(*(undefined8 *)(*(longlong *)(param_1 + 0x88) + 0x180),7);       // [2] first call
+//     <do { 16 qwords per pass } while (--30)  copy 0xF00 bytes from param_1+0x28a8 (= record+0x23E4, table 2) to local_2008>
+//     <tail: 0x78 bytes more>                                                         // [3] save table 2 (0xF78 bytes)
+//     <do { 16 qwords per pass } while (--33)  copy 0x1080 bytes from param_1+0x4d4 (= record+0x10, table 1) to local_1088>
+//                                                                                    // [4] save table 1 (0x1080 bytes)
+//     FUN_140c28510(puVar16);                                                         // [5]
+//     FUN_140c2a080(puVar16,*puVar16);                                                // [6] SV_InitAgentRecord(record, record[0])
+//     FUN_140c29fc0(puVar16);                                                         // [7]
+//     if ((*(longlong *)(param_1 + 0x4cc) != 0) &&
+//        (*(longlong *)(*(longlong *)(param_1 + 0x4cc) + 0x70) != 0)) {              // [8] record[1] and record[1]->+0x70
+//       FUN_140af09d0();                                                              //     (rcx = record[1] is live: sentient)
+//     }
+//     <restore table 2 (30 passes + 0x78 tail), then table 1 (33 passes)>             // [9]
+//   }
+//
+// Here: [1] record, [2] the same call, [3] and [4] one copy each of E rows (E x 0x3C and E x 0x40 bytes at their new places)
+// into one heap block, [5] to [8] the same calls with the same arguments (the disassembly passes record[1] to FUN_140AF09D0 in
+// rcx, which the decompile omits; it tail-jumps to FUN_140AF0900(rcx, 0)), [9] the two copies back.
+void death_reset_stub(std::uint8_t* client) {
+    auto* record = client + 0x4C4;
+    const auto fn_sentient_flag = reinterpret_cast<void (*)(void*, int)>(0x140AC61B0);
+    const auto fn_clear = reinterpret_cast<void (*)(void*)>(0x140C28510);
+    const auto fn_init = reinterpret_cast<std::uintptr_t (*)(void*, void*)>(0x140C2A080);
+    const auto fn_finish = reinterpret_cast<void (*)(void*)>(0x140C29FC0);
+    const auto fn_notify = reinterpret_cast<void (*)(void*)>(0x140AF09D0);
+    const auto entity = *reinterpret_cast<std::uint8_t**>(client + 0x88);
+    fn_sentient_flag(*reinterpret_cast<void**>(entity + 0x180), 7);                       // [2]
+    const std::size_t bytes2 = static_cast<std::size_t>(L.table_slots()) * 0x3C, bytes1 = static_cast<std::size_t>(L.table_slots()) * 0x40;
+    std::vector<std::uint8_t> saved(bytes2 + bytes1);
+    std::memcpy(saved.data(), record + L.table2_offset(), bytes2);                        // [3]
+    std::memcpy(saved.data() + bytes2, record + L.table1_offset(), bytes1);               // [4]
+    fn_clear(record);                                                                     // [5]
+    fn_init(record, *reinterpret_cast<void**>(record));                                   // [6]
+    fn_finish(record);                                                                    // [7]
+    const auto sentient = *reinterpret_cast<std::uint8_t**>(record + 8);                  // [8]
+    if (sentient && *reinterpret_cast<std::uintptr_t*>(sentient + 0x70)) fn_notify(sentient);
+    std::memcpy(record + L.table2_offset(), saved.data(), bytes2);                        // [9]
+    std::memcpy(record + L.table1_offset(), saved.data() + bytes2, bytes1);
+}
+
 std::uint32_t parse_count(const wchar_t* flag, std::uint32_t fallback) {
     int count{};
     auto args = CommandLineToArgvW(GetCommandLineW(), &count);
@@ -556,6 +675,7 @@ public:
         plan_client();
         plan_parts();
         plan_ai_pool();
+        plan_tables();
         plan_caves();
         std::sort(plan.begin(), plan.end(), [](const patch& a, const patch& b) { return a.address < b.address; });
         for (std::size_t i = 1; i < plan.size(); ++i)
@@ -569,6 +689,8 @@ public:
                 if (!restored) std::terminate();
                 throw std::runtime_error("agent capacity: a code write failed; everything restored");
             }
+        init_record_hook.create(0x140C2A080, init_record_stub);   // queued: main applies every queued hook after post_unpack
+        death_reset_hook.create(0x140C3BDD0, death_reset_stub);
         active = true;
         contract = "agents-" + std::to_string(L.agents);
         scheduler::once([] {

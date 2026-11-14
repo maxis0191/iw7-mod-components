@@ -147,6 +147,8 @@ def extract_sites(source):
     # 3. record lists: q{address, before, stack}, u{address, before, width, scale}, r{pool, field, off, at_end}
     for m in re.finditer(r'\bq\{(' + HEX + r'),\s*(0x[0-9A-Fa-f]+|\d+),\s*\d\}', source):
         sites.append({'kind': 'value', 'address': addr(m.group(1)), 'width': 4, 'before': int(m.group(2), 0)})
+    for m in re.finditer(r'\bt2\{(' + HEX + r'),\s*(0x[0-9A-Fa-f]+)\}', source):  # table 2: address of a disp32 field, its stock value
+        sites.append({'kind': 'value', 'address': addr(m.group(1)), 'width': 4, 'before': int(m.group(2), 0)})
     for m in re.finditer(r'\bu\{(' + HEX + r'),\s*(0x[0-9A-Fa-f]+|\d+),\s*(\d),\s*\d+\}', source):
         sites.append({'kind': 'value', 'address': addr(m.group(1)), 'width': int(m.group(3)),
                       'before': int(m.group(2), 0)})
@@ -220,6 +222,7 @@ class Extractor(unittest.TestCase):
     block(0x140C18D6E, std::array<std::uint8_t, 5>{0xe8, 0x35, 0xed, 0x6a, 0x00}, std::array<std::uint8_t, 5>{0xb8});
     for (const auto& i : {q{0x140C6236E,0x2A0,1},q{0x140C62380,0x280,1}}) add(i.a, i.before, i.before + 1);
     for (const auto& i : {u{0x1416CCF5A,0x54,2,8}}) add(i.a, i.before, i.before + 1, i.width, false);
+    for (const auto& i : {t2{0x140C1F25F,0x2400},t2{0x140C1F4A0,0x2414}}) add(i.field, i.before, i.before + shift);
     '''
 
     def test_fragment(self):
@@ -235,7 +238,8 @@ class Extractor(unittest.TestCase):
         self.assertEqual(by[0x140C18D6E]['before'], bytes.fromhex('e835ed6a00'))
         self.assertEqual(by[0x140C62380]['before'], 0x280)
         self.assertEqual((by[0x1416CCF5A]['width'], by[0x1416CCF5A]['before']), (2, 0x54))
-        self.assertEqual(len(sites), 12)
+        self.assertEqual((by[0x140C1F4A0]['width'], by[0x140C1F4A0]['before']), (4, 0x2414))
+        self.assertEqual(len(sites), 14)
 
     def test_a_wrong_stock_value_and_a_wrong_rip_target_are_found(self):
         image = cp.PlainImage([(0x140001000, bytes.fromhex('18000000') + (0x1000).to_bytes(4, 'little', signed=True)
@@ -284,6 +288,32 @@ class Sites(unittest.TestCase):
         self.assertEqual(bad, [], '\n'.join(bad))
         self.assertGreater(ok, 200)
 
+    def test_a1_table_sites(self):
+        """The A1 table relocation: its counts, and no patch (site, block or cave window) overlaps another."""
+        source = open(CPP, encoding='utf-8').read()
+        body = source[source.index('void plan_tables()'):]
+        body = body[:body.index('\n}\n')]
+        self.assertEqual(len(re.findall(r'\bt2\{0x', body)), 77, 'table 2: 77 displacement sites')
+        loop = re.search(r'for \(auto a : \{([^{}]*)\}\)\s*add\(a, 0x3F08, l\.record_bytes\(\)\)', body)
+        self.assertEqual(len(re.findall(HEX, loop.group(1))), 24, 'record size: 24 immediates')
+        for a in ('0x140C2A302, 0x2408', '0x140C2A31F, 0x42'):
+            self.assertIn(a, body)
+        plan = json.load(open(os.path.join(PLANS, 'a1-table1.plan.json'), encoding='utf-8'))
+        starts = {int(c['window_start'], 0) for c in plan['caves']}
+        self.assertEqual(len(starts), 48, 'table 1: 49 instructions in 48 caves')
+        self.assertIn(0x140C2A310, starts, 'SV_InitAgentRecord table 1 start goes through the cave planner')
+        sites, _ = extract_sites(source)
+        spans = []
+        for x in sites:
+            n = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
+            spans.append((x['address'], x['address'] + n, 'site'))
+        for c in parse_inc(open(INC, encoding='utf-8').read()):
+            spans.append((c['start'], c['start'] + len(c['old']), 'cave'))
+            spans.extend((t['field'], t['field'] + 4, 'retarget') for t in c['retargets'])
+        spans.sort()
+        clash = [(hex(a[0]), a[2], hex(b[0]), b[2]) for a, b in zip(spans, spans[1:]) if a[1] > b[0]]
+        self.assertEqual(clash, [], 'overlapping patches')
+
     def test_every_committed_plan_matches_the_shipped_bytes(self):
         """The plan files under ops/engine/caves (a1-table1.plan.json is not in the .inc yet): stock windows, self-check, retarget fields."""
         n = 0
@@ -302,10 +332,10 @@ class Sites(unittest.TestCase):
     def test_every_cave_window_matches_and_the_cave_means_the_same(self):
         caves = parse_inc(open(INC, encoding='utf-8').read())
         plans = {}
-        for name in (sorted(os.listdir(PLANS)) if os.path.isdir(PLANS) else []):
-            if name.endswith('.json') and not name.endswith('.requests.json'):
-                for c in json.load(open(os.path.join(PLANS, name), encoding='utf-8')).get('caves', []):
-                    plans[int(c['window_start'], 0)] = c
+        # the plan file the table was generated from is named in the .inc header; the proof plans stay in the repository, not in the build
+        live = re.search(r'from (\S+\.json)', open(INC, encoding='utf-8').read().splitlines()[0]).group(1)
+        for c in json.load(open(os.path.join(PLANS, live), encoding='utf-8')).get('caves', []):
+            plans[int(c['window_start'], 0)] = c
         for c in caves:
             stock = self.image.read(c['start'], len(c['old']))
             self.assertEqual(stock, c['old'], f"cave window {c['start']:#x}: the shipped bytes differ")
