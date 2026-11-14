@@ -125,8 +125,8 @@ SAME displacement (`force32`) and moved to a cave. Windows (stock bytes -> cave 
 | --- | --- | --- | --- |
 | `140ADABFC` (6) | FUN_140ADABD0 (A.20) | `8b440a1485c0` mov eax,[rdx+rcx+0x14]; test eax,eax | `8b840a1400000085c0` |
 | `140ADBA7E` (7) | FUN_140ADB8E0 (A.23) | `2b4c1a1483e964` sub ecx,[rdx+rbx+0x14]; sub ecx,0x64 | `2b8c1a1400000083e964` |
-| `140ADC274` (6) | FUN_140ADC1E0 (A.25) | `8b441a1485c0`-class window | not reached, see below |
-| `140AE2029` (7) | FUN_140AE2000 (A.29) | mov eax,[rbx+rdx+0x24] + next instruction | disp32 0x24 |
+| `140ADC274` (6) | FUN_140ADC1E0 (A.25) | `8b441a1485c0` | `8b841a1400000085c0` (not reached, see below) |
+| `140AE2029` (8) | FUN_140AE2000 (A.29) | `8b44132439440b24` | `8b84132400000039440b24` |
 
 Plan `capacity-agents-headless.json` copied with the 78 phase removed (cap held at 24, same conditions: normal zombies, damage
 refill, protected bot, round 30, 20 s window), run folders `IW7-Runtime\capacityuns\cave-ok` and `cave-ud2`.
