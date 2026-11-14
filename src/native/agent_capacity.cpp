@@ -369,8 +369,7 @@ void extend_free_list(std::uintptr_t head, std::uint32_t stride, std::uint32_t c
         prev = block;
     }
     *reinterpret_cast<std::uintptr_t*>(prev) = head;
-    console::info("[agent capacity] free list %llX: +%u blocks of 0x%X
-", static_cast<unsigned long long>(head), count, stride);
+    console::info("[agent capacity] free list %llX: +%u blocks of 0x%X\n", static_cast<unsigned long long>(head), count, stride);
 }
 
 // ---- 4. reserved scriptable parts (server): one free list of 2,048 u16 links -----------------------------------------
