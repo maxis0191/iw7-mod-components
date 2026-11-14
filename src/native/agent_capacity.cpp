@@ -347,6 +347,32 @@ void plan_ai_pool() {
     add(0x1403F1273, ai_stock, L.sentient_slots());                          // sub_1403F1250 walks the pool by count
 }
 
+// ---- 3c. two static free-list pools of 64 (a per-entity map: 64 tree nodes of 0x30 and 64 blocks of 0x810) ---------
+// Run h3 (14 Nov 2026): with more than 24 agents active, sub_1403DCC50 (called from sub_1403E1E30 under a script
+// builtin) popped a block from the free list at 0x143C1A580 when it was empty (the empty list points at its own head)
+// and the red-black tree at 0x143BFA140 was corrupted (crash writing [0] in sub_140093B10). Both lists are chained once
+// by static initialisers (sub_140004440: 64 x 0x810 below 0x143C1A580; sub_140004490: 64 x 0x30 below 0x143BFA140) and
+// nothing else addresses the pool memory: more capacity = more blocks appended to the free lists, no code patched.
+void extend_free_list(std::uintptr_t head, std::uint32_t stride, std::uint32_t count) {
+    readable(head, 8);
+    const auto storage = reserve(static_cast<std::size_t>(stride) * count);
+    // walk to the last free element (its next is the head itself: the empty-list sentinel)
+    auto prev = head;
+    for (unsigned guard = 0; guard < 100000; ++guard) {
+        const auto next = *reinterpret_cast<std::uintptr_t*>(prev);
+        if (next == head) break;
+        prev = next;
+    }
+    for (std::uint32_t i = 0; i < count; ++i) {
+        const auto block = storage.data + static_cast<std::uintptr_t>(i) * stride;
+        *reinterpret_cast<std::uintptr_t*>(prev) = block;
+        prev = block;
+    }
+    *reinterpret_cast<std::uintptr_t*>(prev) = head;
+    console::info("[agent capacity] free list %llX: +%u blocks of 0x%X
+", static_cast<unsigned long long>(head), count, stride);
+}
+
 // ---- 4. reserved scriptable parts (server): one free list of 2,048 u16 links -----------------------------------------
 // ScriptableSv_LinkReservedScriptable (sub_140BF96A0) takes one slot a part; an agent's model takes 31, so 24 agents
 // hold 744 and 78 would need 2,418 ("Too many reserved scriptable parts", ERR_DROP). Free (sub_140BF9A70), init
@@ -429,6 +455,9 @@ public:
         active = true;
         contract = "agents-" + std::to_string(L.agents);
         scheduler::once([] {
+            // after the static initialisers chained the stock 64: add room for every sentient slot twice over
+            extend_free_list(0x143C1A580, 0x810, 2 * L.sentient_slots());
+            extend_free_list(0x143BFA140, 0x30, 2 * L.sentient_slots());
             // G_GetMaxAgents reads scr_<gametype>_maxagents, else scr_default_maxagents: make the default the new count.
             const auto value = std::to_string(L.agents);
             game::Dvar_RegisterString("scr_default_maxagents", value.data(), game::DVAR_FLAG_NONE, "Agents this server can hold");
