@@ -54,6 +54,10 @@ struct layout {
     constexpr std::uint32_t table1_offset() const { return 0x3F08; }
     constexpr std::uint32_t table2_offset() const { return 0x3F08 + table_slots() * 0x40; }
     constexpr std::uint32_t record_bytes() const { return (table2_offset() + table_slots() * 0x3C + 15) & ~15u; }
+    // Frame grow of FUN_1403E61B0 (docs/CAVE-REWRITER.md): its 71-entry stack array of 32-byte entries sits under the stack cookie
+    // and two unbounded loops fill it (sentients: at most one entry per slot; a second list). The frame grows at the array's top
+    // by room for one entry per sentient slot from each loop beyond the stock 71, rounded to 16 (movaps alignment).
+    constexpr std::uint32_t frame_extra() const { return ((2 * sentient_slots() - 71) * 32 + 15) & ~15u; }
 };
 
 // A bot client keeps its agent record inside client_t, on the 128 x 0x408 byte reliable-command ring (unused by a bot).
@@ -92,6 +96,7 @@ static_assert(make(24, 0x800).archive_size() == 0x2077F0 && make(24, 0x800).fram
 static_assert(make(24, 0x800).xanim_base() == 0x9774);
 static_assert(make(24, 0x800).record_bytes() == ((0x3F08 + 71 * 0x7C + 15) & ~15u) && make(24, 0x800).table1_offset() == 0x3F08);
 static_assert(make(100, 0x800).table2_offset() == 0x3F08 + 147 * 0x40 && make(100, 0x800).record_bytes() < embedded_record_room);
+static_assert(make(24, 0x800).frame_extra() == 2272 && make(100, 0x800).frame_extra() == 7136 && make(100, 0x800).frame_extra() % 16 == 0);
 static_assert(refuse(100)[0] == 0 && refuse(78)[0] != 0 && refuse(104)[0] != 0 && refuse(96)[0] == 0);
 
 bool installed() noexcept;

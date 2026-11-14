@@ -13,6 +13,7 @@ whole plan: reasons on stderr, exit code 2, nothing written.
 
     python -B ops/engine/cave_plan.py requests.json -o plan.json
     python -B ops/engine/cave_plan.py --emit-cpp plan.json -o src/native/agent_capacity_caves.inc
+    python -B ops/engine/cave_plan.py frame-grow --function 0x1403E61B0 --array-top 0xCC0 --extra 7136 -o plan.json   (docs/CAVE-REWRITER.md, "frame grow")
 """
 import argparse
 import bisect
@@ -49,6 +50,7 @@ class PlainImage:
         self.regions = regions
         self.base = base
         self.path = "<memory>"
+        self.exception_directory = None   # (virtual address, entry count) of the .pdata RUNTIME_FUNCTION table, when known
 
     def read(self, address, n):
         for start, data, _ in self.regions:
@@ -80,6 +82,8 @@ class PeImage(PlainImage):
             regions.append((base + va, body, bool(ch & 0x20000000)))
         super().__init__(regions, base)
         self.path = path
+        ed_rva, ed_size = struct.unpack_from("<II", data, pe + 24 + 112 + 3 * 8)
+        self.exception_directory = (base + ed_rva, ed_size // 12) if ed_rva else None
 
 
 def open_image(path):
@@ -810,10 +814,16 @@ def emit_cpp(plan_doc, source_name):
 
 # ------------------------------------------------------------------------------------------------ command line
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] == "frame-grow":
+        import frame_grow
+        return frame_grow.main(argv[1:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input", help="requests JSON (plan mode) or plan JSON (--emit-cpp)")
     ap.add_argument("-o", "--output", help="output file (default: stdout)")
     ap.add_argument("--emit-cpp", action="store_true", help="input is a plan: write the C++ array initialiser")
+    ap.add_argument("--frame-cave", action="store_true",
+                    help="with --emit-cpp on a frame-grow plan: write the probe cave line (default: the field table)")
     ap.add_argument("--dry-run", action="store_true",
                     help="plan every request alone and write a per-request accepted/refused table (exit 0)")
     ap.add_argument("--image", default=DEFAULT_IMAGE)
@@ -821,7 +831,10 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         doc = json.load(open(a.input, encoding="utf-8"))
-        if a.emit_cpp:
+        if a.emit_cpp and doc.get("kind") == "frame-grow":
+            import frame_grow
+            text = (frame_grow.emit_cave_cpp if a.frame_cave else frame_grow.emit_cpp)(doc, os.path.basename(a.input))
+        elif a.emit_cpp:
             text = emit_cpp(doc, os.path.basename(a.input))
         else:
             if not os.path.exists(a.image):
