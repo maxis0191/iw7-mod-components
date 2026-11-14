@@ -4,6 +4,7 @@
 #include "game/game.hpp"
 #include "scheduler.hpp"
 #include "console/console.hpp"
+#include "command.hpp"
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <shellapi.h>
@@ -648,37 +649,65 @@ void cave(std::uintptr_t window_start, const std::vector<std::uint8_t>& old_byte
 // as every other patch. The `sub rsp` goes through a cave that first reads one byte in every 0x1000 step below the stack pointer
 // (the new frame is larger than a page), planned for the largest X; only its immediate is set here.
 struct frame_field { std::uintptr_t address; unsigned width; std::uint32_t stock; unsigned unit; int sign; bool code; };
-const std::vector<frame_field> frame_fields = {
-#include "agent_capacity_frame_fields.inc"
-};
 struct frame_cave_spec {
     std::uintptr_t window_start;
     std::vector<std::uint8_t> old_bytes, cave_bytes;
     std::uint32_t imm_offset, stock_frame, max_extra, probes;
 };
-const std::vector<frame_cave_spec> frame_caves = {
+// Three functions, three tables each (fields, and the page-probe cave when the grown frame reaches a page). FUN_1403E61B0 (a): two
+// loops, X = layout::frame_extra(); FUN_140ADB8E0 (b) and FUN_140ADDED0 (c): one loop each, X = (slots - 71) x entry size.
+const std::vector<frame_field> frame_fields_a = {
+#include "agent_capacity_frame_fields.inc"
+};
+const std::vector<frame_cave_spec> frame_caves_a = {
 #include "agent_capacity_frame_cave.inc"
 };
-std::size_t frame_fields_planned{};
+const std::vector<frame_field> frame_fields_b = {
+#include "agent_capacity_frame_fields_adb8e0.inc"
+};
+const std::vector<frame_cave_spec> frame_caves_b = {};
+const std::vector<frame_field> frame_fields_c = {
+#include "agent_capacity_frame_fields_added0.inc"
+};
+const std::vector<frame_cave_spec> frame_caves_c = {
+#include "agent_capacity_frame_cave_added0.inc"
+};
+struct frame_set {
+    const char* name;
+    const std::vector<frame_field>& fields;
+    const std::vector<frame_cave_spec>& caves;
+    std::uint32_t extra;
+    std::size_t planned_fields{}, planned_caves{};
+};
+std::vector<frame_set> frame_sets;
 
-void plan_frames() {
-    const auto extra = L.frame_extra();
-    for (const auto& f : frame_fields) {
-        if (!f.unit || extra % f.unit) throw std::runtime_error("agent capacity: frame grow X does not fit the unit of a field");
-        const auto wide = static_cast<std::int64_t>(f.stock) + static_cast<std::int64_t>(f.sign) * static_cast<std::int64_t>(extra / f.unit);
+void plan_frame_set(frame_set& set) {
+    if (!set.extra) return;   // no change at 24 agents for the one-loop functions
+    for (const auto& f : set.fields) {
+        if (!f.unit || set.extra % f.unit) throw std::runtime_error("agent capacity: frame grow X does not fit the unit of a field");
+        const auto wide = static_cast<std::int64_t>(f.stock) + static_cast<std::int64_t>(f.sign) * static_cast<std::int64_t>(set.extra / f.unit);
         const std::int64_t mask = f.width >= 4 ? 0xFFFFFFFFll : ((1ll << (8 * f.width)) - 1);
         if (f.width < 4 && (wide < 0 || wide > mask)) throw std::runtime_error("agent capacity: frame grow value does not fit its field");
         add(f.address, f.stock, static_cast<std::uint32_t>(wide & mask), f.width, f.code);
-        ++frame_fields_planned;
+        ++set.planned_fields;
     }
-    for (const auto& c : frame_caves) {
-        if (extra > c.max_extra) throw std::runtime_error("agent capacity: frame grow X is above the largest X its probe cave was planned for");
+    for (const auto& c : set.caves) {
+        if (set.extra > c.max_extra) throw std::runtime_error("agent capacity: frame grow X is above the largest X its probe cave was planned for");
         auto bytes = c.cave_bytes;
-        const std::uint32_t frame = c.stock_frame + extra;
+        const std::uint32_t frame = c.stock_frame + set.extra;
         if (c.imm_offset + 4 > bytes.size()) throw std::runtime_error("agent capacity: bad frame cave");
         std::memcpy(bytes.data() + c.imm_offset, &frame, 4);
         cave(c.window_start, c.old_bytes, bytes, {}, {});
+        ++set.planned_caves;
     }
+}
+
+void plan_frames() {
+    frame_sets.clear();
+    frame_sets.push_back({"1403E61B0", frame_fields_a, frame_caves_a, L.frame_extra()});
+    frame_sets.push_back({"140ADB8E0", frame_fields_b, frame_caves_b, L.frame_extra_b()});
+    frame_sets.push_back({"140ADDED0", frame_fields_c, frame_caves_c, L.frame_extra_c()});
+    for (auto& set : frame_sets) plan_frame_set(set);
 }
 
 // ---- 5c. lab-only unwind probe of the grown frame ---------------------------------------------------------------------------------
@@ -713,13 +742,22 @@ void plan_unwind_probe() {
     if (!seconds) return;
     unwind_probe_seconds = seconds;
     unwind_probe_hook.create(0x1403E5700, unwind_probe_stub);   // queued: main applies every queued hook after post_unpack
+    // the lab plan times the error itself: `agent_capacity_unwind_probe <s>` (a plan `cmd` step) sets the due time to now + s seconds, whatever
+    // the first call set; the error is raised by the first call of FUN_1403E5700 after that (once)
+    command::add("agent_capacity_unwind_probe", [](const command::params& params) {
+        const auto s = params.size() > 1 ? std::strtoul(params.get(1), nullptr, 10) : 0ul;
+        unwind_probe_due = GetTickCount64() + s * 1000ull;
+        console::info("[agent capacity] unwind probe due in %lu s (the next call of FUN_1403E5700 after that raises it)
+", s);
+    });
     console::info("[agent capacity] unwind probe armed: %u s after the first call of FUN_1403E5700%s", seconds, "\n");
 }
 
 void plan_caves() {
     std::size_t total = 0;
     for (const auto& c : cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
-    for (const auto& c : frame_caves) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
+    for (const auto* caves : {&frame_caves_a, &frame_caves_b, &frame_caves_c})
+        for (const auto& c : *caves) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     if (!total) return;
     code_region = reserve_code(total);
     auto fault = parse_count(L"-agent-capacity-cave-fault", 0xFFFFFFFFu);
@@ -799,8 +837,9 @@ public:
             game::Dvar_RegisterInt("agent_capacity", L.agents, L.agents, L.agents, game::DVAR_FLAG_NONE, "Engine agent records");
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
             console::info("[agent capacity] fast-fail sites patched to ud2: %zu\n", fastfail_sites);
-            console::info("[agent capacity] frame grow of 1403E61B0: extra %u bytes, %zu fields, probe caves %zu\n", L.frame_extra(),
-                frame_fields_planned, frame_caves.size());
+            for (const auto& set : frame_sets)
+                console::info("[agent capacity] frame grow of %s: extra %u bytes, %zu fields, probe caves %zu\n", set.name, set.extra,
+                    set.planned_fields, set.planned_caves);
             console::info("[agent capacity] agents=%u characters=%u map_start=%u parts=%u patches=%zu caves=%zu\n",
                 L.agents, L.characters, L.map_start, L.parts, plan.size(), caves_planned);
         }, scheduler::main);

@@ -20,9 +20,9 @@ needed; no register is used), planned for the largest X.
 
 Refusals (exit 2, nothing written): a displacement or immediate that must change but has an 8-bit field; a dynamic stack
 adjustment (`sub rsp, reg`, `lea rsp`, `mov rsp, ..`, `leave`, push/pop in the body, a second `sub rsp`); an epilogue that is not
-`add rsp, F`; the address of above-threshold stack memory taken with `lea`; a stack pointer copied into another register; an
+`add rsp, F`; the address of above-threshold stack memory taken with `lea`; a stack pointer copied into another register (except `add rbp, imm` on a cursor, see CURSOR_STEP); an
 indexed stack access; an access that straddles the array top; unwind data in a form not handled (ALLOC_SMALL, an unknown handler,
-version 2, chunks not chained to the primary, a size operand that overflows); a self-check difference.
+version 2, chunks whose chain does not end at the primary chunk, a size operand that overflows); a self-check difference.
 """
 import argparse
 import json
@@ -38,6 +38,8 @@ from capstone.x86 import X86_REG_RBP, X86_REG_RIP, X86_REG_RSP  # noqa: E402
 
 GS_HANDLER_CHECK = 0x1412BA038     # __GSHandlerCheck in the shipped image (handler data: one dword, cookie offset | flags)
 PAGE = 0x1000
+CURSOR_STEP = 0x100               # largest `add rbp, imm` accepted as one array-entry step of a cursor
+CURSOR_REACH = 0x40               # largest |displacement| of an rbp access in a function whose rbp is a cursor
 SUB_RSP_IMM32 = b"\x48\x81\xec"
 ADD_RSP_IMM32 = b"\x48\x81\xc4"
 
@@ -97,6 +99,7 @@ class Walk:
         self.adds = []         # epilogue `add rsp, F` instructions
         self.S = None          # c-offset of rsp in the body
         self.frame_regs = []   # (instruction, kind) frame-base definitions of rbp
+        self.cursor_adds = []  # `add rbp, imm` instructions: rbp is a cursor that walks the array (see walk())
 
 
 def first_sub(insns):
@@ -195,7 +198,11 @@ def walk(insns, array_top):
                 for o in ops:
                     if o.type == CS_OP_REG and o.access & 1:
                         r = _reg(ins, o.reg)
-                        if r == "rsp" or (r == "rbp" and rbp not in (None, ("unknown",))):
+                        if r == "rbp" and mn == "add" and o is ops[0] and ops[1].type == CS_OP_IMM and 0 < ops[1].imm <= CURSOR_STEP                                 and stage == "body" and rbp not in (None, ("unknown",)):
+                            # rbp, taken with `lea rbp,[rsp+d]` below the array top, steps through the array entry by entry (a cursor):
+                            # every rbp access is then entry-local and moves with the frame; checked in classify()
+                            w.cursor_adds.append(ins)
+                        elif r == "rsp" or (r == "rbp" and rbp not in (None, ("unknown",))):
                             _fail("%s: copies a stack pointer into a register or memory" % _text(ins))
         if frame_def is not None:
             if rbp is not None:
@@ -249,6 +256,15 @@ def walk(insns, array_top):
 
 def classify(w, array_top, extra_sign=1):
     """Fill in the displacement change of every access; refuse the forms that cannot be changed. -> list of Access with delta != 0."""
+    if w.cursor_adds:
+        # rbp is a cursor: it must start below the array top and every access through it stays inside one entry
+        for ins, (c, mv) in w.frame_regs:
+            if c - w.S >= array_top:
+                _fail("%s: the cursor register starts at or above the array top (S+%#x)" % (_text(ins), c - w.S))
+        for a in w.accesses:
+            if a.base == "rbp" and abs(a.op.mem.disp) > CURSOR_REACH:
+                _fail("%s: rbp is stepped as a cursor (`%s`) but this access reaches %+d from it (more than one entry)"
+                      % (_text(a.ins), _text(w.cursor_adds[0]), a.op.mem.disp))
     changed = []
     for a in w.accesses:
         o = a.op
@@ -295,12 +311,22 @@ def function_chunks(image, start, end):
     if pos != end:
         _fail("the unwind chunks end at %#x, the function at %#x" % (pos, end))
     primary = out[0]
+    begins = {r.begin_rva for r, _ in out}          # a chunk may chain to any chunk of the function (chains of chains), ending at the primary
     if primary[1].flags & uw.UNW_FLAG_CHAININFO:
         _fail("the first chunk is itself chained (the function is a continuation)")
+    by_begin = {r.begin_rva: u for r, u in out}
     for rf, ui in out[1:]:
         if ui.flags & uw.UNW_FLAG_CHAININFO:
-            if ui.chain is None or ui.chain.begin_rva != primary[0].begin_rva or ui.chain.unwind_rva != primary[0].unwind_rva:
-                _fail("chunk %#x chains to something other than the primary chunk" % (image.base + rf.begin_rva))
+            if ui.chain is None or ui.chain.begin_rva not in begins:
+                _fail("chunk %#x chains to something that is not a chunk of this function" % (image.base + rf.begin_rva))
+            cur, steps = ui, 0                       # the chain must end at the primary chunk (no cycle, no other end)
+            while cur.va != primary[1].va and steps <= len(out):
+                nxt = by_begin.get(cur.chain.begin_rva) if (cur.flags & uw.UNW_FLAG_CHAININFO and cur.chain) else None
+                if nxt is None:
+                    break
+                cur, steps = nxt, steps + 1
+            if cur.va != primary[1].va:
+                _fail("chunk %#x chains to something other than the primary chunk (its chain does not end there)" % (image.base + rf.begin_rva))
         elif rf.unwind_rva != primary[0].unwind_rva:
             _fail("chunk %#x has its own unwind info that is neither chained nor the primary one" % (image.base + rf.begin_rva))
     return out
@@ -383,13 +409,15 @@ def plan_frame_grow(image, function, array_top, extra, max_extra=None, end=None,
     if end is None:
         # the primary chunk, then the chunks that chain to it, as far as they are contiguous
         pos, end = function, image.base + rf.end_rva
+        members = {rf.begin_rva}      # chunks that chain (possibly through other chunks) to the primary
         while True:
             nxt = uw.find_runtime_function(image, end)
             if nxt is None or image.base + nxt.begin_rva != end:
                 break
             ui = uw.read_unwind_info(image, nxt)
-            if not (ui.flags & uw.UNW_FLAG_CHAININFO) or ui.chain.begin_rva != rf.begin_rva:
+            if not (ui.flags & uw.UNW_FLAG_CHAININFO) or ui.chain.begin_rva not in members:
                 break
+            members.add(nxt.begin_rva)
             end = image.base + nxt.end_rva
     raw = image.read(function, end - function)
     if raw is None:

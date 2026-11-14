@@ -367,77 +367,123 @@ class Sites(unittest.TestCase):
         print(f'\ncave windows checked: {len(caves)}')
 
 
+def src(name):
+    return os.path.join(ROOT, 'src', 'native', name)
+
+
+# the three frame-grow tables: plan file, generated tables, function and the run-time formula of X (the hpp lines pinned below)
+FRAME_TABLES = [
+    {'plan': 'frame-1403e61b0.frame.json', 'fields': 'agent_capacity_frame_fields.inc', 'cave': 'agent_capacity_frame_cave.inc',
+     'function': 0x1403E61B0, 'entry': 32, 'formula': '((2 * sentient_slots() - 71) * 32 + 15) & ~15u',
+     'extra': lambda n: ((2 * (71 + n - 24) - 71) * 32 + 15) & ~15},
+    {'plan': 'frame-140adb8e0.frame.json', 'fields': 'agent_capacity_frame_fields_adb8e0.inc', 'cave': None,
+     'function': 0x140ADB8E0, 'entry': 16, 'formula': 'frame_extra_b() const { return (sentient_slots() - 71) * 16; }',
+     'extra': lambda n: (n - 24) * 16},
+    {'plan': 'frame-140added0.frame.json', 'fields': 'agent_capacity_frame_fields_added0.inc', 'cave': 'agent_capacity_frame_cave_added0.inc',
+     'function': 0x140ADDED0, 'entry': 32, 'formula': 'frame_extra_c() const { return (sentient_slots() - 71) * 32; }',
+     'extra': lambda n: (n - 24) * 32},
+]
+
+
 class FrameGrow(unittest.TestCase):
-    """Frame grow of FUN_1403E61B0: the generated tables, the plan file, the shipped bytes and the run-time arithmetic."""
+    """Frame grow of FUN_1403E61B0, FUN_140ADB8E0 and FUN_140ADDED0: the generated tables, the plan files, the shipped bytes and the
+    run-time arithmetic for every agent count."""
 
     def setUp(self):
         self.image, self.source = find_image()
         if self.image is None:
             self.skipTest('no unpacked code files or analysed image on this machine')
-        self.plan = json.load(open(os.path.join(PLANS, 'frame-1403e61b0.frame.json'), encoding='utf-8'))
+        for t in FRAME_TABLES:
+            t['doc'] = json.load(open(os.path.join(PLANS, t['plan']), encoding='utf-8'))
 
-    def parse_fields(self):
-        text = open(FRAME_FIELDS, encoding='utf-8').read()
+    @staticmethod
+    def parse_fields(name):
+        text = open(src(name), encoding='utf-8').read()
         out = []
         for m in re.finditer(r'^\{(0x[0-9a-f]+)ull, (\d+), (0x[0-9a-f]+)u, (\d+), (-?\d+), (true|false)\},$', text, re.M):
             out.append({'address': int(m.group(1).replace('ull', ''), 16), 'width': int(m.group(2)), 'stock': int(m.group(3), 16),
                         'unit': int(m.group(4)), 'sign': int(m.group(5)), 'code': m.group(6) == 'true'})
         return out
 
-    def test_the_table_is_the_plan_and_the_shipped_bytes_match(self):
-        fields = self.parse_fields()
-        self.assertEqual(len(fields), len(self.plan['fields']))
-        for t, f in zip(fields, self.plan['fields']):
-            self.assertEqual((t['address'], t['width'], t['stock'], t['unit'], t['sign']),
-                             (int(f['address'], 0), f['width'], f['stock'], f['unit'], f['sign']))
-            self.assertEqual(t['code'], not f['role'].startswith('unwind'))
-            got = self.image.read(t['address'], t['width'])
-            self.assertIsNotNone(got, f"{t['address']:#x} is not in the shipped files")
-            self.assertEqual(int.from_bytes(got, 'little'), t['stock'], f"frame field {t['address']:#x}")
-        print(f'\nframe grow: {len(fields)} fields match the shipped bytes ({self.source})')
+    def test_the_tables_are_the_plans_and_the_shipped_bytes_match(self):
+        for t in FRAME_TABLES:
+            with self.subTest(t['plan']):
+                fields = self.parse_fields(t['fields'])
+                plan = t['doc']
+                self.assertEqual(len(fields), len(plan['fields']))
+                for x, f in zip(fields, plan['fields']):
+                    self.assertEqual((x['address'], x['width'], x['stock'], x['unit'], x['sign']),
+                                     (int(f['address'], 0), f['width'], f['stock'], f['unit'], f['sign']))
+                    self.assertEqual(x['code'], not f['role'].startswith('unwind'))
+                    got = self.image.read(x['address'], x['width'])
+                    self.assertIsNotNone(got, f"{x['address']:#x} is not in the shipped files")
+                    self.assertEqual(int.from_bytes(got, 'little'), x['stock'], f"frame field {x['address']:#x}")
+                print(f"\nframe grow {plan['function']}: {len(fields)} fields match the shipped bytes ({self.source})")
 
-    def test_the_cave_line_is_the_plan_and_the_window_matches(self):
-        text = open(FRAME_CAVE, encoding='utf-8').read()
-        m = re.search(r'^\{(0x[0-9a-f]+)ull, \{([^}]*)\}, \{([^}]*)\}, (\d+), (0x[0-9a-f]+)u, (0x[0-9a-f]+)u, (\d+)\},$', text, re.M)
-        self.assertIsNotNone(m, 'no frame cave line')
-        cave = self.plan['cave']
-        start = int(m.group(1).replace('ull', ''), 16)
-        old, new = byte_list(m.group(2)), byte_list(m.group(3))
-        self.assertEqual((start, old.hex(), new.hex()), (int(cave['window_start'], 0), cave['old_bytes'], cave['cave_bytes']))
-        self.assertEqual(self.image.read(start, len(old)), old)
-        imm, stock, top, probes = int(m.group(4)), int(m.group(5), 16), int(m.group(6), 16), int(m.group(7))
-        self.assertEqual((imm, stock, top, probes), (cave['imm_offset'], cave['stock_frame'], cave['max_extra'], cave['probes']))
-        self.assertEqual(int.from_bytes(new[imm:imm + 4], 'little'), stock + top, 'the cave holds the largest frame')
-        self.assertEqual(old[3:7], stock.to_bytes(4, 'little'), 'the stock sub rsp immediate is the stock frame')
-        self.assertEqual(len(new), 8 * probes + 7)
+    def test_the_cave_lines_are_the_plans_and_the_windows_match(self):
+        for t in FRAME_TABLES:
+            with self.subTest(t['plan']):
+                cave = t['doc']['cave']
+                if t['cave'] is None:
+                    self.assertIsNone(cave, 'a plan with a probe cave needs its cave table')
+                    continue
+                text = open(src(t['cave']), encoding='utf-8').read()
+                m = re.search(r'^\{(0x[0-9a-f]+)ull, \{([^}]*)\}, \{([^}]*)\}, (\d+), (0x[0-9a-f]+)u, (0x[0-9a-f]+)u, (\d+)\},$', text, re.M)
+                self.assertIsNotNone(m, 'no frame cave line')
+                start = int(m.group(1).replace('ull', ''), 16)
+                old, new = byte_list(m.group(2)), byte_list(m.group(3))
+                self.assertEqual((start, old.hex(), new.hex()), (int(cave['window_start'], 0), cave['old_bytes'], cave['cave_bytes']))
+                self.assertEqual(self.image.read(start, len(old)), old)
+                imm, stock, top, probes = int(m.group(4)), int(m.group(5), 16), int(m.group(6), 16), int(m.group(7))
+                self.assertEqual((imm, stock, top, probes), (cave['imm_offset'], cave['stock_frame'], cave['max_extra'], cave['probes']))
+                self.assertEqual(int.from_bytes(new[imm:imm + 4], 'little'), stock + top, 'the cave holds the largest frame')
+                self.assertEqual(old[3:7], stock.to_bytes(4, 'little'), 'the stock sub rsp immediate is the stock frame')
+                self.assertEqual(len(new), 8 * probes + 7)
 
-    def test_the_planner_reproduces_the_committed_plan_and_checks_itself(self):
+    def test_the_planner_reproduces_the_committed_plans_and_checks_itself(self):
         import frame_grow
-        doc = frame_grow.plan_frame_grow(self.image, 0x1403E61B0, self.plan['array_top'], self.plan['extra'], self.plan['max_extra'])
-        self.assertEqual(doc['fields'], self.plan['fields'])
-        self.assertEqual(doc['cave']['cave_bytes'], self.plan['cave']['cave_bytes'])
-        frame_grow.self_check(self.image, doc, extras=[16 * k for k in range(1, 4)] + [(2 * (71 + n - 24) - 71) * 32 for n in range(24, 101, 4)])
+        for t in FRAME_TABLES:
+            with self.subTest(t['plan']):
+                plan = t['doc']
+                db = cp.EngineDb(cp.DEFAULT_DB) if os.path.exists(cp.DEFAULT_DB) else None    # instruction boundaries clear false raw-branch hits
+                try:
+                    doc = frame_grow.plan_frame_grow(self.image, t['function'], plan['array_top'], plan['extra'], plan['max_extra'], db=db)
+                except cp.Refusal as e:
+                    if db is not None or not plan['cave']:
+                        raise
+                    self.skipTest('the probe cave of %s needs the engine database to rule out raw branch hits: %s' % (t['plan'], e.reasons))
+                self.assertEqual(doc['fields'], plan['fields'])
+                self.assertEqual((doc['cave'] or {}).get('cave_bytes'), (plan['cave'] or {}).get('cave_bytes'))
+                frame_grow.self_check(self.image, doc, extras=[16 * k for k in range(1, 4)] + [t['extra'](n) for n in range(28, 101, 4)])
 
     def test_the_run_time_arithmetic_for_every_agent_count(self):
         import frame_grow
         hpp = open(HPP, encoding='utf-8').read()
-        self.assertIn('((2 * sentient_slots() - 71) * 32 + 15) & ~15u', hpp)    # the formula this test repeats
-        fields = self.parse_fields()
-        top = self.plan['max_extra']
-        cave = self.plan['cave']
-        for n in range(24, 101, 4):
-            extra = ((2 * (71 + n - 24) - 71) * 32 + 15) & ~15
-            self.assertLessEqual(extra, top)
-            code, patches, cave_bytes = frame_grow.apply_plan(self.image, self.plan, extra)
-            for t in fields:
-                new = t['stock'] + t['sign'] * (extra // t['unit'])
-                self.assertEqual(extra % t['unit'], 0)
-                if t['width'] < 4:
-                    self.assertTrue(0 <= new < 1 << (8 * t['width']))
-                new &= (1 << (8 * t['width'])) - 1
-                f = next(x for x in self.plan['fields'] if int(x['address'], 0) == t['address'])
-                self.assertEqual(frame_grow.field_value(f, extra), new)
-            self.assertEqual(int.from_bytes(cave_bytes[cave['imm_offset']:cave['imm_offset'] + 4], 'little'), cave['stock_frame'] + extra)
+        for t in FRAME_TABLES:
+            with self.subTest(t['plan']):
+                self.assertIn(t['formula'], hpp)                    # the formula this test repeats
+                fields = self.parse_fields(t['fields'])
+                plan = t['doc']
+                cave = plan['cave']
+                for n in range(24, 101, 4):
+                    extra = t['extra'](n)
+                    self.assertLessEqual(extra, plan['max_extra'])
+                    # the array holds one entry per sentient slot: 71 stock entries + extra / entry size >= slots
+                    self.assertGreaterEqual(71 + extra // t['entry'], 71 + n - 24)
+                    if extra == 0:                                  # one-loop functions: nothing changes at 24 agents
+                        self.assertEqual(n, 24)
+                        continue
+                    code, patches, cave_bytes = frame_grow.apply_plan(self.image, plan, extra)
+                    for x in fields:
+                        new = x['stock'] + x['sign'] * (extra // x['unit'])
+                        self.assertEqual(extra % x['unit'], 0)
+                        if x['width'] < 4:
+                            self.assertTrue(0 <= new < 1 << (8 * x['width']))
+                        new &= (1 << (8 * x['width'])) - 1
+                        f = next(y for y in plan['fields'] if int(y['address'], 0) == x['address'])
+                        self.assertEqual(frame_grow.field_value(f, extra), new)
+                    if cave:
+                        self.assertEqual(int.from_bytes(cave_bytes[cave['imm_offset']:cave['imm_offset'] + 4], 'little'), cave['stock_frame'] + extra)
 
     def test_no_overlap_with_any_other_patch(self):
         sites, _ = extract_sites(open(CPP, encoding='utf-8').read())
@@ -445,16 +491,31 @@ class FrameGrow(unittest.TestCase):
         for x in sites:
             n = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
             spans.append((x['address'], x['address'] + n, 'site'))
-        for c in parse_inc(open(INC, encoding='utf-8').read()):
+        caves = parse_inc(open(INC, encoding='utf-8').read())
+        for c in caves:
             spans.append((c['start'], c['start'] + len(c['old']), 'cave'))
             spans.extend((t['field'], t['field'] + 4, 'retarget') for t in c['retargets'])
-        for t in self.parse_fields():
-            spans.append((t['address'], t['address'] + t['width'], 'frame field'))
-        cave = self.plan['cave']
-        spans.append((int(cave['window_start'], 0), int(cave['window_start'], 0) + cave['window_len'], 'frame cave'))
+        for t in FRAME_TABLES:                                      # BOTH tables of every function: fields and probe cave
+            for x in self.parse_fields(t['fields']):
+                spans.append((x['address'], x['address'] + x['width'], 'frame field %#x' % t['function']))
+            cave = t['doc']['cave']
+            if cave:
+                spans.append((int(cave['window_start'], 0), int(cave['window_start'], 0) + cave['window_len'], 'frame cave %#x' % t['function']))
         spans.sort()
         clash = [(hex(a[0]), a[2], hex(b[0]), b[2]) for a, b in zip(spans, spans[1:]) if a[1] > b[0]]
         self.assertEqual(clash, [], 'overlapping patches')
+        # the table-1 caves that live inside the grown FUN_140ADB8E0 (there are three) touch none of its frame fields
+        inside = [c for c in caves if 0x140ADB8E0 <= c['start'] < 0x140ADBC08]
+        self.assertGreaterEqual(len(inside), 3)
+
+    def test_the_cpp_sees_every_table(self):
+        text = open(CPP, encoding='utf-8').read()
+        for name in ('agent_capacity_frame_fields.inc', 'agent_capacity_frame_fields_adb8e0.inc', 'agent_capacity_frame_fields_added0.inc',
+                     'agent_capacity_frame_cave.inc', 'agent_capacity_frame_cave_added0.inc'):
+            self.assertIn('#include "%s"' % name, text)
+        reserve = text.split('void plan_caves()')[1]
+        for sets in ('frame_caves_a', 'frame_caves_b', 'frame_caves_c'):
+            self.assertIn(sets, reserve, 'the probe caves of every function are reserved')
 
 
 if __name__ == '__main__':

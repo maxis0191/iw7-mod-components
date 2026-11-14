@@ -1,0 +1,325 @@
+{
+ "version": 1,
+ "kind": "frame-grow",
+ "image": "iw7_ship_live.exe",
+ "function": "0x140adb8e0",
+ "end": "0x140adbc08",
+ "array_top": 1200,
+ "extra": 64,
+ "max_extra": 1216,
+ "frame": {
+  "pushes": 3,
+  "stock_size": 1264,
+  "sub_address": "0x140adb8e5",
+  "S_from_entry": -1288
+ },
+ "fields": [
+  {
+   "address": "0x140adb8e8",
+   "width": 4,
+   "stock": 1264,
+   "unit": 1,
+   "sign": 1,
+   "role": "frame-sub",
+   "instruction": "0x140adb8e5",
+   "text": "sub rsp, 0x4f0"
+  },
+  {
+   "address": "0x140adb8fa",
+   "width": 4,
+   "stock": 1200,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adb8f6",
+   "text": "mov qword ptr [rsp + 0x4b0], rax"
+  },
+  {
+   "address": "0x140adb929",
+   "width": 4,
+   "stock": 1304,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adb925",
+   "text": "mov qword ptr [rsp + 0x518], rbp"
+  },
+  {
+   "address": "0x140adb933",
+   "width": 4,
+   "stock": 1312,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adb92f",
+   "text": "mov qword ptr [rsp + 0x520], rdi"
+  },
+  {
+   "address": "0x140adb93b",
+   "width": 4,
+   "stock": 1320,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adb937",
+   "text": "mov qword ptr [rsp + 0x528], r12"
+  },
+  {
+   "address": "0x140adb946",
+   "width": 4,
+   "stock": 1256,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adb942",
+   "text": "mov qword ptr [rsp + 0x4e8], r13"
+  },
+  {
+   "address": "0x140adb94e",
+   "width": 4,
+   "stock": 1248,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adb94a",
+   "text": "mov qword ptr [rsp + 0x4e0], r14"
+  },
+  {
+   "address": "0x140adb956",
+   "width": 4,
+   "stock": 1232,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adb952",
+   "text": "movaps xmmword ptr [rsp + 0x4d0], xmm6"
+  },
+  {
+   "address": "0x140adb95e",
+   "width": 4,
+   "stock": 1216,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adb95a",
+   "text": "movaps xmmword ptr [rsp + 0x4c0], xmm7"
+  },
+  {
+   "address": "0x140adbba6",
+   "width": 4,
+   "stock": 1248,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adbba2",
+   "text": "mov r14, qword ptr [rsp + 0x4e0]"
+  },
+  {
+   "address": "0x140adbbae",
+   "width": 4,
+   "stock": 1256,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adbbaa",
+   "text": "mov r13, qword ptr [rsp + 0x4e8]"
+  },
+  {
+   "address": "0x140adbbb6",
+   "width": 4,
+   "stock": 1312,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adbbb2",
+   "text": "mov rdi, qword ptr [rsp + 0x520]"
+  },
+  {
+   "address": "0x140adbbbe",
+   "width": 4,
+   "stock": 1304,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adbbba",
+   "text": "mov rbp, qword ptr [rsp + 0x518]"
+  },
+  {
+   "address": "0x140adbbc6",
+   "width": 4,
+   "stock": 1216,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adbbc2",
+   "text": "movaps xmm7, xmmword ptr [rsp + 0x4c0]"
+  },
+  {
+   "address": "0x140adbbce",
+   "width": 4,
+   "stock": 1232,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adbbca",
+   "text": "movaps xmm6, xmmword ptr [rsp + 0x4d0]"
+  },
+  {
+   "address": "0x140adbbe8",
+   "width": 4,
+   "stock": 1320,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adbbe4",
+   "text": "mov r12, qword ptr [rsp + 0x528]"
+  },
+  {
+   "address": "0x140adbbf0",
+   "width": 4,
+   "stock": 1200,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140adbbec",
+   "text": "mov rcx, qword ptr [rsp + 0x4b0]"
+  },
+  {
+   "address": "0x140adbbff",
+   "width": 4,
+   "stock": 1264,
+   "unit": 1,
+   "sign": 1,
+   "role": "epilogue-add",
+   "instruction": "0x140adbbfc",
+   "text": "add rsp, 0x4f0"
+  },
+  {
+   "address": "0x1416b70f2",
+   "width": 2,
+   "stock": 158,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-alloc",
+   "instruction": null,
+   "text": "ALLOC_LARGE 0x4f0"
+  },
+  {
+   "address": "0x1416b7100",
+   "width": 4,
+   "stock": 1200,
+   "unit": 1,
+   "sign": 1,
+   "role": "unwind-gs-cookie",
+   "instruction": null,
+   "text": "GS handler cookie offset 0x4b0"
+  },
+  {
+   "address": "0x1416b710a",
+   "width": 2,
+   "stock": 76,
+   "unit": 16,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_XMM128 xmm7 at rsp+0x4c0"
+  },
+  {
+   "address": "0x1416b710e",
+   "width": 2,
+   "stock": 77,
+   "unit": 16,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_XMM128 xmm6 at rsp+0x4d0"
+  },
+  {
+   "address": "0x1416b7112",
+   "width": 2,
+   "stock": 156,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_NONVOL r14 at rsp+0x4e0"
+  },
+  {
+   "address": "0x1416b7116",
+   "width": 2,
+   "stock": 157,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_NONVOL r13 at rsp+0x4e8"
+  },
+  {
+   "address": "0x1416b711a",
+   "width": 2,
+   "stock": 165,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_NONVOL r12 at rsp+0x528"
+  },
+  {
+   "address": "0x1416b711e",
+   "width": 2,
+   "stock": 164,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_NONVOL rdi at rsp+0x520"
+  },
+  {
+   "address": "0x1416b7122",
+   "width": 2,
+   "stock": 163,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_NONVOL rbp at rsp+0x518"
+  },
+  {
+   "address": "0x1416b7136",
+   "width": 2,
+   "stock": 165,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_NONVOL r12 at rsp+0x528"
+  }
+ ],
+ "cave": null,
+ "unwind_chunks": [
+  {
+   "begin": "0x140adb8e0",
+   "end": "0x140adb925",
+   "entry": "0x14b0f1234",
+   "unwind": "0x1416b70ec"
+  },
+  {
+   "begin": "0x140adb925",
+   "end": "0x140adbbd4",
+   "entry": "0x14b0f1240",
+   "unwind": "0x1416b7104"
+  },
+  {
+   "begin": "0x140adbbd4",
+   "end": "0x140adbbec",
+   "entry": "0x14b0f124c",
+   "unwind": "0x1416b7130"
+  },
+  {
+   "begin": "0x140adbbec",
+   "end": "0x140adbc08",
+   "entry": "0x14b0f1258",
+   "unwind": "0x1416b7144"
+  }
+ ]
+}
