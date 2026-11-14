@@ -7,6 +7,7 @@ server repository (`docs/DEVKIT.md`, `docs/TOOLS-INDEX.md`). Paths are relative 
 
 | Question | Tool | Document | Source test |
 |---|---|---|---|
+| The engine as data: decompiled code of every function, callers, every read/write of a global in any addressing form, immediates and structure offsets, structures, memory snapshots, the team's knowledge (names, limits) written back; MCP tools | `ops/engine/engine.py`, `ops/engine/engine_mcp.py`, built by `ops/engine/Invoke-EngineAnalysis.ps1` (Ghidra); live reads `ops/engine/live/engine_live.py` | [ENGINE.md](ENGINE.md) | `tests/ops/engine_test.py`, `tests/ops/engine_collect_names_test.py`, `tests/ops/engine_live_test.py` |
 | What is at an address, who calls it, which function mentions a text, console variables | `ops/engine-map/iw7_engine_map.py` | [ENGINE-MAP.md](ENGINE-MAP.md) | `tests/ops/engine_map_test.py`, `tests/ops/engine_map_names_test.py` |
 | Where does the game keep a value | `ops/engine-map/iw7_watch.py` with `src/native/paris_watch.cpp`, `paris_watch.hpp` | [MEMORY-WATCH.md](MEMORY-WATCH.md) | `tests/ops/memory_watch_test.py` |
 | Frame rate, and which functions cost the time | `ops/engine-map/iw7_perf.py` with `src/native/paris_perf.cpp` | [PERF.md](PERF.md) | `tests/ops/perf_window_test.py` |

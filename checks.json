@@ -317,6 +317,30 @@
       ]
     },
     {
+      "id": "engine_db_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_test.py"
+      ]
+    },
+    {
+      "id": "engine_collect_names_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_collect_names_test.py"
+      ]
+    },
+    {
+      "id": "engine_live_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_live_test.py"
+      ]
+    },
+    {
       "id": "engine_map_test",
       "command": [
         "python",

@@ -243,9 +243,12 @@ def main(argv=None):
     t0 = time.time()
     deadline = t0 + a.max_minutes * 60
 
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from ghidra_analyze import memory
+
     def log(what, n, secs, **kw):
-        print(json.dumps({"export": what, "count": n, "seconds": round(secs, 1), "elapsed": round(time.time() - t0, 1), **kw}),
-              flush=True)
+        print(json.dumps({"export": what, "count": n, "seconds": round(secs, 1), "elapsed": round(time.time() - t0, 1),
+                          **memory(), **kw}), flush=True)
 
     start(a.ghidra, a.java, a.heap)
     from ghidra.base.project import GhidraProject

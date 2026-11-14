@@ -429,10 +429,10 @@ def cmd_index(e, a):
         for b, en in merged:
             if en <= s[1] or b >= s[1] + s[2]:
                 continue
-            if b - cur > 16:
+            if b > cur:  # even a few bytes: the protector leaves short moved fragments (mov; jmp) between functions
                 gaps.append([cur, b])
             cur = max(cur, en)
-        if s[1] + s[2] - cur > 16:
+        if s[1] + s[2] > cur:
             gaps.append([cur, s[1] + s[2]])
     starts = sorted(set(starts) | {g[0] for g in gaps})
     ranges = sorted(merged + gaps)

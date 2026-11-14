@@ -34,8 +34,11 @@ class PMC(ctypes.Structure):
 def memory():
     pmc = PMC()
     pmc.cb = ctypes.sizeof(PMC)
-    h = ctypes.windll.kernel32.GetCurrentProcess()
-    ctypes.windll.psapi.GetProcessMemoryInfo(h, ctypes.byref(pmc), pmc.cb)
+    k32 = ctypes.WinDLL("kernel32")
+    k32.GetCurrentProcess.restype = ctypes.c_void_p
+    get = ctypes.WinDLL("psapi").GetProcessMemoryInfo
+    get.argtypes = [ctypes.c_void_p, ctypes.POINTER(PMC), ctypes.wintypes.DWORD]
+    get(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb)
     return {"working_set_mb": round(pmc.WorkingSetSize / 2**20), "peak_working_set_mb": round(pmc.PeakWorkingSetSize / 2**20),
             "peak_private_mb": round(pmc.PeakPagefileUsage / 2**20)}
 
@@ -175,7 +178,21 @@ def main(argv=None):
         try:
             mgr.initializeOptions()
             mgr.reAnalyzeAll(None)
-            mgr.startAnalysis(ConsoleTaskMonitor())
+            # Ghidra's own progress output is swallowed by PyGhidra: print one line a minute ourselves.
+            import threading
+            stop = threading.Event()
+
+            def progress():
+                while not stop.wait(60):
+                    try:
+                        step("analysis progress", functions=program.getFunctionManager().getFunctionCount())
+                    except Exception:
+                        pass
+            threading.Thread(target=progress, daemon=True).start()
+            try:
+                mgr.startAnalysis(ConsoleTaskMonitor())
+            finally:
+                stop.set()
             GhidraProgramUtilities.markProgramAnalyzed(program)
         finally:
             program.endTransaction(tx, True)

@@ -893,6 +893,11 @@ def find_cdb(given):
 
 
 def cmd_trace(args, is_break=False):
+    # Not safe on the game yet (ledger: "tool: live trace freezes or crashes the server"): the game ignores the
+    # debugger's break-in, one stop froze a lab server and a stop breakpoint in ntdll crashed another. Refused unless
+    # the caller sets IW7_ENGINE_LIVE_UNSAFE_TRACE=1 for a test process of its own (not a game).
+    if os.environ.get("IW7_ENGINE_LIVE_UNSAFE_TRACE") != "1":
+        sys.exit("trace/break are disabled: not safe on the game (docs/ENGINE.md, 'Live'). Use read, deref, watch, dump.")
     info = pick_process(args, intrusive=True)
     names = _names(args)
     r = Reader(args.pid)
