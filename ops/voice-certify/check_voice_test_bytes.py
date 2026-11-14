@@ -58,6 +58,29 @@ def main():
         covered.update(range(address, address + len(expected)))
         covered.update(references(md, text, address, len(expected)))
 
+    # Drop observer: every "drop site" entry must be a 5-byte call or jmp to SV_DropClient,
+    # and every such branch found in the code should be listed (a byte scan may also find
+    # false candidates inside other instructions, so a missing one is a note, not a failure).
+    drop_target = 0x140C4FBA0
+    sites = {address for name, address, expected, role in entries if name.startswith("drop site")}
+    for name, address, expected, role in entries:
+        if not name.startswith("drop site"):
+            continue
+        target = address + 5 + int.from_bytes(expected[1:5], "little", signed=True) if len(expected) == 5 and expected[0] in (0xE8, 0xE9) else None
+        ok = target == drop_target
+        failures += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} {address:#x} branches to {target:#x}" if target is not None else f"FAIL {address:#x} is not a 5-byte call or jmp")
+    if sites:
+        found = set()
+        for offset in range(len(text) - 5):
+            if text[offset] in (0xE8, 0xE9):
+                address = TEXT_BASE + offset
+                if address + 5 + int.from_bytes(text[offset + 1:offset + 5], "little", signed=True) == drop_target:
+                    found.add(address)
+        for address in sorted(found - sites):
+            print(f"note {address:#x}: byte pattern of a branch to SV_DropClient not in the drop table (check it is a real instruction)")
+        print(f"drop table: {len(sites)} sites; byte scan: {len(found)} candidates, {len(found & sites)} listed")
+
     for literal in sorted({int(value, 16) for value in ADDRESS.findall(code)}):
         ok = literal in covered
         failures += not ok

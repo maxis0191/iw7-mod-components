@@ -1,7 +1,7 @@
 // Voice certification fixture for Zombies. Private test dedicated only, never deployed.
 // Installed by Invoke-VoiceCertify.ps1 as iw7-mod/custom_scripts/cp/voicecert_cp.gsc.
-// Protection: players take no damage, zombies are not spawned, the retail
-// inactivity kick is fed. Requests arrive in the dvar voicecert_req as
+// Protection: players take no damage, zombies are not spawned, and the native
+// paris_test_protect exception stops the retail inactivity kick. Requests arrive in the dvar voicecert_req as
 // "<seq> <verb> [arg]"; replies and a 1 s heartbeat go to stdout.
 
 init()
@@ -50,8 +50,9 @@ protect()
                 continue;
 
             player.ignoreme = 1;
-            // retail kick_for_inactivity resets its countdown on this notify
-            player notify("inputReceived");
+            // the retail CP watchdog kicks a player who has not moved for 90 s once two
+            // are present; the native exception covers only protected loopback players
+            player paris_test_protect();
         }
 
         wait 0.25;

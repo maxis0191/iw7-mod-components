@@ -491,8 +491,9 @@ The Voice-BaseTest GenericRelay switch, the isolated VoiceNative profile and its
 VoiceMode Relay/Player/Native variants belong to the retired voice relay (see
 [VOICE.md](VOICE.md)); this repository no longer builds or supports them. Voice
 certification uses `ops/voice-certify/Invoke-VoiceCertify.ps1`
-([VOICE-CERTIFY.md](VOICE-CERTIFY.md)): one Runtime reservation for the test
-dedicated plus two clients, admitted before launch.
+([VOICE-CERTIFY.md](VOICE-CERTIFY.md)): one shareable Runtime reservation for the
+test dedicated plus two clients, scoped to the folder that holds their three bench
+roots, admitted by memory before launch and retried while busy.
 
 ## Build, extraction and analysis
 
