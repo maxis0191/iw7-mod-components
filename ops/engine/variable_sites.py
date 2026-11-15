@@ -87,6 +87,27 @@ def region_of(addr):
     return None
 
 
+def scaled_distances():
+    """imm / disp values equal to the distance between two tables divided by 1, 2, 4, 8 or 16 (a lea / add idiom that folds a distance into a count of
+    entries): any such constant in related code that no row classifies stops the run."""
+    names = [n for n in REGIONS if n not in ('IMG',)]
+    out = {}
+    for a in names:
+        for b in names:
+            if a == b:
+                continue
+            d = REGIONS[b][0] - REGIONS[a][0]
+            for k in (1, 2, 4, 8, 16):
+                for ext in (0, 8, 0x10):
+                    v = d + ext
+                    if v > 0 and v % k == 0 and v // k >= 0x1000:
+                        out.setdefault(v // k, '%s->%s /%d' % (a, b, k))
+    return out
+
+
+SCALED_DISTANCES = {}
+
+
 def family_ranges():
     """Displacements that can be the distance from the base register's table to another table (a base register holds a stock table address)."""
     out = []
@@ -308,6 +329,8 @@ def imm_rows(ins_list, walk, md, vm_function):
                     out.append(dict(at=ins.address, field=field, op='child_bound', stock=value))
                 elif value == 0xDC00 and mn == 'cmp':
                     out.append(dict(at=ins.address, field=field, op='parent_bound', stock=value))
+                elif value == 0x52800 and mn == 'add' and ins.operands[0].type == X.X86_OP_REG:
+                    out.append(dict(at=ins.address, field=field, op='hash_half', stock=value))
                 elif value == 0x4DC00 and mn == 'cmp':
                     out.append(dict(at=ins.address, field=field, op='name_bound', stock=value))
                 elif value == 0x37000 and mn == 'mov':
@@ -322,12 +345,18 @@ def imm_rows(ins_list, walk, md, vm_function):
                 nxt = ins_list[k + 1] if k + 1 < len(ins_list) else None
                 if nxt is not None and nxt.mnemonic == 'lea' and '*2' in nxt.op_str:
                     out.append(dict(at=ins.address, field=field, op='idiom16', stock=value))
+    known = {r['field'] for r in out}
+    for k, ins in enumerate(ins_list):
+        for kind, field, value, tail, m in ss.fields(ins, md):
+            if kind in ('imm', 'disp') and field not in known and value in SCALED_DISTANCES and value >= 0x1000                     and not (kind == 'disp' and m is not None and m.base != 0 and value in (0x1B880,)):
+                out.append(dict(at=ins.address, field=field, op='UNCLASSIFIED', stock=value, why=SCALED_DISTANCES[value]))
     for r in out:
         r['text'] = ''
     return out
 
 
 def find(args):
+    SCALED_DISTANCES.update({v: w for v, w in scaled_distances().items() if v not in (0x37000, 0x1B800, 0x20000, 0x6E000, 0xC5000, 0xA5000, 0x1B880, 0x37080)})
     image_file, db_file = ss.image_path()
     img, md = ss.Image(image_file), ss.cs()
     bounds = func_bounds(db_file)
@@ -351,7 +380,7 @@ def find(args):
         if VM_CALLS[0] <= s < VM_CALLS[1]:
             funcs.add((s, e))
     w = Walker(img, md)
-    rows, pair_rows, imms, unres, unpaired, related, skipped_pairs = [], [], [], [], [], [], []
+    rows, pair_rows, imms, unres, unpaired, related, skipped_pairs, unclassified = [], [], [], [], [], [], [], []
     for s, e in sorted(funcs):
         ins_list = w.decode_range(s, e)
         if not ins_list:
@@ -369,7 +398,7 @@ def find(args):
             related.append(s)
             for r in imm_rows(ins_list, res, md, vm):
                 r['func'] = s
-                imms.append(r)
+                (unclassified if r['op'] == 'UNCLASSIFIED' else imms).append(r)
             for p in res['pairs']:
                 lea, shl = p['lea'], p['shl']
                 new = mov_bytes(lea, md)
@@ -400,7 +429,7 @@ def find(args):
     unpaired = dedupe(unpaired, lambda r: r['at'])
     rows.sort(key=lambda r: r['field'])
     data = dict(schema='iw7.variable-sites/1', regions={k: [hex(v[0]), hex(v[1])] for k, v in REGIONS.items()},
-                refs=rows, rejected=rejected, pairs=pair_rows, imms=imms, unresolved=unres, unpaired=unpaired, unrelated_pairs=skipped_pairs, functions=sorted(related))
+                refs=rows, rejected=rejected, pairs=pair_rows, imms=imms, unresolved=unres, unclassified=unclassified, unpaired=unpaired, unrelated_pairs=skipped_pairs, functions=sorted(related))
     json.dump(data, open(args.o, 'w'), indent=1)
     byop = {}
     for r in rows:
@@ -411,6 +440,7 @@ def find(args):
     for r in imms:
         cnt[r['op']] = cnt.get(r['op'], 0) + 1
     print('imm', cnt)
+    print('constants that look like a halved or scaled table distance, not classified:', sorted({hex(r['stock']) + ' ' + r['why'] for r in unclassified}))
     print(len(unres), 'unresolved,', len(unpaired), 'unpaired shl 0xd in related functions,', len(related), 'functions')
     return 1 if unres else 0
 
@@ -453,7 +483,7 @@ def check(args):
     return 1 if bad else 0
 
 
-OPS = ['child_bound', 'parent_bound', 'name_bound', 'recip', 'p4_bytes', 'p2_bytes', 'idiom16']
+OPS = ['hash_half', 'child_bound', 'parent_bound', 'name_bound', 'recip', 'p4_bytes', 'p2_bytes', 'idiom16']
 REGION_INDEX = {'A': 0, 'B': 1, 'P8': 2, 'P4': 3, 'CH': 4}
 
 

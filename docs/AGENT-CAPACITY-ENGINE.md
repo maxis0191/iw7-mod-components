@@ -251,14 +251,14 @@ asks whether a value fits a short; the decrements `add ax, 0xFFFF`; AllocVariabl
 a valid index and id: the free list of a segment ends by the entry whose next link is 0 (the initialiser writes `(j + 1) & 0xFFFF`, which is 0 for j = 0xFFFF, then clears it). Object key names are `0x40000 + parent id` (8 compares at
 `0x4DC00`), integer keys start at `0x800000`: 0x50000 leaves the range clear.
 
-**What is edited** (`ops/engine/variable_sites.py find`, 5 minutes over the analysed image and its instruction index; `check`, `emit`; result `ops/engine/variable-sites.json`, 414 + 119 + 26 rows, `script_variables_sites.inc`):
+**What is edited** (`ops/engine/variable_sites.py find`, 5 minutes over the analysed image and its instruction index; `check`, `emit`; result `ops/engine/variable-sites.json`, 414 + 119 + 28 rows, `script_variables_sites.inc`):
 - 414 references to the four moved tables (`ref` rows: a rip displacement, or a displacement from a register that holds a known table address: image base, a table, or the counter block; new value = new target - new base).
   The code also addresses the tables from each other: `[p8 + 0xC5000]` (children), `[p8 + 0x6E000]` (P4), `[p8 + 0xA5000]` (hash), `[block + 0x80]` and `[block + 0x1B880]` (A, B): rows of the same kind. 4 rows have a base register that is
   defined on another path than the linear walk (FindVariable's bucket write-back, the move-to-front rows with `rax = P8 + 24 * index`): read by eye, marked `assumed` or in `OVERRIDES`.
 - 119 segment base pairs in 84 functions (game code of the zombies scripts included: 0x1403E1000, 0x140AF49A0, 0x140B46E70, ... call the variable API with a base): `lea r,[s+s*4]` becomes `mov r,s` plus nops of the same
   length and the `shl r,0xD` after it takes 0x10: base = s * 0x10000.
-- 26 constants: `cmp eax,0xA000` x2 (0x10000), `cmp ..,0xDC00` x5 (0x10000), `cmp ..,0x4DC00` x8 (0x50000), `mov eax,0xCCCCCCCD` x4 (the counter segment `base / 0xA000`; `0x80000000`: hi32(base * 0x80000000) >> 15 = base / 0x10000),
-  `mov r8d,0x37000` x1 and `0x1B800` x2 (memset / copy sizes: 4 and 2 bytes an id), and the `lea r,[r+0xC500]` idiom x4 (the distance P8 -> CH divided by 16: the next `lea` multiplies by 3, the access by 8).
+- 28 constants: `cmp eax,0xA000` x2 (0x10000), `cmp ..,0xDC00` x5 (0x10000), `cmp ..,0x4DC00` x8 (0x50000), `mov eax,0xCCCCCCCD` x4 (the counter segment `base / 0xA000`; `0x80000000`: hi32(base * 0x80000000) >> 15 = base / 0x10000),
+  `mov r8d,0x37000` x1 and `0x1B800` x2 (memset / copy sizes: 4 and 2 bytes an id), the `lea r,[r+0xC500]` idiom x4 (the distance P8 -> CH divided by 16: the next `lea` multiplies by 3, the access by 8) and `add rax,0x52800` x2 (the distance P8 -> hash buckets in units of 2 bytes: found by the first run, which hung: arrays were not linked into their hash chains).
 - Unrelated and left alone: 10 constants inside the tables' address ranges in obfuscated or misdecoded code (listed under `rejected`, none inside the variable system), the `shl ebx,0xD` of FUN_140B3DD80 (a bitfield), ~18 other `shl 0xD`.
 The VM initialisers have not run when `post_unpack` runs (the stock tables are all zero: checked; if they were formatted, the component calls FUN_140C09280 after the edit). The new tables are formatted by the shipped
 initialisers (FUN_140C09200 for the ids, FUN_140C09280 for the children) with the edited bounds.

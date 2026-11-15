@@ -89,7 +89,7 @@ class Rows(unittest.TestCase):
         self.assertEqual(NEW_BYTES['CH'], 0x600000)
 
     def test_the_cpp_applies_the_table(self):
-        for op in ('child_bound', 'parent_bound', 'name_bound', 'recip', 'p4_bytes', 'p2_bytes', 'idiom16'):
+        for op in ('hash_half', 'child_bound', 'parent_bound', 'name_bound', 'recip', 'p4_bytes', 'p2_bytes', 'idiom16'):
             self.assertIn('case script_op::%s' % op, self.cpp)
         self.assertIn('add(field, 0xD, 0x10, 1)', self.cpp)
         self.assertIn('0x80000000u', self.cpp)
@@ -99,7 +99,7 @@ class Rows(unittest.TestCase):
         for r in self.data['imms']:
             by.setdefault(r['op'], []).append(r)
         self.assertEqual({k: len(v) for k, v in by.items()},
-                         {'child_bound': 2, 'parent_bound': 5, 'name_bound': 8, 'recip': 4, 'p4_bytes': 1, 'p2_bytes': 2, 'idiom16': 4})
+                         {'child_bound': 2, 'parent_bound': 5, 'name_bound': 8, 'recip': 4, 'p4_bytes': 1, 'p2_bytes': 2, 'idiom16': 4, 'hash_half': 2})
         # the reciprocal: hi32(seg * 0x10000 * 0x80000000) >> 15 == seg ; the stock: hi32(seg * 0xA000 * 0xCCCCCCCD) >> 15 == seg
         for seg in range(4):
             self.assertEqual(((seg * 0x10000 * 0x80000000) >> 32) >> 15, seg)
@@ -107,6 +107,8 @@ class Rows(unittest.TestCase):
         # the P8 -> CH distance: stock 0xC5000, as lea k / lea 3x / *8: 24 * x + 16 * k
         self.assertEqual((STOCK['CH'] - STOCK['P8']) // 16, 0xC500)
         self.assertEqual((NEW['CH'] - NEW['P8']) % 16, 0)
+        # the bucket index of 0x140C04E53 / 0x140C06114 is added in units of 2 bytes: stock (hash - P8) / 2 = 0x52800
+        self.assertEqual((0x146736180 - STOCK['P8']) // 2, 0x52800)
 
     def test_no_overlap_with_any_other_patch(self):
         spans = []

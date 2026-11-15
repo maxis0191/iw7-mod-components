@@ -70,7 +70,7 @@ std::int32_t fits32(std::int64_t v) {
     return static_cast<std::int32_t>(v);
 }
 
-enum class script_op : std::uint8_t { child_bound, parent_bound, name_bound, recip, p4_bytes, p2_bytes, idiom16 };
+enum class script_op : std::uint8_t { hash_half, child_bound, parent_bound, name_bound, recip, p4_bytes, p2_bytes, idiom16 };
 struct ref_site { std::uintptr_t field; unsigned rip; std::uint64_t base, target; unsigned tail; };
 struct imm_site { std::uintptr_t field; script_op op; };
 struct lea_site { std::uintptr_t at; unsigned length; std::uint32_t before, after; };
@@ -97,6 +97,7 @@ const std::uintptr_t shl_sites[] = {
 
 std::uint32_t imm_value(script_op op) {
     switch (op) {
+    case script_op::hash_half: return static_cast<std::uint32_t>(fits32((static_cast<std::int64_t>(stock_hash) - static_cast<std::int64_t>(regions[2].storage.data)) / 2));   // `add rax, imm` of the bucket index: P8 -> hash in units of 2 bytes
     case script_op::child_bound: return child_entries;
     case script_op::parent_bound: return parent_ids;
     case script_op::name_bound: return name_bound;
@@ -109,6 +110,7 @@ std::uint32_t imm_value(script_op op) {
 }
 std::uint32_t imm_stock(script_op op) {
     switch (op) {
+    case script_op::hash_half: return 0x52800;
     case script_op::child_bound: return stock_child_entries;
     case script_op::parent_bound: return stock_parent_ids;
     case script_op::name_bound: return 0x40000 + stock_parent_ids;

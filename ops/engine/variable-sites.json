@@ -5726,6 +5726,144 @@
    "func": 5381358880
   }
  ],
+ "rejected": [
+  {
+   "at": 5370091344,
+   "field": 5370091346,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5476783979,
+   "tail": 0,
+   "region": "P4",
+   "text": "mov eax, dword ptr [rip + 0x65c0015]",
+   "bytes": "8b0515005c06",
+   "func": 5370091343
+  },
+  {
+   "at": 5370481832,
+   "field": 5370481834,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5479926986,
+   "tail": 1,
+   "region": "CH",
+   "text": "add byte ptr [rip + 0x686001b], 0x1b",
+   "bytes": "80051b0086061b",
+   "func": 5370481792
+  },
+  {
+   "at": 5561572896,
+   "field": 5561572898,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5478444515,
+   "tail": 0,
+   "region": "CH",
+   "text": "sbb bl, byte ptr [rip - 0x4f47043]",
+   "bytes": "1a1dbd8f0bfb",
+   "func": 5561572857
+  },
+  {
+   "at": 5563441206,
+   "field": 5563441208,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5480041647,
+   "tail": 0,
+   "region": "CH",
+   "text": "sar dword ptr [rbp + 0x6a2ccaf], 0x21",
+   "bytes": "c1bdafcca20621",
+   "assumed": false,
+   "func": 5563441164
+  },
+  {
+   "at": 5563508158,
+   "field": 5563508160,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5480608775,
+   "tail": 0,
+   "region": "CH",
+   "text": "sar dword ptr [rcx + 0x6ab7407], cl",
+   "bytes": "d3b90774ab06",
+   "assumed": false,
+   "func": 5563508134
+  },
+  {
+   "at": 5566119242,
+   "field": 5566119244,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5477440476,
+   "tail": 0,
+   "region": "CH",
+   "text": "add cl, byte ptr [rip - 0x5492174]",
+   "bytes": "020d8cdeb6fa",
+   "func": 5566119234
+  },
+  {
+   "at": 5567780021,
+   "field": 5567780023,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5480093133,
+   "tail": 0,
+   "region": "CH",
+   "text": "xor dword ptr [rax + 0x6a395cd], edi",
+   "bytes": "31b8cd95a306",
+   "assumed": false,
+   "func": 5567780018
+  },
+  {
+   "at": 5571046872,
+   "field": 5571046874,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5480632317,
+   "tail": 0,
+   "region": "CH",
+   "text": "idiv dword ptr [rcx + 0x6abcffd]",
+   "bytes": "f7b9fdcfab06",
+   "assumed": false,
+   "func": 5571046787
+  },
+  {
+   "at": 5571549334,
+   "field": 5571549336,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476060440,
+   "tail": 0,
+   "region": "A",
+   "text": "sbb dword ptr [rbx + 0x6660d18], esi",
+   "bytes": "19b3180d6606",
+   "assumed": false,
+   "func": 5571549292
+  },
+  {
+   "at": 5572507717,
+   "field": 5572507719,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5477568845,
+   "tail": 0,
+   "region": "CH",
+   "text": "mov esp, dword ptr [rdi + 0x67d114d]",
+   "bytes": "8ba74d117d06",
+   "assumed": false,
+   "func": 5572507705
+  }
+ ],
  "pairs": [
   {
    "at": 5372776584,
@@ -8142,6 +8280,14 @@
    "func": 5381309811
   },
   {
+   "at": 5381312083,
+   "field": 5381312085,
+   "op": "hash_half",
+   "stock": 337920,
+   "text": "",
+   "func": 5381309811
+  },
+  {
    "at": 5381312865,
    "field": 5381312868,
    "op": "idiom16",
@@ -8210,6 +8356,14 @@
    "field": 5381316725,
    "op": "name_bound",
    "stock": 318464,
+   "text": "",
+   "func": 5381316496
+  },
+  {
+   "at": 5381316884,
+   "field": 5381316886,
+   "op": "hash_half",
+   "stock": 337920,
    "text": "",
    "func": 5381316496
   },
@@ -8319,6 +8473,998 @@
   }
  ],
  "unresolved": [],
+ "unclassified": [
+  {
+   "at": 5369322869,
+   "field": 5369322870,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5369322816
+  },
+  {
+   "at": 5369323455,
+   "field": 5369323460,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5369322816
+  },
+  {
+   "at": 5369326394,
+   "field": 5369326395,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5369326320
+  },
+  {
+   "at": 5369327010,
+   "field": 5369327015,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5369326320
+  },
+  {
+   "at": 5372881058,
+   "field": 5372881061,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5372880816
+  },
+  {
+   "at": 5372949542,
+   "field": 5372949544,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5372949376
+  },
+  {
+   "at": 5372950013,
+   "field": 5372950015,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5372949888
+  },
+  {
+   "at": 5372953107,
+   "field": 5372953112,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5372952896
+  },
+  {
+   "at": 5372954461,
+   "field": 5372954463,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5372954272
+  },
+  {
+   "at": 5372956365,
+   "field": 5372956367,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5372956176
+  },
+  {
+   "at": 5372959966,
+   "field": 5372959968,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5372959664
+  },
+  {
+   "at": 5373008808,
+   "field": 5373008811,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373008608
+  },
+  {
+   "at": 5373031839,
+   "field": 5373031845,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5373031552
+  },
+  {
+   "at": 5373077429,
+   "field": 5373077430,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5373077328
+  },
+  {
+   "at": 5373142595,
+   "field": 5373142598,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5373142160
+  },
+  {
+   "at": 5373358659,
+   "field": 5373358665,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373358592
+  },
+  {
+   "at": 5373391357,
+   "field": 5373391363,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373391200
+  },
+  {
+   "at": 5373391741,
+   "field": 5373391747,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373391552
+  },
+  {
+   "at": 5373437844,
+   "field": 5373437851,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373436928
+  },
+  {
+   "at": 5373450879,
+   "field": 5373450885,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373450608
+  },
+  {
+   "at": 5373538826,
+   "field": 5373538832,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373538272
+  },
+  {
+   "at": 5373538836,
+   "field": 5373538839,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373538272
+  },
+  {
+   "at": 5373540182,
+   "field": 5373540188,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373540128
+  },
+  {
+   "at": 5373540515,
+   "field": 5373540516,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5373540448
+  },
+  {
+   "at": 5373540569,
+   "field": 5373540570,
+   "op": "UNCLASSIFIED",
+   "stock": 32772,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5373540448
+  },
+  {
+   "at": 5373541325,
+   "field": 5373541326,
+   "op": "UNCLASSIFIED",
+   "stock": 32772,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5373541216
+  },
+  {
+   "at": 5373541330,
+   "field": 5373541331,
+   "op": "UNCLASSIFIED",
+   "stock": 32772,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5373541216
+  },
+  {
+   "at": 5373545471,
+   "field": 5373545474,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5373545248
+  },
+  {
+   "at": 5380181191,
+   "field": 5380181194,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380180960
+  },
+  {
+   "at": 5380187832,
+   "field": 5380187835,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380187616
+  },
+  {
+   "at": 5380188262,
+   "field": 5380188263,
+   "op": "UNCLASSIFIED",
+   "stock": 8193,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380187616
+  },
+  {
+   "at": 5380189621,
+   "field": 5380189623,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380189504
+  },
+  {
+   "at": 5380202175,
+   "field": 5380202177,
+   "op": "UNCLASSIFIED",
+   "stock": 8193,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380201744
+  },
+  {
+   "at": 5380202443,
+   "field": 5380202444,
+   "op": "UNCLASSIFIED",
+   "stock": 8193,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380201744
+  },
+  {
+   "at": 5380271934,
+   "field": 5380271940,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380271888
+  },
+  {
+   "at": 5380271968,
+   "field": 5380271974,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380271888
+  },
+  {
+   "at": 5380273230,
+   "field": 5380273236,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5380273184
+  },
+  {
+   "at": 5380273264,
+   "field": 5380273270,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5380273184
+  },
+  {
+   "at": 5380288963,
+   "field": 5380288965,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380285268
+  },
+  {
+   "at": 5380289091,
+   "field": 5380289093,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380285268
+  },
+  {
+   "at": 5380302429,
+   "field": 5380302435,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5380285268
+  },
+  {
+   "at": 5380303514,
+   "field": 5380303520,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380285268
+  },
+  {
+   "at": 5380308048,
+   "field": 5380308052,
+   "op": "UNCLASSIFIED",
+   "stock": 8193,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380285268
+  },
+  {
+   "at": 5380288963,
+   "field": 5380288965,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380288880
+  },
+  {
+   "at": 5380289091,
+   "field": 5380289093,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380289008
+  },
+  {
+   "at": 5380302429,
+   "field": 5380302435,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5380302240
+  },
+  {
+   "at": 5380303514,
+   "field": 5380303520,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380302880
+  },
+  {
+   "at": 5380335568,
+   "field": 5380335574,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380335392
+  },
+  {
+   "at": 5380337626,
+   "field": 5380337632,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380337552
+  },
+  {
+   "at": 5380337672,
+   "field": 5380337678,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5380337552
+  },
+  {
+   "at": 5380364447,
+   "field": 5380364453,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5380364224
+  },
+  {
+   "at": 5380390324,
+   "field": 5380390327,
+   "op": "UNCLASSIFIED",
+   "stock": 65536,
+   "why": "HASH->CH /2",
+   "text": "",
+   "func": 5380390288
+  },
+  {
+   "at": 5380398942,
+   "field": 5380398948,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380396688
+  },
+  {
+   "at": 5380462407,
+   "field": 5380462410,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380446996
+  },
+  {
+   "at": 5380464153,
+   "field": 5380464156,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380446996
+  },
+  {
+   "at": 5380474608,
+   "field": 5380474614,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380446996
+  },
+  {
+   "at": 5380485127,
+   "field": 5380485128,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380446996
+  },
+  {
+   "at": 5380486859,
+   "field": 5380486860,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380446996
+  },
+  {
+   "at": 5380495096,
+   "field": 5380495099,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380446996
+  },
+  {
+   "at": 5380462407,
+   "field": 5380462410,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380462288
+  },
+  {
+   "at": 5380464153,
+   "field": 5380464156,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380464064
+  },
+  {
+   "at": 5380474608,
+   "field": 5380474614,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380474544
+  },
+  {
+   "at": 5380486859,
+   "field": 5380486860,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5380486416
+  },
+  {
+   "at": 5380495096,
+   "field": 5380495099,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380495040
+  },
+  {
+   "at": 5380506197,
+   "field": 5380506203,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380506064
+  },
+  {
+   "at": 5380506217,
+   "field": 5380506220,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380506064
+  },
+  {
+   "at": 5380531542,
+   "field": 5380531545,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380531472
+  },
+  {
+   "at": 5380555211,
+   "field": 5380555212,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5380555200
+  },
+  {
+   "at": 5380555241,
+   "field": 5380555242,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380555200
+  },
+  {
+   "at": 5380557994,
+   "field": 5380557997,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380557728
+  },
+  {
+   "at": 5380558012,
+   "field": 5380558015,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380557728
+  },
+  {
+   "at": 5380563471,
+   "field": 5380563477,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5380563392
+  },
+  {
+   "at": 5381261061,
+   "field": 5381261064,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5381260736
+  },
+  {
+   "at": 5381280690,
+   "field": 5381280693,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5381280581
+  },
+  {
+   "at": 5381280859,
+   "field": 5381280862,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5381280581
+  },
+  {
+   "at": 5381281173,
+   "field": 5381281175,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5381281029
+  },
+  {
+   "at": 5381281206,
+   "field": 5381281208,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5381281029
+  },
+  {
+   "at": 5381284464,
+   "field": 5381284466,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5381284448
+  },
+  {
+   "at": 5381292810,
+   "field": 5381292812,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5381288880
+  },
+  {
+   "at": 5381297178,
+   "field": 5381297180,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5381288880
+  },
+  {
+   "at": 5381304610,
+   "field": 5381304613,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5381304560
+  },
+  {
+   "at": 5381305243,
+   "field": 5381305245,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5381305184
+  },
+  {
+   "at": 5381309632,
+   "field": 5381309637,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381309344
+  },
+  {
+   "at": 5381312141,
+   "field": 5381312145,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381309811
+  },
+  {
+   "at": 5381312167,
+   "field": 5381312172,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381309811
+  },
+  {
+   "at": 5381312400,
+   "field": 5381312405,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381309811
+  },
+  {
+   "at": 5381312141,
+   "field": 5381312145,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381311872
+  },
+  {
+   "at": 5381312167,
+   "field": 5381312172,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381311872
+  },
+  {
+   "at": 5381312400,
+   "field": 5381312405,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381311872
+  },
+  {
+   "at": 5381313370,
+   "field": 5381313373,
+   "op": "UNCLASSIFIED",
+   "stock": 806920,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381313152
+  },
+  {
+   "at": 5381313385,
+   "field": 5381313388,
+   "op": "UNCLASSIFIED",
+   "stock": 806920,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381313152
+  },
+  {
+   "at": 5381314322,
+   "field": 5381314325,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381314240
+  },
+  {
+   "at": 5381314364,
+   "field": 5381314367,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381314240
+  },
+  {
+   "at": 5381314871,
+   "field": 5381314874,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381314800
+  },
+  {
+   "at": 5381314896,
+   "field": 5381314901,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381314800
+  },
+  {
+   "at": 5381316321,
+   "field": 5381316325,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381316240
+  },
+  {
+   "at": 5381316378,
+   "field": 5381316383,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381316240
+  },
+  {
+   "at": 5381316951,
+   "field": 5381316954,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381316496
+  },
+  {
+   "at": 5381316976,
+   "field": 5381316980,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381316496
+  },
+  {
+   "at": 5381317032,
+   "field": 5381317037,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381316496
+  },
+  {
+   "at": 5381318440,
+   "field": 5381318445,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381318336
+  },
+  {
+   "at": 5381321269,
+   "field": 5381321274,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381321072
+  },
+  {
+   "at": 5381323182,
+   "field": 5381323187,
+   "op": "UNCLASSIFIED",
+   "stock": 806928,
+   "why": "P8->CH /1",
+   "text": "",
+   "func": 5381323040
+  },
+  {
+   "at": 5381325894,
+   "field": 5381325897,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5381325520
+  },
+  {
+   "at": 5381391136,
+   "field": 5381391142,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5381389296
+  },
+  {
+   "at": 5381410141,
+   "field": 5381410147,
+   "op": "UNCLASSIFIED",
+   "stock": 16384,
+   "why": "HASH->CH /8",
+   "text": "",
+   "func": 5381410032
+  },
+  {
+   "at": 5381541464,
+   "field": 5381541470,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5381539555
+  },
+  {
+   "at": 5382266130,
+   "field": 5382266132,
+   "op": "UNCLASSIFIED",
+   "stock": 8192,
+   "why": "HASH->CH /16",
+   "text": "",
+   "func": 5382264917
+  },
+  {
+   "at": 5383093957,
+   "field": 5383093958,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5383093792
+  },
+  {
+   "at": 5383102591,
+   "field": 5383102592,
+   "op": "UNCLASSIFIED",
+   "stock": 32768,
+   "why": "HASH->CH /4",
+   "text": "",
+   "func": 5383102240
+  }
+ ],
  "unpaired": [
   {
    "at": 5380496866,
@@ -10809,143 +11955,5 @@
   5571046787,
   5571549292,
   5572507705
- ],
- "rejected": [
-  {
-   "at": 5370091344,
-   "field": 5370091346,
-   "op": "ref",
-   "form": "rip",
-   "base": 0,
-   "target": 5476783979,
-   "tail": 0,
-   "region": "P4",
-   "text": "mov eax, dword ptr [rip + 0x65c0015]",
-   "bytes": "8b0515005c06",
-   "func": 5370091343
-  },
-  {
-   "at": 5370481832,
-   "field": 5370481834,
-   "op": "ref",
-   "form": "rip",
-   "base": 0,
-   "target": 5479926986,
-   "tail": 1,
-   "region": "CH",
-   "text": "add byte ptr [rip + 0x686001b], 0x1b",
-   "bytes": "80051b0086061b",
-   "func": 5370481792
-  },
-  {
-   "at": 5561572896,
-   "field": 5561572898,
-   "op": "ref",
-   "form": "rip",
-   "base": 0,
-   "target": 5478444515,
-   "tail": 0,
-   "region": "CH",
-   "text": "sbb bl, byte ptr [rip - 0x4f47043]",
-   "bytes": "1a1dbd8f0bfb",
-   "func": 5561572857
-  },
-  {
-   "at": 5563441206,
-   "field": 5563441208,
-   "op": "ref",
-   "form": "disp",
-   "base": 5368709120,
-   "target": 5480041647,
-   "tail": 0,
-   "region": "CH",
-   "text": "sar dword ptr [rbp + 0x6a2ccaf], 0x21",
-   "bytes": "c1bdafcca20621",
-   "assumed": false,
-   "func": 5563441164
-  },
-  {
-   "at": 5563508158,
-   "field": 5563508160,
-   "op": "ref",
-   "form": "disp",
-   "base": 5368709120,
-   "target": 5480608775,
-   "tail": 0,
-   "region": "CH",
-   "text": "sar dword ptr [rcx + 0x6ab7407], cl",
-   "bytes": "d3b90774ab06",
-   "assumed": false,
-   "func": 5563508134
-  },
-  {
-   "at": 5566119242,
-   "field": 5566119244,
-   "op": "ref",
-   "form": "rip",
-   "base": 0,
-   "target": 5477440476,
-   "tail": 0,
-   "region": "CH",
-   "text": "add cl, byte ptr [rip - 0x5492174]",
-   "bytes": "020d8cdeb6fa",
-   "func": 5566119234
-  },
-  {
-   "at": 5567780021,
-   "field": 5567780023,
-   "op": "ref",
-   "form": "disp",
-   "base": 5368709120,
-   "target": 5480093133,
-   "tail": 0,
-   "region": "CH",
-   "text": "xor dword ptr [rax + 0x6a395cd], edi",
-   "bytes": "31b8cd95a306",
-   "assumed": false,
-   "func": 5567780018
-  },
-  {
-   "at": 5571046872,
-   "field": 5571046874,
-   "op": "ref",
-   "form": "disp",
-   "base": 5368709120,
-   "target": 5480632317,
-   "tail": 0,
-   "region": "CH",
-   "text": "idiv dword ptr [rcx + 0x6abcffd]",
-   "bytes": "f7b9fdcfab06",
-   "assumed": false,
-   "func": 5571046787
-  },
-  {
-   "at": 5571549334,
-   "field": 5571549336,
-   "op": "ref",
-   "form": "disp",
-   "base": 5368709120,
-   "target": 5476060440,
-   "tail": 0,
-   "region": "A",
-   "text": "sbb dword ptr [rbx + 0x6660d18], esi",
-   "bytes": "19b3180d6606",
-   "assumed": false,
-   "func": 5571549292
-  },
-  {
-   "at": 5572507717,
-   "field": 5572507719,
-   "op": "ref",
-   "form": "disp",
-   "base": 5368709120,
-   "target": 5477568845,
-   "tail": 0,
-   "region": "CH",
-   "text": "mov esp, dword ptr [rdi + 0x67d114d]",
-   "bytes": "8ba74d117d06",
-   "assumed": false,
-   "func": 5572507705
-  }
  ]
 }

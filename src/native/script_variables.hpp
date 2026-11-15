@@ -16,7 +16,7 @@ constexpr std::uint32_t segments = 4, child_bytes_each = 0x18;
 constexpr std::uint32_t name_bound = 0x40000 + parent_ids;
 static_assert(name_bound <= 0x800000);
 
-constexpr std::uint64_t stock_a = 0x14665A180ull, stock_b = 0x146675980ull, stock_p8 = 0x146691180ull, stock_p4 = 0x1466FF180ull, stock_ch = 0x146756180ull;
+constexpr std::uint64_t stock_a = 0x14665A180ull, stock_b = 0x146675980ull, stock_p8 = 0x146691180ull, stock_p4 = 0x1466FF180ull, stock_ch = 0x146756180ull, stock_hash = 0x146736180ull;
 constexpr std::uint64_t stock_a_bytes = stock_parent_ids * 2ull, stock_p8_bytes = stock_parent_ids * 8ull, stock_p4_bytes = stock_parent_ids * 4ull,
                         stock_ch_bytes = segments * stock_child_entries * child_bytes_each;
 static_assert(stock_a_bytes == 0x1B800 && stock_p8_bytes == 0x6E000 && stock_p4_bytes == 0x37000 && stock_ch_bytes == 0x3C0000);
