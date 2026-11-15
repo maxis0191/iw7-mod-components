@@ -177,6 +177,8 @@
     "ops/engine/caves/proof-zero-change.requests.json",
     "ops/engine/caves/rewind-pointer.plan.json",
     "ops/engine/caves/rewind-pointer.requests.json",
+    "ops/engine/caves/wide-sites.plan.json",
+    "ops/engine/caves/wide-sites.requests.json",
     "ops/engine/collect_names.py",
     "ops/engine/engine.py",
     "ops/engine/engine_mcp.py",
