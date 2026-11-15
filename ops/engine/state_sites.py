@@ -32,7 +32,7 @@ STRUCTS = {
     'A2': (0x146031A40, 0x17F0),    # client static block 2
     'X': (0x1421EDA70, 0x17E8),     # client static empty block
 }
-OPS = ['shift', 'state_bytes', 'state_bytes_less6', 'budget', 'budget4', 'budget4x2', 'c_bytes', 'c_heads', 'copies', 'snap_member',
+OPS = ['shift', 'state_bytes', 'state_bytes_less6', 'budget', 'budget4', 'budget4x2', 'c_bytes', 'c_heads', 'copies', 'snap_member', 'hunk_fixed',
        'ref_A', 'ref_C', 'ref_A1', 'ref_A2', 'ref_X']
 
 # function ranges that were read: everything in them that holds one of the constants is listed by `find`
@@ -41,6 +41,7 @@ RANGES = [(0x140BD0000, 0x140BDB000), (0x140BF3000, 0x140BFB000), (0x140C60000, 
 SERVER_WIRE = (0x140BF6230, 0x140BF6C00)      # reader FUN_140bf6230, FUN_140bf6640, FUN_140bf6760
 LINK = (0x140BF96A0, 0x140BF9A70)             # ScriptableSv_LinkReservedScriptable
 CLIENT_APPLY = (0x140BD537D, 0x140BD5600)     # FUN_140bd5280
+HUNK_SIZE = (0x140C68880, 0x140C689F7)        # SV snapshot hunk size: the single block of SV_AllocSnapshotBuffers is folded into 0x2CEB00 / 0x6CEB00
 LIST_CODE = (0x140BF7700, 0x140BF8800)        # init and the list helpers of the C table
 DISP_SHIFT = {0xFE4, 0xFE6, 0x13E6}
 # the unrolled 0x80 byte struct copies (47 loops of 0x80 plus a 0x68 tail = 0x17E8 bytes)
@@ -151,6 +152,8 @@ def classify(ins, f):
             return dict(op='c_bytes', form=0, stock=value, tail=0)
         if value == 0x2F and at in COPY_LOOPS:
             return dict(op='copies', form=0, stock=value, tail=0)
+        if value in (0x2CEB00, 0x6CEB00) and inside(at, HUNK_SIZE):      # 0x2CD300 (DAT_146B39818) + 0x1800 (the 0x17E8 block aligned to 0x80) [+ 0x400000]
+            return dict(op='hunk_fixed', form=0, stock=value, tail=0)
         return None
     if kind == 'disp':
         if value in DISP_SHIFT and (inside(at, SERVER_WIRE) or inside(at, CLIENT_APPLY)):

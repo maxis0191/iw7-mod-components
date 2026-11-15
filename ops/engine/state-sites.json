@@ -2185,6 +2185,28 @@
    "bytes": "4169c7e8170000"
   },
   {
+   "op": "hunk_fixed",
+   "form": 0,
+   "stock": 7138048,
+   "tail": 0,
+   "at": 5381720536,
+   "field": 5381720537,
+   "func": "FUN_140c68880",
+   "text": "mov eax, 0x6ceb00",
+   "bytes": "b800eb6c00"
+  },
+  {
+   "op": "hunk_fixed",
+   "form": 0,
+   "stock": 2943744,
+   "tail": 0,
+   "at": 5381720541,
+   "field": 5381720542,
+   "func": "FUN_140c68880",
+   "text": "mov ecx, 0x2ceb00",
+   "bytes": "b900eb2c00"
+  },
+  {
    "op": "state_bytes",
    "form": 0,
    "stock": 6120,

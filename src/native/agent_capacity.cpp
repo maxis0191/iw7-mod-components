@@ -416,7 +416,7 @@ void plan_parts() {
 // instruction (disp32 and imm32) are two rows. Not patched: the save-game serializer sub_140C70A50 (a fixed slot of DAT_146B4DF48; it copies the
 // stock size).
 enum class state_op : std::uint8_t {
-    shift, state_bytes, state_bytes_less6, budget, budget4, budget4x2, c_bytes, c_heads, copies, snap_member, ref_A, ref_C, ref_A1, ref_A2, ref_X
+    shift, state_bytes, state_bytes_less6, budget, budget4, budget4x2, c_bytes, c_heads, copies, snap_member, hunk_fixed, ref_A, ref_C, ref_A1, ref_A2, ref_X
 };
 struct state_site { std::uintptr_t field; unsigned form; std::uint64_t stock; unsigned tail; state_op op; };
 const state_site state_sites[] = {
@@ -447,6 +447,9 @@ void plan_state() {
         case state_op::c_heads: add(field, before, before + static_cast<std::uint32_t>(24 * extra)); break;
         case state_op::copies: add(field, before, l.state_copies()); break;
         case state_op::snap_member: add(field, before, l.snap_state_offset()); break;
+        // the server hunk (FUN_140C68880) adds the fixed allocations of SV_AllocSnapshotBuffers as constants: 0x2CD300 and the single block
+        // aligned to 0x80 (0x1800) folded to 0x2CEB00 (0x6CEB00 in the other mode); the single block is now state_bytes() long
+        case state_op::hunk_fixed: add(field, before, before + l.state_hunk_growth()); break;
         case state_op::ref_A: case state_op::ref_C: case state_op::ref_A1: case state_op::ref_A2: case state_op::ref_X: {
             const std::uint64_t target = s.form == 1 ? stock : image_base + stock;
             std::uint64_t base{}, offset{};

@@ -63,6 +63,8 @@ struct layout {
     constexpr std::uint32_t state_bytes() const { return 4 * state_dwords() + 0x808; }
     constexpr std::uint32_t state_list_bytes() const { return 24 * state_dwords() + 14; }   // six-byte list entries a state byte, heads, list index
     constexpr std::uint32_t state_copies() const { return 47 + state_extra() / 32; }
+    // The server hunk size adds the one block that SV_AllocSnapshotBuffers allocates besides its two rings as a constant (0x17E8 rounded to 0x80 = 0x1800).
+    constexpr std::uint32_t state_hunk_growth() const { return ((state_bytes() + 0x7F) & ~0x7Fu) - 0x1800; }
     // The client snapshot: the block member moves behind the appended agent states (its stock slot at 0x3AF38 stays, unused).
     constexpr std::uint32_t snap_state_offset() const { return 0x3DC78 + agents * 0xC0; }
     constexpr std::uint32_t snap_size() const { return snap_state_offset() + state_bytes(); }
@@ -174,7 +176,7 @@ static_assert(!fits_signed_byte(make(100, 0x800).rewind_pointers()));   // why t
 
 // The state block at the stock count is the shipped one: 1,016 dwords, 0x17E8 bytes, a 0x5F4E byte list table, 47 copy loops.
 static_assert(make(24, 0x800).state_dwords() == 1016 && make(24, 0x800).state_bytes() == 0x17E8 && make(24, 0x800).state_list_bytes() == 0x5F4E &&
-              make(24, 0x800).state_copies() == 47 && make(24, 0x800).state_extra() == 0);
+              make(24, 0x800).state_copies() == 47 && make(24, 0x800).state_extra() == 0 && make(24, 0x800).state_hunk_growth() == 0);
 static_assert(make(100, 0x800).state_dwords() == 1624 && make(164, 0x800).state_dwords() == 2136 && make(232, 0x800).state_dwords() == 2680);
 static_assert(make(164, 0x800).state_bytes() == 10600 && make(232, 0x800).state_bytes() == 12776 && make(164, 0x800).state_copies() == 82);
 static_assert(make(100, 0x800).snap_size() == 0x3DC78 + 100 * 0xC0 + 8552);

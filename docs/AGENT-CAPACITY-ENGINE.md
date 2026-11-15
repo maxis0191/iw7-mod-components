@@ -25,6 +25,7 @@ built on: the RE map `engine-zombie-limits.md` (notes folder) and the tools belo
 | client snapshot agent ring (remote server) | frames x 24 | frames x n | sub_1409B2620 0x1409B26FC |
 | server AI loops over characters (cmp reg, 42 x 0x3F8) | 42 | C (7 of 8; see open) | 0x140C22AE3 ... 0x140C481FE |
 | reserved scriptable parts (an agent's model takes 31) | 2,048 | 8,192 (`-scriptable-parts <m>`, at most 65,535) | sub_140BF7770, sub_140BF96A0, sub_140BF9A70, sub_140BFA3D0, sub_140BF6F20 |
+| replicated scriptable state (a zombie's scriptable takes 8 of the budget's units) | 1,016 dwords | 1,016 + 8 (n - 24): 1,624 at 100, 2,136 at 164, 2,680 at 232 | see "Replicated state budget" (205 fields, five relocated blocks) |
 
 Every field is compared with its shipped value before anything is written; one difference and the game stops with the
 address (nothing is half-applied). Relocated tables sit within 2 GB of the image (the code reaches them by 32-bit
@@ -79,6 +80,48 @@ map_start=134 parts=8192 patches=1289 caves=92` (a33: 1252 patches, 86 caves; th
 grow). A plan-time start at 232 agents on a headless server (no zombies, stopped after the plan's 3 seconds): accepted, `agents=232 characters=250 map_start=266
 parts=8192 patches=1284 caves=92`, frame grow lines 15,584 / 3,328 / 6,656 / 32 bytes. NOT measured: any run with zombies or a client above 100 agents; whether the
 indexed-access and rbp assumptions of the CG_SetNextSnap plan hold when the snapshot code runs with more than 100 characters (it runs at 100 in w4).
+
+## Replicated state budget (a39, 15 Nov 2026)
+
+The wall at about 100 zombies was not an agent index. `ScriptableSv_LinkReservedScriptable` (sub_140BF96A0) keeps the state of every reserved scriptable
+instance (one per zombie) in one block of 1,016 dwords, four one-byte part states each (bit 7 = dirty): the fixed (Radiant) parts take `ceil(parts / 4)`
+dwords from the bottom (557 parts of cp_zmb = 140), every reserved instance `ceil(replicated parts / 4)` from the top (the 31-part zombie scriptable 8, the
+28-part one 7, the 23 stock instances 1 each; measured in runs d2 and d2b). When no room is left it raises ERR_DROP "Too many replicated parts. 557 from
+'fixed' ..." at about 136 instances; the shutdown walk then crashed reading the null state buffer of the half-linked instance (below).
+
+With `-agent-capacity n` the budget is S = 1,016 + 8 (n - 24) dwords (S - 1,016 is a multiple of 32 at every accepted count: the engine's unrolled 0x80 byte
+block copies keep their 0x68 byte tail, only their loop count `mov ecx, 0x2f` changes to 47 + (S - 1,016) / 32). The block (`u16 fixed count | dwords[S] |
+u16 instance count | u16 entnum + 1[512] | u16 start dword[512] | pad` = 4 S + 0x808 bytes, stock 0x17E8) and everything that is a function of it:
+
+| Object | Stock | Now | Rows |
+|---|---|---|---|
+| server block 0x1460A8BE0 | 0x17E8 | `state_a`, 4 S + 0x808 | 42 rip/rva references |
+| byte list table 0x1460AC3A0 (6 bytes an entry a state BYTE, sentinel 0xFE0 = none, heads at +0x5F40) | 0x5F4E | `state_c`, 24 S + 14, sentinel 4 S, heads at 24 S | 21 references, 7 head offsets, 7 sentinel loads, 7 `0xFE00FE0` dword inits, 3 sizes |
+| client static blocks 0x146030250 / 0x146031A40 (8 byte trailer each, stride 0x17F0) and the empty block 0x1421EDA70 | 0x17E8 | `state_client` (two T + 8), `state_x` | 22 references |
+| server rings (frames x block, DAT_146B39908 / 0x...10 / 0x...18), client ring (cl+0x11C68) | stride 0x17E8 | stride T | 29 `imul`/size immediates, 1 `0x17E2` clear |
+| unrolled block copies (CL_ParseSnapshot x2, bd1e10, bd3600, c625b0, c636a0, c63bd0, c647a0) | 47 loops | 47 + (S - 1,016) / 32 | 8 |
+| the budget compare / top (`mov r, 0x3F8`) in the link, the writer and the reader on both sides | 0x3F8 | S | 8 |
+| table offsets 0xFE4 / 0xFE6 / 0x13E6 in the delta reader, writer, baseline copy and the client apply | | + 4 (S - 1,016) | 45 |
+| server hunk size (sub_140C68880 folds the one block of SV_AllocSnapshotBuffers into 0x2CEB00 / 0x6CEB00) | + 0x1800 for the block | + (T rounded to 0x80) - 0x1800 | 2 (found by the first run: with the block grown and the hunk not, the server stopped at "Loading zone") |
+| client snapshot member (+0x3AF38, 3 instructions) | slot inside the stock snapshot | behind the appended agent states: 0x3DC78 + 0xC0 n | 3; `snap_size()` grows by the block |
+
+The list is generated, not remembered: `ops/engine/state_sites.py find` decodes every function of the reading ranges of the shipped image (engine database),
+`state-sites.json` is the table (one row a 4-byte field: address, instruction bytes, stock value, op), `emit` writes `src/native/agent_capacity_state.inc`
+that `plan_state()` applies in the same all-or-nothing transaction (plan-time refusal when any field differs from its stock value),
+`tests/ops/agent_capacity_state_test.py` re-encodes every row for every count 24..232 (displacement, immediate or reference target decoded back) and checks no
+row overlaps another patch or a cave. Wire: the state delta writes the fixed region's dword index in 9 bits, the instance's dword count in 8 bits and an
+instance's dword index in 9 bits RELATIVE to its start, the entity number as u16 (sub_140BF6760 / sub_140BF6230): no width holds the budget, nothing on the wire changes.
+
+Not patched: the save-game serializer sub_140C70A50 (copies the block into a fixed slot of DAT_146B4DF48: it copies the stock size, harmless, a
+checkpoint of a grown block would be incomplete; a zombies match never runs it) and the fixed-parts capacity of sub_140BFA3A0 (0xFE0 / 0x7E0), which is
+not the instance budget. **A separate limit remains: reserved scriptable RECORDS** (`[[0x145D5F9D8] + 0x244]` = 200 on cp_zmb, 0x1D0 bytes each in
+map-loaded memory): 24 stock + one a live agent, so about 176 agents alive at most; 177 or more raise "Could not allocate a reserved scriptable ... limit is 200".
+
+**Shutdown guard (stock bug).** `sub_140BF5730` (the recursive walker of 0xB0-byte part records called for every instance by the shutdown free) compares
+`byte [state buffer + part]` for type 2 records at +0xD2 (`cmp byte [rdx+rcx],bpl`, 0x140BF5802); the buffer is allocated by `FUN_140BE1770` AFTER the
+replicated-parts check, so an instance that failed the check has a null buffer and the walk crashed at address 0x78 (runs d2, d2b). A cave
+(`ops/engine/caves/shutdown-guard.*`, `agent_capacity_caves_guard.inc`) replaces the compare by a branch-free sequence that leaves ZF = 1 for a null buffer
+(the `je` that follows is the stock branch for a zero state) and does not read memory then; `rcx`, `rdx` are dead after it, `r9`, `r10` volatile.
 
 ## Players on another layout
 

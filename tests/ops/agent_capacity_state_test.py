@@ -40,7 +40,7 @@ def layout(n):
     """agent_capacity.hpp layout, the state part (the formulas are pinned by test_the_hpp_formulas)."""
     s = 1016 + 8 * (n - 24)
     return {'S': s, 'E': s - 1016, 'T': 4 * s + 0x808, 'C': 24 * s + 14, 'copies': 47 + (s - 1016) // 32,
-            'snap': 0x3DC78 + n * 0xC0}
+            'snap': 0x3DC78 + n * 0xC0, 'hunk': ((4 * s + 0x808 + 0x7F) & ~0x7F) - 0x1800}
 
 
 def parse_rows(text):
@@ -80,6 +80,7 @@ class StateRows(unittest.TestCase):
                      'constexpr std::uint32_t state_bytes() const { return 4 * state_dwords() + 0x808; }',
                      'constexpr std::uint32_t state_list_bytes() const { return 24 * state_dwords() + 14; }',
                      'constexpr std::uint32_t state_copies() const { return 47 + state_extra() / 32; }',
+                     'constexpr std::uint32_t state_hunk_growth() const { return ((state_bytes() + 0x7F) & ~0x7Fu) - 0x1800; }',
                      'constexpr std::uint32_t snap_state_offset() const { return 0x3DC78 + agents * 0xC0; }',
                      'constexpr std::uint32_t snap_size() const { return snap_state_offset() + state_bytes(); }'):
             self.assertIn(text, self.hpp)
@@ -178,6 +179,12 @@ class StateRows(unittest.TestCase):
                     self.assertEqual(self.disp_of(self.reencode(r, want))[0], want, row)
                 elif op == 'copies':
                     self.assertEqual(self.imm_of(self.reencode(r, lay['copies'])), lay['copies'], row)
+                elif op == 'hunk_fixed':
+                    self.assertIn(stock, (0x2CEB00, 0x6CEB00))
+                    want = stock + lay['hunk']
+                    self.assertEqual(self.imm_of(self.reencode(r, want)), want, row)
+                    self.assertEqual(lay['hunk'] % 0x80, 0)
+                    self.assertGreaterEqual(want - 0x2CD300 - (0x400000 if stock == 0x6CEB00 else 0), t, 'the folded single block holds the grown block')
                 elif op == 'snap_member':
                     want = lay['snap']
                     self.assertEqual(self.disp_of(self.reencode(r, want))[0], want, row)

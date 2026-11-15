@@ -198,6 +198,8 @@
 {0x140C66460ull, 0, 0x17E8u, 0, state_op::state_bytes},
 {0x140C688DDull, 0, 0x17E8u, 0, state_op::state_bytes},
 {0x140C68967ull, 0, 0x17E8u, 0, state_op::state_bytes},
+{0x140C689D9ull, 0, 0x6CEB00u, 0, state_op::hunk_fixed},
+{0x140C689DEull, 0, 0x2CEB00u, 0, state_op::hunk_fixed},
 {0x140C68BA9ull, 0, 0x17E8u, 0, state_op::state_bytes},
 {0x140C68BC8ull, 0, 0x17E8u, 0, state_op::state_bytes},
 {0x140C68C5Full, 0, 0x17E8u, 0, state_op::state_bytes},
