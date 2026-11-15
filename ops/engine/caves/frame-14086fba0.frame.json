@@ -1,0 +1,128 @@
+{
+ "version": 1,
+ "kind": "frame-grow",
+ "image": "iw7_ship_live.exe",
+ "function": "0x14086fba0",
+ "end": "0x140870808",
+ "array_top": 368,
+ "bounded_index": [
+  [
+   64,
+   80
+  ],
+  [
+   112,
+   368
+  ]
+ ],
+ "rbp_general": true,
+ "extra": 32,
+ "max_extra": 32,
+ "frame": {
+  "pushes": 7,
+  "stock_size": 384,
+  "sub_address": "0x14086fbac",
+  "S_from_entry": -440
+ },
+ "fields": [
+  {
+   "address": "0x14086fbaf",
+   "width": 4,
+   "stock": 384,
+   "unit": 1,
+   "sign": 1,
+   "role": "frame-sub",
+   "instruction": "0x14086fbac",
+   "text": "sub rsp, 0x180"
+  },
+  {
+   "address": "0x14086fbc1",
+   "width": 4,
+   "stock": 368,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x14086fbbd",
+   "text": "mov qword ptr [rsp + 0x170], rax"
+  },
+  {
+   "address": "0x14086fc47",
+   "width": 4,
+   "stock": 464,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x14086fc43",
+   "text": "mov qword ptr [rsp + 0x1d0], rbp"
+  },
+  {
+   "address": "0x1408707e1",
+   "width": 4,
+   "stock": 464,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x1408707dd",
+   "text": "mov rbp, qword ptr [rsp + 0x1d0]"
+  },
+  {
+   "address": "0x1408707e9",
+   "width": 4,
+   "stock": 368,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x1408707e5",
+   "text": "mov rcx, qword ptr [rsp + 0x170]"
+  },
+  {
+   "address": "0x1408707f8",
+   "width": 4,
+   "stock": 384,
+   "unit": 1,
+   "sign": 1,
+   "role": "epilogue-add",
+   "instruction": "0x1408707f5",
+   "text": "add rsp, 0x180"
+  },
+  {
+   "address": "0x14169dc7a",
+   "width": 2,
+   "stock": 58,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_NONVOL rbp at rsp+0x1d0"
+  },
+  {
+   "address": "0x14169dc7e",
+   "width": 2,
+   "stock": 48,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-alloc",
+   "instruction": null,
+   "text": "ALLOC_LARGE 0x180"
+  },
+  {
+   "address": "0x14169dc94",
+   "width": 4,
+   "stock": 368,
+   "unit": 1,
+   "sign": 1,
+   "role": "unwind-gs-cookie",
+   "instruction": null,
+   "text": "GS handler cookie offset 0x170"
+  }
+ ],
+ "cave": null,
+ "unwind_chunks": [
+  {
+   "begin": "0x14086fba0",
+   "end": "0x140870808",
+   "entry": "0x14b0da2fc",
+   "unwind": "0x14169dc74"
+  }
+ ]
+}

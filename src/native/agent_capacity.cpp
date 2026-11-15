@@ -301,10 +301,8 @@ void plan_client() {
     // CL snapshot buffers (sub_14034F1D0, called from sub_1409B2620): the client's agent-state ring is frames x agents a
     // frame. A listen host passes the server's own max agents (byte +0x546, set from the patched selector); a client
     // joining a remote server passes 24 as `mov ebp, 18; lea r14d, [rbp + 6]`: the 6 becomes agents - 18.
-    // CG_SetNextSnap: the character change mask (one bit a character) grows into a free stack slot
-    add1s(0x14086FBE0, 0x70, 0x68); add(0x14086FBE3, 0x100, 0x108);
-    add1s(0x14086FDAF, 0x60, 0x58); add1s(0x140870705, 0x60, 0x58);
-    for (auto a : {0x14086FE70ull, 0x14086FE78ull, 0x14086FE87ull, 0x140870670ull, 0x1408706D0ull}) add1s(a, 0x40, 0x60);
+    // CG_SetNextSnap: the character change mask (one bit a character) lives in the room its frame grow opens (frame_fields_d,
+    // agent_capacity_caves_mask.inc): [rsp+0x170, +0x190), 8 words, enough for 256 characters. No one-byte stack offset is left here (a34).
 }
 
 // ---- 3b. two per-sentient pools of 71 static objects (built by static constructors sub_140004650, sub_1400046A0) ----
@@ -612,6 +610,12 @@ const std::vector<cave_spec> rewind_cave_table = {
 const std::vector<cave_spec> wide_cave_table = {
 #include "agent_capacity_caves_wide.inc"
 };
+// CG_SetNextSnap's character change mask at [rsp+0x170..0x190) (ops/engine/caves/setnextsnap-mask.*): five instructions of the shipped
+// function used [rsp+0x40] (2 words) and are cave instructions with a 32-bit displacement and the mask cleared in all 8 words. Constant bytes,
+// installed at every agent count (the frame grow of 0x14086FBA0 below makes the room at every count).
+const std::vector<cave_spec> mask_cave_table = {
+#include "agent_capacity_caves_mask.inc"
+};
 struct wide_site { std::uint32_t row; wide_field what; };
 constexpr wide_site wide_sites[] = {
     {1, wide_field::player_corpses}, {2, wide_field::agent_corpses}, {3, wide_field::player_corpses}, {4, wide_field::player_corpses},
@@ -721,13 +725,21 @@ const std::vector<frame_cave_spec> frame_caves_a = {
 const std::vector<frame_field> frame_fields_b = {
 #include "agent_capacity_frame_fields_adb8e0.inc"
 };
-const std::vector<frame_cave_spec> frame_caves_b = {};
+const std::vector<frame_cave_spec> frame_caves_b = {
+#include "agent_capacity_frame_cave_adb8e0.inc"
+};
 const std::vector<frame_field> frame_fields_c = {
 #include "agent_capacity_frame_fields_added0.inc"
 };
 const std::vector<frame_cave_spec> frame_caves_c = {
 #include "agent_capacity_frame_cave_added0.inc"
 };
+// CG_SetNextSnap (d): the frame grows by snap_mask_room (32) bytes at the top of its locals, below the stack cookie, for the 8-word change
+// mask; a constant, so no probe cave (0x180 + 32 is far from a page). Its field table: agent_capacity_frame_fields_86fba0.inc.
+const std::vector<frame_field> frame_fields_d = {
+#include "agent_capacity_frame_fields_86fba0.inc"
+};
+const std::vector<frame_cave_spec> frame_caves_d = {};
 struct frame_set {
     const char* name;
     const std::vector<frame_field>& fields;
@@ -763,6 +775,7 @@ void plan_frames() {
     frame_sets.push_back({"1403E61B0", frame_fields_a, frame_caves_a, L.frame_extra()});
     frame_sets.push_back({"140ADB8E0", frame_fields_b, frame_caves_b, L.frame_extra_b()});
     frame_sets.push_back({"140ADDED0", frame_fields_c, frame_caves_c, L.frame_extra_c()});
+    frame_sets.push_back({"14086FBA0", frame_fields_d, frame_caves_d, snap_mask_room});
     for (auto& set : frame_sets) plan_frame_set(set);
 }
 
@@ -882,7 +895,8 @@ void plan_caves() {
     for (const auto& c : cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     for (const auto& c : rewind_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     for (const auto& c : wide_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
-    for (const auto* caves : {&frame_caves_a, &frame_caves_b, &frame_caves_c})
+    for (const auto& c : mask_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
+    for (const auto* caves : {&frame_caves_a, &frame_caves_b, &frame_caves_c, &frame_caves_d})
         for (const auto& c : *caves) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     if (!total) return;
     code_region = reserve_code(total);
@@ -907,6 +921,7 @@ void plan_caves() {
         std::memcpy(bytes.data() + 4, &disp, 4);
         cave(c.window_start, c.old_bytes, bytes, c.fixups, c.retargets);
     }
+    for (const auto& c : mask_cave_table) cave(c.window_start, c.old_bytes, c.cave_bytes, c.fixups, c.retargets);
     unsigned found[std::size(wide_sites)]{};
     for (const auto& c : wide_cave_table) {
         auto bytes = c.cave_bytes;

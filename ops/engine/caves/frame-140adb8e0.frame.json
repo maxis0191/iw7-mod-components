@@ -6,7 +6,7 @@
  "end": "0x140adbc08",
  "array_top": 1200,
  "extra": 64,
- "max_extra": 1216,
+ "max_extra": 3328,
  "frame": {
   "pushes": 3,
   "stock_size": 1264,
@@ -14,16 +14,6 @@
   "S_from_entry": -1288
  },
  "fields": [
-  {
-   "address": "0x140adb8e8",
-   "width": 4,
-   "stock": 1264,
-   "unit": 1,
-   "sign": 1,
-   "role": "frame-sub",
-   "instruction": "0x140adb8e5",
-   "text": "sub rsp, 0x4f0"
-  },
   {
    "address": "0x140adb8fa",
    "width": 4,
@@ -295,7 +285,17 @@
    "text": "SAVE_NONVOL r12 at rsp+0x528"
   }
  ],
- "cave": null,
+ "cave": {
+  "window_start": "0x140adb8e5",
+  "window_len": 7,
+  "old_bytes": "4881ecf0040000",
+  "cave_bytes": "f6842400f0ffff00f6842400e0ffff004881ecf0110000",
+  "probes": 2,
+  "imm_offset": 19,
+  "stock_frame": 1264,
+  "max_extra": 3328,
+  "page": 4096
+ },
  "unwind_chunks": [
   {
    "begin": "0x140adb8e0",

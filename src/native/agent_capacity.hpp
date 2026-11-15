@@ -88,10 +88,12 @@ struct layout {
 // A bot client keeps its agent record inside client_t, on the 128 x 0x408 byte reliable-command ring (unused by a bot).
 constexpr std::uint32_t embedded_record_room = 0x20000;
 
-// The probe caves of the grown frames (agent_capacity_frame_cave*.inc, `max_extra`): planned for 100 agents until they are planned again.
-constexpr std::uint32_t frame_cave_max_extra_a = 0x1BE0, frame_cave_max_extra_c = 0x980;
-// FUN_140ADB8E0 has no probe cave: its grown frame (stock 0x4F0) must stay inside one page.
-constexpr std::uint32_t frame_b_stock = 0x4F0, page = 0x1000;
+// CG_SetNextSnap (0x14086FBA0): its frame grows by this many bytes (a constant) for the character change mask: 8 words = 256 characters.
+constexpr std::uint32_t snap_mask_room = 32;
+// The probe caves of the three grown frames (agent_capacity_frame_cave*.inc, `max_extra`), planned for 232 agents (a34): X of
+// FUN_1403E61B0 = (2 x 279 - 71) x 32 = 15,584 (frame 0xD58 + X = 19,000 bytes, 5 page probes), FUN_140ADDED0 = (279 - 71) x 32 = 6,656
+// (0x9E0 + X, 3 probes), FUN_140ADB8E0 = (279 - 71) x 16 = 3,328 (0x4F0 + X = 4,592 bytes, 2 probes; it had no cave before).
+constexpr std::uint32_t frame_cave_max_extra_a = 0x3CE0, frame_cave_max_extra_b = 0xD00, frame_cave_max_extra_c = 0x1A00;
 // The largest count this component has been analysed for (a29: an agent's entity number must fit a byte up to 238, G_GetMaxAgents and
 // GameStateInfo hold the count in a byte up to 255).
 constexpr std::uint32_t max_analysed_agents = 232;
@@ -100,18 +102,18 @@ constexpr std::uint32_t max_analysed_agents = 232;
 //  - characters - 42 must be a multiple of 4: the archive's controller base moves by a disp32 of (2c - 84) / 8 and its
 //    copy loops by (82c + 4) / 8 quadwords (both whole only then);
 //  - the corpse and character bounds are 32-bit fields in caves since a33 (they were signed 8-bit immediates: 100 agents at most);
-//  - the snapshot's character change mask (32 per word) must end before 0x70 on CG_SetNextSnap's stack (frame grow not done);
-//  - the page-probe caves of two grown frames were planned for 100 agents, and the third grown frame has no probe.
+//  - the snapshot's character change mask (32 per word) lives in the room of CG_SetNextSnap's frame grow (a34): 8 words;
+//  - the page-probe caves of the three grown frames are planned for 232 agents (a34).
 constexpr const char* refuse(std::uint32_t agents) {
     const auto c = players + agents;
     if (agents < stock_agents) return "fewer than the stock 24 agents";
     if ((c - stock_characters) % 4) return "players + agents - 42 must be a multiple of 4 (24, 28, ..., 232)";
     if (agents > max_analysed_agents) return "more than 232 agents: entity numbers and the agent count are one byte in places not yet analysed";
-    if (0x60 + ((c + 31) / 32) * 4 > 0x70) return "character change mask does not fit (CG_SetNextSnap frame grow not done)";
+    if (((c + 31) / 32) * 4 > snap_mask_room) return "character change mask does not fit the room of CG_SetNextSnap's frame grow";
     const auto slots = 71 + agents - stock_agents;
-    if ((((2 * slots - 71) * 32 + 15) & ~15u) > frame_cave_max_extra_a) return "FUN_1403E61B0: the page-probe cave of its grown frame was planned for 100 agents";
-    if ((slots - 71) * 32 > frame_cave_max_extra_c) return "FUN_140ADDED0: the page-probe cave of its grown frame was planned for 100 agents";
-    if (frame_b_stock + (slots - 71) * 16 > page) return "FUN_140ADB8E0: its grown frame passes a page and has no probe cave";
+    if ((((2 * slots - 71) * 32 + 15) & ~15u) > frame_cave_max_extra_a) return "FUN_1403E61B0: the page-probe cave of its grown frame was planned for 232 agents";
+    if ((slots - 71) * 32 > frame_cave_max_extra_c) return "FUN_140ADDED0: the page-probe cave of its grown frame was planned for 232 agents";
+    if ((slots - 71) * 16 > frame_cave_max_extra_b) return "FUN_140ADB8E0: the page-probe cave of its grown frame was planned for 232 agents";
     if (((0x3F08 + slots * 0x40 + slots * 0x3C + 15) & ~15u) > embedded_record_room)
         return "the agent record with its per-sentient tables would not fit the room of a bot client's embedded record (0x20000 bytes)";
     return "";
@@ -127,9 +129,9 @@ constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
 
 // A one-byte field the CPU sign-extends (a disp8, an imm8 of `83 /r`, `6B`, `48 83`) holds -128..127; add1s (the .cpp) refuses the rest.
 constexpr bool fits_signed_byte(std::int64_t value) { return value >= -128 && value <= 127; }
-// The fields that held a count are 32-bit now (wide caves, `wide16` in place, imm32 `imul`). What stays one byte: CG_SetNextSnap's stack
-// offsets (constants, add1s) and the low byte of G_GetMaxAgents' `mov eax, n` (unsigned_imm8: at most 255). The rewind pointer array's
-// displacement is a 32-bit field in a cave too (rewind_cave_table).
+// The fields that held a count are 32-bit now (wide caves, `wide16` in place, imm32 `imul`). What stays one byte: the low byte of
+// G_GetMaxAgents' `mov eax, n` (unsigned_imm8: at most 255); CG_SetNextSnap's stack offsets are not one-byte patches any more (a34). The
+// rewind pointer array's displacement is a 32-bit field in a cave too (rewind_cave_table).
 constexpr bool byte_sites_hold(std::uint32_t agents) { return agents <= 255; }
 constexpr bool accepted_counts_keep_byte_sites() {
     for (std::uint32_t n = 0; n <= 1024; ++n)
@@ -157,8 +159,19 @@ static_assert(make(100, 0x800).table2_offset() == 0x3F08 + 147 * 0x40 && make(10
 static_assert(make(24, 0x800).frame_extra() == 2272 && make(100, 0x800).frame_extra() == 7136 && make(100, 0x800).frame_extra() % 16 == 0);
 static_assert(make(24, 0x800).frame_extra_b() == 0 && make(100, 0x800).frame_extra_b() == 1216 && make(24, 0x800).frame_extra_c() == 0 &&
               make(100, 0x800).frame_extra_c() == 2432);
+// a34: the three frames at the largest count are the planned maxima (a29 had 15,456 / 3,296 / 6,592 at 230 agents; 232 adds 2 slots).
+static_assert(make(232, 0x800).sentient_slots() == 279 && make(232, 0x800).frame_extra() == frame_cave_max_extra_a && make(232, 0x800).frame_extra() == 15584 &&
+              make(232, 0x800).frame_extra_b() == frame_cave_max_extra_b && make(232, 0x800).frame_extra_b() == 3328 &&
+              make(232, 0x800).frame_extra_c() == frame_cave_max_extra_c && make(232, 0x800).frame_extra_c() == 6656);
 static_assert(make(24, 0x800).queue_bytes() == 0x5550 && make(100, 0x800).queue_rows() == 118 && 18 + 100 == make(100, 0x800).queue_rows());
-static_assert(refuse(100)[0] == 0 && refuse(78)[0] != 0 && refuse(104)[0] != 0 && refuse(96)[0] == 0 && refuse(233)[0] != 0);
+// refuse() accepts exactly the counts 24, 28, ..., 232 (a34: every frame, cave and mask is sized for 232; nothing between 104 and 232 refuses).
+constexpr bool accepts_exactly_the_valid_counts() {
+    for (std::uint32_t n = 0; n <= 1024; ++n)
+        if ((refuse(n)[0] == 0) != (n >= 24 && n <= 232 && (n - 24) % 4 == 0)) return false;
+    return true;
+}
+static_assert(accepts_exactly_the_valid_counts());
+static_assert(refuse(100)[0] == 0 && refuse(232)[0] == 0 && refuse(78)[0] != 0 && refuse(236)[0] != 0 && refuse(233)[0] != 0);
 
 bool installed() noexcept;
 std::uint32_t agents() noexcept;      // 24 when not installed

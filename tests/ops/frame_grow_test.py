@@ -363,6 +363,23 @@ class Refusals(unittest.TestCase):
         body.insert(8, store_rbp(0x1BC))                                    # an 8-byte store at S+0x2BC..0x2C4: straddles 0x2C0
         refused(self, Fn(body=body), 'straddles')
 
+    def test_an_indexed_access_is_accepted_only_inside_a_declared_bounded_region(self):
+        # --bounded-index LO:HI (a34, CG_SetNextSnap): an rsp-indexed access whose base lies inside a region below the array top is
+        # taken as an access that does not move; the plan is the same as without the instruction. Outside every region it is still refused.
+        body = Fn.default_body(0x300)
+        body.insert(8, store_rsp_idx(0x40))
+        base, _ = plan(Fn(), 0x40)
+        doc, img = plan(Fn(body=body), 0x40, bounded=((0x20, 0x80),))
+        self.assertEqual(doc['fields'][0]['role'], base['fields'][0]['role'])
+        self.assertEqual(len(doc['fields']), len(base['fields']))
+        self.assertEqual(doc['bounded_index'], [[0x20, 0x80]])
+        fg.self_check(img, doc)
+        with self.assertRaises(cp.Refusal) as ctx:
+            plan(Fn(body=body), 0x40, bounded=((0x100, 0x200),))
+        self.assertIn('indexed stack access', ' | '.join(ctx.exception.reasons))
+        with self.assertRaises(cp.Refusal):                                  # a region that reaches the array top is not "below" it
+            plan(Fn(body=body), 0x40, bounded=((0x20, 0x2C8),))
+
     def test_rbp_without_a_frame_base(self):
         body = Fn.default_body(0x300)
         del body[3]                                                         # no lea rbp
