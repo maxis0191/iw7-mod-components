@@ -3,7 +3,14 @@
   "checks": [
     {
       "id": "capacity_peer_overlay",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/capacity_peer_overlay_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/capacity_peer_overlay_test.ps1"
+      ]
     },
     {
       "id": "build_voice_foreign_sources",
@@ -414,6 +421,14 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_records_test.py"
+      ]
+    },
+    {
+      "id": "script_variables_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/script_variables_test.py"
       ]
     },
     {

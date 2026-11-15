@@ -259,6 +259,12 @@ foreach ($capFile in @('agent_capacity.cpp', 'agent_capacity.hpp', 'agent_capaci
     if ($AgentCapacity) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$capFile") -Destination $capTarget -Force; $nativeSources += @($capFile) }
     elseif (Test-Path -LiteralPath $capTarget) { Remove-Item -LiteralPath $capTarget -Force }
 }
+# GSC variable pools (script_variables.cpp): inert unless the game starts with -agent-capacity; compiled with the agent capacity.
+foreach ($varFile in @('script_variables.cpp', 'script_variables.hpp', 'script_variables_sites.inc')) {
+    $varTarget = Join-Path $root "src/client/component/$varFile"
+    if ($AgentCapacity) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$varFile") -Destination $varTarget -Force; $nativeSources += @($varFile) }
+    elseif (Test-Path -LiteralPath $varTarget) { Remove-Item -LiteralPath $varTarget -Force }
+}
 # The capacity server refuses a client of another layout (today's official client sends no agentcap key), and the reverse.
 if ($AgentCapacity) { $null = Add-IW7AgentCapPeerOverlay $root }
 # Frame facts (camera and depth with each capture) hang on the debugger's present callback: compiled only with it.

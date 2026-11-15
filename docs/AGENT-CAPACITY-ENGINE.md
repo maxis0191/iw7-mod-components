@@ -339,6 +339,38 @@ reads it from the command line and skips the box), so a fatal error ends the pro
 
 **A fault of the shared native tree found on the way (fixed in Build-Voice):** a first client was built into the tree `C:/w/a33-native` that another branch (a46) had used: its `script_variables.cpp`, left in `src/client/component` by its Compile-Check and its build, was compiled into the client although the checked-out branch does not have it (the client log printed `[script variables] ... 414 fields` with the switch AgentCapacity off, so the run measured two changes). Build-Voice now removes the capacity family (`agent_capacity*`, `script_variables*`) that its own checkout does not own from a kept tree before generating the project (`tests/ops/build_voice_foreign_sources_test.ps1`). Also: `Invoke-EngineLab -BuildOnly` without `-BuildSwitch` builds `ServerModules,IsolatedLab,Debugger` only, a client WITHOUT the component: capacity runs need `-BuildSwitch 'ServerModules,IsolatedLab,Debugger,Perf,AgentCapacity'`.
 
+## GSC variable pools (a46, 15 Nov 2026)
+
+`src/native/script_variables.cpp` (inert unless `-agent-capacity`; `-script-variables-stock` switches it off for an A/B run) moves the five tables of the script variable system
+(docs in the server repository: `docs/SCRIPT-VARIABLES.md`) to component storage above the image and grows them: **children 4 segments x 0x10000 entries (local index 1..0xFFFF, 65,535 usable a
+segment, 262,140 in all; stock 0xA000 / 40,959 / 163,836) and parent ids 0x10000 (ids 0..3 are the heads of the four id lists: 65,532 usable, 16,383 a segment; stock 0xDC00 / 56,316)**.
+Tables: A (`0x14665A180`, u16 a parent id) and B (`0x146675980`, u16 a parent id: both only used by the savegame numbering), P8 (`0x146691180`, 8 bytes an id), P4 (`0x1466FF180`, 4 bytes an id), CH (`0x146756180`).
+The hash buckets (`0x146736180`, 4 x 0x4000 u16) and the counters (`0x14665A134`) stay: the bucket function does not depend on the segment size (`(parent * 0x65 + name) & 0x3FFF + (parent & 3) * 0x4000`),
+its chains only get longer (2.75 entries a bucket at 45 k children a segment).
+
+**Widths, proven before the edit (test `tests/ops/script_variables_test.py`, `test_the_sentinel_scan_of_the_variable_system`).** Every link and index is a u16 loaded with `movzx` or stored with a word
+move; no code of the variable system (0x140BFE000..0x140C11000, 357 functions) compares a link or an id with 0xFFFF or -1 (the only hits: the integer-key serializer `lea eax,[rbx+0x8000]; cmp eax,0xFFFF`, which
+asks whether a value fits a short; the decrements `add ax, 0xFFFF`; AllocVariable's `cmp eax,-1`, an unsigned minimum search; loop counters `add edi,-1`) and no 16-bit compare is followed by a signed jump. So 0xFFFF is
+a valid index and id: the free list of a segment ends by the entry whose next link is 0 (the initialiser writes `(j + 1) & 0xFFFF`, which is 0 for j = 0xFFFF, then clears it). Object key names are `0x40000 + parent id` (8 compares at
+`0x4DC00`), integer keys start at `0x800000`: 0x50000 leaves the range clear.
+
+**What is edited** (`ops/engine/variable_sites.py find`, 5 minutes over the analysed image and its instruction index; `check`, `emit`; result `ops/engine/variable-sites.json`, 414 + 119 + 28 rows, `script_variables_sites.inc`):
+- 414 references to the four moved tables (`ref` rows: a rip displacement, or a displacement from a register that holds a known table address: image base, a table, or the counter block; new value = new target - new base).
+  The code also addresses the tables from each other: `[p8 + 0xC5000]` (children), `[p8 + 0x6E000]` (P4), `[p8 + 0xA5000]` (hash), `[block + 0x80]` and `[block + 0x1B880]` (A, B): rows of the same kind. 4 rows have a base register that is
+  defined on another path than the linear walk (FindVariable's bucket write-back, the move-to-front rows with `rax = P8 + 24 * index`): read by eye, marked `assumed` or in `OVERRIDES`.
+- 119 segment base pairs in 84 functions (game code of the zombies scripts included: 0x1403E1000, 0x140AF49A0, 0x140B46E70, ... call the variable API with a base): `lea r,[s+s*4]` becomes `mov r,s` plus nops of the same
+  length and the `shl r,0xD` after it takes 0x10: base = s * 0x10000.
+- 28 constants: `cmp eax,0xA000` x2 (0x10000), `cmp ..,0xDC00` x5 (0x10000), `cmp ..,0x4DC00` x8 (0x50000), `mov eax,0xCCCCCCCD` x4 (the counter segment `base / 0xA000`; `0x80000000`: hi32(base * 0x80000000) >> 15 = base / 0x10000),
+  `mov r8d,0x37000` x1 and `0x1B800` x2 (memset / copy sizes: 4 and 2 bytes an id), the `lea r,[r+0xC500]` idiom x4 (the distance P8 -> CH divided by 16: the next `lea` multiplies by 3, the access by 8) and `add rax,0x52800` x2 (the distance P8 -> hash buckets in units of 2 bytes: found by the first run, which hung: arrays were not linked into their hash chains).
+- Unrelated and left alone: 10 constants inside the tables' address ranges in obfuscated or misdecoded code (listed under `rejected`, none inside the variable system), the `shl ebx,0xD` of FUN_140B3DD80 (a bitfield), ~18 other `shl 0xD`.
+The VM initialisers have not run when `post_unpack` runs (the stock tables are all zero: checked; if they were formatted, the component calls FUN_140C09280 after the edit). The new tables are formatted by the shipped
+initialisers (FUN_140C09200 for the ids, FUN_140C09280 for the children) with the edited bounds.
+
+**Not covered.** The client fork's own `scr_VarGlob` accessors (`scripting/array.cpp`, `execution.cpp`, `script_value.cpp`: `childVariableValue[id + 0xA000 * (parent & 3)]`, struct sized for 40,960 objects) read the stock address; their layout
+already does not match this exe (objects 0xDC00, not 40,960) whether the Paris mod calls them in a match was not checked; with `-agent-capacity` they would read the old, empty tables.
+
+**Runs (headless, private loopback, a46, client built from this component).** n = 100 `capacity-agents-headless` (stock-table pages inaccessible): PASS 22/22, 9/9, peak alive 78, children 115,578 / parents 30,901 at the peak. n = 232 `capacity-agents-soak-headless` with `alive=200` (25 windows of 30 s): PASS 168/168, 30/30, alive 197 to 200, 232 instances, **children peak 178,433 (fullest segment 45,054 of 65,535), parents peak 52,571 (fullest segment 14,964 of 16,383, 91 %)**, no engine error text. The parent ids are the next limit (the walls: about 215 alive for the parents, about 290 for the children); past it the u16 parent id of the child entry has to widen (docs/SCRIPT-VARIABLES.md in the server repository, "What the full mission target needs").
+
 ## Players on another layout
 
 The server announces `agentcap=agents-<n>` in its info and refuses at connect a client whose layout differs (today's
