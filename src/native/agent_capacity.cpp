@@ -994,8 +994,7 @@ public:
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
             console::info("[agent capacity] entity queue: rows %u at %p, %zu references\n", L.queue_rows(),
                 reinterpret_cast<void*>(entity_queue.data), queue_references);
-            console::info("[agent capacity] wide sites: %zu caves carry %zu 32-bit fields (characters %u, corpses %u / %u, agents %u)
-", wide_caves,
+            console::info("[agent capacity] wide sites: %zu caves carry %zu 32-bit fields (characters %u, corpses %u / %u, agents %u)\n", wide_caves,
                 std::size(wide_sites), L.characters, L.player_corpses, L.agent_corpses, L.agents);
             console::info("[agent capacity] fast-fail sites patched to ud2: %zu\n", fastfail_sites);
             for (const auto& set : frame_sets)
