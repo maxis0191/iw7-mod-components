@@ -165,10 +165,19 @@ public:
             }
             add(s.field, static_cast<std::uint32_t>(fits32(before)), static_cast<std::uint32_t>(fits32(after)));
         }
-        for (const auto& s : imm_sites) add(s.field, imm_stock(s.op), imm_value(s.op));
-        for (const auto& s : lea_sites)
-            for (unsigned i = 0; i < s.length; ++i) add(s.at + i, (s.before >> (8 * i)) & 0xFF, (s.after >> (8 * i)) & 0xFF, 1);
-        for (const auto field : shl_sites) add(field, 0xD, 0x10, 1);
+        // test switch IW7_SCRIPT_VARIABLES_MODE=move: the tables are relocated and every size and stride stays as shipped
+        char mode[16]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_MODE", mode, sizeof(mode));
+        const bool move_only = !std::strcmp(mode, "move");
+        for (const auto& s : imm_sites) {
+            if (move_only && s.op != script_op::idiom16) continue;
+            add(s.field, imm_stock(s.op), imm_value(s.op));
+        }
+        if (!move_only) {
+            for (const auto& s : lea_sites)
+                for (unsigned i = 0; i < s.length; ++i) add(s.at + i, (s.before >> (8 * i)) & 0xFF, (s.after >> (8 * i)) & 0xFF, 1);
+            for (const auto field : shl_sites) add(field, 0xD, 0x10, 1);
+        }
         std::sort(plan.begin(), plan.end(), [](const patch& a, const patch& b) { return a.address < b.address; });
         for (std::size_t i = 1; i < plan.size(); ++i)
             if (plan[i - 1].address + plan[i - 1].width > plan[i].address) throw std::runtime_error("script variables: overlapping patches");
