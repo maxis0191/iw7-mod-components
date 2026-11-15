@@ -1,5 +1,6 @@
 #include <std_include.hpp>
 #include "script_variables.hpp"
+#include "script_var_layout.hpp"
 #include "loader/component_loader.hpp"
 #include "game/game.hpp"
 #include "console/console.hpp"
@@ -201,6 +202,10 @@ public:
                 if (hi > lo && VirtualProtect(reinterpret_cast<void*>(lo), static_cast<SIZE_T>(hi - lo), PAGE_NOACCESS, &old)) poisoned += static_cast<std::size_t>(hi - lo);
             }
         if (initialised) reinterpret_cast<void (*)()>(0x140C09280ull)();   // the stock tables were already formatted: format the new ones
+        // the client project's accessors (scripting::array, entity fields) follow the moved tables; an id outside them is refused and logged once
+        script_var_layout::refusal_log() = [](const char* what) { console::error("[script variables] accessor refused: %s
+", what); };
+        script_var_layout::install({regions[2].storage.data, regions[3].storage.data, regions[4].storage.data, parent_ids, child_entries, true});
         active = true;
         scheduler::once([initialised, poisoned] {
             console::info("[script variables] children %u entries x %u segments (stock %u), parent ids %u (stock %u): %zu fields, %zu constants, %zu segment base pairs, patches %zu, tables A %p P8 %p P4 %p CH %p%s\n",

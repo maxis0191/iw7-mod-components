@@ -1,0 +1,106 @@
+{
+ "schema": "iw7.script-var-accessor-edits/1",
+ "pin": "cfca45b11ee14641945b9a264a95638387f48a4a",
+ "files": [
+  {
+   "path": "src/client/game/scripting/array.cpp",
+   "edits": [
+    {
+     "old": "#include <std_include.hpp>\n",
+     "new": "#include <std_include.hpp>\n#include \"component/script_var_layout.hpp\"\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tconst auto value = game::scr_VarGlob->childVariableValue[this->id_ + 0xA000 * (this->parent_id_ & 3)];\n",
+     "new": "\t\tconst auto* slot = script_var_layout::child<game::ChildVariableValue>(this->parent_id_, this->id_);\n\t\tif (!slot)\n\t\t{\n\t\t\treturn;\n\t\t}\n\n\t\tconst auto value = *slot;\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tconst auto variable = &game::scr_VarGlob->childVariableValue[this->id_ + 0xA000 * (this->parent_id_ & 3)];\n",
+     "new": "\t\tconst auto variable = script_var_layout::child<game::ChildVariableValue>(this->parent_id_, this->id_);\n\t\tif (!variable)\n\t\t{\n\t\t\treturn;\n\t\t}\n\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tconst auto offset = 0xA000 * (this->id_ & 3);\n\t\tauto current = game::scr_VarGlob->objectVariableChildren[this->id_].firstChild;\n\n\t\tfor (auto i = offset + current; current; i = offset + current)\n\t\t{\n\t\t\tconst auto var = game::scr_VarGlob->childVariableValue[i];\n",
+     "new": "\t\tconst auto* children = script_var_layout::object_children<game::ObjectVariableChildren>(this->id_);\n\t\tif (!children)\n\t\t{\n\t\t\treturn result;\n\t\t}\n\n\t\tauto current = children->firstChild;\n\n\t\twhile (current)\n\t\t{\n\t\t\tconst auto* slot = script_var_layout::child<game::ChildVariableValue>(this->id_, current);\n\t\t\tif (!slot)\n\t\t\t{\n\t\t\t\tbreak;\n\t\t\t}\n\n\t\t\tconst auto var = *slot;\n",
+     "count": 1
+    },
+    {
+     "old": "\t\treturn static_cast<int>(game::scr_VarGlob->objectVariableValue[this->id_].u.f.next);\n",
+     "new": "\t\tconst auto* object = script_var_layout::object<game::ObjectVariableValue>(this->id_);\n\t\treturn object ? static_cast<int>(object->u.f.next) : 0;\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tconst auto value = game::scr_VarGlob->childVariableValue[variable_id + 0xA000 * (this->id_ & 3)];\n",
+     "new": "\t\tconst auto* slot = script_var_layout::child<game::ChildVariableValue>(this->id_, variable_id);\n\t\tif (!slot)\n\t\t{\n\t\t\treturn {};\n\t\t}\n\n\t\tconst auto value = *slot;\n",
+     "count": 2
+    },
+    {
+     "old": "\t\tconst auto variable = &game::scr_VarGlob->childVariableValue[variable_id + 0xA000 * (this->id_ & 3)];\n",
+     "new": "\t\tconst auto variable = script_var_layout::child<game::ChildVariableValue>(this->id_, variable_id);\n\t\tif (!variable)\n\t\t{\n\t\t\treturn;\n\t\t}\n",
+     "count": 2
+    }
+   ]
+  },
+  {
+   "path": "src/client/game/scripting/execution.cpp",
+   "edits": [
+    {
+     "old": "#include <std_include.hpp>\n",
+     "new": "#include <std_include.hpp>\n#include \"component/script_var_layout.hpp\"\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tconst auto offset = 0xA000 * (parent_id & 3);\n\t\tconst auto variable_id = game::GetVariable(parent_id, id);\n\t\tconst auto variable = &game::scr_VarGlob->childVariableValue[variable_id + offset];\n",
+     "new": "\t\tconst auto variable_id = game::GetVariable(parent_id, id);\n\t\tconst auto variable = script_var_layout::child<game::ChildVariableValue>(parent_id, variable_id);\n\t\tif (!variable)\n\t\t{\n\t\t\treturn;\n\t\t}\n\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tconst auto offset = 0xA000 * (parent_id & 3);\n\t\tconst auto variable_id = game::FindVariable(parent_id, id);\n",
+     "new": "\t\tconst auto variable_id = game::FindVariable(parent_id, id);\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tconst auto variable = &game::scr_VarGlob->childVariableValue[variable_id + offset];\n\t\tgame::VariableValue value{};\n",
+     "new": "\t\tconst auto variable = script_var_layout::child<game::ChildVariableValue>(parent_id, variable_id);\n\t\tif (!variable)\n\t\t{\n\t\t\treturn {};\n\t\t}\n\n\t\tgame::VariableValue value{};\n",
+     "count": 1
+    }
+   ]
+  },
+  {
+   "path": "src/client/game/scripting/script_value.cpp",
+   "edits": [
+    {
+     "old": "#include <std_include.hpp>\n",
+     "new": "#include <std_include.hpp>\n#include \"component/script_var_layout.hpp\"\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tconst auto type = game::scr_VarGlob->objectVariableValue[id].w.type;\n\n\t\treturn type == game::VAR_ARRAY;\n",
+     "new": "\t\tconst auto* object = script_var_layout::object<game::ObjectVariableValue>(id);\n\n\t\treturn object && object->w.type == game::VAR_ARRAY;\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tconst auto type = game::scr_VarGlob->objectVariableValue[id].w.type;\n\n\t\treturn type == game::VAR_OBJECT;\n",
+     "new": "\t\tconst auto* object = script_var_layout::object<game::ObjectVariableValue>(id);\n\n\t\treturn object && object->w.type == game::VAR_OBJECT;\n",
+     "count": 1
+    }
+   ]
+  },
+  {
+   "path": "src/client/game/scripting/script_value.hpp",
+   "edits": [
+    {
+     "old": "#include \"game/game.hpp\"\n",
+     "new": "#include \"game/game.hpp\"\n#include \"component/script_var_layout.hpp\"\n",
+     "count": 1
+    },
+    {
+     "old": "\t\t\t\tconst auto type = game::scr_VarGlob->objectVariableValue[value.u.uintValue].w.type;\n\t\t\t\treturn var_typename[type];\n",
+     "new": "\t\t\t\tconst auto* object = script_var_layout::object<game::ObjectVariableValue>(value.u.uintValue);\n\t\t\t\treturn object && object->w.type < var_typename.size() ? var_typename[object->w.type] : \"<invalid>\";\n",
+     "count": 1
+    }
+   ]
+  }
+ ]
+}

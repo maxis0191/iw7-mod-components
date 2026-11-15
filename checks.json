@@ -424,6 +424,14 @@
       ]
     },
     {
+      "id": "script_var_accessor_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/script_var_accessor_test.py"
+      ]
+    },
+    {
       "id": "script_variables_test",
       "command": [
         "python",
