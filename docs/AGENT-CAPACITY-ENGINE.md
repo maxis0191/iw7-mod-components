@@ -26,7 +26,8 @@ built on: the RE map `engine-zombie-limits.md` (notes folder) and the tools belo
 | server AI loops over characters (cmp reg, 42 x 0x3F8) | 42 | C (7 of 8; see open) | 0x140C22AE3 ... 0x140C481FE |
 | reserved scriptable parts (an agent's model takes 31) | 2,048 | default max(8,192, 2,048 + 32 n + 1,024 rounded up to 1,024): 9,216 at 164, 11,264 at 232 (`-scriptable-parts <m>` raises it, at most 65,535) | sub_140BF7770, sub_140BF96A0, sub_140BF9A70, sub_140BFA3D0, sub_140BF6F20 |
 | replicated scriptable state (a zombie's scriptable takes 8 of the budget's units) | 1,016 dwords | 1,016 + 8 (n - 24): 1,624 at 100, 2,136 at 164, 2,680 at 232 | see "Replicated state budget" (205 fields, five relocated blocks) |
-| reserved scriptable RECORDS (MapEnts scriptable block, map data) | 200 (cp_zmb) | R(n) = max(200, n + 56): 288 at 232; the block is rebuilt at load | see "Reserved scriptable records" (a42), detour of FUN_1403B8610 |
+| reserved scriptable RECORDS (MapEnts scriptable block, map data) | 200 (cp_zmb) | R(n) = max(200, n + 56): 288 at 232; the block is rebuilt at load, and every record index the zone stores moves with it | see "Reserved scriptable records" (a42) and "Stored record indexes" (a44), detour of FUN_1403B8610 |
+| entity handle head table of the sentients (u16 a sentient slot, 0x145C64BA0; `ENT_HANDLE_COUNT` nodes are a separate 4,096 list) | 71 entries, the object at 0x145C64D00 follows | sentient_slots() entries in its own block | a44: FUN_140AE99F0 (clear, size 0x8E), FUN_140AE9A80, FUN_140AE9BE0 (3 `lea`), see "Sentient handle head table" |
 
 Every field is compared with its shipped value before anything is written; one difference and the game stops with the
 address (nothing is half-applied). Relocated tables sit within 2 GB of the image (the code reaches them by 32-bit
@@ -170,6 +171,50 @@ Run a42-h2 (headless soak, n = 232, alive 200): the move happened at the first l
 parts_slots 11,264) and the soak climbed to 186 instances (24 stock + about 162 zombies, parts 4,873, state 1,406 of 2,680) before the next limit stopped the
 server at 195 s; so the record wall (176 alive) was not yet reached and the move is not stressed past 200 records.
 
+### Stored record indexes (a44, 15 Nov 2026): the move remaps what the zone data names by index
+
+**The cause of the a42 move's client crash, proven.** The p3a client dump (access violation, read 0x18, 0x140BD8BDB = FUN_140BD8B40 + 0x9B, `[record + slot * 0x98 + 0x80]` NULL) holds the record pointer in
+r14 = 0x12ADB79500; the client log of the load that crashed (the frontend, "scriptable records 58 -> 288 reserved (230 added), total 290 ... block 12ADB72840") names the block:
+(0x12ADB79500 - 0x12ADB72840) / 0x1D0 = **60**, the frontend's old total (58 reserved + 2 fixed records). The stack of the crashing thread holds `maps/cp/cp_frontend.d3dbsp`:
+the crash is the frontend zone load (the client's return to the frontend after the game), not the game map. The index is the u16 at +0x4C of a 0x70 byte part entry of the MapEnts
+(FUN_140A87F00 type 4 -> FUN_140BD8B40(slot, part, u16 +0x4C, u16 +0x4E)); the engine reads a value at or above the total as "no record" and queues the event (FUN_140BD8B40, first
+branch). The frontend stores 60 in all its 64 part entries (cp_zmb: 523 in its 64 events and the fixed record indexes 200 and up in its 108 links). The a42 move raised the frontend's total
+from 60 to 290, so the stored 60 became record 60, an inserted blank whose client state block is NULL. The p3b (d = 162) crash zip of 21:12:29 was the same crash at the frontend
+reload after the plan had ended; nobody had opened it.
+
+**Field table** (the zone loaders FUN_1409FA490 / FUN_1409ED900 / FUN_140A41800 and every caller of the record accessors were read; the record index reaches an accessor from the entity
+(`entity + 0x78` / `cent + 0x778` = index + 1, set at init: both sides shift alike), a loop counter, or this one stored field):
+
+| struct | offset | width | meaning | after the move |
+|---|---|---|---|---|
+| MapEnts S | +0x170 / +0x172 | u16 | entry count of part group 0 / 1 | read |
+| MapEnts S | +0x178 / +0x180 | ptr | arrays of 0x70 byte part entries (group = bit 0 of the part handle) | read |
+| part entry | +0x00 | u32 | type: 3 = link to a record, 4 = event on a record (others: sound, fx) | read |
+| part entry, type 3 and 4 | **+0x4C** | **u16** | **record index as authored**; a value at or above the total is "no record" | **>= old reserved: + d** (values above the old total too: they stay "no record"); below it stays; a value that cannot take + d inside a u16 stays |
+| part entry, type 4 | +0x4E | u16 | event index (not a record index) | unchanged |
+
+Read and not record indexes: S+0x188..0x1A0 (0x48 byte entries: positions), S+0x1A8..0x1C0 (0x38 byte runtime state), S+0x1D8 / 0x1E0 (built at run time), S+0x1F0..0x218, S+0x228,
+S+0x238, S+0x310.., S+0x338; inside a record (0x1D0): the definition pointer, the entity copy at +0x20..0x38, the sub-blocks +0x80 / +0x118 / +0x1B0 / +0x1C0 / +0x1C8 (part lists, names).
+Tables indexed by record index are filled by the init loops after the move (server B table 0x1460AA3D2, client 0x14602E282, 4,064 entries).
+
+**The remap** (agent_capacity.cpp 4c, `remap_part_records`, same load step as the move): every type 3 and 4 entry of both groups with a value >= the old reserved count takes + d (the hpp
+function `remapped_record_index`). One log line a zone (`map ents remap: map <name>, d, entries, shifted, kept, ...`) says what was found: frontend (d = 230 at n = 232): 64 events, all
+60, shifted beyond the records 64, "left as authored these would have named an inserted blank 64 times and turned from no record into a record 64 times"; cp_zmb (d = 88): 108 links shifted to
+fixed records, 64 events (523) shifted beyond the records; (d = 20 at 164: same entries). Self checks in the same line: `entries naming a fixed record without a client state block`
+(the exact condition of the crash; 0 on every load) and `stale pointers into the old array` (a scan of the zone block that holds the old array, at most 1 GB, the new block and S: one
+value was found at +0x10 of a copy of the block header, the zone stream's own copy that the loader read S + 0x240 from; it is rewritten like S, so none points at the old array).
+`-agent-capacity-no-record-remap` (or the variable `IW7_AGENT_CAPACITY_NO_RECORD_REMAP=1`) leaves the data as authored: it reproduces the a43 fault on purpose.
+Tests: tests/ops/agent_capacity_records_test.py (the remap against the move for every n 24..232, on cp_zmb's and the frontend's numbers; the dump arithmetic).
+
+### Sentient handle head table (a44)
+
+The m1 run at n = 232 (and p3a before it) crashed the SERVER at the map restart that follows "GAMEENDED" (the lab joins, the match ends, `Restarting map`, the client joins again): read of 0xFFFF...
+at 0x140AE9ACD in FUN_140AE9A80 (the free of a sentient: it walks the handle list `head = u16 [0x145C64BA0 + 2 * slot]` and clears every node). The stock table holds 71 entries (the clear
+FUN_140AE99F0 writes 0x8E bytes); the next object, at 0x145C64D00, sits right behind it, so from slot 176 on the table reads and writes that object. The dump's sentient pointer was slot 178
+((0x150496F50 - 0x150490010) / 0xA0), the head it read 0x13FF = the neighbour's field at 0x145C64D04 (and the same registers in both dumps). With 164 agents slots up to 205 existed but the
+neighbour held zero at that moment, which is why p3b passed. The component moves the table to its own block of `sentient_slots()` u16 entries (four sites: 3 `lea`, the clear size), tests/ops/agent_capacity_sites_test.py checks them against the shipped bytes.
+The node list behind it (`ENT_HANDLE_COUNT exceeded - increase size`, FUN_140AE9860, 4,096 nodes at 0x145C53B90) was not measured at 232 agents.
+
 ## Scriptable stream buffer pools (a43, 15 Nov 2026)
 
 Run a42-h2 (n = 232, 200 alive) stopped at 195 s with ERR_DROP "ScriptableSv_LinkReservedScriptable: Could not allocate Stream Buffer of 148 bytes". Every reserved
@@ -216,14 +261,10 @@ The budget meter reads `pool_caps` (from the initialisers' code fields) and `poo
 | p2b, p2c, p2d, p2f, p2g | n = 232, alive 200 (p2b, p2c, p2d) and 190 (p2f, p2g) | all five stop at 196 to 198 instances (the stock pools stopped the same plan at 186): the server thread blocks forever in a message box, game time stops, the main thread keeps looping; next limit below |
 
 | p3b (network lab, joined client) | n = 164, alive 132, soak 1,084 s, `netlab-capacity-soak` | PASS 148/148, 41/41 (join 58 s): 164 instances, 151 blocks (class 0: 36, class 1: 1, class 2: 115); client 108 to 110 fps mean (1 % low 41 to 47), server 26 to 29 ms mean (p99 34 to 39), snapshot entities max 665 of 768; a record move of 20 happened (200 -> 220) |
-| p3a (network lab) | n = 232, alive 150 | PLAN_CRASH: the CLIENT crashed 18 s into the game (access violation, read 0x18 at 0x140BD8BDB in FUN_140BD8B40: a record whose client definition pointer `[record + 0x80 + slot * 0x98]` is NULL); see "A fault of the record move" |
+| p3a (network lab) | n = 232, alive 150 | PLAN_CRASH: two crashes in one run: the SERVER at the map restart after "GAMEENDED" (FUN_140AE9A80, the sentient handle head table, fixed in a44) and then the client in the frontend zone (FUN_140BD8B40, record 60 = the frontend's old total: a stored "no record" turned into a blank record, fixed in a44); the first reading of this row ("the CLIENT crashed 18 s into the game") was wrong: the client had left the server 350 ms after the first join, the lab's own restart followed. See "Stored record indexes" |
 | p3c (network lab, `netlab-rewind-fire`, -AgentCapacity 232) | frontend zone | the client crashed while loading `common_cp`: the move also ran on the frontend's MapEnts ("scriptable records 58 -> 288 reserved (230 added), total 290") |
 
-**A fault of the record move (a42), found by the network run of this work; the cause is read from the code, not proven by a counter-test.** Part event entries of the map's MapEnts block (`[S + 0x178 + type * 8]` tables of 0x70 byte entries; FUN_140A87F00 reads them, types 3 and 4 hand a u16 record index at +0x4C / +0x4E to FUN_140BD8AD0 / FUN_140BD8B40)
-store record indices as authored. `link_mapents_stub` inserts `d` reserved copies of record 0 at index 200 and shifts every fixed record by `d`, so a stored index below the shift now names an inserted copy whose
-client state (`+0x80 + slot * 0x98`) was never set: the client dereferences NULL. With d = 20 (n = 164) the client ran 1,084 s without the crash (p3b); with d = 88 (n = 232) the client crashed 18 s into the game (p3a).
-The server does not read these tables, which is why the a42 headless runs did not show it. The move also runs on every MapEnts of every zone (the frontend's has 58 reserved records), not only the game map's. A correct growth keeps the stored indices valid: remap the part event tables of the moved block at load (the
-u16 fields above, for every index at or past the old reserved count), or put the added reserved records after the stock ones with a second range in the allocator and in everything that walks [0, reserved). Not done in this change.
+**A fault of the record move (a42), found by the network run of a43 and fixed in a44:** the cause and the field table are in "Stored record indexes". What a43 wrote here (a stored index below the shift names an inserted copy; "remap the part event tables ... not done in this change") was right in kind and incomplete: the proven crash is the stored value 60 that means "no record" and became a record when the total grew.
 
 **Next limit: the script variable pool of the GSC VM, "Exceeded maximum number of script variables (children)".** A frozen server (p2f, 196 instances) had its server thread in
 `MessageBoxW` (FUN_140D57730 called by the fatal-error function FUN_140D34180(format) at 0x140D3420E, the text sits in that frame; string 0x14150DD98 is used by the allocators FUN_140C045B0 and
@@ -234,6 +275,27 @@ the id space (`< 0x40000`, `< 0x4DC00`, `>= 0x800000` in FUN_140C05760): growing
 the 0x20000 byte clear at 0x146736180 and the user functions FUN_140C04990, FUN_140C053A0, FUN_140C09280, FUN_140C08C30 ...). Not designed yet.
 The headless runner hid it for 35 minutes (the message box blocks the server thread on a hidden desktop; no engine error text, no dump): a lab server now starts with `+unattended` (FUN_140D57730
 reads it from the command line and skips the box), so a fatal error ends the process at once (p2g: exit -1 after 207 s, verdict `GAME_EXITED` at the step instead of a 2,130 s wait).
+
+
+### Runs of a44 (15 Nov 2026, private loopback; lab clients built from components 618e4d38 = the remap, cc20b5c4 = + the sentient table, edc8976c = the final head)
+
+| run | shape | result |
+|---|---|---|
+| m1 (618e4d38) | `netlab-rewind-fire`, n = 232, joined client | the SERVER crashed at the map restart (FUN_140AE9A80, sentient slot 178, same registers as a43-p3a); the client went through the frontend zone twice with the remap and did not crash. The plan's expectation "engine_agents eq 100" was a plan fault at 232 (now a plan parameter `capacity`) |
+| m1b (cc20b5c4) | same, `-PlanSet capacity=232` | PASS 32/32, 5/5 (join 57.9 s, 296 s in all); no crash zip; frontend, cp_zmb and frontend loads each remapped |
+| m1c (edc8976c, final head) | same | PASS 32/32, 5/5 (join 71.8 s, 317 s); the stale scan reads 0 in the zone block and 1 rewritten copy of the block header |
+| m2 (cc20b5c4) | `netlab-capacity-soak`, n = 232, alive 150 | CLIENT crash 0x140553367 in FUN_1405532D0, read 0x810 (a record pointer 0): the per-client list of the character sound code holds 140 entries (0x144B473C0, count 0x144B47820), `FUN_1405527E0` appends without a bound, the loop was at entry 141 (rsi = rdi = r12 = 0x8D) with 150 alive agents. Not this change: see "Next limits" |
+| m2c (edc8976c) | same, alive 130 (`capacity=232,alive=130,amin=126,until_s=300,session_s=1800`) | PASS 148/148, 41/41 (join 70.5 s, 1,075 s in all); peak alive 130, 162 instances, 110 blocks of class 2, parts 4,133 of 11,264, state 1,216 of 2,680; entities in one client snapshot at most 673 of 768 (never capped), 541 at 24; server 26.9 to 31.9 ms mean (p99 41 to 46) with 130 alive, 8.5 ms at 24; client 98 to 105 fps mean in the first two windows, 55 to 66 in the middle ones, 127 at the end: other sessions (this work's m3 runs, another agent's client) ran on the machine, so these frame rates are not a clean measure; motion: the stock-speed 24 stay at jerk 0.020 to 0.051, the 108 agents of the high group 0.021 to 0.051, stutter 0.5 to 3.5 % |
+| m3 (618e4d38), m3b (cc20b5c4) | `capacity-agents-soak-headless`, n = 164, alive 132 | PASS 168/168, 30/30 both (d = 20: the move and the remap on cp_zmb) |
+| m3c (edc8976c) | same | PASS 168/168, 30/30 (peak alive 132, 164 instances, 117 blocks of class 2, parts 4,119, state 1,215 of 2,136) |
+| ab2 (cc20b5c4, `IW7_AGENT_CAPACITY_NO_RECORD_REMAP=1`) | `netlab-rewind-fire`, n = 232 | the switch worked (log: "NOT remapped (switch)"), the run PASSED 32/32 and the client did not crash: the A/B did NOT reproduce the a43 crash in this one run. The part events apply when the frontend's emitters are in range, which depends on the scene the client is in; a43-p3a, p3b and p3c all crashed there with the record 60 of the frontend block (p3b: (0x12B2326400 - 0x12B231F740) / 0x1D0 = 60, p3c: r14 0x135634D00 minus 27,840 = a 64 aligned block) |
+
+**Next limits found by these runs (not changed):**
+
+1. The per-client list of looping character sounds in the client's sound code: 140 entries (`0x144B473C0`, count `0x144B47820`, `FUN_1405527E0` adds without a check; parallel tables of 140 x 2 entries `0x144B49270`, `0x144B4A3F0`, `0x144B4A850`, `0x144B4ACB0`, `0x144B4B110`; update loop FUN_1405532D0 has stack arrays of 140 (`local_b38[140]`, `local_908[2240]`), stop function FUN_1405531A0). Alive agents above about 140 crash the client (m2: 150 alive). The change needed: relocate the tables to `characters` entries and grow the frame of FUN_1405532D0, or bound the append.
+2. `ENT_HANDLE_COUNT` (4,096 nodes at `0x145C53B90`, FUN_140AE9860), not measured at 232 agents.
+3. The GSC child variable pool (a43), unchanged.
+
 
 
 ## Players on another layout
