@@ -205,7 +205,26 @@ it exceeds the blocks). Guard bytes around every pool are checked every 500 ms w
 row against the shipped bytes, every new value re-decoded, the heads one array behind the bases, no overlap with another patch).
 The budget meter reads `pool_caps` (from the initialisers' code fields) and `pool_used` (the engine's counters) and writes `pool_peak` in the summary.
 
-RESULTS_PLACEHOLDER
+### Runs (15 Nov 2026, headless `capacity-agents-headless` / `capacity-agents-soak-headless`, n = 100 / 232, meter `pool_used` per class)
+
+| run | what | result |
+|---|---|---|
+| m1 | old client acc703af (stock pools), n = 164, alive 132, 28 min | PASS 168/168, 30/30; at 164 instances 134 blocks in use at the busiest sample (class 0: 23, class 2: 64 = full, class 3: 32 = full, class 4: 15), per-class peaks 41 / 0 / 64 / 32 / 22: a zombie's 148 byte state takes one block of the 256 class, then the 512 and 3,072 classes; the 28 part type a 16 byte block |
+| p1, p2 (first build 9913b2ea) | n = 100 / 232 | server crash 27 s after the start, access violation (read 0) at 0x140BE1917 (alloc popping the head of the relocated class 0): the CRT initialisers had already run, the new heads were null. Fix: `chain_pool` (commit 350d5d9c) |
+| p1b | n = 100, 78 alive | PASS 22/22, 9/9, peak alive 78; 103 instances, 79 blocks (class 0: 18, class 2: 61) |
+| p2e | n = 232, alive 150, soak | PASS 168/168, 30/30; 182 instances, class 2 holds 130 blocks (stock 64), state 1,360 of 2,680, parts 4,686 of 11,264 |
+| p2b, p2c, p2d, p2f, p2g | n = 232, alive 200 (p2b, p2c, p2d) and 190 (p2f, p2g) | all five stop at 196 to 198 instances (the stock pools stopped the same plan at 186): the server thread blocks forever in a message box, game time stops, the main thread keeps looping; next limit below |
+
+**Next limit: the script variable pool of the GSC VM, "Exceeded maximum number of script variables (children)".** A frozen server (p2f, 196 instances) had its server thread in
+`MessageBoxW` (FUN_140D57730 called by the fatal-error function FUN_140D34180(format) at 0x140D3420E, the text sits in that frame; string 0x14150DD98 is used by the allocators FUN_140C045B0 and
+FUN_140C05760): the child variable pool `DAT_146756180` (entries of 0x18 bytes, u16 prev/next at +0/+2, type byte at +0xA; the free list head of a segment is entry 0's +2) is
+**4 segments of 0xA000 entries** (init FUN_140C09280, loop `iVar6 < 4`; u16 indices inside a segment; per segment in-use counters int[4] at 0x14665A134) and segment 1 was empty (free head 0,
+40,959 of 40,960 used; the others 40.2k to 40.3k). A healthy server at 150 alive stood at 37.7k to 38.0k a segment (92 %), so the pool is nearly full with 150 zombies and full a few dozen later; the script variable ids partition
+the id space (`< 0x40000`, `< 0x4DC00`, `>= 0x800000` in FUN_140C05760): growing it is a job on the variable id layout (more segments or larger ones, every `* 0xA000` / `/ 0xA000` site,
+the 0x20000 byte clear at 0x146736180 and the user functions FUN_140C04990, FUN_140C053A0, FUN_140C09280, FUN_140C08C30 ...). Not designed yet.
+The headless runner hid it for 35 minutes (the message box blocks the server thread on a hidden desktop; no engine error text, no dump): a lab server now starts with `+unattended` (FUN_140D57730
+reads it from the command line and skips the box), so a fatal error ends the process at once (p2g: exit -1 after 207 s, verdict `GAME_EXITED` at the step instead of a 2,130 s wait).
+
 
 ## Players on another layout
 
