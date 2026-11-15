@@ -221,6 +221,7 @@
     "src/native/agent_capacity.hpp",
     "src/native/agent_capacity_caves.inc",
     "src/native/agent_capacity_caves_rewind.inc",
+    "src/native/agent_capacity_caves_wide.inc",
     "src/native/agent_capacity_frame_cave.inc",
     "src/native/agent_capacity_frame_cave_added0.inc",
     "src/native/agent_capacity_frame_fields.inc",
