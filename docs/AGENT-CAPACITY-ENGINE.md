@@ -73,6 +73,13 @@ the network-lab plan (the joined client fires no shot in a plan run) does that. 
 logs the first call of `FUN_140415bf0` with the store address against the layout's pointer array, and the call count every 20 s while it changes; both runs
 armed it and logged no call.
 
+**Measured with the a34 build (client 11941D80, components 8c307604; 15 Nov 2026).** At 100 agents: `capacity-agents-headless` PASS 22/22 (9/9, peak 78) and
+`netlab-rewind-fire` PASS 32/32 (5/5, rewind store seen executing: character 20, store 26D5F4CB8 inside the layout array), line `agents=100 characters=118
+map_start=134 parts=8192 patches=1289 caves=92` (a33: 1252 patches, 86 caves; the difference is the mask caves, the new probe cave and the CG_SetNextSnap frame
+grow). A plan-time start at 232 agents on a headless server (no zombies, stopped after the plan's 3 seconds): accepted, `agents=232 characters=250 map_start=266
+parts=8192 patches=1284 caves=92`, frame grow lines 15,584 / 3,328 / 6,656 / 32 bytes. NOT measured: any run with zombies or a client above 100 agents; whether the
+indexed-access and rbp assumptions of the CG_SetNextSnap plan hold when the snapshot code runs with more than 100 characters (it runs at 100 in w4).
+
 ## Players on another layout
 
 The server announces `agentcap=agents-<n>` in its info and refuses at connect a client whose layout differs (today's
