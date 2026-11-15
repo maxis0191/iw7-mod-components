@@ -171,6 +171,24 @@ static_assert(reserved_records(24) == 200 && reserved_records(100) == 200 && res
 static_assert(scriptable_parts(24) == 8192 && scriptable_parts(100) == 8192 && scriptable_parts(164) == 9216 && scriptable_parts(232) == 11264 &&
               scriptable_parts(232) <= 0xFFFF);
 
+// Scriptable stream buffer pools (a43): every reserved scriptable instance takes one stream buffer of [def + 0x40] bytes (148 for a zombie) from
+// five static pools, 16, 64, 256, 512 and 3072 byte blocks, stock 128, 128, 64, 32, 32 blocks (FUN_140BE1770 alloc: the smallest class that holds the
+// request, then the larger ones while that list is empty; "Could not allocate Stream Buffer of %i bytes" when all are). The server has one pool a
+// class, the client two slots a class. An instance holds at most one buffer and there is one reserved record for each instance, so a class that holds
+// as many blocks as there are records can never run out: 512 blocks a class (the part state tables hold at most 512 instances too), 1.97 MB a pool set,
+// never fewer than the reserved records of the map (R(n)).
+constexpr std::uint32_t stream_pool_classes = 5, stream_pool_slots = 2, stream_pool_min_blocks = 512;
+constexpr std::uint32_t stream_pool_class_bytes[stream_pool_classes] = {16, 64, 256, 512, 3072};
+constexpr std::uint32_t stock_stream_pool_blocks[stream_pool_classes] = {128, 128, 64, 32, 32};
+constexpr std::uint32_t stream_pool_blocks(std::uint32_t agents) {
+    const auto records = reserved_records(agents);
+    return records > stream_pool_min_blocks ? records : stream_pool_min_blocks;
+}
+constexpr std::uint32_t stream_pool_array_bytes(std::uint32_t agents, unsigned cls) { return stream_pool_blocks(agents) * stream_pool_class_bytes[cls]; }
+constexpr std::uint32_t stream_pool_stride(std::uint32_t agents, unsigned cls) { return stream_pool_array_bytes(agents, cls) + 8; }   // array, then the 8 byte list head
+static_assert(stream_pool_blocks(24) == 512 && stream_pool_blocks(232) == 512 && stream_pool_array_bytes(232, 4) == 512 * 3072 &&
+              stream_pool_stride(232, 0) == 512 * 16 + 8);
+
 constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
     layout l{};
     l.agents = agents; l.characters = players + agents;
