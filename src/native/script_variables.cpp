@@ -180,13 +180,23 @@ public:
                 if (!restored) std::terminate();
                 throw std::runtime_error("script variables: a code write failed; everything restored");
             }
+        // test switch (IW7_SCRIPT_VARIABLES_POISON=1): the pages of the stock tables become inaccessible, so a path the edit missed faults at the first access
+        char poison[8]{};
+        std::size_t poisoned{};
+        if (GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_POISON", poison, sizeof(poison)) && poison[0] == '1')
+            for (const auto& r : regions) {
+                const auto lo = (r.stock + 4095) & ~4095ull, hi = (r.stock + r.stock_bytes) & ~4095ull;
+                DWORD old{};
+                if (hi > lo && VirtualProtect(reinterpret_cast<void*>(lo), static_cast<SIZE_T>(hi - lo), PAGE_NOACCESS, &old)) poisoned += static_cast<std::size_t>(hi - lo);
+            }
         if (initialised) reinterpret_cast<void (*)()>(0x140C09280ull)();   // the stock tables were already formatted: format the new ones
         active = true;
-        scheduler::once([initialised] {
+        scheduler::once([initialised, poisoned] {
             console::info("[script variables] children %u entries x %u segments (stock %u), parent ids %u (stock %u): %zu fields, %zu constants, %zu segment base pairs, patches %zu, tables A %p P8 %p P4 %p CH %p%s\n",
                 child_entries, segments, stock_child_entries, parent_ids, stock_parent_ids, std::size(ref_sites), std::size(imm_sites), std::size(shl_sites), plan.size(),
                 reinterpret_cast<void*>(regions[0].storage.data), reinterpret_cast<void*>(regions[2].storage.data), reinterpret_cast<void*>(regions[3].storage.data),
                 reinterpret_cast<void*>(regions[4].storage.data), initialised ? " (stock tables were already formatted: initialiser re-run)" : "");
+            if (poisoned) console::info("[script variables] poison: %zu bytes of the stock tables are inaccessible\n", poisoned);
         }, scheduler::main);
         scheduler::loop(check_guards, scheduler::main, 500ms);
     }
