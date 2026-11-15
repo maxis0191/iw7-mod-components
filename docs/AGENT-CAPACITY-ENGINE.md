@@ -117,6 +117,22 @@ checkpoint of a grown block would be incomplete; a zombies match never runs it) 
 not the instance budget. **A separate limit remains: reserved scriptable RECORDS** (`[[0x145D5F9D8] + 0x244]` = 200 on cp_zmb, 0x1D0 bytes each in
 map-loaded memory): 24 stock + one a live agent, so about 176 agents alive at most; 177 or more raise "Could not allocate a reserved scriptable ... limit is 200".
 
+**Measured (components 0c9452c5, client E9DC32601FA39839, 15 Nov 2026; runs in `IW7-Runtime/capacity/runs/r1..r4`):**
+
+| Run | What | Result |
+|---|---|---|
+| r1 | `capacity-agents-headless`, 100 agents | PASS 22/22, 9/9, peak alive 78; state 771 of 1,624 dwords at the peak (140 fixed + stock + 78 zombies), 103 instances |
+| r2 | `netlab-rewind-fire`, 100 agents, one joined client | PASS 32/32, 5/5 |
+| r3 | 12-minute headless soak, 164 agents, alive 132 | PASS 168/168, 30/30, no ERR_DROP, no crash: peak alive 132, alive minimum 129 to 132 in the 25 windows, 164 instances at the peak (the old wall was 136), state 1,220 of 2,136 dwords, parts 4,137 of 8,192 |
+| r4 | 12-minute network soak, 164 agents, alive 132, one joined client | PASS 148/148, 41/41, six frames answered, no engine error, no script error, no crash; entities in one client's snapshot at most 666 (cap 768, never reached), the client 113 to 115 fps mean (1 % low 43 to 49) against 153 at 24, the server 23 to 26 ms a frame mean with the client joined (p99 30 to 35) against 9 at 24, 9 to 10 kB/s down |
+
+A first r3 (r3a: 29/30) failed only `u132.agents ge 132` (130 alive): the once-only quota raise of `cap_hold` was eaten by 6 deaths of the climb (plan fault, fixed in the
+plan library, server PR). The first build of this change stopped the server at "Loading zone" before the map started: **a constant folded from a sum is not an `imul`**.
+`sub_140C68880` (the server hunk size) adds the one 0x17E8 block of `SV_AllocSnapshotBuffers` as part of 0x2CEB00 / 0x6CEB00 (0x2CD300 + the block aligned to 0x80, 0x1800);
+the scan for 0x17E8 never saw it. Found by reading the size function against the allocation function; when a block is allocated, find the function that sums the
+allocations. Not measured: the shutdown guard itself (no run raises the ERR_DROP any more; the cave is decoded offline and was built into every client of r1 to r4 without a
+fault), n between 100 and 164 (the sites test covers every count 24..232 offline), anything above 164, a second client.
+
 **Shutdown guard (stock bug).** `sub_140BF5730` (the recursive walker of 0xB0-byte part records called for every instance by the shutdown free) compares
 `byte [state buffer + part]` for type 2 records at +0xD2 (`cmp byte [rdx+rcx],bpl`, 0x140BF5802); the buffer is allocated by `FUN_140BE1770` AFTER the
 replicated-parts check, so an instance that failed the check has a null buffer and the walk crashed at address 0x78 (runs d2, d2b). A cave
