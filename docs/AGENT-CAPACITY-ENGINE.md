@@ -215,6 +215,16 @@ The budget meter reads `pool_caps` (from the initialisers' code fields) and `poo
 | p2e | n = 232, alive 150, soak | PASS 168/168, 30/30; 182 instances, class 2 holds 130 blocks (stock 64), state 1,360 of 2,680, parts 4,686 of 11,264 |
 | p2b, p2c, p2d, p2f, p2g | n = 232, alive 200 (p2b, p2c, p2d) and 190 (p2f, p2g) | all five stop at 196 to 198 instances (the stock pools stopped the same plan at 186): the server thread blocks forever in a message box, game time stops, the main thread keeps looping; next limit below |
 
+| p3b (network lab, joined client) | n = 164, alive 132, soak 1,084 s, `netlab-capacity-soak` | PASS 148/148, 41/41 (join 58 s): 164 instances, 151 blocks (class 0: 36, class 1: 1, class 2: 115); client 108 to 110 fps mean (1 % low 41 to 47), server 26 to 29 ms mean (p99 34 to 39), snapshot entities max 665 of 768; a record move of 20 happened (200 -> 220) |
+| p3a (network lab) | n = 232, alive 150 | PLAN_CRASH: the CLIENT crashed 18 s into the game (access violation, read 0x18 at 0x140BD8BDB in FUN_140BD8B40: a record whose client definition pointer `[record + 0x80 + slot * 0x98]` is NULL); see "A fault of the record move" |
+| p3c (network lab, `netlab-rewind-fire`, -AgentCapacity 232) | frontend zone | the client crashed while loading `common_cp`: the move also ran on the frontend's MapEnts ("scriptable records 58 -> 288 reserved (230 added), total 290") |
+
+**A fault of the record move (a42), found by the network run of this work; the cause is read from the code, not proven by a counter-test.** Part event entries of the map's MapEnts block (`[S + 0x178 + type * 8]` tables of 0x70 byte entries; FUN_140A87F00 reads them, types 3 and 4 hand a u16 record index at +0x4C / +0x4E to FUN_140BD8AD0 / FUN_140BD8B40)
+store record indices as authored. `link_mapents_stub` inserts `d` reserved copies of record 0 at index 200 and shifts every fixed record by `d`, so a stored index below the shift now names an inserted copy whose
+client state (`+0x80 + slot * 0x98`) was never set: the client dereferences NULL. With d = 20 (n = 164) the client ran 1,084 s without the crash (p3b); with d = 88 (n = 232) the client crashed 18 s into the game (p3a).
+The server does not read these tables, which is why the a42 headless runs did not show it. The move also runs on every MapEnts of every zone (the frontend's has 58 reserved records), not only the game map's. A correct growth keeps the stored indices valid: remap the part event tables of the moved block at load (the
+u16 fields above, for every index at or past the old reserved count), or put the added reserved records after the stock ones with a second range in the allocator and in everything that walks [0, reserved). Not done in this change.
+
 **Next limit: the script variable pool of the GSC VM, "Exceeded maximum number of script variables (children)".** A frozen server (p2f, 196 instances) had its server thread in
 `MessageBoxW` (FUN_140D57730 called by the fatal-error function FUN_140D34180(format) at 0x140D3420E, the text sits in that frame; string 0x14150DD98 is used by the allocators FUN_140C045B0 and
 FUN_140C05760): the child variable pool `DAT_146756180` (entries of 0x18 bytes, u16 prev/next at +0/+2, type byte at +0xA; the free list head of a segment is entry 0's +2) is
