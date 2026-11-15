@@ -199,6 +199,29 @@ constexpr std::uint32_t stream_pool_stride(std::uint32_t agents, unsigned cls) {
 static_assert(stream_pool_blocks(24) == 512 && stream_pool_blocks(232) == 512 && stream_pool_array_bytes(232, 4) == 512 * 3072 &&
               stream_pool_stride(232, 0) == 512 * 16 + 8);
 
+// The client's character proxy list (a47; the "140 entry character sound list"): one entry for every client entity (centity) of eType 1 (player), 18
+// (agent), 20 (actor) or 6 with the flag word 1, active in the snapshot (FUN_1405532D0 and FUN_140552DF0 drop the others), each with two physics
+// character proxies. FUN_1405527E0 appends with no bound; its four callers (FUN_1402E7230, FUN_14086CD50) ask FUN_140552DB0 first, so an entry is a
+// DISTINCT centity, and a client has entity numbers 0..0x7FE (0x7FF is "none": the entity masks of CG_SetNextSnap are 2,048 bits, FUN_14086FBA0). The
+// 16 corpse entities between the characters and the map entities (8 player corpses eType 2, 8 agent corpses eType 19: layout::make) are not in the
+// filter, so the list never holds more than 0x7FF - 16 = 2,031 entries whatever the agent count (the count only decides which entity numbers are
+// characters; 232 agents + 18 players are 250 of them). Of those, the players and agents fit the characters, the actors the 38 entry pool of
+// FUN_14044ED70, and the eType 6 entities are bounded by the entity numbers only: no tighter hard maximum exists, so the size is the entity space.
+// The lookup FUN_140552D20 steps five entries at a time (the stock 140 is a multiple of 5): entries are rounded up to a multiple of 5.
+constexpr std::uint32_t stock_proxy_entries = 140, proxy_entity_numbers = 0x7FF, proxy_corpse_entities = 16, proxy_actor_pool = 38;
+constexpr std::uint32_t proxy_list_most = proxy_entity_numbers - proxy_corpse_entities;
+constexpr std::uint32_t proxy_list_entries = (proxy_list_most + 4) / 5 * 5;
+// Bytes an entry takes across the eight tables: centity pointer 8, two 0x18 transforms 0x30, two physics objects twice 16, four tables of two u32.
+constexpr std::uint32_t proxy_entry_bytes = 8 + 0x30 + 16 + 16 + 4 * 8;
+// FUN_1405532D0 keeps u32 selected[140] (0xC0..0x2F0) and a 140 * 16 byte array (0x2F0..0xBB0) under its cookie: the frame grows at the cookie by the
+// bytes the second array gains, and the second array moves up by the bytes the first one gains (three `lea` of its base).
+constexpr std::uint32_t proxy_selected_bytes = (4 * proxy_list_entries + 15) & ~15u;
+constexpr std::uint32_t proxy_frame_shift = proxy_selected_bytes - 4 * stock_proxy_entries;
+constexpr std::uint32_t proxy_frame_extra = proxy_frame_shift + 16 * (proxy_list_entries - stock_proxy_entries);
+static_assert(proxy_list_entries == 2035 && proxy_list_entries % 5 == 0 && proxy_list_entries >= proxy_list_most && proxy_frame_shift % 16 == 0 &&
+              proxy_frame_extra % 16 == 0 && proxy_frame_shift == 7584 && proxy_frame_extra == 37904 && 4 * stock_proxy_entries == 0x230 &&
+              proxy_entry_bytes == 120);
+
 constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
     layout l{};
     l.agents = agents; l.characters = players + agents;
@@ -206,6 +229,14 @@ constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
     l.parts = parts;
     return l;
 }
+
+// The proxy list holds every character and the actor pool for every accepted agent count (the corpse entities are not listed).
+constexpr bool proxy_list_holds_the_characters() {
+    for (std::uint32_t n = 24; n <= 232; n += 4)
+        if (make(n, 0x800).characters + proxy_actor_pool > proxy_list_most || make(n, 0x800).map_start - make(n, 0x800).characters != proxy_corpse_entities) return false;
+    return true;
+}
+static_assert(proxy_list_holds_the_characters());
 
 // A one-byte field the CPU sign-extends (a disp8, an imm8 of `83 /r`, `6B`, `48 83`) holds -128..127; add1s (the .cpp) refuses the rest.
 constexpr bool fits_signed_byte(std::int64_t value) { return value >= -128 && value <= 127; }
