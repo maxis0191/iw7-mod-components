@@ -30,7 +30,7 @@ std::atomic_bool active{};
 std::string contract = "24";
 
 struct buffer { std::uintptr_t data{}; std::size_t bytes{}; };
-buffer agent_pool, sentient_pool, table8, table20, parts_pool, entity_queue;
+buffer agent_pool, sentient_pool, sentient_refs, table8, table20, parts_pool, entity_queue;
 buffer state_a, state_c, state_client, state_x;   // replicated scriptable state (section 4b)
 buffer pool_server[stream_pool_classes], pool_client[stream_pool_classes];   // scriptable stream buffer pools (section 4d)
 std::size_t queue_references{};
@@ -185,6 +185,11 @@ void plan_agents() {
     add(0x140AF6331, 0x2C60, l.sentient_bytes());
     rip(0x140AF6324, 0x145C6F5A0, sentient_pool.data);
     rip(0x140AF6F2A, 0x145C6F5A0, sentient_pool.data);
+    // The head table of the entity handle lists, one u16 for each sentient (a44): stock 71 entries (the clear FUN_140AE99F0 writes 0x8E bytes);
+    // FUN_140AE9A80 (the free of a sentient) and FUN_140AE9BE0 index it by the sentient slot. Behind it, at 0x145C64D00, sits another object:
+    // from slot 176 on the stock table reads and writes that object (a44-m1: the free of slot 178 read 0x13FF there and followed it, ERR at 0x140AE9ACD).
+    add(0x140AE99FB, 0x8E, l.sentient_slots() * 2);
+    for (auto f : {0x140AE99F5ull, 0x140AE9A97ull, 0x140AE9BF0ull}) rip(f, 0x145C64BA0, sentient_refs.data);
     // server character information and the per-player data after it: one object, grown together
     add(0x140B1F4FE, 0x7A0D8, l.server_size()); add(0x140449EE9, 0x7A0D8, l.server_size());
     add(0x140449EAB, 0x7A0D0, l.server_size() - 8);
@@ -1104,7 +1109,7 @@ void plan_caves() {
 }
 
 void check_guards() {
-    std::vector<buffer> checked{agent_pool, sentient_pool, table8, table20, parts_pool, entity_queue, state_a, state_c, state_client, state_x, ai_pools[0].storage, ai_pools[1].storage};
+    std::vector<buffer> checked{agent_pool, sentient_pool, sentient_refs, table8, table20, parts_pool, entity_queue, state_a, state_c, state_client, state_x, ai_pools[0].storage, ai_pools[1].storage};
     checked.insert(checked.end(), std::begin(pool_server), std::end(pool_server));
     checked.insert(checked.end(), std::begin(pool_client), std::end(pool_client));
     for (const auto& pool : checked)
@@ -1215,24 +1220,24 @@ std::uint32_t count_unlinked_targets(const std::uint8_t* s, const std::uint8_t* 
 
 // Values that point into [lo, hi) in the committed memory around `where` (the zone's block of the old record array), at most 1 GB of it, and in
 // the `n` bytes at `extra`; the move leaves none: every user reads the array through S, and a record holding such a pointer would be broken.
-struct pointer_scan { std::uint64_t in_region{}, in_extra{}; const void* region{}; std::size_t scanned{}; };
+struct pointer_scan { std::uint64_t in_region{}, in_extra{}; const void* region{}; std::size_t scanned{}; const std::uint64_t* first{}; };
 pointer_scan scan_pointers_into(const std::uint8_t* lo, const std::uint8_t* hi, const void* where, const void* extra, std::size_t n) {
     pointer_scan result{};
     const auto from = reinterpret_cast<std::uintptr_t>(lo), to = reinterpret_cast<std::uintptr_t>(hi);
-    auto count = [&](const void* start, std::size_t bytes) {
+    auto count = [&](const void* start, std::size_t bytes, bool remember) {
         std::uint64_t found{};
         const auto* q = reinterpret_cast<const std::uint64_t*>((reinterpret_cast<std::uintptr_t>(start) + 7) & ~std::uintptr_t(7));
         const auto* end = reinterpret_cast<const std::uint64_t*>(reinterpret_cast<std::uintptr_t>(start) + bytes);
-        for (; q + 1 <= end; ++q) found += (*q >= from && *q < to);
+        for (; q + 1 <= end; ++q) if (*q >= from && *q < to) { if (remember && !found) result.first = q; ++found; }
         return found;
     };
     MEMORY_BASIC_INFORMATION info{};
     if (VirtualQuery(where, &info, sizeof(info)) == sizeof(info) && info.State == MEM_COMMIT && !(info.Protect & (PAGE_GUARD | PAGE_NOACCESS))) {
         result.region = info.BaseAddress;
         result.scanned = std::min<std::size_t>(info.RegionSize, 1ull << 30);
-        result.in_region = count(info.BaseAddress, result.scanned);
+        result.in_region = count(info.BaseAddress, result.scanned, true);
     }
-    if (extra && n) result.in_extra = count(extra, n);
+    if (extra && n) result.in_extra = count(extra, n, false);
     return result;
 }
 
@@ -1313,6 +1318,14 @@ std::uintptr_t link_mapents_stub(void** pointer) {
     }
     console::info("[agent capacity] map ents: scriptable records %u -> %u reserved (%u added), total %u, server end %u, block %p\n", reserved - added, reserved,
         added, total, server_end, block);
+    if (scan.first) {   // where the one stray value sits, to name it
+        const auto offset = static_cast<unsigned long long>(reinterpret_cast<const std::uint8_t*>(scan.first) - reinterpret_cast<const std::uint8_t*>(scan.region));
+        const auto before_q = offset >= 16 ? static_cast<unsigned long long>(scan.first[-2]) : 0ull, after_q = static_cast<unsigned long long>(scan.first[1]);
+        console::info("[agent capacity] map ents remap: first stale value %llX at %p (zone block + %llX; old array %p, the value is array + %llX), qwords around it: %llX %llX [%llX] %llX\n",
+            static_cast<unsigned long long>(*scan.first), static_cast<const void*>(scan.first), offset, static_cast<const void*>(old_array),
+            static_cast<unsigned long long>(*scan.first - reinterpret_cast<std::uintptr_t>(old_array)), before_q,
+            offset >= 8 ? static_cast<unsigned long long>(scan.first[-1]) : 0ull, static_cast<unsigned long long>(*scan.first), after_q);
+    }
     console::info("[agent capacity] map ents remap: map %s, S %p, %s, d %u, part entries %u + %u, record links %u, record events %u; indexes shifted %u to a record and %u beyond the "
         "records (values beyond: %u seen, first %u %u %u %u), kept %u below the reserved range and %u too large; left as authored these would have named an inserted blank %u times "
         "and turned from no record into a record %u times; other types with a value %u; entries naming a fixed record without a client state block: %u; stale pointers into the old array: %llu in the zone block %p (%zu bytes), %llu in the new "
@@ -1334,6 +1347,7 @@ public:
         L = make(agents, parts);
         agent_pool = reserve(L.agent_bytes());
         sentient_pool = reserve(L.sentient_bytes());
+        sentient_refs = reserve(L.sentient_slots() * 2);
         table8 = reserve(L.table8_bytes());
         table20 = reserve(L.table20_bytes());
         parts_pool = reserve(L.parts * 4);
