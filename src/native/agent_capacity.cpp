@@ -910,21 +910,21 @@ void plan_caves() {
     unsigned found[std::size(wide_sites)]{};
     for (const auto& c : wide_cave_table) {
         auto bytes = c.cave_bytes;
-        for (std::size_t k2 = 0; k2 < std::size(wide_sites); ++k2) {
-            const std::uint32_t magic = wide_placeholder_base | wide_sites[k2].row;
+        for (std::size_t wi = 0; wi < std::size(wide_sites); ++wi) {
+            const std::uint32_t magic = wide_placeholder_base | wide_sites[wi].row;
             for (std::size_t at = 0; at + 4 <= bytes.size(); ++at) {
                 std::uint32_t here{};
                 std::memcpy(&here, bytes.data() + at, 4);
                 if (here != magic) continue;
-                const auto value = static_cast<std::int32_t>(L.wide_value(wide_sites[k2].what));
+                const auto value = static_cast<std::int32_t>(L.wide_value(wide_sites[wi].what));
                 std::memcpy(bytes.data() + at, &value, 4);
-                ++found[k2];
+                ++found[wi];
             }
         }
         cave(c.window_start, c.old_bytes, bytes, c.fixups, c.retargets);
     }
-    for (std::size_t k2 = 0; k2 < std::size(wide_sites); ++k2)
-        if (found[k2] != 1) throw std::runtime_error("agent capacity: a wide site has no placeholder in its cave (or more than one)");
+    for (std::size_t wi = 0; wi < std::size(wide_sites); ++wi)
+        if (found[wi] != 1) throw std::runtime_error("agent capacity: a wide site has no placeholder in its cave (or more than one)");
     wide_caves = wide_cave_table.size();
     if (fault) console::info("[agent capacity] cave fault switch: mask %X (ud2 instead of the instruction)\n", fault);
     plan_frames();
