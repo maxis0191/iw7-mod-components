@@ -45,6 +45,15 @@ cave at start, at every count). Counts above 100 are refused by `refuse()` and, 
 104 for the agent-corpse sites, 112 for the character and player-corpse sites, 128 for the agent-count sites and the two imul
 immediates, 148 for the client snapshot buffer site).
 
+Proof state of the rewind store: the cave is decoded for every allowed count by `agent_capacity_sites_test.py` (same instruction as the shipped one, only the
+displacement differs, equal to what the planner re-encodes), and the headless plan `capacity-agents-headless.json` passes 22/22 with 51 caves
+installed (50 before). The store itself has NOT been seen executing: `FUN_140415bf0` runs only while a lag-compensated action has the archive's rewind
+active (read statically, never seen running: `FUN_140100d80`, a weapon fire of a client with a command time in the past, calls the archive's vtable +0x88 and so on to the animation of the
+rewound characters, `FUN_140594df0` -> `FUN_140594eb0` -> `FUN_140414df0` -> `FUN_140415120` -> `FUN_140415bf0`), and neither the headless plan (an engine bot) nor
+the network-lab plan (the joined client fires no shot in a plan run) does that. The lab-only probe (`IW7_AGENT_CAPACITY_REWIND_PROBE=1` or `-agent-capacity-rewind-probe`)
+logs the first call of `FUN_140415bf0` with the store address against the layout's pointer array, and the call count every 20 s while it changes; both runs
+armed it and logged no call.
+
 ## Players on another layout
 
 The server announces `agentcap=agents-<n>` in its info and refuses at connect a client whose layout differs (today's
