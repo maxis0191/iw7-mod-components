@@ -170,14 +170,42 @@ Run a42-h2 (headless soak, n = 232, alive 200): the move happened at the first l
 parts_slots 11,264) and the soak climbed to 186 instances (24 stock + about 162 zombies, parts 4,873, state 1,406 of 2,680) before the next limit stopped the
 server at 195 s; so the record wall (176 alive) was not yet reached and the move is not stressed past 200 records.
 
-**Next limit: the scriptable stream buffer pools (ERR_DROP "ScriptableSv_LinkReservedScriptable: Could not allocate Stream Buffer of 148 bytes").** Every reserved instance
-copies `def+0x40` bytes of state into a block taken by FUN_140BE1770 (alloc, called by FUN_140BF96A0 at 0x140BF99CC) from five static server pools (BSS) of fixed blocks; free
-is FUN_140BE1E50 and the class of a pointer is found from its address range in FUN_140BE1B20. Classes (size limits `0x14150B900`: 16, 64, 256, 512, 3,072): 16 B x 128
-[0x1460A83B0, 0x1460A8BB0), 64 B x 128 [0x146041310, 0x146043310), 256 B x 64 [0x146043330, 0x146047330), 512 B x 32 [0x14608C390, 0x146090390), 3,072 B x 32
-[0x1460903A0, 0x1460A83A0); the free lists are built by static initialisers (0x14001A3D0, 0x14001A410, 0x14001A450, 0x14001A490, 0x14001A4D0) and the in-use counters are at
-0x146043318 + 4 * class. A request takes its class (FUN_140BE1970) and, when that list is empty, the next larger ones: a 148 byte state (a zombie's scriptable) can use 64 + 32 +
-32 = 128 blocks. The client has its own per-slot pools (the `param_1 = 0` forms at 0x14604F350.., stride 0x808 / 0x2008 ..., from the decompile, not run). The 128-block count is read from the code, not measured: the instance count at the error (186) fits it only with the smaller zombie states in the classes below. Growing it is a relocation of five pools plus the
-range tests of FUN_140BE1B20, not one constant (a free of a pointer outside the ranges would find no class).
+## Scriptable stream buffer pools (a43, 15 Nov 2026)
+
+Run a42-h2 (n = 232, 200 alive) stopped at 195 s with ERR_DROP "ScriptableSv_LinkReservedScriptable: Could not allocate Stream Buffer of 148 bytes". Every reserved
+instance copies `def+0x40` bytes of state into one block taken by FUN_140BE1770 (alloc; ScriptableSv_LinkReservedScriptable calls it at 0x140BF99CC with the size in r8d) from five
+static pools: block sizes 16, 64, 256, 512, 3,072, stock counts 128, 128, 64, 32, 32. A pool is an array of blocks and, right behind it, an 8 byte free-list head (an empty list holds
+the head's own address; allocation pops the head). FUN_140BE1970 picks the smallest class whose limit (u32[5] at 0x14150B900) holds the request and whose list is not empty, so a
+148 byte state takes the 256 class and then the 512 and 3,072 classes: 64 + 32 + 32 = 128 blocks. FUN_140BE1E50 frees (the class is found by FUN_140BE1B20, address range tests; the
+alignment tests are relative to the array base). Static initialisers (CRT) chain every array: 0x14001A3D0 + 0x40 * class (server), 0x14001A240.. (client); they have already run when the component patches (run a43-p1: the relocated heads were still null and the first allocation read address 0 at 0x140BE1917), so the component chains the new arrays itself (`chain_pool`: block i points at block i + 1, the last at the head, the head at block 0) and edits the initialisers' fields only so that the meter and any re-run see the new arrays.
+
+Table (the server's arrays are BSS between 0x146041310 and 0x1460A8BE0, in-use counters int at 0x146043318 + 4 * class and, for the client, 0x1460A8BB8 + 4 * (slot + 2 * class) stay in place):
+
+| class | block | stock | server array, head | client slot 0 array, head | client stride |
+|---|---|---|---|---|---|
+| 0 | 16 | 128 | 0x1460A83B0, 0x1460A8BB0 | 0x14604F350, 0x14604FB50 | 0x808 |
+| 1 | 64 | 128 | 0x146041310, 0x146043310 | 0x146088380, 0x14608A380 | 0x2008 |
+| 2 | 256 | 64 | 0x146043330, 0x146047330 | 0x146047340, 0x14604B340 | 0x4008 |
+| 3 | 512 | 32 | 0x14608C390, 0x146090390 | 0x146080370, 0x146084370 | 0x4008 |
+| 4 | 3,072 | 32 | 0x1460903A0, 0x1460A83A0 | 0x146050360, 0x146068360 | 0x18008 |
+
+**The client runs the same allocator** (flag 0, slot index 0 or 1: its two static state blocks A1 and A2 each own a set of pools; callers FUN_140BD1450, FUN_140BD91A0, free
+FUN_140BD93D0), so the component relocates both. No pool index leaves the pool: nothing is a bitmap, a u8 or u16 index or a network field; a pool is qword links and address range
+tests, counters are int. So no width limits the count. Instruction fields: `ops/engine/pool_sites.py` decodes the two code ranges that hold them (the initialisers at 0x14001A240..0x14001A510,
+which belong to no function, and the four allocator functions 0x140BE1770..0x140BE1FF8) into 132 rows (`pool-sites.json`, `agent_capacity_pools.inc`): 62 server head, 10 server
+base, 20 client head and 5 client base rip references, 25 strides (`imul` / `add` imm32) and 10 array sizes (`lea` disp32, some negative). The instruction index of the whole image has no
+other field that names the region in live code (32-bit constants that look like addresses, e.g. `mov r9d, 0x60588F0` in 150 functions, and data decoded as code, are not references), and no
+aligned qword of any section points into it.
+
+The component (agent_capacity.cpp 4d, `plan_pools`) allocates every pool with `reserve()` (within 2 GB of the image) and edits the 132 fields in place: a base to the new base, a head to
+new base + array, a stride to array + 8, an array size to the new array bytes. Size: `stream_pool_blocks(n) = max(512, R(n))` blocks in EVERY class (512 x (16 + 64 + 256 + 512 +
+3,072) = 1.97 MB a set; the server one set, the client two slots). Reasoning, not a margin: an instance holds at most one buffer and there is one reserved record for each instance
+(R(n) = 288 at 232), so no class can run out; the part state tables hold at most 512 instances as well. The map's reserved record count is checked at load (a fatal error when
+it exceeds the blocks). Guard bytes around every pool are checked every 500 ms with the other relocated tables. Tests: tests/ops/agent_capacity_pools_test.py (every n 24..232, every
+row against the shipped bytes, every new value re-decoded, the heads one array behind the bases, no overlap with another patch).
+The budget meter reads `pool_caps` (from the initialisers' code fields) and `pool_used` (the engine's counters) and writes `pool_peak` in the summary.
+
+RESULTS_PLACEHOLDER
 
 ## Players on another layout
 

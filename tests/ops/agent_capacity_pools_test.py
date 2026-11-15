@@ -127,6 +127,8 @@ class PoolRows(unittest.TestCase):
                      'pool_op::ref_server_head: rip(s.field, static_cast<std::uintptr_t>(s.stock), pool_server[s.cls].data + array, s.tail)',
                      'pool_op::ref_client_head: rip(s.field, static_cast<std::uintptr_t>(s.stock), pool_client[s.cls].data + array, s.tail)',
                      'pool_op::pool_stride: add(s.field, before, stream_pool_stride(agents, s.cls))',
+                     'chain_pool(pool_server[c].data, stream_pool_blocks(agents), stream_pool_class_bytes[c]);',
+                     'chain_pool(pool_client[c].data + static_cast<std::uintptr_t>(slot) * stream_pool_stride(agents, c)',
                      'exceed the %u blocks of each stream buffer class'):
             self.assertIn(text, self.cpp)
         body = self.cpp.split('void plan_pools()')[1].split('// ---- 3d.')[0]
@@ -154,6 +156,29 @@ class PoolRows(unittest.TestCase):
         spans.sort()
         clash = [(hex(a[0]), a[2], hex(b[0]), b[2]) for a, b in zip(spans, spans[1:]) if a[1] > b[0]]
         self.assertEqual(clash, [])
+
+
+class ChainMirror(unittest.TestCase):
+    def test_the_chain_is_what_the_static_initialiser_builds(self):
+        """chain_pool (agent_capacity.cpp) mirrored on a byte array: block i -> block i + 1, last -> head, head -> block 0; alloc pops, free pushes."""
+        size, blocks = 256, 6
+        mem = {}
+        array, head = 0x1000, 0x1000 + blocks * size
+        nxt = head
+        for i in range(blocks - 1, -1, -1):
+            mem[array + i * size] = nxt
+            nxt = array + i * size
+        mem[head] = nxt
+        seen, p = [], mem[head]
+        while p != head:
+            seen.append(p)
+            p = mem[p]
+        self.assertEqual(seen, [array + i * size for i in range(blocks)])
+        # alloc: pop the head, and an empty list holds its own address
+        for _ in range(blocks):
+            p = mem[head]
+            mem[head] = mem[p]
+        self.assertEqual(mem[head], head)
 
 
 class PoolCode(unittest.TestCase):
