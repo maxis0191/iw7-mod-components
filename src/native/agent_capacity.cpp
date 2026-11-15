@@ -822,8 +822,7 @@ std::atomic<unsigned long long> rewind_probe_calls{}, rewind_probe_reported{};
 void rewind_probe_log_count() {
     const auto calls = rewind_probe_calls.load();
     if (calls == rewind_probe_reported.exchange(calls)) return;
-    console::info("[agent capacity] rewind probe: FUN_140415bf0 called %llu times
-", calls);
+    console::info("[agent capacity] rewind probe: FUN_140415bf0 called %llu times\n", calls);
 }
 void rewind_probe_stub(void* a, std::int32_t* index, std::uint8_t* base, void* d) {
     const auto call = ++rewind_probe_calls;
@@ -841,15 +840,13 @@ void rewind_probe_stub(void* a, std::int32_t* index, std::uint8_t* base, void* d
         const auto archive = *reinterpret_cast<const std::uintptr_t*>(0x143C98468ull);
         const auto array = archive + L.rewind_base() + L.rewind_pointers();
         console::info("[agent capacity] rewind probe: first call, base (rdi) %llX, character (rbx) %lld, store address %llX = base + %X + 8 x character; "
-                      "layout array %llX (archive %llX + rewind_base %X + rewind_pointers %X), inside it: %s, base matches rewind_base: %s
-",
+                      "layout array %llX (archive %llX + rewind_base %X + rewind_pointers %X), inside it: %s, base matches rewind_base: %s\n",
             static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(base)), static_cast<long long>(slot),
             static_cast<unsigned long long>(target), L.rewind_pointers(), static_cast<unsigned long long>(array),
             static_cast<unsigned long long>(archive), L.rewind_base(), L.rewind_pointers(),
             (target >= array && target < array + L.characters * 8ull) ? "yes" : "NO",
             reinterpret_cast<std::uintptr_t>(base) == archive + L.rewind_base() ? "yes" : "NO");
-        console::info("[agent capacity] rewind probe: quadword at the store address %llX before, %llX after; at the stock address %llX (base + 0x40 + 8 x character) %llX before, %llX after
-",
+        console::info("[agent capacity] rewind probe: quadword at the store address %llX before, %llX after; at the stock address %llX (base + 0x40 + 8 x character) %llX before, %llX after\n",
             target_before, *reinterpret_cast<const unsigned long long*>(target), static_cast<unsigned long long>(stock), stock_before,
             *reinterpret_cast<const unsigned long long*>(stock));
     }
@@ -863,12 +860,10 @@ void plan_rewind_probe() {
     if (!on) return;
     rewind_probe_hook.create(0x140415BF0, rewind_probe_stub);   // queued: main applies every queued hook after post_unpack
     command::add("agent_capacity_rewind_probe", [](const command::params&) {
-        console::info("[agent capacity] rewind probe: FUN_140415bf0 called %llu times
-", rewind_probe_calls.load());
+        console::info("[agent capacity] rewind probe: FUN_140415bf0 called %llu times\n", rewind_probe_calls.load());
     });
     scheduler::loop(rewind_probe_log_count, scheduler::main, 20s);
-    console::info("[agent capacity] rewind probe armed (FUN_140415bf0)
-");
+    console::info("[agent capacity] rewind probe armed (FUN_140415bf0)\n");
 }
 
 void plan_caves() {
