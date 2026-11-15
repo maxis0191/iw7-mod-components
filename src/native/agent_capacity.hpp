@@ -145,6 +145,32 @@ constexpr bool state_budget_holds() {
 }
 static_assert(state_budget_holds());
 
+// Reserved scriptable RECORDS (a41, a42): the map's MapEnts block (S + 0x240: total, reserved, server end; array at +0x250, 0x1D0 bytes a
+// record) holds 200 reserved records on cp_zmb, 24 stock instances plus one for every agent alive. A zombie's scriptable needs one, so
+// the block is rebuilt at load with R(n) = max(200, n + 56) reserved records: the 24 stock instances, n agents and 32 spare.
+constexpr std::uint32_t stock_reserved_records = 200, reserved_record_margin = 32, record_bytes = 0x1D0;
+constexpr std::uint32_t reserved_records(std::uint32_t agents) {
+    const auto need = stock_agents + agents + reserved_record_margin;
+    return need > stock_reserved_records ? need : stock_reserved_records;
+}
+// The block after the move: [0, reserved) the old reserved records, `added` copies of reserved record 0, then the old records from
+// `reserved` on. `old_index` is the index of the old record that new record `index` is (record 0 stands for each added one), for a
+// block of `total` old records; the indexes of the fixed records shift by `added`.
+constexpr std::uint32_t moved_record_source(std::uint32_t index, std::uint32_t reserved, std::uint32_t added) {
+    return index < reserved ? index : (index < reserved + added ? 0 : index - added);
+}
+// Reserved scriptable part links (u16 links, at most 65,535): about 31 for each agent's scriptable (a41; measured 4,137 at 132 alive) on top
+// of the stock 2,048 and a margin of 1,024, rounded up to 1,024, never below the 8,192 of a39.
+constexpr std::uint32_t scriptable_parts(std::uint32_t agents) {
+    const auto need = stock_parts + 32 * agents + 1024;
+    const auto rounded = (need + 1023) / 1024 * 1024;
+    return rounded > 8192 ? rounded : 8192;
+}
+static_assert(reserved_records(24) == 200 && reserved_records(100) == 200 && reserved_records(144) == 200 && reserved_records(148) == 204 &&
+              reserved_records(232) == 288);
+static_assert(scriptable_parts(24) == 8192 && scriptable_parts(100) == 8192 && scriptable_parts(164) == 9216 && scriptable_parts(232) == 11264 &&
+              scriptable_parts(232) <= 0xFFFF);
+
 constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
     layout l{};
     l.agents = agents; l.characters = players + agents;

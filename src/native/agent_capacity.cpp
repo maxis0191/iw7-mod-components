@@ -8,6 +8,8 @@
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <shellapi.h>
+#include <intrin.h>
+#include <malloc.h>
 #include <algorithm>
 #include <atomic>
 #include <cstring>
@@ -1059,12 +1061,99 @@ void check_guards() {
             }
 }
 
+// ---- 4c. reserved scriptable records (a41, a42) -------------------------------------------------------------------------------
+// The map's MapEnts asset (type 0x1b, the pool header S that the clipmap's mapEnts pointer 0x145D5F9D8 points to) holds the scriptable block at
+// S + 0x240: +0 total records (cp_zmb 523), +4 reserved records [0, 200), +8 end of the server records (414), +0x10 the record array (0x1D0
+// bytes a record, zone memory). The engine never writes these; every one of the ~130 users reads them through the global fresh. The values
+// are data of the compiled zone, so the block is rebuilt right after the zone's link step FUN_1403B8610 (called with a pointer to the
+// MapEnts pointer, by FUN_140A35E50 for the asset itself and by FUN_1409FAF00 for the clipmap's field): `added` copies of reserved record 0
+// are inserted after the reserved ones, and the three counts and the array pointer change. Client and server both run this (same zone).
+// Guards, logged once at the first load: (a) the stock reserved records are byte-identical (so a copy of record 0 is the zone's own blank
+// record), (b) the callers of the link step, (c) the width of the entity-state field +0x78 (record index + 1 of a fixed scriptable,
+// FUN_140BF85C0; entity type 6) read from the net field list at run time: the new total must fit it. Docs: AGENT-CAPACITY-ENGINE.md.
+utils::hook::detour link_mapents_hook;
+std::uint8_t* record_block{};
+const void* record_block_owner{};
+unsigned link_calls{};
+
+// Width in bits of the descriptor with offset 0x78 in the entity-state field list of entity type 6 (list table 0x141BB3B20, 16 bytes a list:
+// pointer, 62 descriptors of {offset, bits, flag}); 0 when not found.
+unsigned entity_index_bits() {
+    const auto list = *reinterpret_cast<const std::uintptr_t*>(0x141BB3B20ull + 16 * 6);
+    if (list < image_base || list + 62 * 12 > image_end) return 0;
+    const auto* d = reinterpret_cast<const std::int32_t*>(list);
+    for (unsigned i = 0; i < 62; ++i)
+        if (d[3 * i] == 0x78) return d[3 * i + 1] > 0 ? static_cast<unsigned>(d[3 * i + 1]) : 0;
+    return 0;
+}
+
+std::uintptr_t link_mapents_stub(void** pointer) {
+    const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+    const auto result = link_mapents_hook.invoke<std::uintptr_t>(pointer);
+    const auto first = link_calls++ < 4;
+    if (first) console::info("[agent capacity] map ents link: call %u from %p, map ents %p\n", link_calls, reinterpret_cast<void*>(caller),
+        pointer ? *pointer : nullptr);
+    if (!pointer || !*pointer || !active) return result;
+    auto* s = reinterpret_cast<std::uint8_t*>(*pointer);
+    auto& total = *reinterpret_cast<std::uint32_t*>(s + 0x240);
+    auto& reserved = *reinterpret_cast<std::uint32_t*>(s + 0x244);
+    auto& server_end = *reinterpret_cast<std::uint32_t*>(s + 0x248);
+    auto& array = *reinterpret_cast<std::uint8_t**>(s + 0x250);
+    if (record_block && array != record_block) { _aligned_free(record_block); record_block = nullptr; record_block_owner = nullptr; }
+    if (array == record_block) return result;   // already moved (the clipmap's call after the asset's, or a reload of the same S)
+    const auto want = reserved_records(L.agents);
+    if (!reserved || reserved > total || server_end < reserved || server_end > total || !array) {
+        console::info("[agent capacity] map ents: unexpected scriptable block (total %u reserved %u server end %u array %p): not touched\n", total, reserved,
+            server_end, array);
+        return result;
+    }
+    static bool logged{};
+    {
+        unsigned differing = 0;
+        std::string offsets;
+        for (unsigned i = 1; i < reserved; ++i) {
+            if (!std::memcmp(array, array + i * record_bytes, record_bytes)) continue;
+            ++differing;
+            for (unsigned b = 0; b < record_bytes && offsets.size() < 120; ++b)
+                if (array[b] != array[i * record_bytes + b]) offsets += " " + std::to_string(i) + ":" + std::to_string(b);
+        }
+        if (!logged) console::info("[agent capacity] map ents guard a: %u of %u reserved records differ from record 0%s\n", differing, reserved, offsets.c_str());
+        const auto bits = entity_index_bits();
+        const auto top = static_cast<std::uint64_t>(total) + (want > reserved ? want - reserved : 0);
+        if (!logged) console::info("[agent capacity] map ents guard c: entity field 0x78 is %u bits, largest index+1 %llu (limit %llu)\n", bits,
+            static_cast<unsigned long long>(top), bits ? (1ull << bits) - 1 : 0ull);
+        if (!logged) console::info("[agent capacity] map ents: total %u reserved %u server end %u, wanted reserved %u\n", total, reserved, server_end, want);
+        logged = true;
+        if (differing) { game::Com_Error(game::ERR_FATAL, "agent capacity: stock reserved scriptable records differ (guard a)"); return result; }
+        if (want > reserved && (!bits || top > (1ull << bits) - 1)) {
+            game::Com_Error(game::ERR_FATAL, "agent capacity: the moved scriptable records do not fit the entity field 0x78 (guard c)");
+            return result;
+        }
+    }
+    if (reserved >= want) { if (first) console::info("[agent capacity] map ents: %u reserved records are enough for %u agents (skipped)\n", reserved, L.agents); return result; }
+    const auto added = want - reserved;
+    const auto count = total + added;
+    auto* block = static_cast<std::uint8_t*>(_aligned_malloc(static_cast<std::size_t>(count) * record_bytes, 64));
+    if (!block) { game::Com_Error(game::ERR_FATAL, "agent capacity: no memory for %u scriptable records", count); return result; }
+    for (unsigned i = 0; i < count; ++i)
+        std::memcpy(block + static_cast<std::size_t>(i) * record_bytes, array + static_cast<std::size_t>(moved_record_source(i, reserved, added)) * record_bytes, record_bytes);
+    record_block = block;
+    record_block_owner = s;
+    array = block;
+    reserved += added;
+    server_end += added;
+    total = count;
+    console::info("[agent capacity] map ents: scriptable records %u -> %u reserved (%u added), total %u, server end %u, block %p\n", reserved - added, reserved,
+        added, total, server_end, block);
+    return result;
+}
+
 class component final : public component_interface {
 public:
     void post_unpack() override {
         const auto agents = parse_count(L"-agent-capacity", 100);
         if (!agents) return;
-        const auto parts = std::max<std::uint32_t>(parse_count(L"-scriptable-parts", 0), 8192);
+        const auto parts = std::max<std::uint32_t>(parse_count(L"-scriptable-parts", 0), scriptable_parts(agents));
         if (const auto why = refuse(agents); *why) throw std::runtime_error(std::string("agent capacity refused: ") + why);
         if (parts > 0xFFFF) throw std::runtime_error("agent capacity: parts are u16 links (at most 65535)");
         L = make(agents, parts);
@@ -1103,6 +1192,7 @@ public:
             }
         init_record_hook.create(0x140C2A080, init_record_stub);   // queued: main applies every queued hook after post_unpack
         death_reset_hook.create(0x140C3BDD0, death_reset_stub);
+        link_mapents_hook.create(0x1403B8610, link_mapents_stub);
         plan_unwind_probe();
         plan_rewind_probe();
         active = true;

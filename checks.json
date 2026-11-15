@@ -389,6 +389,14 @@
       ]
     },
     {
+      "id": "agent_capacity_records_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/agent_capacity_records_test.py"
+      ]
+    },
+    {
       "id": "engine_xref32_test",
       "command": [
         "python",
