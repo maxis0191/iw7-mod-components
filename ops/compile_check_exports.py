@@ -52,7 +52,11 @@ def closure(native, first):
 def check(repo, sources):
     repo = Path(repo).resolve()
     native = repo / 'src' / 'native'
-    names = subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--cached', '--others', '--exclude-standard'], text=True).splitlines()
+    try:
+        names = subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--cached', '--others', '--exclude-standard'], text=True,
+                                        stderr=subprocess.DEVNULL).splitlines()
+    except (subprocess.CalledProcessError, OSError):      # a prepared source workspace (bootstrap.ps1 output) is not a git checkout
+        names = [p.relative_to(repo).as_posix() for p in repo.rglob('*') if p.is_file() and '.git' not in p.parts]
     product = json.loads((repo / 'product.json').read_text(encoding='utf-8-sig'))
     exported = {n.casefold() for n in expand_exports(product['exports'], names)}
     build = (repo / 'ops' / 'Build-Voice.ps1').read_text(encoding='utf-8', errors='replace')
