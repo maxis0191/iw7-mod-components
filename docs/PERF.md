@@ -29,6 +29,7 @@ From a test plan: the server repository's gamelab has a `perf` step, `{"do": "pe
 - For a sample outside the game image (system or driver code), the first stack words that point into game code.
 - The CPU time of every thread.
 - The module list and the process memory.
+- Snapshot entity records parsed (key `snapshot_entities`: `calls`, `max`, `mean`; read only): the client's snapshot parser `FUN_1409B7C30(client, message, time, previous, snapshot)` is wrapped, and when it returns the dword at `[snapshot+0x626C]` is the number of entity records of that snapshot (it is set to 0 at the entry and counted up per record; the client's entity-state ring is frames x 600 states, `imul eax,r8d,0x258` at 0x14034F21C). The wrapper is left out, with an error line, when the first bytes of the function differ from the expected ones. The server side of the same question is in `SERVER-PERF.md`.
 
 Sampler rule (safety): between suspending and resuming a thread, the sampler touches no heap, no file and no lock.
 
