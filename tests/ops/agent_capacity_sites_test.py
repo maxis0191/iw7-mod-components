@@ -24,6 +24,7 @@ INC = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves.inc')
 INC_REWIND = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves_rewind.inc')
 INC_WIDE = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves_wide.inc')
 INC_MASK = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves_mask.inc')
+INC_GUARD = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves_guard.inc')
 PLANS = os.path.join(ROOT, 'ops', 'engine', 'caves')
 FRAME_FIELDS = os.path.join(ROOT, 'src', 'native', 'agent_capacity_frame_fields.inc')
 FRAME_CAVE = os.path.join(ROOT, 'src', 'native', 'agent_capacity_frame_cave.inc')
@@ -326,7 +327,7 @@ class Sites(unittest.TestCase):
         for x in sites:
             n = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
             spans.append((x['address'], x['address'] + n, 'site'))
-        for c in parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read()) + parse_inc(open(INC_WIDE, encoding='utf-8').read()) + parse_inc(open(INC_MASK, encoding='utf-8').read()):
+        for c in parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read()) + parse_inc(open(INC_WIDE, encoding='utf-8').read()) + parse_inc(open(INC_MASK, encoding='utf-8').read()) + parse_inc(open(INC_GUARD, encoding='utf-8').read()):
             spans.append((c['start'], c['start'] + len(c['old']), 'cave'))
             spans.extend((t['field'], t['field'] + 4, 'retarget') for t in c['retargets'])
         spans.sort()
@@ -700,7 +701,7 @@ class WideSites(unittest.TestCase):
         # in place: 66 83 f8 2a -> 66 3d iw (cmp ax, imm16, the same 4 bytes), and lea + shl (7 bytes) -> imul r11d, agents (7 bytes)
         for row, (address, hx, name) in IN_PLACE_SITES.items():
             self.assertEqual(self.image.read(address, len(hx) // 2).hex(), hx, f'row {row}')
-        windows = [(c['start'], c['start'] + len(c['old'])) for inc in (INC, INC_REWIND, INC_WIDE, INC_MASK) for c in parse_inc(open(inc, encoding='utf-8').read())]
+        windows = [(c['start'], c['start'] + len(c['old'])) for inc in (INC, INC_REWIND, INC_WIDE, INC_MASK, INC_GUARD) for c in parse_inc(open(inc, encoding='utf-8').read())]
         for address in (0x14077EDEB, 0x1407801DB):
             self.assertFalse([w for w in windows if w[0] < address + 4 and address < w[1]], f'{address:#x} overlaps a cave window')
         self.assertIn('wide16(0x14077EDEB, l.characters)', self.text)
@@ -877,7 +878,7 @@ class FrameGrow(unittest.TestCase):
         for x in sites:
             n = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
             spans.append((x['address'], x['address'] + n, 'site'))
-        caves = parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read()) + parse_inc(open(INC_WIDE, encoding='utf-8').read()) + parse_inc(open(INC_MASK, encoding='utf-8').read())
+        caves = parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read()) + parse_inc(open(INC_WIDE, encoding='utf-8').read()) + parse_inc(open(INC_MASK, encoding='utf-8').read()) + parse_inc(open(INC_GUARD, encoding='utf-8').read())
         for c in caves:
             spans.append((c['start'], c['start'] + len(c['old']), 'cave'))
             spans.extend((t['field'], t['field'] + 4, 'retarget') for t in c['retargets'])
@@ -907,10 +908,10 @@ class FrameGrow(unittest.TestCase):
         text = open(CPP, encoding='utf-8').read()
         for name in ('agent_capacity_frame_fields.inc', 'agent_capacity_frame_fields_adb8e0.inc', 'agent_capacity_frame_fields_added0.inc',
                      'agent_capacity_frame_cave.inc', 'agent_capacity_frame_cave_added0.inc', 'agent_capacity_frame_cave_adb8e0.inc',
-                     'agent_capacity_frame_fields_86fba0.inc', 'agent_capacity_caves_mask.inc'):
+                     'agent_capacity_frame_fields_86fba0.inc', 'agent_capacity_caves_mask.inc', 'agent_capacity_caves_guard.inc', 'agent_capacity_state.inc'):
             self.assertIn('#include "%s"' % name, text)
         reserve = text.split('void plan_caves()')[1]
-        for sets in ('frame_caves_a', 'frame_caves_b', 'frame_caves_c', 'frame_caves_d', 'mask_cave_table'):
+        for sets in ('frame_caves_a', 'frame_caves_b', 'frame_caves_c', 'frame_caves_d', 'mask_cave_table', 'guard_cave_table'):
             self.assertIn(sets, reserve, 'the probe caves of every function are reserved')
 
 

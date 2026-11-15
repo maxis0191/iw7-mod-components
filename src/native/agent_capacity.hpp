@@ -13,6 +13,10 @@ namespace agent_capacity {
 
 constexpr std::uint32_t stock_agents = 24, players = 18, stock_characters = players + stock_agents;
 constexpr std::uint32_t stock_parts = 0x800;
+// The replicated scriptable state (a39): the server keeps one dword (four one-byte part states) a unit of a 1,016 unit budget; an instance of a
+// zombie's scriptable takes 8 (31 replicated parts), the 557 fixed parts of cp_zmb 140. The budget grows by 8 units for each agent beyond 24
+// (measured: runs d2, d2b; docs/AGENT-CAPACITY-ENGINE.md "Replicated state budget").
+constexpr std::uint32_t stock_state_dwords = 0x3F8, state_dwords_per_agent = 8;
 
 // What a 32-bit field of the wide caves holds (agent_capacity.cpp `wide_sites`): the value the shipped one-byte instruction had, as a function of the count.
 enum class wide_field { characters, characters_less_one, player_corpses, agent_corpses, minus_agent_corpses, agents, agents_less_players };
@@ -51,7 +55,19 @@ struct layout {
     constexpr std::uint32_t queue_rows() const { return characters; }
     constexpr std::uint32_t queue_bytes() const { return queue_rows() * 0x208; }
     // client snapshot: the 24-row agent-state array stays; a full array is appended after the old end
-    constexpr std::uint32_t snap_size() const { return 0x3DC78 + agents * 0xC0; }
+    // The replicated scriptable state block: u16 fixed count, S dwords, u16 instance count, two tables of 512 u16, pad = 4 S + 0x808 bytes
+    // (0x17E8 at the stock S = 1,016). S - 1,016 is a multiple of 32 at every accepted count, so the 0x80 byte copy loops of the engine (47 of
+    // them and a 0x68 byte tail, `mov ecx, 0x2f`) stay exact: 47 + (S - 1016) / 32 loops.
+    constexpr std::uint32_t state_dwords() const { return stock_state_dwords + state_dwords_per_agent * (agents - stock_agents); }
+    constexpr std::uint32_t state_extra() const { return state_dwords() - stock_state_dwords; }
+    constexpr std::uint32_t state_bytes() const { return 4 * state_dwords() + 0x808; }
+    constexpr std::uint32_t state_list_bytes() const { return 24 * state_dwords() + 14; }   // six-byte list entries a state byte, heads, list index
+    constexpr std::uint32_t state_copies() const { return 47 + state_extra() / 32; }
+    // The server hunk size adds the one block that SV_AllocSnapshotBuffers allocates besides its two rings as a constant (0x17E8 rounded to 0x80 = 0x1800).
+    constexpr std::uint32_t state_hunk_growth() const { return ((state_bytes() + 0x7F) & ~0x7Fu) - 0x1800; }
+    // The client snapshot: the block member moves behind the appended agent states (its stock slot at 0x3AF38 stays, unused).
+    constexpr std::uint32_t snap_state_offset() const { return 0x3DC78 + agents * 0xC0; }
+    constexpr std::uint32_t snap_size() const { return snap_state_offset() + state_bytes(); }
     // lag-compensation archive (CP): per-character controllers and saved animation trees inside each history frame
     constexpr std::uint32_t controller_records() const { return characters * 2; }
     constexpr std::uint32_t controller_size() const { return characters * (2 + 0x48); }
@@ -119,6 +135,16 @@ constexpr const char* refuse(std::uint32_t agents) {
     return "";
 }
 
+// The state budget at every accepted count: the dword start/count tables and the byte list indices are u16 (4 S <= 65,535), the copy loops stay exact.
+constexpr bool state_budget_holds() {
+    for (std::uint32_t n = 24; n <= 232; n += 4) {
+        const std::uint32_t s = stock_state_dwords + state_dwords_per_agent * (n - stock_agents);
+        if ((s - stock_state_dwords) % 32 || 4 * s > 0xFFFF) return false;
+    }
+    return true;
+}
+static_assert(state_budget_holds());
+
 constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
     layout l{};
     l.agents = agents; l.characters = players + agents;
@@ -147,6 +173,13 @@ static_assert(make(100, 0x800).net_id_bits() == 7 && make(108, 0x800).net_id_bit
               make(232, 0x800).net_id_bits() == 8);
 static_assert(make(24, 0x800).rewind_pointers() == 0x40 && make(84, 0x800).rewind_pointers() == 0x80 && make(100, 0x800).rewind_pointers() == 0x90);
 static_assert(!fits_signed_byte(make(100, 0x800).rewind_pointers()));   // why that store is a cave with a 32-bit displacement
+
+// The state block at the stock count is the shipped one: 1,016 dwords, 0x17E8 bytes, a 0x5F4E byte list table, 47 copy loops.
+static_assert(make(24, 0x800).state_dwords() == 1016 && make(24, 0x800).state_bytes() == 0x17E8 && make(24, 0x800).state_list_bytes() == 0x5F4E &&
+              make(24, 0x800).state_copies() == 47 && make(24, 0x800).state_extra() == 0 && make(24, 0x800).state_hunk_growth() == 0);
+static_assert(make(100, 0x800).state_dwords() == 1624 && make(164, 0x800).state_dwords() == 2136 && make(232, 0x800).state_dwords() == 2680);
+static_assert(make(164, 0x800).state_bytes() == 10600 && make(232, 0x800).state_bytes() == 12776 && make(164, 0x800).state_copies() == 82);
+static_assert(make(100, 0x800).snap_size() == 0x3DC78 + 100 * 0xC0 + 8552);
 
 // The shipped layout gives back the shipped numbers (the patch plan is the identity at 24).
 static_assert(make(64, 0x800).client_size() == ((0xFDEA8 + 40 * 0x2CA0 + 82 + 15) & ~15u));
