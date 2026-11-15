@@ -1,0 +1,9 @@
+[
+ {
+  "address": "0x140415C24",
+  "kind": "disp",
+  "new_disp": 2147483632,
+  "force32": true,
+  "note": "FUN_140415bf0+34 (lag-compensation rewind): mov [rdi+rbx*8+0x40],rax; the displacement is layout::rewind_pointers(), written into the cave at start; 0x7FFFFFF0 is a placeholder that fails loudly if it is ever left in"
+ }
+]

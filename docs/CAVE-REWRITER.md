@@ -4,6 +4,11 @@ Status (14 Nov 2026): version 1 built and proven in the headless game (see "Proo
 
 A1 stage 2 (14 Nov 2026, commit 8c195ee): the 49 table-1 instructions (a1-table1.*, 48 caves) are the live table of `agent_capacity_caves.inc`, built and run: headless run at 24 agents passes 13/13 and a fault in cave 29 (`-agent-capacity-cave-fault`, mask 1<<29, env `IW7_AGENT_CAPACITY_CAVE_FAULT=536870912`) exits with an illegal instruction at the first zombies. The proof plan (`proof-zero-change.*`) stays in the repository, not in the build; the sites test takes the live plan from the header line of the `.inc`.
 
+Rewind pointer cave (15 Nov 2026): the first cave whose 32-bit field depends on the agent count. `ops/engine/caves/rewind-pointer.requests.json`
+asks for FUN_140415bf0+34 (`mov [rdi+rbx*8+0x40],rax`) with a placeholder displacement (0x7FFFFFF0); `agent_capacity_caves_rewind.inc` is its table, and
+`plan_caves()` writes `layout::rewind_pointers()` into cave bytes 4..7 before the cave is queued. The sites test decodes the cave with that
+displacement for every allowed count and compares it with what the planner produces for the same displacement.
+
 ## What it is for
 
 The engine's 8-bit displacements and immediates (`mov eax, [rdx+rbx+0x24]`) cannot hold the values the capacity patch

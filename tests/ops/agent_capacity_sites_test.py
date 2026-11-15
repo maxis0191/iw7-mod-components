@@ -21,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 CPP = os.path.join(ROOT, 'src', 'native', 'agent_capacity.cpp')
 INC = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves.inc')
+INC_REWIND = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves_rewind.inc')
 PLANS = os.path.join(ROOT, 'ops', 'engine', 'caves')
 FRAME_FIELDS = os.path.join(ROOT, 'src', 'native', 'agent_capacity_frame_fields.inc')
 FRAME_CAVE = os.path.join(ROOT, 'src', 'native', 'agent_capacity_frame_cave.inc')
@@ -34,18 +35,24 @@ SYMBOLS = {'stock_agents': 24, 'stock_characters': 42, 'players': 18, 'stock_par
 HEX = r'0x[0-9A-Fa-f]+(?:ull)?'
 
 
-def evaluate(text):
-    """A constant expression of literals, + - * | << and the stock names."""
-    tree = ast.parse(re.sub(r'(0x[0-9A-Fa-f]+)ull', r'\1', text.strip()), mode='eval')
+def evaluate(text, env=None):
+    """A constant expression of literals, + - * & | << ~, the stock names, and (with env) the layout names `l.x` / `l.x()`."""
+    text = re.sub(r'static_cast<[\w:]+>\(', '(', text.strip())
+    text = re.sub(r'\b[lL]\.(\w+)(?:\(\))?', r'l_\1', text)
+    tree = ast.parse(re.sub(r'(0x[0-9A-Fa-f]+)ull', r'\1', text), mode='eval')
+    names = dict(SYMBOLS, **(env or {}))
 
     def ev(n):
         if isinstance(n, ast.Constant) and isinstance(n.value, int):
             return n.value
-        if isinstance(n, ast.Name) and n.id in SYMBOLS:
-            return SYMBOLS[n.id]
+        if isinstance(n, ast.Name) and n.id in names:
+            return names[n.id]
+        if isinstance(n, ast.UnaryOp) and isinstance(n.op, (ast.USub, ast.Invert)):
+            return -ev(n.operand) if isinstance(n.op, ast.USub) else ~ev(n.operand)
         if isinstance(n, ast.BinOp):
             a, b = ev(n.left), ev(n.right)
-            return {ast.Add: a + b, ast.Sub: a - b, ast.Mult: a * b, ast.LShift: a << b, ast.BitOr: a | b}[type(n.op)]
+            return {ast.Add: a + b, ast.Sub: a - b, ast.Mult: a * b, ast.LShift: a << b, ast.BitOr: a | b,
+                    ast.BitAnd: a & b}[type(n.op)]
         raise ValueError(f'cannot evaluate {text!r}')
     return ev(tree.body)
 
@@ -91,16 +98,16 @@ def extract_sites(source):
     for i, m in enumerate(re.finditer(r'\{\s*(0x[0-9A-F]+),\s*(0x[0-9A-F]+),\s*0x[0-9A-F]+,\s*\{0x', source)):
         pools[i] = (addr(m.group(1)), addr(m.group(2)))
 
-    def emit(kind, a, args, width=4, tail=0):
+    def emit(kind, a, args, width=4, tail=0, call=None, after=None):
         if kind == 'value':
-            sites.append({'kind': 'value', 'address': a, 'width': width, 'before': evaluate(args[0])})
+            sites.append({'kind': 'value', 'address': a, 'width': width, 'before': evaluate(args[0]), 'call': call, 'after': after})
         elif kind == 'rip':
             sites.append({'kind': 'rip', 'address': a, 'width': 4, 'before': evaluate(args[0]),
                           'tail': tail})
         elif kind == 'rva':
             sites.append({'kind': 'value', 'address': a, 'width': 4, 'before': evaluate(args[0])})
 
-    call_re = re.compile(r'\b(add1?|rip|rva)\(')
+    call_re = re.compile(r'\b(add1s?|add|rip|rva)\(')
     # 1. literal addresses
     for m in call_re.finditer(source):
         name = m.group(1)
@@ -110,8 +117,8 @@ def extract_sites(source):
         a = addr(args[0])
         if name == 'add':
             emit('value', a, args[1:2], int(args[3]) if len(args) > 3 and args[3].isdigit() else 4)
-        elif name == 'add1':
-            emit('value', a, args[1:2], 1)
+        elif name in ('add1', 'add1s'):
+            emit('value', a, args[1:2], 1, call=name, after=args[2])
         elif name == 'rip':
             emit('rip', a, args[1:2], tail=int(args[3]) if len(args) > 3 else 0)
         else:
@@ -132,14 +139,14 @@ def extract_sites(source):
         nxt = re.search(r'\bfor \(', body)
         body = body[:nxt.start()] if nxt else body
         found = False
-        for c in re.finditer(r'\b(add1?|rip|rva)\(' + var + r'\s*,', body):
+        for c in re.finditer(r'\b(add1s?|add|rip|rva)\(' + var + r'\s*,', body):
             args, _ = split_args(body, c.start() + len(c.group(1)))
             name = c.group(1)
             for a in addrs:
                 if name == 'add':
                     emit('value', a, args[1:2], int(args[3]) if len(args) > 3 and args[3].isdigit() else 4)
-                elif name == 'add1':
-                    emit('value', a, args[1:2], 1)
+                elif name in ('add1', 'add1s'):
+                    emit('value', a, args[1:2], 1, call=name, after=args[2])
                 elif name == 'rip':
                     emit('rip', a, args[1:2], tail=int(args[3]) if len(args) > 3 else 0)
                 else:
@@ -317,7 +324,7 @@ class Sites(unittest.TestCase):
         for x in sites:
             n = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
             spans.append((x['address'], x['address'] + n, 'site'))
-        for c in parse_inc(open(INC, encoding='utf-8').read()):
+        for c in parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read()):
             spans.append((c['start'], c['start'] + len(c['old']), 'cave'))
             spans.extend((t['field'], t['field'] + 4, 'retarget') for t in c['retargets'])
         spans.sort()
@@ -389,6 +396,157 @@ class Sites(unittest.TestCase):
             for t in c['retargets']:                       # the incoming reference still has its stock value
                 self.assertEqual(int.from_bytes(self.image.read(t['field'], 4), 'little'), t['old'], f"retarget {t['field']:#x}")
         print(f'\ncave windows checked: {len(caves)}')
+
+# ---- one-byte fields the CPU sign-extends ------------------------------------------------------------------------------------
+# Every instruction the component patches with ONE byte (add1 / add1s, and the byte of a `block`) was read in the shipped code:
+# field address -> (instruction address, instruction bytes). A displacement byte (disp8) and the immediate of an `83 /r`, `6B`,
+# `48 83` form are sign-extended by the CPU: a value above 0x7F is read as negative. The test below decodes each instruction with
+# capstone, proves the patched byte is such a field, and runs the value the C++ writes for every allowed agent count.
+SIGNED_BYTE_SITES = {
+    0x140242E22: (0x140242E20, '83fa29'),
+    0x140242E3C: (0x140242E3A, '83fa29'),
+    0x140282ED8: (0x140282ED6, '83fb2a'),
+    0x1402854DE: (0x1402854DC, '83ff2a'),
+    0x140445B45: (0x140445B43, '83fd2a'),
+    0x1404494FD: (0x1404494FB, '83fa18'),
+    0x140449696: (0x140449693, '4883fe18'),
+    0x1405C2578: (0x1405C2576, '83f82a'),
+    0x14077EDEE: (0x14077EDEB, '6683f82a'),
+    0x1407801DE: (0x1407801DB, '6683f82a'),
+    0x140780549: (0x140780547, '83f82a'),
+    0x1407AE403: (0x1407AE400, '4183e92a'),
+    0x1407AF52F: (0x1407AF52D, '83ef32'),
+    0x140805D4E: (0x140805D4C, '83fb2a'),
+    0x1408213F4: (0x1408213F1, '418d5bce'),
+    0x140823B61: (0x140823B5F, '83e82a'),
+    0x140823B80: (0x140823B7E, '83e832'),
+    0x140826385: (0x140826382, '4183eb2a'),
+    0x140842A20: (0x140842A1E, '83f92a'),
+    0x140842B0B: (0x140842B09, '83f82a'),
+    0x14084A551: (0x14084A54F, '83f82a'),
+    0x140865EB9: (0x140865EB7, '83e932'),
+    0x14086D122: (0x14086D120, '83ef2a'),
+    0x14086F509: (0x14086F507, '83e832'),
+    0x14086FBE0: (0x14086FBDC, '488d4c2470'),
+    0x14086FDAF: (0x14086FDAB, '4889442460'),
+    0x14086FE70: (0x14086FE6C, '4c8d4c2440'),
+    0x14086FE78: (0x14086FE74, '4889442440'),
+    0x14086FE87: (0x14086FE83, '4c8d442440'),
+    0x140870670: (0x14087066D, '8b4c8c40'),
+    0x1408706D0: (0x1408706CD, '8b4c8c40'),
+    0x140870705: (0x140870701, '488b5c2460'),
+    0x140872E65: (0x140872E63, '83e82a'),
+    0x140872EEC: (0x140872EEA, '83e832'),
+    0x1409B26FC: (0x1409B26F9, '448d7506'),
+    0x140AC67C1: (0x140AC67BE, '4183f92a'),
+    0x140AC686E: (0x140AC686C, '83fb2a'),
+    0x140B202DC: (0x140B202DA, '83fb2a'),
+    0x140B2F536: (0x140B2F533, '4183e92a'),
+    0x140B67402: (0x140B67400, '8d422a'),
+    0x140C1BB22: (0x140C1BB20, '8d4132'),
+    0x140C217CD: (0x140C217CA, '4183f92a'),
+    0x140C3F3AA: (0x140C3F3A8, '83ff2a'),
+}
+# Sites that were one byte and now go through a cave with a 32-bit field: they must not come back as a byte site.
+MOVED_TO_CAVE = {0x140415C28: (0x140415C24, '488944df40')}   # FUN_140415bf0+34, mov [rdi+rbx*8+0x40],rax
+ALLOWED_COUNTS = range(24, 101, 4)                           # refuse(): 24, 28, ..., 100
+
+
+def layout_names(n):
+    """The names of layout (agent_capacity.hpp) a one-byte site can use, for n agents."""
+    c = 18 + n
+    return {'l_agents': n, 'l_characters': c, 'l_player_corpses': c, 'l_agent_corpses': c + 8, 'l_map_start': c + 16,
+            'l_rewind_pointers': (0x14 + c + 7) & ~7}
+
+
+class SignedByteSites(unittest.TestCase):
+    def setUp(self):
+        self.image, self.source = find_image()
+        if self.image is None:
+            self.skipTest('no unpacked code files or analysed image on this machine')
+        self.text = open(CPP, encoding='utf-8').read()
+        self.sites = [s for s in extract_sites(self.text)[0] if s['kind'] == 'value' and s['width'] == 1]
+
+    def field_of(self, address, insn_address, hexbytes):
+        """(kind, sign-extended) of the byte at `address` inside the instruction, read from the shipped bytes."""
+        raw = self.image.read(insn_address, len(hexbytes) // 2)
+        self.assertEqual(raw.hex(), hexbytes, f'{insn_address:#x}: the shipped bytes differ from the table')
+        i = next(cp._cs().disasm(raw, insn_address))
+        self.assertEqual(i.size, len(raw), f'{insn_address:#x}: not one whole instruction')
+        enc, off = i.encoding, address - insn_address
+        if enc.disp_size == 1 and enc.disp_offset == off:
+            return 'disp8', True
+        if enc.imm_size == 1 and enc.imm_offset == off:
+            width = max(o.size for o in i.operands)
+            return 'imm8', width > 1                 # the imm8 of a byte operation is not extended
+        self.fail(f'{address:#x}: not a disp8 or imm8 field of {i.mnemonic} {i.op_str}')
+
+    def test_the_hpp_mirror_matches_the_formulas(self):
+        hpp = open(HPP, encoding='utf-8').read()
+        self.assertIn('(0x14 + characters + 7) & ~7u', hpp)       # layout_names() repeats this formula
+        self.assertIn('l.player_corpses = l.characters; l.agent_corpses = l.characters + 8; l.map_start = l.characters + 16;', hpp)
+        self.assertEqual(layout_names(100)['l_rewind_pointers'], 0x90)
+        self.assertEqual(layout_names(24)['l_rewind_pointers'], 0x40)     # the stock value at 24 agents
+
+    def test_every_one_byte_site_is_classified_and_every_signed_one_uses_add1s(self):
+        by = {s['address']: s for s in self.sites}
+        unknown = sorted(hex(a) for a in by if a not in SIGNED_BYTE_SITES and a not in MOVED_TO_CAVE)
+        self.assertEqual(unknown, [], 'a new one-byte site: read its instruction and add it to SIGNED_BYTE_SITES (or an unsigned table)')
+        for address, (insn, hexbytes) in SIGNED_BYTE_SITES.items():
+            kind, signed = self.field_of(address, insn, hexbytes)
+            self.assertTrue(signed, f'{address:#x} is an unsigned byte but listed as signed')
+            if address in by:
+                self.assertEqual(by[address]['call'], 'add1s', f'{address:#x} ({kind}) is read signed by the CPU: it must be written with add1s')
+        print(f'\nsigned one-byte sites: {len(SIGNED_BYTE_SITES)} (disp8 and sign-extended imm8), checked against the shipped bytes')
+
+    def test_no_value_a_signed_byte_receives_is_read_differently_at_any_allowed_count(self):
+        bad = []
+        for s in self.sites:
+            for n in ALLOWED_COUNTS:
+                value = evaluate(s['after'], layout_names(n))
+                if not -128 <= value <= 127:
+                    note = f'{s["address"]:#x} ({s["call"]}) at {n} agents: writes {value:#x} (a one-byte field read as {((value & 0xFF) ^ 0x80) - 0x80})'
+                    if s['address'] in MOVED_TO_CAVE:
+                        note += ' - this site now belongs to a cave'
+                    bad.append(note)
+        self.assertEqual(bad, [], '\n' + '\n'.join(bad))
+
+    def test_a_site_moved_to_a_cave_is_not_a_byte_site(self):
+        by = {s['address'] for s in self.sites}
+        for address, (insn, hexbytes) in MOVED_TO_CAVE.items():
+            self.field_of(address, insn, hexbytes)
+            self.assertNotIn(address, by, f'{address:#x} is patched as one byte again')
+
+    def test_the_rewind_pointer_cave_holds_the_value_for_every_allowed_count(self):
+        """FUN_140415bf0+34: the 5-byte store is re-encoded with a 32-bit displacement that the component writes into the cave."""
+        c, = parse_inc(open(INC_REWIND, encoding='utf-8').read())
+        self.assertEqual((c['start'], c['old'].hex()), (0x140415C24, '488944df40'))
+        self.assertEqual(self.image.read(c['start'], 5), c['old'])
+        with open(os.path.join(PLANS, 'rewind-pointer.plan.json'), encoding='utf-8') as f:
+            plan_file, = json.load(f)['caves']
+        self.assertEqual((plan_file['cave_bytes'], plan_file['old_bytes'], plan_file['fixups'], plan_file['retargets']), (c['cave'].hex(), c['old'].hex(), [], []))
+        cp.self_check(plan_file, cp.decode(c['old'], c['start']))     # the cave means the same instruction as the window
+        cs = cp._cs()
+        stock, = cs.disasm(c['old'], c['start'])
+        self.assertEqual((c['cave'][:4].hex(), len(c['cave'])), ('488984df', 8))
+        # the displacement is written at cave offset 4 by the C++ (pinned below)
+        self.assertRegex(self.text, r'std::memcpy\(bytes\.data\(\) \+ 4, &disp, 4\)')
+        self.assertIn('const std::uint32_t disp = L.rewind_pointers();', self.text)
+        for n in ALLOWED_COUNTS:
+            want = layout_names(n)['l_rewind_pointers']
+            bytes_ = c['cave'][:4] + want.to_bytes(4, 'little')
+            new, = cs.disasm(bytes_, c['start'])
+            self.assertEqual(new.size, 8)
+            self.assertEqual(new.encoding.disp_size, 4)
+            self.assertEqual((new.mnemonic, new.operands[1].reg, new.operands[0].mem.base, new.operands[0].mem.index,
+                              new.operands[0].mem.scale, new.operands[0].mem.disp),
+                             (stock.mnemonic, stock.operands[1].reg, stock.operands[0].mem.base, stock.operands[0].mem.index,
+                              stock.operands[0].mem.scale, want))
+            # the planner re-encodes the same instruction the same way for this displacement
+            plan, = cp.plan([{'address': c['start'], 'kind': 'disp', 'new_disp': want, 'force32': True}], self.image, scan=False)
+            self.assertEqual(bytes.fromhex(plan['cave_bytes']), bytes_, f'{n} agents')
+        # the placeholder in the table is not a layout value
+        self.assertEqual(int.from_bytes(c['cave'][4:8], 'little'), 0x7FFFFFF0)
 
 
 def src(name):
@@ -515,7 +673,7 @@ class FrameGrow(unittest.TestCase):
         for x in sites:
             n = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
             spans.append((x['address'], x['address'] + n, 'site'))
-        caves = parse_inc(open(INC, encoding='utf-8').read())
+        caves = parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read())
         for c in caves:
             spans.append((c['start'], c['start'] + len(c['old']), 'cave'))
             spans.extend((t['field'], t['field'] + 4, 'retarget') for t in c['retargets'])
