@@ -46,7 +46,7 @@ is 0x80 from 84 agents and 0x90 at 100, read as -128 and -112, so the store land
 cave with a 32-bit displacement (`ops/engine/caves/rewind-pointer.*`, `agent_capacity_caves_rewind.inc`; the component writes the layout's value into the
 cave at start, at every count).
 
-**Wide sites (a33, 15 Nov 2026).** 36 of the 43 one-byte instructions held a count (rows 1-35 and 37-38 of the a29 list: 15 corpse subtractions and
+**Wide sites (a33, 15 Nov 2026).** 37 of the 43 one-byte instructions held a count (rows 1-35 and 37-38 of the a29 list: 14 corpse subtractions and
 allocators, 18 character bounds, 2 agent-count bounds, the agents - 18 of the client snapshot buffers and the two frames x agents `imul`s of
 SV_InitSnapshotBufferSizes). Each is a 32-bit field now: 34 in caves (`ops/engine/caves/wide-sites.requests.json` and `.plan.json`, planned by
 `cave_plan.py`, table `agent_capacity_caves_wide.inc`, 35 caves because the first imul and its `shl` are two windows), two `cmp ax, imm16` in place
