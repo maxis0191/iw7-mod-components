@@ -17,6 +17,8 @@ def git(repo, *args):
 
 class Closure(unittest.TestCase):
     def test_agent_capacity_closure_is_ok(self):
+        if not os.path.exists(os.path.join(ROOT, 'product.json')):
+            self.skipTest('a prepared source workspace has no product.json; the repository run (checks.ps1 boundary gate) covers it')
         problems, files = cce.check(ROOT, ['src/native/agent_capacity.cpp'])
         self.assertEqual(problems, [])
         for name in ('agent_capacity.cpp', 'agent_capacity.hpp', 'agent_capacity_caves_wide.inc', 'agent_capacity_frame_cave.inc'):
