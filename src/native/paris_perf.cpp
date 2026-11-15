@@ -7,6 +7,10 @@
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
+#include "game/game.hpp"
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <tlhelp32.h>
 #include <psapi.h>
 
@@ -28,6 +32,23 @@
 // wrapped; when it returns, the dword at [snapshot+0x626C] is the number of entity records of that snapshot (set to 0 at the entry,
 // +1 per record). A window keeps the calls, the maximum and the mean. The wrapper is left out, with an error line, when the
 // first bytes of the function are not the expected ones.
+//
+// Agent motion (read only, a37): how smoothly the agents are drawn, per group. FUN_1407BFF40(localClient, centity) runs once per entity
+// and frame at the end of CG_ProcessEntity (FUN_1407AA9E0), after the position update FUN_1407AE190 has written the render position
+// (centity+0x1C, three floats). Its first instruction is wrapped by an assembly pre-hook that reads (nothing is written) and jumps on
+// with the arguments and the return address untouched. centity+0x700 is the entity number (checked: centity - number x 0x870 must be
+// one base for every sample, else the sample is counted in base_mismatch and dropped), centity+0x704 the entity type. Agents are the
+// character slots 18..characters-1; the groups are "low" (18..41, the numbers FUN_1407AE190 interpolates between the two snapshots at
+// 0x1407AE222) and "high" (42.., which take the generic path: the trajectory evaluated at the render time). Per entity the last four
+// positions and call times are kept; a sample is: jerk = |p(t) - 2 p(t-1) + p(t-2)| / frame time in ms (units per ms; only when the
+// entity moved more than 0.5 over those two steps), and stutter = the position did not change (under 0.0001) in a frame that follows a
+// movement of more than 0.5 between t-3 and t-1. A gap of over 100 ms or a jump of over 300 units restarts the entity's history (a
+// spawn). Output: "agent_motion" in the window file.
+//
+// Lab switch -paris-interp-all-agents: sets the limit of the compare at 0x1407AE222 (cmp dword [rbp+0x700], 0x2A) to the character count
+// (agents + 18; the dvar agent_capacity, 24 + 18 = 42 when absent), so every agent takes the snapshot interpolation. The seven bytes
+// 83 BD 00 07 00 00 2A and the jge after them are checked first; above 127 characters the switch is refused (a signed byte). Without
+// the flag nothing is written. It needs -paris-perf (this component).
 namespace paris_perf
 {
     namespace
@@ -94,6 +115,186 @@ namespace paris_perf
             LARGE_INTEGER value{};
             QueryPerformanceCounter(&value);
             return value.QuadPart;
+        }
+
+        // ---- agent motion ----
+        constexpr std::uintptr_t entity_type_function = 0x1407BFF40;   // (localClient, centity), called per entity at the end of CG_ProcessEntity
+        constexpr std::uintptr_t interp_compare = 0x1407AE222;         // cmp dword [rbp+0x700], 0x2A ; jge
+        constexpr std::uintptr_t entity_stride = 0x870;
+        constexpr std::uint32_t first_agent = 18, max_slots = 512;
+        constexpr std::size_t max_jerk_samples = 3000000;
+        constexpr double restart_gap_ms = 100.0, restart_jump = 300.0, moved_min = 0.5, same_max = 0.0001;
+
+        struct motion_group
+        {
+            std::vector<float> jerk;
+            std::uint64_t frames{}, eligible{}, stutter{};
+            double sum{};
+            std::array<bool, max_slots> seen{};
+            std::map<int, std::uint64_t> types;
+        };
+        struct motion_entity
+        {
+            double t[4]{};
+            float p[4][3]{};
+            int n{};
+        };
+        std::mutex motion_mutex;
+        motion_group motion_low, motion_high;
+        std::array<motion_entity, max_slots> motion_state;
+        std::uintptr_t motion_base{};
+        std::uint64_t motion_mismatch{};
+        std::uint32_t motion_characters = 42;
+        bool motion_hooked = false;
+        utils::hook::detour motion_hook;
+        void* motion_original = nullptr;
+        bool interp_requested = false, interp_applied = false;
+        int interp_limit = 42;
+
+        std::uint32_t character_count()
+        {
+            const auto* capacity = game::Dvar_FindVar("agent_capacity");
+            const int agents = (capacity && capacity->type == game::DVAR_TYPE_INT && capacity->current.integer >= 24 && capacity->current.integer <= 1000) ? capacity->current.integer : 24;
+            return static_cast<std::uint32_t>(agents) + first_agent;
+        }
+        float distance(const float* a, const float* b)
+        {
+            const float x = a[0] - b[0], y = a[1] - b[1], z = a[2] - b[2];
+            return std::sqrt(x * x + y * y + z * z);
+        }
+        void motion_reset()
+        {
+            motion_low = motion_group{};
+            motion_high = motion_group{};
+            motion_state.fill(motion_entity{});
+            motion_base = 0;
+            motion_mismatch = 0;
+        }
+        // Called on the thread that runs CG_ProcessEntity, with the arguments of FUN_1407BFF40.
+        void motion_record(const int local_client, const std::uintptr_t cent)
+        {
+            if (!window_open.load(std::memory_order_acquire) || local_client != 0 || !cent) return;
+            const int number = *reinterpret_cast<const int*>(cent + 0x700);
+            if (number < static_cast<int>(first_agent) || number >= static_cast<int>(motion_characters) || number >= static_cast<int>(max_slots)) return;
+            const int type = *reinterpret_cast<const int*>(cent + 0x704);
+            const float* origin = reinterpret_cast<const float*>(cent + 0x1C);
+            const double t_ms = static_cast<double>(now()) * 1000.0 / static_cast<double>(qpc_hz);
+            std::lock_guard<std::mutex> lock(motion_mutex);
+            const std::uintptr_t base = cent - static_cast<std::uintptr_t>(number) * entity_stride;
+            if (!motion_base) motion_base = base;
+            else if (base != motion_base) { ++motion_mismatch; return; }
+            for (int i = 0; i < 3; ++i) if (!std::isfinite(origin[i])) return;
+            auto& e = motion_state[static_cast<std::size_t>(number)];
+            if (e.n > 0 && t_ms - e.t[e.n - 1] < 0.5) { std::memcpy(e.p[e.n - 1], origin, sizeof(float) * 3); return; }   // same frame (a second caller)
+            if (e.n > 0 && (t_ms - e.t[e.n - 1] > restart_gap_ms || distance(origin, e.p[e.n - 1]) > restart_jump)) e.n = 0;
+            if (e.n == 4)
+            {
+                for (int i = 0; i < 3; ++i) { e.t[i] = e.t[i + 1]; std::memcpy(e.p[i], e.p[i + 1], sizeof(float) * 3); }
+                e.n = 3;
+            }
+            e.t[e.n] = t_ms;
+            std::memcpy(e.p[e.n], origin, sizeof(float) * 3);
+            ++e.n;
+            auto& g = number < 42 ? motion_low : motion_high;
+            g.seen[static_cast<std::size_t>(number)] = true;
+            ++g.frames;
+            ++g.types[type];
+            if (e.n >= 3)
+            {
+                const float* p2 = e.p[e.n - 1], * p1 = e.p[e.n - 2], * p0 = e.p[e.n - 3];
+                if (distance(p2, p0) > moved_min)
+                {
+                    const float s0 = p2[0] - 2.0f * p1[0] + p0[0], s1 = p2[1] - 2.0f * p1[1] + p0[1], s2 = p2[2] - 2.0f * p1[2] + p0[2];
+                    const double dt = e.t[e.n - 1] - e.t[e.n - 2];
+                    const float jerk = static_cast<float>(std::sqrt(static_cast<double>(s0 * s0 + s1 * s1 + s2 * s2)) / (dt > 0.01 ? dt : 0.01));
+                    g.sum += jerk;
+                    if (g.jerk.size() < max_jerk_samples) g.jerk.push_back(jerk);
+                }
+            }
+            if (e.n == 4 && distance(e.p[2], e.p[0]) > moved_min)
+            {
+                ++g.eligible;
+                if (distance(e.p[3], e.p[2]) < same_max) ++g.stutter;
+            }
+        }
+        void append_group(std::string& out, motion_group& g)
+        {
+            std::sort(g.jerk.begin(), g.jerk.end());
+            const auto pick = [&](const double q) { return g.jerk.empty() ? 0.0 : static_cast<double>(g.jerk[std::min(g.jerk.size() - 1, static_cast<std::size_t>(q * static_cast<double>(g.jerk.size())))]); };
+            std::size_t entities = 0;
+            for (const bool s : g.seen) entities += s ? 1 : 0;
+            char line[512]{};
+            _snprintf_s(line, sizeof(line), _TRUNCATE, "{\"entities\":%zu,\"frames\":%llu,\"count\":%zu,\"mean\":%.6f,\"p95\":%.6f,\"p99\":%.6f,\"stutter_eligible\":%llu,\"stutter\":%llu,\"stutter_ratio\":%.6f,\"types\":{",
+                entities, static_cast<unsigned long long>(g.frames), g.jerk.size(), g.jerk.empty() ? 0.0 : g.sum / static_cast<double>(g.jerk.size()), pick(0.95), pick(0.99),
+                static_cast<unsigned long long>(g.eligible), static_cast<unsigned long long>(g.stutter), g.eligible ? static_cast<double>(g.stutter) / static_cast<double>(g.eligible) : 0.0);
+            out += line;
+            bool first = true;
+            for (const auto& [type, count] : g.types)
+            {
+                _snprintf_s(line, sizeof(line), _TRUNCATE, "%s\"%d\":%llu", first ? "" : ",", type, static_cast<unsigned long long>(count));
+                out += line;
+                first = false;
+            }
+            out += "}}";
+        }
+        void append_motion(std::string& out)
+        {
+            std::lock_guard<std::mutex> lock(motion_mutex);
+            char line[512]{};
+            _snprintf_s(line, sizeof(line), _TRUNCATE, "\"agent_motion\":{\"hooked\":%s,\"characters\":%u,\"base_mismatch\":%llu,\"interp_all_agents\":{\"requested\":%s,\"applied\":%s,\"compare_limit\":%d,\"byte_now\":%u},\"low\":",
+                motion_hooked ? "true" : "false", motion_characters, static_cast<unsigned long long>(motion_mismatch), interp_requested ? "true" : "false", interp_applied ? "true" : "false",
+                interp_limit, static_cast<unsigned>(*reinterpret_cast<const unsigned char*>(interp_compare + 6)));
+            out += line;
+            append_group(out, motion_low);
+            out += ",\"high\":";
+            append_group(out, motion_high);
+            out += "},\n";
+        }
+        void install_motion_hook()
+        {
+            static const unsigned char code[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x83, 0xBA, 0x94, 0x07, 0x00, 0x00, 0x00};
+            if (std::memcmp(reinterpret_cast<const void*>(entity_type_function), code, sizeof(code)) != 0)
+            {
+                console::error("[Paris perf] entity function at 0x%llX: code differs from the expected bytes, the agent motion meter is left out\n", static_cast<unsigned long long>(entity_type_function));
+                return;
+            }
+            // Pre-hook: save the argument registers, call motion_record(rcx, rdx), restore them and jump to the original with the return address untouched.
+            const auto stub = utils::hook::assemble([](utils::hook::assembler& a)
+            {
+                using namespace asmjit::x86;
+                a.push(rcx); a.push(rdx); a.push(r8); a.push(r9); a.push(r10); a.push(r11);
+                a.sub(rsp, 0x28);
+                a.mov(rax, reinterpret_cast<std::uint64_t>(&motion_record));
+                a.call(rax);
+                a.add(rsp, 0x28);
+                a.pop(r11); a.pop(r10); a.pop(r9); a.pop(r8); a.pop(rdx); a.pop(rcx);
+                a.mov(rax, reinterpret_cast<std::uint64_t>(&motion_original));
+                a.mov(rax, qword_ptr(rax));
+                a.jmp(rax);
+            });
+            motion_hook.create(entity_type_function, stub);
+            motion_original = motion_hook.get_original();
+            motion_hooked = true;
+        }
+        void apply_interp_all_agents()
+        {
+            interp_requested = true;
+            const auto characters = character_count();
+            static const unsigned char code[] = {0x83, 0xBD, 0x00, 0x07, 0x00, 0x00, 0x2A, 0x7D};
+            if (std::memcmp(reinterpret_cast<const void*>(interp_compare), code, sizeof(code)) != 0)
+            {
+                console::error("[Paris interp] 0x%llX: the shipped bytes differ (or are already patched), -paris-interp-all-agents refused\n", static_cast<unsigned long long>(interp_compare));
+                return;
+            }
+            if (characters > 127)
+            {
+                console::error("[Paris interp] %u characters do not fit the signed byte of the compare, -paris-interp-all-agents refused\n", characters);
+                return;
+            }
+            utils::hook::set<std::uint8_t>(interp_compare + 6, static_cast<std::uint8_t>(characters));
+            interp_limit = static_cast<int>(characters);
+            interp_applied = true;
+            console::info("[Paris interp] compare at 0x%llX now against %u characters: every agent takes the snapshot interpolation\n", static_cast<unsigned long long>(interp_compare), characters);
         }
         void account(const std::size_t index, const raw_sample& sample)
         {
@@ -167,6 +368,11 @@ namespace paris_perf
             stacks.clear();
             ticks = dropped = 0;
             snapshot_calls = 0; snapshot_sum = 0; snapshot_max = 0;
+            {
+                std::lock_guard<std::mutex> motion_lock(motion_mutex);
+                motion_reset();
+                motion_characters = character_count();
+            }
             const auto self = GetCurrentProcessId();
             const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
             if (snapshot != INVALID_HANDLE_VALUE)
@@ -238,10 +444,12 @@ namespace paris_perf
             }
             {
                 const auto n = snapshot_calls.load();
-                _snprintf_s(line, sizeof(line), _TRUNCATE, "],\n\"snapshot_entities\":{\"calls\":%llu,\"max\":%llu,\"mean\":%.3f},\n\"threads\":[",
+                _snprintf_s(line, sizeof(line), _TRUNCATE, "],\n\"snapshot_entities\":{\"calls\":%llu,\"max\":%llu,\"mean\":%.3f},\n",
                     static_cast<unsigned long long>(n), static_cast<unsigned long long>(snapshot_max.load()),
                     n ? static_cast<double>(snapshot_sum.load()) / static_cast<double>(n) : 0.0);
                 out += line;
+                append_motion(out);
+                out += "\"threads\":[";
             }
             std::uint64_t samples = 0;
             for (std::size_t i = 0; i < threads.size(); ++i)
@@ -324,6 +532,17 @@ namespace paris_perf
                 snapshot_parse_hook.create(snapshot_parse_function, snapshot_parse_stub);
             else console::error("[Paris perf] snapshot parser at 0x%llX: code differs from the expected bytes, its counter is left out\n",
                 static_cast<unsigned long long>(snapshot_parse_function));
+            install_motion_hook();
+            scheduler::loop([]
+            {
+                // The character count is final once every component's post_unpack has run: the first main-thread tick applies the lab switch.
+                static bool interp_done = false;
+                if (!interp_done)
+                {
+                    interp_done = true;
+                    if (utils::flags::has_flag("paris-interp-all-agents")) apply_interp_all_agents();
+                }
+            }, scheduler::main);
             scheduler::loop([]
             {
                 if (!render_thread.load()) render_thread = GetCurrentThreadId();
