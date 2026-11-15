@@ -60,10 +60,18 @@ number of the agent-state delta (5 sites) and the clientNum net field (24 sites)
 (`layout::net_id_bits()`, 7 at every count up to 108). Left as one byte: the low byte of G_GetMaxAgents' `mov eax, n` (`unsigned_imm8`, at most 255); CG_SetNextSnap's eight stack offsets are gone (a34: the mask is in the room of a frame grow of `FUN_14086FBA0`, see `docs/CAVE-REWRITER.md`). `agent_capacity_sites_test.py` decodes every cave for every count 24..232 and checks the
 field value, and that at 24 the field equals the shipped immediate.
 
-Not converted, read only (a33 step 4): `cmp dword [rbp+0x700], 0x2a` at 0x1407AE222 in FUN_1407ae190 (CG interpolation of one entity: for position type 3
-and an entity number below 42 it interpolates between the two snapshots through FUN_1407b6850 and returns). An agent numbered 42 or more does not take
-that branch today (at 100 agents too): it gets the generic trajectory path. The proposal is one more wide site (`cmp [rbp+0x700], characters`);
-it changes what agents 42..C-1 do at every count, so it is not part of the byte-site work.
+**Agent motion above entity 41 (a40).** `cmp dword [rbp+0x700], 0x2a` at 0x1407AE222 in FUN_1407ae190 decides, for position type 3, whether an entity takes the
+interpolation between the two snapshots (FUN_1407b6850, numbers below 42) or the generic trajectory path evaluated at the render time (numbers 42 and up: drawn
+stepwise at the snapshot rate, measured by run i1 of a37: jerk 0.82 against 0.02, stutter 99.8 percent against 0.5). A cave (`ops/engine/caves/interp-agents.*`,
+`agent_capacity_caves_interp.inc`, installed with `-agent-capacity`) feeds the same `jge` the flags of `cmp X, 0x2A` with X = 0 when the entity type
+(`[rbp+0x704]`) is 18 (agent) and its number is below the character count, X = the number otherwise: branch-free (`cmove` and `cmovl` on a 32-bit copy), rax, rcx and rdx are
+pushed and popped (flags survive the pops), the character count is the imm32 of one `cmp ecx, imm` (placeholder 0x5A5AC0DE, written by `plan_caves()`, exactly one).
+At 24 agents (42 characters) it is the shipped compare for every input; the test (`InterpAgents` in `agent_capacity_state_test.py`) emulates the cave for every
+allowed count 24..232 over entity numbers and types. The lab switch `-paris-interp-all-agents` of a37 is removed (the cave replaces it); the motion meter and its reader stay.
+Per-entity arrays on the path of FUN_1407b6850 (a40 step 3): none is indexed by the entity number. The only table is the per-character record at
+`cg + 0x885B8 + [centity+0x79C] x 0x2CA0` (`cg` object vtable +0x60 = FUN_140242b70, reached through FUN_140828a50), already grown with the character count (`character_growth()`), and
+the generic path that agents 42 and up took before calls FUN_140828a50 the same way. The callees FUN_1401c6a40, FUN_140068e40/e10/e00, FUN_1401c7c30, FUN_1401502e0 and the
+quaternion helpers read only the entity and the two snapshot pointers (`cg+0x4AE0/0x4AE8`). The stock early return skips the tail of FUN_1407ae190 (0x1407AE3B4), which only types 2 and 0x13 use: agents (18) never.
 
 Proof state of the rewind store: the cave is decoded for every allowed count by `agent_capacity_sites_test.py` (same instruction as the shipped one, only the
 displacement differs, equal to what the planner re-encodes), and the headless plan `capacity-agents-headless.json` passes 22/22 with 51 caves

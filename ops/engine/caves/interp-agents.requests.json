@@ -1,0 +1,8 @@
+[
+ {
+  "address": "0x1407AE222",
+  "kind": "bytes",
+  "new_bytes": "5051528b8500070000b9ffffff7f83bd04070000120f44c889c281f9dec05a5ab9000000000f4cd183fa2a5a5958",
+  "note": "FUN_1407AE190+0x92 (cmp dword [rbp+0x700],0x2A ; the jge at 0x1407AE229 follows). The entity number limit below which a trajectory-3 entity takes the snapshot interpolation FUN_1407B6850 (stepwise drawing above it). The jge must see the flags of cmp X,0x2A with X = 0 when (eType [rbp+0x704] == 18 (agent) and number [rbp+0x700] < characters) and X = number otherwise: at 42 characters it is the shipped compare for every input. Branch-free: eax = number; ecx = (type==18) ? number : 0x7FFFFFFF (cmove); edx = number; cmp ecx,characters (imm32 placeholder 0x5A5AC0DE, written by plan_caves() from layout::characters, exactly one); ecx = 0 (mov keeps flags); cmovl edx,ecx; cmp edx,0x2A; pops (keep flags). rax/rcx/rdx are pushed and popped (their liveness at the branch is not relied on)."
+ }
+]
