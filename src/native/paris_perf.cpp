@@ -5,6 +5,7 @@
 #include "console/console.hpp"
 #include "paris_stack.hpp"
 #include <utils/flags.hpp>
+#include <utils/hook.hpp>
 #include <utils/io.hpp>
 #include <tlhelp32.h>
 #include <psapi.h>
@@ -22,6 +23,11 @@
 //
 // Sampler rule: between SuspendThread and ResumeThread it touches no heap, no file and no lock. A suspended thread
 // may hold any of them. Function entries of the game image come from its own exception directory, read once.
+//
+// Snapshot entity count (read only): the client's snapshot parser FUN_1409B7C30(client, message, time, previous, snapshot) is
+// wrapped; when it returns, the dword at [snapshot+0x626C] is the number of entity records of that snapshot (set to 0 at the entry,
+// +1 per record). A window keeps the calls, the maximum and the mean. The wrapper is left out, with an error line, when the
+// first bytes of the function are not the expected ones.
 namespace paris_perf
 {
     namespace
@@ -62,6 +68,26 @@ namespace paris_perf
         std::vector<thread_info> threads;
         std::map<std::string, std::uint32_t> stacks; // key: thread index byte, depth byte, scan byte, then the addresses
         std::uint64_t ticks{}, dropped{};
+
+        constexpr std::uintptr_t snapshot_parse_function = 0x1409B7C30;
+        utils::hook::detour snapshot_parse_hook;
+        std::atomic<std::uint64_t> snapshot_calls{}, snapshot_sum{}, snapshot_max{};
+        int snapshot_parse_stub(const std::uintptr_t client, void* message, const int time, const std::uintptr_t previous, const std::uintptr_t snapshot)
+        {
+            const int result = snapshot_parse_hook.invoke<int>(client, message, time, previous, snapshot);
+            if (window_open.load(std::memory_order_acquire) && snapshot)
+            {
+                const int count = *reinterpret_cast<const int*>(snapshot + 0x626C);
+                if (count >= 0)
+                {
+                    ++snapshot_calls;
+                    snapshot_sum += static_cast<std::uint64_t>(count);
+                    auto seen = snapshot_max.load(std::memory_order_relaxed);
+                    while (static_cast<std::uint64_t>(count) > seen && !snapshot_max.compare_exchange_weak(seen, static_cast<std::uint64_t>(count))) {}
+                }
+            }
+            return result;
+        }
 
         std::int64_t now()
         {
@@ -140,6 +166,7 @@ namespace paris_perf
             threads.clear();
             stacks.clear();
             ticks = dropped = 0;
+            snapshot_calls = 0; snapshot_sum = 0; snapshot_max = 0;
             const auto self = GetCurrentProcessId();
             const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
             if (snapshot != INVALID_HANDLE_VALUE)
@@ -209,7 +236,13 @@ namespace paris_perf
                 if (i > 1) out += ',';
                 out += std::to_string(us);
             }
-            out += "],\n\"threads\":[";
+            {
+                const auto n = snapshot_calls.load();
+                _snprintf_s(line, sizeof(line), _TRUNCATE, "],\n\"snapshot_entities\":{\"calls\":%llu,\"max\":%llu,\"mean\":%.3f},\n\"threads\":[",
+                    static_cast<unsigned long long>(n), static_cast<unsigned long long>(snapshot_max.load()),
+                    n ? static_cast<double>(snapshot_sum.load()) / static_cast<double>(n) : 0.0);
+                out += line;
+            }
             std::uint64_t samples = 0;
             for (std::size_t i = 0; i < threads.size(); ++i)
             {
@@ -286,6 +319,11 @@ namespace paris_perf
             QueryPerformanceFrequency(&frequency);
             qpc_hz = frequency.QuadPart;
             read_image();
+            static const unsigned char parse_code[] = {0x40, 0x53, 0x55, 0x56, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x81, 0xEC, 0x78, 0x01, 0x00};
+            if (std::memcmp(reinterpret_cast<const void*>(snapshot_parse_function), parse_code, sizeof(parse_code)) == 0)
+                snapshot_parse_hook.create(snapshot_parse_function, snapshot_parse_stub);
+            else console::error("[Paris perf] snapshot parser at 0x%llX: code differs from the expected bytes, its counter is left out\n",
+                static_cast<unsigned long long>(snapshot_parse_function));
             scheduler::loop([]
             {
                 if (!render_thread.load()) render_thread = GetCurrentThreadId();
