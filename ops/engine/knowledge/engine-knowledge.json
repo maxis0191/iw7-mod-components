@@ -10,6 +10,14 @@
    "evidence": "disasm: entities 18..41, agent rec+0x4B10 != 0 appended to caller array without bound"
   },
   {
+   "address": "14048FD60",
+   "name": "G_ReadSaveGameState",
+   "kind": "function",
+   "by": "agent",
+   "date": "2026-11-15",
+   "evidence": "caller FUN_1404923E0 prints 'The save file has become corrupted (bad checksum.)' then calls it; 71-iteration loop reads 0x18 bytes of 0x30-byte sentient records from the stream; frees scriptables first (FUN_140BF81C0). Not run in a zombies match"
+  },
+  {
    "address": "140AF6310",
    "name": "G_InitSentients",
    "kind": "function",
@@ -399,6 +407,14 @@
    "tag": "limit",
    "value": "6",
    "evidence": "disasm 0x140BBFAB3 --here: mov r8d,6; disasm 0x140BBFB04 --here: mov dword [rsp+0x38],6; disasm 0x1409B7541/0x140C655D7/0x140C65C50 --here: mov edx,6"
+  },
+  {
+   "address": "140BF5802",
+   "text": "shutdown crash 'null replicated-state buffer': FUN_140BF5730 type-2 record reads state byte [[ctx+0x10]+0x60][part]; the buffer (record+0x60) is allocated by ScriptableSv_LinkReservedScriptable only after the replicated-parts budget check, so the instance whose link raised ERR_DROP 'Too many replicated parts' is registered without it and FUN_140BF81C0 (free all scriptables, called from the shutdown-game function 0x140B21CC0 via FUN_140C12850) walks it. Capacity d2, 15 Nov 2026",
+   "by": "agent",
+   "date": "2026-11-15",
+   "tag": "limit",
+   "evidence": "dump runs/d2/run1/crash 14-55-16: rip 0x140BF5802, rcx 0, rdx 0x78; budgets.jsonl EngineError; stack return 0x140BF82CB, 0x140B21CF9"
   },
   {
    "address": "140BF7798",
