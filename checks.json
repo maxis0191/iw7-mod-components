@@ -381,6 +381,14 @@
       ]
     },
     {
+      "id": "agent_capacity_pools_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/agent_capacity_pools_test.py"
+      ]
+    },
+    {
       "id": "agent_capacity_state_test",
       "command": [
         "python",
