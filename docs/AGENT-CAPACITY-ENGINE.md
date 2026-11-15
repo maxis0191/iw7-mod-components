@@ -24,8 +24,9 @@ built on: the RE map `engine-zombie-limits.md` (notes folder) and the tools belo
 | server snapshot agent rings | frames x 24 | frames x n (and the hunk budget) | sub_140C68A00, sub_140C68880 |
 | client snapshot agent ring (remote server) | frames x 24 | frames x n | sub_1409B2620 0x1409B26FC |
 | server AI loops over characters (cmp reg, 42 x 0x3F8) | 42 | C (7 of 8; see open) | 0x140C22AE3 ... 0x140C481FE |
-| reserved scriptable parts (an agent's model takes 31) | 2,048 | 8,192 (`-scriptable-parts <m>`, at most 65,535) | sub_140BF7770, sub_140BF96A0, sub_140BF9A70, sub_140BFA3D0, sub_140BF6F20 |
+| reserved scriptable parts (an agent's model takes 31) | 2,048 | default max(8,192, 2,048 + 32 n + 1,024 rounded up to 1,024): 9,216 at 164, 11,264 at 232 (`-scriptable-parts <m>` raises it, at most 65,535) | sub_140BF7770, sub_140BF96A0, sub_140BF9A70, sub_140BFA3D0, sub_140BF6F20 |
 | replicated scriptable state (a zombie's scriptable takes 8 of the budget's units) | 1,016 dwords | 1,016 + 8 (n - 24): 1,624 at 100, 2,136 at 164, 2,680 at 232 | see "Replicated state budget" (205 fields, five relocated blocks) |
+| reserved scriptable RECORDS (MapEnts scriptable block, map data) | 200 (cp_zmb) | R(n) = max(200, n + 56): 288 at 232; the block is rebuilt at load | see "Reserved scriptable records" (a42), detour of FUN_1403B8610 |
 
 Every field is compared with its shipped value before anything is written; one difference and the game stops with the
 address (nothing is half-applied). Relocated tables sit within 2 GB of the image (the code reaches them by 32-bit
@@ -147,6 +148,36 @@ fault), n between 100 and 164 (the sites test covers every count 24..232 offline
 replicated-parts check, so an instance that failed the check has a null buffer and the walk crashed at address 0x78 (runs d2, d2b). A cave
 (`ops/engine/caves/shutdown-guard.*`, `agent_capacity_caves_guard.inc`) replaces the compare by a branch-free sequence that leaves ZF = 1 for a null buffer
 (the `je` that follows is the stock branch for a zero state) and does not read memory then; `rcx`, `rdx` are dead after it, `r9`, `r10` volatile.
+
+## Reserved scriptable records (a42, 15 Nov 2026)
+
+The map's MapEnts asset (type 0x1b; the pool header S, 0x143686918 on cp_zmb, that the clipmap field `[0x145D5F9D8]` points to) keeps the scriptable records in a
+block at S + 0x240: +0 total records (cp_zmb 523), +4 reserved records, indices [0, 200), +8 end of the server records (414), +0x10 the array (0x1D0 bytes a record, zone
+memory). The values are zone data; no engine code writes them, and the ~130 users read them through the global fresh. A zombie's scriptable takes one reserved record,
+so the stock block holds 24 + alive <= 200 (176 alive) and the engine raises "Could not allocate a reserved scriptable ... limit is 200" beyond it.
+`link_mapents_stub` (agent_capacity.cpp 4c, detour of FUN_1403B8610, the zone's link step of the MapEnts reference) rebuilds the block right after the original returns,
+when -agent-capacity n is given and `reserved < R(n) = max(200, n + 56)` (24 stock instances, n agents, 32 spare): `d = R - 200` copies of reserved record 0 are inserted after
+the stock reserved ones into a new 64-aligned block, the old records from index 200 follow (the fixed records shift by d on the server and on the client alike), then +0x244 =
+R, +0x248 += d, +0x240 += d and the array pointer change. The old block (zone memory) is left alone; our block is freed when the header no longer points at it (the next zone
+load rewrote it). Client and server run the same code (both load the zone). Skipped (logged) when the block is already large enough (R(100) = 200). Guards, logged at the
+first link: a) the stock reserved records are byte-identical (200 of 200 equal to record 0 on cp_zmb; else a fatal error before anything moves), b) the caller of
+the link step (the clipmap's `FUN_1409FAF00` at 0x1409FAFB3, return 0x1409FAFB8, was the only call of a headless server load; the asset's own caller FUN_140A35E50
+@0x140A35F00 did not run), c) the width of the entity-state field 0x78 (record index + 1 of a fixed scriptable, FUN_140BF85C0; entity type 6, net field list
+0x141BB6480, descriptor {0x78, 10 bits}, read at run time from the list table 0x141BB3B20): 10 bits hold 1,023, the largest value is 523 + d = 611 at 232; refused when it
+does not fit. Part links follow the count: `scriptable_parts(n)` = max(8,192, 2,048 + 32 n + 1,024 rounded up to 1,024). Test: tests/ops/agent_capacity_records_test.py.
+
+Run a42-h2 (headless soak, n = 232, alive 200): the move happened at the first load (`200 -> 288 reserved (88 added), total 611, server end 502`, meter instances_cap 288,
+parts_slots 11,264) and the soak climbed to 186 instances (24 stock + about 162 zombies, parts 4,873, state 1,406 of 2,680) before the next limit stopped the
+server at 195 s; so the record wall (176 alive) was not yet reached and the move is not stressed past 200 records.
+
+**Next limit: the scriptable stream buffer pools (ERR_DROP "ScriptableSv_LinkReservedScriptable: Could not allocate Stream Buffer of 148 bytes").** Every reserved instance
+copies `def+0x40` bytes of state into a block taken by FUN_140BE1770 (alloc, called by FUN_140BF96A0 at 0x140BF99CC) from five static server pools (BSS) of fixed blocks; free
+is FUN_140BE1E50 and the class of a pointer is found from its address range in FUN_140BE1B20. Classes (size limits `0x14150B900`: 16, 64, 256, 512, 3,072): 16 B x 128
+[0x1460A83B0, 0x1460A8BB0), 64 B x 128 [0x146041310, 0x146043310), 256 B x 64 [0x146043330, 0x146047330), 512 B x 32 [0x14608C390, 0x146090390), 3,072 B x 32
+[0x1460903A0, 0x1460A83A0); the free lists are built by static initialisers (0x14001A3D0, 0x14001A410, 0x14001A450, 0x14001A490, 0x14001A4D0) and the in-use counters are at
+0x146043318 + 4 * class. A request takes its class (FUN_140BE1970) and, when that list is empty, the next larger ones: a 148 byte state (a zombie's scriptable) can use 64 + 32 +
+32 = 128 blocks. The client has its own per-slot pools (the `param_1 = 0` forms at 0x14604F350.., stride 0x808 / 0x2008 ..., from the decompile, not run). The 128-block count is read from the code, not measured: the instance count at the error (186) fits it only with the smaller zombie states in the classes below. Growing it is a relocation of five pools plus the
+range tests of FUN_140BE1B20, not one constant (a free of a pointer outside the ranges would find no class).
 
 ## Players on another layout
 
