@@ -14,6 +14,10 @@ request per instruction, imm32/disp32 = `0x5A5A0000 | row`) is planned in one ru
 `agent_capacity_caves_wide.inc`; `plan_caves()` looks for each row's placeholder, writes the layout's value and throws unless there is exactly one.
 Regenerate: `py -3.12 -B ops/engine/cave_plan.py wide-sites.requests.json -o wide-sites.plan.json`, then `--emit-cpp`. The sites test checks every cave for every count 24..232.
 
+Shutdown guard cave (a39, 15 Nov 2026): the first cave of kind `bytes` that adds logic and no count. `ops/engine/caves/shutdown-guard.requests.json` replaces `cmp byte [rdx+rcx],bpl` at FUN_140BF5730+0xD2 (0x140BF5802) by a
+branch-free sequence (`test rcx,rcx; lea rdx,[rdx+rcx]; cmovz rdx,rsp; setnz r9b; cmp byte [rdx],bpl; setnz r10b; and r9b,r10b`: ZF = 1 for a null buffer or a zero byte; `new_bytes` may not contain a branch, so the null case reads the stack and the flags are
+combined without one); `agent_capacity_caves_guard.inc` is its table, constant bytes, installed with the other caves. The sites test decodes it and the window against the shipped code.
+
 ## What it is for
 
 The engine's 8-bit displacements and immediates (`mov eax, [rdx+rbx+0x24]`) cannot hold the values the capacity patch
