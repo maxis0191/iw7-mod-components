@@ -322,11 +322,22 @@ reads it from the command line and skips the box), so a fatal error ends the pro
 
 **Next limits found by these runs (not changed):**
 
-1. The per-client list of looping character sounds in the client's sound code: 140 entries (`0x144B473C0`, count `0x144B47820`, `FUN_1405527E0` adds without a check; parallel tables of 140 x 2 entries `0x144B49270`, `0x144B4A3F0`, `0x144B4A850`, `0x144B4ACB0`, `0x144B4B110`; update loop FUN_1405532D0 has stack arrays of 140 (`local_b38[140]`, `local_908[2240]`), stop function FUN_1405531A0). Alive agents above about 140 crash the client (m2: 150 alive). The change needed: relocate the tables to `characters` entries and grow the frame of FUN_1405532D0, or bound the append.
+1. (closed by a47, see "Character proxy list" and "Runs of a47") The per-client list of character proxies, formerly called the looping character sound list: 140 entries (`0x144B473C0`, count `0x144B47820`, `FUN_1405527E0` adds without a check; parallel tables of 140 x 2 entries `0x144B49270`, `0x144B4A3F0`, `0x144B4A850`, `0x144B4ACB0`, `0x144B4B110`; update loop FUN_1405532D0 has stack arrays of 140 (`local_b38[140]`, `local_908[2240]`), stop function FUN_1405531A0). Alive agents above about 140 crash the client (m2: 150 alive). The change needed: relocate the tables to `characters` entries and grow the frame of FUN_1405532D0, or bound the append.
 2. `ENT_HANDLE_COUNT` (4,096 nodes at `0x145C53B90`, FUN_140AE9860), not measured at 232 agents.
 3. The GSC child variable pool (a43), unchanged.
 
 
+
+### Runs of a47 (15 Nov 2026, private loopback; lab client built from components 69859d35 with the switches ServerModules, IsolatedLab, Debugger, Perf, AgentCapacity)
+
+| run | shape | result |
+|---|---|---|
+| k1c | `netlab-capacity-soak`, n = 232, alive 150 (`capacity=232,alive=150,amin=146,until_s=300,session_s=1800`), joined client | **no client crash**: 148/148 steps, 0 findings, 37/41 expectations, 1,081 s in game. The client log shows the list passing the stock 140 (`character proxy list: 141 entries`) and reaching 150 to 159 entries (a line every 10) with 150 alive agents, exactly where a44-m2 died. The four failed expectations are the alive floor of soak windows 2 to 5 (124, 29, 60, 120 alive against 146): the GSC child variable pool, the next limit (below). Snapshot entities per client at most 694 of 768 (never capped); client 101 to 110 fps mean in the soak windows, server 25 to 33 ms mean; 150 alive reached (peak alive 150), 182 instances |
+| k2c | `capacity-agents-headless`, n = 100 | PASS 22/22, 9/9 (peak alive 78) |
+
+**The next limit, captured (k1c, `budgets.jsonl`):** the script child variable pool. The fullest of the four segments held 38,500 to 39,333 children of 40,959 for the 12 minutes of the soak (96 %); the instances stayed at 181 to 182 while the alive count fell to 29 (window 3) and 55 (end), the `Exceeded maximum number of script variables (children)` wall of a43/a45 (FUN_140D34180, pool at 0x146756180); parents 12,847 of 14,079. Not changed here: a46 (variable pools, `script_variables.cpp`) owns it. The entity list's own peak is 150 to 159 entries (2,035 capacity).
+
+**A fault of the shared native tree found on the way (fixed in Build-Voice):** a first client was built into the tree `C:/w/a33-native` that another branch (a46) had used: its `script_variables.cpp`, left in `src/client/component` by its Compile-Check and its build, was compiled into the client although the checked-out branch does not have it (the client log printed `[script variables] ... 414 fields` with the switch AgentCapacity off, so the run measured two changes). Build-Voice now removes the capacity family (`agent_capacity*`, `script_variables*`) that its own checkout does not own from a kept tree before generating the project (`tests/ops/build_voice_foreign_sources_test.ps1`). Also: `Invoke-EngineLab -BuildOnly` without `-BuildSwitch` builds `ServerModules,IsolatedLab,Debugger` only, a client WITHOUT the component: capacity runs need `-BuildSwitch 'ServerModules,IsolatedLab,Debugger,Perf,AgentCapacity'`.
 
 ## Players on another layout
 
