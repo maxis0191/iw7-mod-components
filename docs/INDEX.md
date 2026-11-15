@@ -34,6 +34,7 @@ source test of its own: it is proven by live runs in the server repository's eng
 |---|---|
 | Scheduler and leases (who may run what, and when) | [RESOURCE-WORKFLOW.md](RESOURCE-WORKFLOW.md), read "Shareable runtime leases" first. Code: `ops/Resource-Scheduler.Core.ps1`, `ops/Resource-Scheduler.ps1` |
 | Native build, every profile | `ops/Build-Voice.ps1` (historic name: it is the native build entry for all profiles, not only voice) |
+| Does my native source compile? (before any full build) | `ops/Compile-Check.ps1 -NativeRoot <tree built once by Build-Voice> -Source src/native/<unit>.cpp`: export and build-list gate (`ops/compile_check_exports.py`), then only that translation unit with the project's real flags (about 2 s; a full build with the same error: 127 s). Test: `tests/ops/compile_check_exports_test.py` |
 | Supervised sessions, incident stream, captures | [DEBUGGER.md](DEBUGGER.md) from "Entry points". Code: `ops/Debug-Server.ps1`, `ops/Debug-Session.ps1`, `ops/iw7_debugger.py`, `ops/iw7_watch.py`, `ops/iw7_capture.py` |
 | Standard client build and Aurora updates | [STANDARD-CLIENT-UPDATE.md](STANDARD-CLIENT-UPDATE.md), `client-profiles.json`, `ops/Build-StandardClient.ps1`, `ops/standard-client/` |
 | Private test server overlay (password, LAN only, no master heartbeat) | `ops/Apply-TestPrivacyOverlay.ps1`, `src/native/paris_test_safety.hpp`, `tests/ops/test_privacy_overlay_test.ps1` |
