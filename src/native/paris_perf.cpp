@@ -45,10 +45,8 @@
 // movement of more than 0.5 between t-3 and t-1. A gap of over 100 ms or a jump of over 300 units restarts the entity's history (a
 // spawn). Output: "agent_motion" in the window file.
 //
-// Lab switch -paris-interp-all-agents: sets the limit of the compare at 0x1407AE222 (cmp dword [rbp+0x700], 0x2A) to the character count
-// (agents + 18; the dvar agent_capacity, 24 + 18 = 42 when absent), so every agent takes the snapshot interpolation. The seven bytes
-// 83 BD 00 07 00 00 2A and the jge after them are checked first; above 127 characters the switch is refused (a signed byte). Without
-// the flag nothing is written. It needs -paris-perf (this component).
+// The snapshot interpolation limit of FUN_1407AE190 (the compare at 0x1407AE222) is not changed here: with -agent-capacity the capacity component
+// installs a cave there (agents below the character count take the interpolation; docs/AGENT-CAPACITY-ENGINE.md). This meter reads the result.
 namespace paris_perf
 {
     namespace
@@ -119,7 +117,6 @@ namespace paris_perf
 
         // ---- agent motion ----
         constexpr std::uintptr_t entity_type_function = 0x1407BFF40;   // (localClient, centity), called per entity at the end of CG_ProcessEntity
-        constexpr std::uintptr_t interp_compare = 0x1407AE222;         // cmp dword [rbp+0x700], 0x2A ; jge
         constexpr std::uintptr_t entity_stride = 0x870;
         constexpr std::uint32_t first_agent = 18, max_slots = 512;
         constexpr std::size_t max_jerk_samples = 3000000;
@@ -148,8 +145,6 @@ namespace paris_perf
         bool motion_hooked = false;
         utils::hook::detour motion_hook;
         void* motion_original = nullptr;
-        bool interp_requested = false, interp_applied = false;
-        int interp_limit = 42;
 
         std::uint32_t character_count()
         {
@@ -241,9 +236,8 @@ namespace paris_perf
         {
             std::lock_guard<std::mutex> lock(motion_mutex);
             char line[512]{};
-            _snprintf_s(line, sizeof(line), _TRUNCATE, "\"agent_motion\":{\"hooked\":%s,\"characters\":%u,\"base_mismatch\":%llu,\"interp_all_agents\":{\"requested\":%s,\"applied\":%s,\"compare_limit\":%d,\"byte_now\":%u},\"low\":",
-                motion_hooked ? "true" : "false", motion_characters, static_cast<unsigned long long>(motion_mismatch), interp_requested ? "true" : "false", interp_applied ? "true" : "false",
-                interp_limit, static_cast<unsigned>(*reinterpret_cast<const unsigned char*>(interp_compare + 6)));
+            _snprintf_s(line, sizeof(line), _TRUNCATE, "\"agent_motion\":{\"hooked\":%s,\"characters\":%u,\"base_mismatch\":%llu,\"low\":",
+                motion_hooked ? "true" : "false", motion_characters, static_cast<unsigned long long>(motion_mismatch));
             out += line;
             append_group(out, motion_low);
             out += ",\"high\":";
@@ -275,26 +269,6 @@ namespace paris_perf
             motion_hook.create(entity_type_function, stub);
             motion_original = motion_hook.get_original();
             motion_hooked = true;
-        }
-        void apply_interp_all_agents()
-        {
-            interp_requested = true;
-            const auto characters = character_count();
-            static const unsigned char code[] = {0x83, 0xBD, 0x00, 0x07, 0x00, 0x00, 0x2A, 0x7D};
-            if (std::memcmp(reinterpret_cast<const void*>(interp_compare), code, sizeof(code)) != 0)
-            {
-                console::error("[Paris interp] 0x%llX: the shipped bytes differ (or are already patched), -paris-interp-all-agents refused\n", static_cast<unsigned long long>(interp_compare));
-                return;
-            }
-            if (characters > 127)
-            {
-                console::error("[Paris interp] %u characters do not fit the signed byte of the compare, -paris-interp-all-agents refused\n", characters);
-                return;
-            }
-            utils::hook::set<std::uint8_t>(interp_compare + 6, static_cast<std::uint8_t>(characters));
-            interp_limit = static_cast<int>(characters);
-            interp_applied = true;
-            console::info("[Paris interp] compare at 0x%llX now against %u characters: every agent takes the snapshot interpolation\n", static_cast<unsigned long long>(interp_compare), characters);
         }
         void account(const std::size_t index, const raw_sample& sample)
         {
@@ -533,16 +507,6 @@ namespace paris_perf
             else console::error("[Paris perf] snapshot parser at 0x%llX: code differs from the expected bytes, its counter is left out\n",
                 static_cast<unsigned long long>(snapshot_parse_function));
             install_motion_hook();
-            scheduler::loop([]
-            {
-                // The character count is final once every component's post_unpack has run: the first main-thread tick applies the lab switch.
-                static bool interp_done = false;
-                if (!interp_done)
-                {
-                    interp_done = true;
-                    if (utils::flags::has_flag("paris-interp-all-agents")) apply_interp_all_agents();
-                }
-            }, scheduler::main);
             scheduler::loop([]
             {
                 if (!render_thread.load()) render_thread = GetCurrentThreadId();

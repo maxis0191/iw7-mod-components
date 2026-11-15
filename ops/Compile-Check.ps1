@@ -79,13 +79,17 @@ print('\n'.join(seen))
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $installation = & $vswhere -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
 if (!$installation) { Write-Output 'compile-check: VS 2022 C++ toolchain not found'; exit 3 }
-# SelectedFiles must be written as the project writes its items (relative to build/): an absolute path selects nothing.
-$selected = ($names | ForEach-Object { '..\src\client\component\' + ($_ -replace '/', '\') }) -join ';'
+# SelectedFiles must be written as the project writes its items (relative to build/): an absolute path selects nothing. ONE unit a
+# MSBuild call: a list "a.cpp;b.cpp" selects nothing (msbuild says "All outputs are up-to-date" and the check reports OK although
+# the sources are never compiled; found by a40 with a deliberate syntax error in the second unit).
 $log = Join-Path ([IO.Path]::GetTempPath()) ('compile-check-' + [guid]::NewGuid().ToString('N') + '.log')
 $code = 0
 Phase 'compile' {
-    & "$installation/MSBuild/Current/Bin/MSBuild.exe" $project /t:ClCompile "/p:Configuration=$Configuration" /p:Platform=x64 "/p:SelectedFiles=$selected" /p:BuildProjectReferences=false /nr:false /m:1 /v:minimal "/flp:logfile=$log;verbosity=minimal;encoding=UTF-8" *> $null
-    $script:code = $LASTEXITCODE
+    foreach ($name in $names) {
+        $selected = '..\src\client\component\' + ($name -replace '/', '\')
+        & "$installation/MSBuild/Current/Bin/MSBuild.exe" $project /t:ClCompile "/p:Configuration=$Configuration" /p:Platform=x64 "/p:SelectedFiles=$selected" /p:BuildProjectReferences=false /nr:false /m:1 /v:minimal "/flp:logfile=$log;verbosity=minimal;encoding=UTF-8;append" *> $null
+        if ($LASTEXITCODE) { $script:code = $LASTEXITCODE }
+    }
 }
 if ($code) {
     $errors = @(Select-String -LiteralPath $log -Pattern '\berror\s+[A-Z]+\d+|fatal error' | ForEach-Object { ($_.Line -replace '\s*\[[^\]]*\.vcxproj\]\s*$', '').Trim() } | Select-Object -Unique)

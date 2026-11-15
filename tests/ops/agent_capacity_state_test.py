@@ -221,7 +221,7 @@ class StateRows(unittest.TestCase):
             width = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
             spans.append((x['address'], x['address'] + width, 'site'))
         for name in ('agent_capacity_caves.inc', 'agent_capacity_caves_rewind.inc', 'agent_capacity_caves_wide.inc',
-                     'agent_capacity_caves_mask.inc', 'agent_capacity_caves_guard.inc'):
+                     'agent_capacity_caves_mask.inc', 'agent_capacity_caves_guard.inc', 'agent_capacity_caves_interp.inc'):
             for c in st.parse_inc(open(os.path.join(ROOT, 'src', 'native', name), encoding='utf-8').read()):
                 spans.append((c['start'], c['start'] + len(c['old']), 'cave ' + name))
                 spans.extend((t['field'], t['field'] + 4, 'retarget') for t in c['retargets'])
@@ -300,6 +300,120 @@ class ShutdownGuard(unittest.TestCase):
                 zf = not (nz_rcx and nz_byte)               # and r9b, r10b
                 self.assertEqual(zf, null or byte == 0)
         self.assertEqual(c['fixups'], [])
+
+
+class InterpAgents(unittest.TestCase):
+    """FUN_1407AE190+0x92 (a40): the limit of `cmp dword [rbp+0x700], 0x2A` is the character count for agents (eType 18) and stays 42 for every
+    other entity. The cave is emulated instruction by instruction (push/pop, mov, cmp, cmovcc; no other instruction may appear) for every
+    allowed agent count 24..232 (characters = n + 18) over a grid of entity numbers and types; the jge that follows must see the flags of
+    `cmp X, 0x2A`."""
+    INC_INTERP = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves_interp.inc')
+    PLACEHOLDER = 0x5A5AC0DE
+
+    def setUp(self):
+        self.image, self.source = st.find_image()
+        if self.image is None:
+            self.skipTest('no unpacked code files or analysed image on this machine')
+        self.cs = cp._cs()
+        self.cs.detail = True
+        self.cave = st.parse_inc(open(self.INC_INTERP, encoding='utf-8').read())
+        self.cpp = open(CPP, encoding='utf-8').read()
+
+    def test_the_window_is_the_shipped_code(self):
+        self.assertEqual(len(self.cave), 1)
+        c = self.cave[0]
+        self.assertEqual(c['start'], 0x1407AE222)
+        self.assertEqual(self.image.read(c['start'], len(c['old'])), c['old'])
+        old = list(self.cs.disasm(c['old'], c['start']))
+        self.assertEqual([(i.mnemonic, i.op_str) for i in old], [('cmp', 'dword ptr [rbp + 0x700], 0x2a')])
+        jge = next(self.cs.disasm(self.image.read(0x1407AE229, 2), 0x1407AE229))
+        self.assertEqual((jge.mnemonic, jge.address, jge.size), ('jge', 0x1407AE229, 2))
+        before = list(self.cs.disasm(self.image.read(0x1407AE21C, 6), 0x1407AE21C))
+        self.assertEqual([(i.mnemonic, i.op_str) for i in before], [('cmp', 'r8d, 3'), ('jne', '0x1407ae23b')])
+        self.assertEqual(c['fixups'], [])
+        self.assertEqual(c['retargets'], [])
+
+    def test_the_cave_has_exactly_one_placeholder_and_no_branch(self):
+        c = self.cave[0]
+        hits = [i for i in range(len(c['cave']) - 3) if int.from_bytes(bytes(c['cave'][i:i + 4]), 'little') == self.PLACEHOLDER]
+        self.assertEqual(len(hits), 1)
+        for ins in self.cs.disasm(bytes(c['cave']), c['start']):
+            self.assertFalse(ins.mnemonic.startswith('j') or ins.mnemonic in ('call', 'ret', 'loop'), ins.mnemonic)
+        self.assertIn('L.characters', self.cpp.split('for (const auto& c : interp_cave_table) {')[1].split('cave(c.window_start')[0])
+        self.assertIn('interp_placeholder = 0x5A5AC0DE', self.cpp)
+
+    def run_cave(self, characters, number, etype):
+        """Emulate the cave; returns (jge taken, registers preserved, stack balanced)."""
+        c = self.cave[0]
+        mem = {0x700: number, 0x704: etype}
+        reg = {'rax': 0x1111111122222222, 'rcx': 0x3333333344444444, 'rdx': 0x5555555566666666}
+        saved = dict(reg)
+        stack = []
+        flags = {}
+
+        def val32(op):
+            if op.type == 2:                      # immediate
+                return op.imm & 0xFFFFFFFF
+            if op.type == 1:                      # register
+                return reg[{'eax': 'rax', 'ecx': 'rcx', 'edx': 'rdx'}[self.cs.reg_name(op.reg)]] & 0xFFFFFFFF
+            self.assertEqual(self.cs.reg_name(op.mem.base), 'rbp')
+            return mem[op.mem.disp] & 0xFFFFFFFF
+
+        def signed(v):
+            return v - (1 << 32) if v & 0x80000000 else v
+
+        def cmp(a, b):
+            d = (a - b) & 0xFFFFFFFF
+            flags['zf'] = d == 0
+            flags['sf'] = bool(d & 0x80000000)
+            flags['of'] = ((a ^ b) & (a ^ d) & 0x80000000) != 0
+
+        cond = {'cmove': lambda: flags['zf'], 'cmovl': lambda: flags['sf'] != flags['of']}
+        for ins in self.cs.disasm(bytes(c['cave']), c['start']):
+            name = ins.mnemonic
+            ops = ins.operands
+            if name == 'push':
+                stack.append(reg[self.cs.reg_name(ops[0].reg)])
+            elif name == 'pop':
+                reg[self.cs.reg_name(ops[0].reg)] = stack.pop()
+            elif name == 'mov':
+                dest = {'eax': 'rax', 'ecx': 'rcx', 'edx': 'rdx'}[self.cs.reg_name(ops[0].reg)]
+                reg[dest] = val32(ops[1])               # a 32-bit write clears the upper half
+            elif name == 'cmp':
+                size = ops[0].size
+                self.assertEqual(size, 4)
+                cmp(val32(ops[0]), val32(ops[1]) if ops[1].type != 2 else ops[1].imm & 0xFFFFFFFF)
+            elif name in cond:
+                if cond[name]():
+                    dest = {'ecx': 'rcx', 'edx': 'rdx'}[self.cs.reg_name(ops[0].reg)]
+                    reg[dest] = val32(ops[1])
+            else:
+                self.fail('unexpected instruction ' + name)
+        taken = flags['sf'] == flags['of']              # jge
+        return taken, reg == saved, stack == []
+
+    def test_every_allowed_agent_count(self):
+        c = self.cave[0]
+        for n in range(24, 233):
+            if (n - 24) % 4:
+                continue
+            characters = n + 18
+            patched = bytes(c['cave']).replace(self.PLACEHOLDER.to_bytes(4, 'little'), characters.to_bytes(4, 'little'))
+            saved = c['cave']
+            c['cave'] = list(patched)
+            try:
+                numbers = sorted({0, 1, 17, 18, 41, 42, 43, characters - 2, characters - 1, characters, characters + 1, 118, 249, 250, 2046, 2047})
+                for etype in (0, 1, 2, 17, 18, 19, 20):
+                    for number in numbers:
+                        taken, regs_ok, stack_ok = self.run_cave(characters, number, etype)
+                        self.assertTrue(regs_ok and stack_ok, (n, etype, number))
+                        # the shipped branch is taken at numbers >= 42; an agent below the character count is never taken
+                        want = not (number < 42 or (etype == 18 and number < characters))
+                        self.assertEqual(taken, want, (n, characters, etype, number))
+                        if n == 24:
+                            self.assertEqual(taken, number >= 42, 'at the stock count the compare is the shipped one for every input')
+            finally:
+                c['cave'] = saved
 
 
 if __name__ == '__main__':

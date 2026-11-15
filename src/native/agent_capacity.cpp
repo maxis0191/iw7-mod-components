@@ -696,6 +696,13 @@ const std::vector<cave_spec> mask_cave_table = {
 const std::vector<cave_spec> guard_cave_table = {
 #include "agent_capacity_caves_guard.inc"
 };
+// The snapshot interpolation limit of FUN_1407AE190 (0x1407AE222, `cmp dword [rbp+0x700], 0x2A`): in a cave, the limit is the character count for
+// agents (eType 18) and stays 42 for every other entity (ops/engine/caves/interp-agents.*). The plan holds the placeholder 0x5A5AC0DE as the
+// imm32 of the one `cmp ecx, imm32` in it; plan_caves() writes layout::characters there and throws unless there is exactly one.
+const std::vector<cave_spec> interp_cave_table = {
+#include "agent_capacity_caves_interp.inc"
+};
+constexpr std::uint32_t interp_placeholder = 0x5A5AC0DE;
 struct wide_site { std::uint32_t row; wide_field what; };
 constexpr wide_site wide_sites[] = {
     {1, wide_field::player_corpses}, {2, wide_field::agent_corpses}, {3, wide_field::player_corpses}, {4, wide_field::player_corpses},
@@ -977,6 +984,7 @@ void plan_caves() {
     for (const auto& c : wide_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     for (const auto& c : mask_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     for (const auto& c : guard_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
+    for (const auto& c : interp_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     for (const auto* caves : {&frame_caves_a, &frame_caves_b, &frame_caves_c, &frame_caves_d})
         for (const auto& c : *caves) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     if (!total) return;
@@ -1004,6 +1012,20 @@ void plan_caves() {
     }
     for (const auto& c : mask_cave_table) cave(c.window_start, c.old_bytes, c.cave_bytes, c.fixups, c.retargets);
     for (const auto& c : guard_cave_table) cave(c.window_start, c.old_bytes, c.cave_bytes, c.fixups, c.retargets);
+    for (const auto& c : interp_cave_table) {
+        auto bytes = c.cave_bytes;
+        unsigned hits = 0;
+        for (std::size_t at = 0; at + 4 <= bytes.size(); ++at) {
+            std::uint32_t here{};
+            std::memcpy(&here, bytes.data() + at, 4);
+            if (here != interp_placeholder) continue;
+            const std::uint32_t value = L.characters;
+            std::memcpy(bytes.data() + at, &value, 4);
+            ++hits;
+        }
+        if (hits != 1) throw std::runtime_error("agent capacity: the interpolation cave has no placeholder (or more than one)");
+        cave(c.window_start, c.old_bytes, bytes, c.fixups, c.retargets);
+    }
     unsigned found[std::size(wide_sites)]{};
     for (const auto& c : wide_cave_table) {
         auto bytes = c.cave_bytes;

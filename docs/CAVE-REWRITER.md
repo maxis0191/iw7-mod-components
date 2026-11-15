@@ -18,6 +18,11 @@ Shutdown guard cave (a39, 15 Nov 2026): the first cave of kind `bytes` that adds
 branch-free sequence (`test rcx,rcx; lea rdx,[rdx+rcx]; cmovz rdx,rsp; setnz r9b; cmp byte [rdx],bpl; setnz r10b; and r9b,r10b`: ZF = 1 for a null buffer or a zero byte; `new_bytes` may not contain a branch, so the null case reads the stack and the flags are
 combined without one); `agent_capacity_caves_guard.inc` is its table, constant bytes, installed with the other caves. The sites test decodes it and the window against the shipped code.
 
+Interpolation limit cave (a40, 15 Nov 2026): a `bytes` cave with logic and ONE count. `ops/engine/caves/interp-agents.requests.json` replaces `cmp dword [rbp+0x700],0x2A` at FUN_1407AE190+0x92 (0x1407AE222)
+by a branch-free sequence (push rax/rcx/rdx; `mov eax,[number]`; `mov ecx,0x7FFFFFFF`; `cmp [type],18`; `cmove ecx,eax`; `mov edx,eax`; `cmp ecx,<characters>`; `mov ecx,0`; `cmovl edx,ecx`; `cmp edx,0x2A`; pop rdx/rcx/rax)
+whose final flags drive the `jge` that follows; `agent_capacity_caves_interp.inc` is its table, `plan_caves()` writes `layout::characters` over the placeholder 0x5A5AC0DE (exactly one, or it throws).
+Push/pop keep the flags, so no register-liveness proof is needed. `InterpAgents` in `tests/ops/agent_capacity_state_test.py` emulates it for every allowed count.
+
 ## What it is for
 
 The engine's 8-bit displacements and immediates (`mov eax, [rdx+rbx+0x24]`) cannot hold the values the capacity patch
