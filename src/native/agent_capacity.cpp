@@ -810,6 +810,67 @@ void plan_unwind_probe() {
     console::info("[agent capacity] unwind probe armed: %u s after the first call of FUN_1403E5700 or FUN_1403E6B10\n", seconds);
 }
 
+// ---- 5d. lab-only probe of the rewind store (FUN_140415bf0+34) ----------------------------------------------------------------
+// `-agent-capacity-rewind-probe` (or IW7_AGENT_CAPACITY_REWIND_PROBE=1) hooks FUN_140415bf0 (called by FUN_140415120 for each rewound
+// character; reached only through the lag-compensated animation of a hit trace) and counts its calls. On the first call it logs the
+// base pointer it was given (rdi), the character (rbx), the address the patched store writes (base + rewind_pointers + rbx * 8, the cave's
+// 32-bit displacement), the array the layout says that is (archive object at [0x143C98468] + rewind_base + rewind_pointers), and the
+// quadword at that address and at the stock address (base + 0x40 + rbx * 8) before and after the call. The count is logged on the first
+// call, every power of ten, and every 20 s while it changes. Inert unless given; never part of a release path.
+utils::hook::detour rewind_probe_hook;
+std::atomic<unsigned long long> rewind_probe_calls{}, rewind_probe_reported{};
+void rewind_probe_log_count() {
+    const auto calls = rewind_probe_calls.load();
+    if (calls == rewind_probe_reported.exchange(calls)) return;
+    console::info("[agent capacity] rewind probe: FUN_140415bf0 called %llu times
+", calls);
+}
+void rewind_probe_stub(void* a, std::int32_t* index, std::uint8_t* base, void* d) {
+    const auto call = ++rewind_probe_calls;
+    const auto first = call == 1;
+    const auto slot = static_cast<std::intptr_t>(*index);
+    const auto target = reinterpret_cast<std::uintptr_t>(base) + L.rewind_pointers() + static_cast<std::uintptr_t>(slot) * 8;
+    const auto stock = reinterpret_cast<std::uintptr_t>(base) + 0x40 + static_cast<std::uintptr_t>(slot) * 8;
+    unsigned long long target_before{}, stock_before{};
+    if (first) {
+        target_before = *reinterpret_cast<const unsigned long long*>(target);
+        stock_before = *reinterpret_cast<const unsigned long long*>(stock);
+    }
+    rewind_probe_hook.invoke<void>(a, index, base, d);
+    if (first) {
+        const auto archive = *reinterpret_cast<const std::uintptr_t*>(0x143C98468ull);
+        const auto array = archive + L.rewind_base() + L.rewind_pointers();
+        console::info("[agent capacity] rewind probe: first call, base (rdi) %llX, character (rbx) %lld, store address %llX = base + %X + 8 x character; "
+                      "layout array %llX (archive %llX + rewind_base %X + rewind_pointers %X), inside it: %s, base matches rewind_base: %s
+",
+            static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(base)), static_cast<long long>(slot),
+            static_cast<unsigned long long>(target), L.rewind_pointers(), static_cast<unsigned long long>(array),
+            static_cast<unsigned long long>(archive), L.rewind_base(), L.rewind_pointers(),
+            (target >= array && target < array + L.characters * 8ull) ? "yes" : "NO",
+            reinterpret_cast<std::uintptr_t>(base) == archive + L.rewind_base() ? "yes" : "NO");
+        console::info("[agent capacity] rewind probe: quadword at the store address %llX before, %llX after; at the stock address %llX (base + 0x40 + 8 x character) %llX before, %llX after
+",
+            target_before, *reinterpret_cast<const unsigned long long*>(target), static_cast<unsigned long long>(stock), stock_before,
+            *reinterpret_cast<const unsigned long long*>(stock));
+    }
+    if (call == 10 || call == 100 || call == 1000 || call == 10000 || call == 100000) rewind_probe_log_count();
+}
+void plan_rewind_probe() {
+    auto on = parse_count(L"-agent-capacity-rewind-probe", 1);
+    wchar_t from_env[16]{};
+    if (!on && GetEnvironmentVariableW(L"IW7_AGENT_CAPACITY_REWIND_PROBE", from_env, 16) && from_env[0])
+        on = static_cast<std::uint32_t>(std::wcstoul(from_env, nullptr, 10));
+    if (!on) return;
+    rewind_probe_hook.create(0x140415BF0, rewind_probe_stub);   // queued: main applies every queued hook after post_unpack
+    command::add("agent_capacity_rewind_probe", [](const command::params&) {
+        console::info("[agent capacity] rewind probe: FUN_140415bf0 called %llu times
+", rewind_probe_calls.load());
+    });
+    scheduler::loop(rewind_probe_log_count, scheduler::main, 20s);
+    console::info("[agent capacity] rewind probe armed (FUN_140415bf0)
+");
+}
+
 void plan_caves() {
     std::size_t total = 0;
     for (const auto& c : cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
@@ -893,6 +954,7 @@ public:
         init_record_hook.create(0x140C2A080, init_record_stub);   // queued: main applies every queued hook after post_unpack
         death_reset_hook.create(0x140C3BDD0, death_reset_stub);
         plan_unwind_probe();
+        plan_rewind_probe();
         active = true;
         contract = "agents-" + std::to_string(L.agents);
         scheduler::once([] {
