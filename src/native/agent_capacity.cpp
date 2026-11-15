@@ -1142,6 +1142,77 @@ unsigned entity_index_bits() {
     return 0;
 }
 
+// A name the asset header carries (S + 0), for the log only; "?" unless it reads as a short printable string in committed memory.
+std::string mapents_name(const std::uint8_t* s) {
+    const auto text = *reinterpret_cast<const char* const*>(s);
+    MEMORY_BASIC_INFORMATION info{};
+    if (!text || VirtualQuery(text, &info, sizeof(info)) != sizeof(info) || info.State != MEM_COMMIT || (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) ||
+        reinterpret_cast<std::uintptr_t>(text) + 64 > reinterpret_cast<std::uintptr_t>(info.BaseAddress) + info.RegionSize)
+        return "?";
+    std::string name;
+    for (unsigned i = 0; i < 64 && text[i]; ++i) {
+        if (text[i] < 0x20 || text[i] > 0x7E) return "?";
+        name += text[i];
+    }
+    return name.empty() ? "?" : name;
+}
+
+// The record indexes stored in the zone's data (a44, docs/AGENT-CAPACITY-ENGINE.md): the part tables of the MapEnts, S + 0x170 / + 0x172 the
+// u16 counts of the two groups, S + 0x178 / + 0x180 their arrays of 0x70 byte entries. Entry +0 is the type, +0x4C a u16 that names a scriptable
+// record for the types 3 and 4 (FUN_140A87F00 passes it to FUN_140BD8AD0 / FUN_140BD8B40, FUN_140A8A460 and FUN_140BD6700 read it the same
+// way). `apply` false only counts.
+struct remap_report {
+    std::uint32_t entries[2]{}, link{}, event{}, shifted_link{}, shifted_event{}, kept_reserved{}, kept_beyond{}, in_inserted{}, other_nonzero{}, ambiguous{};
+};
+remap_report remap_part_records(std::uint8_t* s, std::uint32_t reserved, std::uint32_t added, std::uint32_t total, bool apply) {
+    remap_report r{};
+    for (unsigned group = 0; group < 2; ++group) {
+        const auto count = *reinterpret_cast<const std::uint16_t*>(s + 0x170 + 2 * group);
+        auto* base = *reinterpret_cast<std::uint8_t**>(s + 0x178 + 8 * group);
+        if (!base || !count) continue;
+        r.entries[group] = count;
+        for (unsigned i = 0; i < count; ++i) {
+            auto* entry = base + static_cast<std::size_t>(i) * part_entry_bytes;
+            const auto type = *reinterpret_cast<const std::uint32_t*>(entry + part_entry_type_offset);
+            auto& index = *reinterpret_cast<std::uint16_t*>(entry + part_entry_record_offset);
+            if (type != part_type_record_link && type != part_type_record_event) { if (index) ++r.other_nonzero; continue; }
+            (type == part_type_record_link ? r.link : r.event)++;
+            const auto next = remapped_record_index(index, reserved, added, total);
+            if (record_index_turns_into_record(index, added, total)) ++r.ambiguous;
+            if (index >= reserved && index < reserved + added) ++r.in_inserted;   // would name an inserted blank record without the remap
+            if (next != index) {
+                (type == part_type_record_link ? r.shifted_link : r.shifted_event)++;
+                if (apply) index = static_cast<std::uint16_t>(next);
+            } else if (index < reserved) ++r.kept_reserved;
+            else ++r.kept_beyond;
+        }
+    }
+    return r;
+}
+
+// Values that point into [lo, hi) in the committed memory around `where` (the zone's block of the old record array), at most 1 GB of it, and in
+// the `n` bytes at `extra`; the move leaves none: every user reads the array through S, and a record holding such a pointer would be broken.
+struct pointer_scan { std::uint64_t in_region{}, in_extra{}; const void* region{}; std::size_t scanned{}; };
+pointer_scan scan_pointers_into(const std::uint8_t* lo, const std::uint8_t* hi, const void* where, const void* extra, std::size_t n) {
+    pointer_scan result{};
+    const auto from = reinterpret_cast<std::uintptr_t>(lo), to = reinterpret_cast<std::uintptr_t>(hi);
+    auto count = [&](const void* start, std::size_t bytes) {
+        std::uint64_t found{};
+        const auto* q = reinterpret_cast<const std::uint64_t*>((reinterpret_cast<std::uintptr_t>(start) + 7) & ~std::uintptr_t(7));
+        const auto* end = reinterpret_cast<const std::uint64_t*>(reinterpret_cast<std::uintptr_t>(start) + bytes);
+        for (; q + 1 <= end; ++q) found += (*q >= from && *q < to);
+        return found;
+    };
+    MEMORY_BASIC_INFORMATION info{};
+    if (VirtualQuery(where, &info, sizeof(info)) == sizeof(info) && info.State == MEM_COMMIT && !(info.Protect & (PAGE_GUARD | PAGE_NOACCESS))) {
+        result.region = info.BaseAddress;
+        result.scanned = std::min<std::size_t>(info.RegionSize, 1ull << 30);
+        result.in_region = count(info.BaseAddress, result.scanned);
+    }
+    if (extra && n) result.in_extra = count(extra, n);
+    return result;
+}
+
 std::uintptr_t link_mapents_stub(void** pointer) {
     const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
     const auto result = link_mapents_hook.invoke<std::uintptr_t>(pointer);
@@ -1196,14 +1267,37 @@ std::uintptr_t link_mapents_stub(void** pointer) {
     if (!block) { game::Com_Error(game::ERR_FATAL, "agent capacity: no memory for %u scriptable records", count); return result; }
     for (unsigned i = 0; i < count; ++i)
         std::memcpy(block + static_cast<std::size_t>(i) * record_bytes, array + static_cast<std::size_t>(moved_record_source(i, reserved, added)) * record_bytes, record_bytes);
+    // the stored record indexes first (a44): a value that would turn into a record through the larger total stops the move before anything changes
+    const auto old_total = total, old_reserved = reserved;
+    const auto before = remap_part_records(s, old_reserved, added, old_total, false);
+    if (before.ambiguous) {
+        _aligned_free(block);
+        game::Com_Error(game::ERR_FATAL, "agent capacity: %u stored record indexes lie in [%u, %u): they would turn into records (guard d)", before.ambiguous, old_total,
+            old_total + added);
+        return result;
+    }
+    const auto remap = !parse_count(L"-agent-capacity-no-record-remap", 1);   // the switch only reproduces the a43 fault (stored indexes left as authored)
+    const auto after = remap_part_records(s, old_reserved, added, old_total, remap);
+    const auto* old_array = array;
     record_block = block;
     record_block_owner = s;
     array = block;
     reserved += added;
     server_end += added;
     total = count;
+    const auto scan = scan_pointers_into(old_array, old_array + static_cast<std::size_t>(old_total) * record_bytes, old_array, block, static_cast<std::size_t>(count) * record_bytes);
+    std::uint64_t in_header{};
+    for (unsigned o = 0; o < 0x340; o += 8) {
+        const auto v = *reinterpret_cast<const std::uintptr_t*>(s + o);
+        in_header += (v >= reinterpret_cast<std::uintptr_t>(old_array) && v < reinterpret_cast<std::uintptr_t>(old_array) + static_cast<std::size_t>(old_total) * record_bytes);
+    }
     console::info("[agent capacity] map ents: scriptable records %u -> %u reserved (%u added), total %u, server end %u, block %p\n", reserved - added, reserved,
         added, total, server_end, block);
+    console::info("[agent capacity] map ents remap: map %s, S %p, %s, d %u, part entries %u + %u (record links %u, record events %u), indexes shifted %u + %u, kept %u in the reserved range "
+        "and %u beyond the records, named an inserted blank before the remap %u, other types with a value %u; stale pointers into the old array: %llu in the zone block %p (%zu bytes), "
+        "%llu in the new block, %llu in the header\n", mapents_name(s).c_str(), static_cast<void*>(s), remap ? "remapped" : "NOT remapped (switch)", added, after.entries[0], after.entries[1],
+        after.link, after.event, after.shifted_link, after.shifted_event, after.kept_reserved, after.kept_beyond, before.in_inserted, after.other_nonzero,
+        static_cast<unsigned long long>(scan.in_region), scan.region, scan.scanned, static_cast<unsigned long long>(scan.in_extra), static_cast<unsigned long long>(in_header));
     return result;
 }
 
