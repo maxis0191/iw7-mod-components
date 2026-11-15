@@ -8,6 +8,7 @@
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
 #include <psapi.h>
+#include <intrin.h>
 
 // Server meter for isolated lab dedicated servers (-dedicated with -paris-isolated-lab; compiled only with -Perf).
 //
@@ -20,6 +21,13 @@
 //   iw7-mod's server scheduler pipeline), with the performance counter;
 // - a sampling profile of the script VM: about 1000 times a second the server thread is suspended and the VM's call
 //   stack is read (scr_VmPub function frames, the running frame's position from scr_function_stack), outermost first;
+// - the snapshot entity counts (read only, no cap is changed): the entity records one client's snapshot list holds (FUN_140C67230
+//   writes it; the count is the local at [rsp+0x40] of its frame, read in the call that closes the list with 0x7FF at
+//   0x140C6765B) and the two common lists of the frame (FUN_140C64310 returns the count of the all-client list, FUN_140C647A0
+//   built the list of entities above 17, whose count stays in [0x146B39830]; it is built once after a reset, not every frame, so it is
+//   read once per frame in the list A hook). Per list: calls, max, mean and how many times the
+//   count had reached the cap (768, 1024, 1024: the list was closed early). Every hook is verified against the expected
+//   code bytes first and is left out, with an error line, when they differ;
 // - the script function table (file, function, start of its code) so the reader names every position offline.
 // Outside a window the frame timing is two counter reads and one flag test per server frame; nothing is sampled.
 //
@@ -48,6 +56,96 @@ namespace paris_sperf
         HANDLE sampled{};
         std::map<std::string, std::uint32_t> stacks; // key: in-frame byte, depth byte, then the positions, outermost first
         std::uint64_t ticks{}, idle{}, frame_only{}, script{}, failures{}, dropped{}, bad_frames{};
+
+        // Snapshot entity counts. Written by the server thread only while a window is open; end() reads them after the window closed.
+        constexpr std::uintptr_t snapshot_close_call = 0x140C6765B;  // call FUN_140BC2D70 (write 0x7FF in 11 bits) in FUN_140C67230
+        constexpr std::uintptr_t snapshot_cap_compare = 0x140C67478; // cmp eax,[sv_maxSnapshotEntities] in FUN_140C67230
+        constexpr std::uintptr_t common_a_function = 0x140C64310;    // int FUN_140C64310(): count of the all-client list
+        constexpr std::uintptr_t cap_snapshot = 0x146B3985C;         // sv_maxSnapshotEntities (768)
+        constexpr std::uintptr_t cap_common_a = 0x146B39858;         // 1024
+        constexpr std::uintptr_t cap_common_b = 0x146B39860;         // 1024
+        constexpr std::uintptr_t common_b_count = 0x146B39830;       // count of the list FUN_140C647A0 builds (once per reset of FUN_140C64BA0, not per frame)
+
+        struct count_meter
+        {
+            std::atomic<std::uint64_t> calls{}, sum{}, maximum{}, capped{};
+            std::atomic<int> cap{};
+            void reset() { calls = 0; sum = 0; maximum = 0; capped = 0; }
+            void add(const int count, const int limit)
+            {
+                if (count < 0) return;
+                ++calls;
+                sum += static_cast<std::uint64_t>(count);
+                cap = limit;
+                auto seen = maximum.load(std::memory_order_relaxed);
+                while (static_cast<std::uint64_t>(count) > seen && !maximum.compare_exchange_weak(seen, static_cast<std::uint64_t>(count))) {}
+                if (limit > 0 && count >= limit) ++capped;
+            }
+            void write(std::string& out, const char* name, const bool first) const
+            {
+                char text[200]{};
+                const auto n = calls.load();
+                _snprintf_s(text, sizeof(text), _TRUNCATE, "%s\"%s\":{\"calls\":%llu,\"max\":%llu,\"mean\":%.3f,\"capped\":%llu,\"cap\":%d}",
+                    first ? "" : ",", name, static_cast<unsigned long long>(n), static_cast<unsigned long long>(maximum.load()),
+                    n ? static_cast<double>(sum.load()) / static_cast<double>(n) : 0.0, static_cast<unsigned long long>(capped.load()), cap.load());
+                out += text;
+            }
+        };
+        count_meter snapshot_meter, common_a_meter, common_b_meter;
+        utils::hook::detour common_a_hook;
+
+        int read_int(const std::uintptr_t address) { return *reinterpret_cast<const volatile int*>(address); }
+
+        // Replaces the call at 0x140C6765B in FUN_140C67230: FUN_140BC2D70(message, value, bits) runs unchanged after the read.
+        // That call's frame is _AddressOfReturnAddress() + 8, and the entity records written so far are its dword at [rsp+0x40].
+        __declspec(noinline) void snapshot_close_stub(void* message, const int value, const int bits)
+        {
+            if (window_open.load(std::memory_order_acquire))
+            {
+                const auto* frame = static_cast<const char*>(_AddressOfReturnAddress()) + 8;
+                snapshot_meter.add(*reinterpret_cast<const int*>(frame + 0x40), read_int(cap_snapshot));
+            }
+            reinterpret_cast<void(*)(void*, int, int)>(0x140BC2D70)(message, value, bits);
+        }
+
+        int common_a_stub()
+        {
+            const int count = common_a_hook.invoke<int>();
+            if (window_open.load(std::memory_order_acquire))
+            {
+                common_a_meter.add(count, read_int(cap_common_a));
+                common_b_meter.add(read_int(common_b_count), read_int(cap_common_b)); // sampled once per frame here
+            }
+            return count;
+        }
+
+        bool code_is(const std::uintptr_t address, const char* name, const unsigned char* expected, const std::size_t size)
+        {
+            if (std::memcmp(reinterpret_cast<const void*>(address), expected, size) == 0) return true;
+            console::error("[Paris sperf] %s at 0x%llX: code differs from the expected bytes, its counter is left out\n", name,
+                static_cast<unsigned long long>(address));
+            return false;
+        }
+
+        void install_snapshot_counters()
+        {
+            static const unsigned char close_call[] = {0xE8, 0x10, 0xB7, 0xF5, 0xFF};
+            static const unsigned char cap_compare[] = {0x3B, 0x05, 0xDE, 0x23, 0xED, 0x05};
+            static const unsigned char common_a_code[] = {0x48, 0x89, 0x6C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x41};
+            int installed = 0;
+            if (code_is(snapshot_close_call, "snapshot list close", close_call, sizeof(close_call)) &&
+                code_is(snapshot_cap_compare, "snapshot cap compare", cap_compare, sizeof(cap_compare)))
+            {
+                utils::hook::call(snapshot_close_call, snapshot_close_stub);
+                ++installed;
+            }
+            if (code_is(common_a_function, "common list A", common_a_code, sizeof(common_a_code)))
+            {
+                common_a_hook.create(common_a_function, common_a_stub);
+                ++installed;
+            }
+            console::info("[Paris sperf] snapshot counters installed=%d of 2\n", installed);
+        }
 
         std::int64_t now()
         {
@@ -158,6 +256,7 @@ namespace paris_sperf
             sampled = OpenThread(THREAD_SUSPEND_RESUME | THREAD_QUERY_INFORMATION, FALSE, id);
             if (!sampled) { console::error("[Paris sperf] cannot open the server thread\n"); return; }
             stacks.clear();
+            snapshot_meter.reset(); common_a_meter.reset(); common_b_meter.reset();
             ticks = idle = frame_only = script = failures = dropped = bad_frames = 0;
             {
                 std::lock_guard<std::mutex> frames_lock(frames_mutex);
@@ -227,8 +326,12 @@ namespace paris_sperf
                 out += std::to_string((taken[i].second - taken[i].first) * 1000000 / qpc_hz);
                 out += ']';
             }
+            out += "],\n\"snapshot\":{";
+            snapshot_meter.write(out, "entities", true);
+            common_a_meter.write(out, "common_a", false);
+            common_b_meter.write(out, "common_b", false);
             _snprintf_s(line, sizeof(line), _TRUNCATE,
-                "],\n\"sampler\":{\"ticks\":%llu,\"hz\":%.1f,\"script\":%llu,\"frame_no_script\":%llu,\"idle\":%llu,\"failures\":%llu,\"dropped\":%llu},\n\"stacks\":[",
+                "},\n\"sampler\":{\"ticks\":%llu,\"hz\":%.1f,\"script\":%llu,\"frame_no_script\":%llu,\"idle\":%llu,\"failures\":%llu,\"dropped\":%llu},\n\"stacks\":[",
                 static_cast<unsigned long long>(ticks), seconds > 0 ? static_cast<double>(ticks) / seconds : 0.0,
                 static_cast<unsigned long long>(script), static_cast<unsigned long long>(frame_only), static_cast<unsigned long long>(idle),
                 static_cast<unsigned long long>(failures), static_cast<unsigned long long>(dropped));
@@ -290,6 +393,7 @@ namespace paris_sperf
             QueryPerformanceFrequency(&frequency);
             qpc_hz = frequency.QuadPart;
             server_frame_hook.create(server_frame_function, server_frame_stub);
+            install_snapshot_counters();
             command::add("paris_sperf_begin", [](const command::params& params)
             {
                 begin(params.size() > 1 ? params.get(1) : "");
