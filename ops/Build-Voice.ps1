@@ -469,19 +469,18 @@ if($capacityWatchBuild.Compiled){$capacityPeerOverlay=Add-IW7CapacityPeerOverlay
 if ($VoiceRelay) { $null = Add-IW7VoiceRelayOverlay -NativeRoot $root -SourceRoot $repo -Commit $commit }
 if ($VoiceCertify) { $null = Add-IW7VoiceCertifyOverlay -NativeRoot $root -SourceRoot $repo }
 # A kept native tree must not carry the sources of another branch's build (a47: a46's script_variables.cpp, left in the tree by its Compile-Check and its
-# build, was compiled into a client of a branch without it, so a run measured two changes at once). Remove every untracked component file that the
-# components repository owns in some ref (the names under src/native of all refs) but that this checkout does not have: no build of this checkout
-# can want it, and the build of the branch that owns it copies it again.
-$ownedInRefs = @(& git -C $repo log --all --name-only --format= -- src/native 2>$null | ForEach-Object { $_ -replace '^src/native/', '' } | Where-Object { $_ -and $_ -notmatch '/' } | Sort-Object -Unique)
-$ownedHere = @(Get-ChildItem -LiteralPath (Join-Path $repo 'src/native') -File | ForEach-Object { $_.Name })
+# build, was compiled into a client of a branch without it, so a run measured two changes at once). The capacity family of sources (agent_capacity*,
+# script_variables*) that this checkout does not own is removed from the tree: no build of this checkout can want it, and the build of the branch that
+# owns it copies it again. (Untracked files only; the tree's own tracked files are never touched.)
 $staleSources = @()
-foreach ($foreign in @($ownedInRefs | Where-Object { $ownedHere -notcontains $_ })) {
-    $foreignPath = Join-Path $root "src/client/component/$foreign"
-    if (!(Test-Path -LiteralPath $foreignPath)) { continue }
-    & git -C $root ls-files --error-unmatch -- "src/client/component/$foreign" *> $null
-    if ($LASTEXITCODE -eq 0) { continue }
-    Remove-Item -LiteralPath $foreignPath -Force
-    $staleSources += $foreign
+foreach ($family in @('agent_capacity*', 'script_variables*')) {
+    foreach ($foreign in @(Get-ChildItem -LiteralPath "$root/src/client/component" -File -Filter $family -ErrorAction SilentlyContinue)) {
+        if (Test-Path -LiteralPath (Join-Path $repo "src/native/$($foreign.Name)")) { continue }
+        & git -C $root ls-files --error-unmatch -- "src/client/component/$($foreign.Name)" *> $null
+        if ($LASTEXITCODE -eq 0) { continue }
+        Remove-Item -LiteralPath $foreign.FullName -Force
+        $staleSources += $foreign.Name
+    }
 }
 if ($staleSources.Count) { Write-Output ("Removed {0} source file(s) of other branches from the native tree: {1}" -f $staleSources.Count, ($staleSources -join ', ')) }
 Push-Location $root

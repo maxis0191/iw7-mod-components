@@ -326,6 +326,7 @@
     "tests/ops/base_client_exit_test.ps1",
     "tests/ops/base_client_test.ps1",
     "tests/ops/bo3_zombies_hud_test.py",
+    "tests/ops/build_voice_foreign_sources_test.ps1",
     "tests/ops/capacity_checkpoint_overlay_test.ps1",
     "tests/ops/capacity_peer_overlay_test.ps1",
     "tests/ops/capacity_word_provenance_test.ps1",

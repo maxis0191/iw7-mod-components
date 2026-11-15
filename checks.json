@@ -6,6 +6,10 @@
       "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/capacity_peer_overlay_test.ps1"]
     },
     {
+      "id": "build_voice_foreign_sources",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/build_voice_foreign_sources_test.ps1"]
+    },
+    {
       "id": "cutscene_test",
       "timeout_seconds": 2400,
       "command": [
