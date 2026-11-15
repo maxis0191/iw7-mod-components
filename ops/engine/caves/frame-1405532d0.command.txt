@@ -1,0 +1,3 @@
+python -B ops/engine/cave_plan.py frame-grow --function 0x1405532D0 --array-top 0xBB0 --extra 37904 --bounded-index 0xC0:0x2F0 --rbp-general -o ops/engine/caves/frame-1405532d0.frame.json
+python -B ops/engine/cave_plan.py --emit-cpp ops/engine/caves/frame-1405532d0.frame.json -o src/native/agent_capacity_frame_fields_5532d0.inc
+python -B ops/engine/cave_plan.py --emit-cpp --frame-cave ops/engine/caves/frame-1405532d0.frame.json -o src/native/agent_capacity_frame_cave_5532d0.inc

@@ -13,6 +13,10 @@
       ]
     },
     {
+      "id": "build_voice_foreign_sources",
+      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/build_voice_foreign_sources_test.ps1"]
+    },
+    {
       "id": "cutscene_test",
       "timeout_seconds": 2400,
       "command": [
@@ -401,6 +405,14 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_state_test.py"
+      ]
+    },
+    {
+      "id": "agent_capacity_sound_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/agent_capacity_sound_test.py"
       ]
     },
     {

@@ -254,7 +254,7 @@ foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp', 'paris_sperf.cpp')) {
     elseif (Test-Path -LiteralPath $perfTarget) { Remove-Item -LiteralPath $perfTarget -Force }
 }
 # Engine agent capacity (agent_capacity.cpp): inert unless the game starts with -agent-capacity <n>; compiled only when asked.
-foreach ($capFile in @('agent_capacity.cpp', 'agent_capacity.hpp', 'agent_capacity_caves.inc', 'agent_capacity_caves_rewind.inc', 'agent_capacity_caves_wide.inc', 'agent_capacity_frame_fields.inc', 'agent_capacity_frame_cave.inc', 'agent_capacity_frame_fields_adb8e0.inc', 'agent_capacity_frame_fields_added0.inc', 'agent_capacity_frame_cave_added0.inc', 'agent_capacity_frame_cave_adb8e0.inc', 'agent_capacity_frame_fields_86fba0.inc', 'agent_capacity_caves_mask.inc', 'agent_capacity_caves_guard.inc', 'agent_capacity_caves_interp.inc', 'agent_capacity_state.inc', 'agent_capacity_pools.inc')) {
+foreach ($capFile in @('agent_capacity.cpp', 'agent_capacity.hpp', 'agent_capacity_caves.inc', 'agent_capacity_caves_rewind.inc', 'agent_capacity_caves_wide.inc', 'agent_capacity_frame_fields.inc', 'agent_capacity_frame_cave.inc', 'agent_capacity_frame_fields_adb8e0.inc', 'agent_capacity_frame_fields_added0.inc', 'agent_capacity_frame_cave_added0.inc', 'agent_capacity_frame_cave_adb8e0.inc', 'agent_capacity_frame_fields_86fba0.inc', 'agent_capacity_caves_mask.inc', 'agent_capacity_caves_guard.inc', 'agent_capacity_caves_interp.inc', 'agent_capacity_state.inc', 'agent_capacity_pools.inc', 'agent_capacity_sound.inc', 'agent_capacity_frame_fields_5532d0.inc', 'agent_capacity_frame_cave_5532d0.inc')) {
     $capTarget = Join-Path $root "src/client/component/$capFile"
     if ($AgentCapacity) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$capFile") -Destination $capTarget -Force; $nativeSources += @($capFile) }
     elseif (Test-Path -LiteralPath $capTarget) { Remove-Item -LiteralPath $capTarget -Force }
@@ -474,6 +474,21 @@ if($capacityWatchBuild.Compiled){$capacityPeerOverlay=Add-IW7CapacityPeerOverlay
 # certification probe. Each owns its files through a receipt.
 if ($VoiceRelay) { $null = Add-IW7VoiceRelayOverlay -NativeRoot $root -SourceRoot $repo -Commit $commit }
 if ($VoiceCertify) { $null = Add-IW7VoiceCertifyOverlay -NativeRoot $root -SourceRoot $repo }
+# A kept native tree must not carry the sources of another branch's build (a47: a46's script_variables.cpp, left in the tree by its Compile-Check and its
+# build, was compiled into a client of a branch without it, so a run measured two changes at once). The capacity family of sources (agent_capacity*,
+# script_variables*) that this checkout does not own is removed from the tree: no build of this checkout can want it, and the build of the branch that
+# owns it copies it again. (Untracked files only; the tree's own tracked files are never touched.)
+$staleSources = @()
+foreach ($family in @('agent_capacity*', 'script_variables*')) {
+    foreach ($foreign in @(Get-ChildItem -LiteralPath "$root/src/client/component" -File -Filter $family -ErrorAction SilentlyContinue)) {
+        if (Test-Path -LiteralPath (Join-Path $repo "src/native/$($foreign.Name)")) { continue }
+        & git -C $root ls-files --error-unmatch -- "src/client/component/$($foreign.Name)" *> $null
+        if ($LASTEXITCODE -eq 0) { continue }
+        Remove-Item -LiteralPath $foreign.FullName -Force
+        $staleSources += $foreign.Name
+    }
+}
+if ($staleSources.Count) { Write-Output ("Removed {0} source file(s) of other branches from the native tree: {1}" -f $staleSources.Count, ($staleSources -join ', ')) }
 Push-Location $root
 try {
     & ./tools/premake5.exe vs2022
