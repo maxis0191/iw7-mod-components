@@ -28,6 +28,7 @@ built on: the RE map `engine-zombie-limits.md` (notes folder) and the tools belo
 | replicated scriptable state (a zombie's scriptable takes 8 of the budget's units) | 1,016 dwords | 1,016 + 8 (n - 24): 1,624 at 100, 2,136 at 164, 2,680 at 232 | see "Replicated state budget" (205 fields, five relocated blocks) |
 | reserved scriptable RECORDS (MapEnts scriptable block, map data) | 200 (cp_zmb) | R(n) = max(200, n + 56): 288 at 232; the block is rebuilt at load, and every record index the zone stores moves with it | see "Reserved scriptable records" (a42) and "Stored record indexes" (a44), detour of FUN_1403B8610 |
 | entity handle head table of the sentients (u16 a sentient slot, 0x145C64BA0; `ENT_HANDLE_COUNT` nodes are a separate 4,096 list) | 71 entries, the object at 0x145C64D00 follows | sentient_slots() entries in its own block | a44: FUN_140AE99F0 (clear, size 0x8E), FUN_140AE9A80, FUN_140AE9BE0 (3 `lea`), see "Sentient handle head table" |
+| client character proxy list (one entry for every active character entity of the client: a centity pointer, two physics proxies; counts at 0x144B47820) | 140 entries, FUN_1405527E0 appends with no bound (the 141st read the count behind the table: client crash with 150 alive agents, a44-m2) | 2,035 entries (the 2,047 entity numbers less the 16 corpse entities, rounded to the lookup's step of five), whatever n; eight tables of 120 bytes an entry in one block | a47: 92 fields in ten functions (`ops/engine/sound_sites.py`), FUN_1405532D0 frame grown by 37,904 bytes, see "Character proxy list" |
 
 Every field is compared with its shipped value before anything is written; one difference and the game stops with the
 address (nothing is half-applied). Relocated tables sit within 2 GB of the image (the code reaches them by 32-bit
@@ -214,6 +215,35 @@ FUN_140AE99F0 writes 0x8E bytes); the next object, at 0x145C64D00, sits right be
 ((0x150496F50 - 0x150490010) / 0xA0), the head it read 0x13FF = the neighbour's field at 0x145C64D04 (and the same registers in both dumps). With 164 agents slots up to 205 existed but the
 neighbour held zero at that moment, which is why p3b passed. The component moves the table to its own block of `sentient_slots()` u16 entries (four sites: 3 `lea`, the clear size), tests/ops/agent_capacity_sites_test.py checks them against the shipped bytes.
 The node list behind it (`ENT_HANDLE_COUNT exceeded - increase size`, FUN_140AE9860, 4,096 nodes at 0x145C53B90) was not measured at 232 agents.
+
+## Character proxy list (a47, 15 Nov 2026)
+
+**What it is.** The client keeps, for each local client, a list of the characters whose physics it mirrors: an entry is one DISTINCT client entity (a `centity`) of eType 1 (player), 18 (agent), 20 (actor) or 6 with the
+word 1 at `centity + 0x7D8`, active in the snapshot (`centity + 0x810 & 1`), with two physics "character proxies" (FUN_140552A60 creates them with `FUN_140550280(world, body, material, "character proxy")`, material
+"PM_Flesh", worlds 3 * client + 2 and + 4). It is not a sound list (the a44 name was a reading of the callers). Append FUN_1405527E0 (four callers, in FUN_1402E7230 and FUN_14086CD50 for every entity of a new snapshot;
+each asks FUN_140552DB0, a linear search of the list for the pointer, first: one entry a centity), lookup FUN_140552D20 (unrolled five at a time), per frame removal and compaction FUN_1405532D0 and FUN_140552DF0
+(drop the entities that are inactive or of another type), free FUN_1405531A0, clear FUN_140552950.
+
+**Why it crashed.** The stock tables hold 140 (0x8C) entries and are consecutive in the data section: the pointer table T0 (0x144B473C0, 0x460 bytes) ends at the counts (0x144B47820, four u32; only client 0 is reachable, the
+tables hold no second client), then T1 0x144B47830 (two 0x18 byte transforms an entry), A 0x144B49270 and B 0x144B49B30 (two physics objects each, 16 bytes an entry), T3 0x144B4A3F0, T4 0x144B4A850, T5 0x144B4ACB0,
+T6 0x144B4B110 (two u32 each), end 0x144B4B570 where another subsystem starts. The 141st append wrote T0[140], which is the count word itself; FUN_1405532D0 then read it as a pointer (`test byte [rcx + 0x810], 1`,
+0x140553367, read 0x810) with 150 alive agents (run a44-m2).
+
+**The maximum, from the code.** Distinct centities only. Players and agents are entity numbers below `characters` (250 at n = 232), actors come from a pool of 0x26 = 38 (FUN_14044ED70), the corpse entities (eType 2 and 19: 8 + 8
+from `characters`) are not in the filter, and the eType 6 entities are script driven: there is no tighter hard bound than the entity space. CG_SetNextSnap's entity masks are `uint[64]` = 2,048 bits and 0x7FF is "no entity"
+(FUN_14086FBA0, FUN_14086CD50), so at most 0x7FF - 16 = 2,031 entries whatever n is. The lookup steps five entries at a time, so the size is rounded up to a multiple of five: **2,035 entries**, 120 bytes an entry across
+the eight tables (244,200 bytes). A function of n would be a guess for the eType 6 entities; the entity space is the count of the table the entries come from.
+
+**The change.** `plan_proxy_list` (agent_capacity.cpp 4e) moves the eight tables into one block (the first 140 entries copied; the counts stay) and edits 92 four byte fields in place, from `agent_capacity_sound.inc`
+(`ops/engine/sound_sites.py find | check | emit` over the analysed image, `sound-sites.json`): 67 table references (11 rip, 56 image-base disp32, 4 of them the `table - 4 + index` form of the compaction loops), 19 immediates
+`0x8C` (16 `imul`, 2 `cmp`, 1 `add`), 1 `0x118` (2 x 140, the client stride of A and B), 2 `0x460` (8 x 140, the client stride of T0), 3 `+-0x8C0` (16 x 140, A to B). Completeness: the instruction index of the whole image holds
+no other field naming 0x144B473C0..0x144B4B570 in live code (the only hit outside the ten functions is data decoded as code at 0x14C16AE5C), the multiples of 140 were looked for in the ten functions only (the callers pass
+indexes, never a table or a stride), and the three coincidences (`[rsp + 0x118]`, `test [rcx + 0x690], 0x401` twice = 12 x 140) are excluded by name. FUN_1405532D0 has two stack arrays under its cookie, `u32 selected[140]`
+(rsp + 0xC0) and `140 x 16` bytes (rsp + 0x2F0, the quaternions of the transforms): its frame grows at the cookie by 37,904 bytes (the cookie, the rbx home slot, `add rsp`, the page probe cave of `sub rsp` with 10 probes, ALLOC_LARGE,
+SAVE_NONVOL and the GS cookie offset: 7 fields and the cave, `cave_plan.py frame-grow --function 0x1405532D0 --array-top 0xBB0 --extra 37904 --bounded-index 0xC0:0x2F0 --rbp-general`), and the second array moves up by the 7,584 bytes
+the first one gains (the displacement of the three `lea` of its base; the test proves that no other rsp access lies between 0x2F0 and 0xBB0). Frame grow needed one tool change: with `--rbp-general`, `lea rbp, [rsp + d]` is an ordinary
+pointer production (the function uses rbp as a general register and also takes cursors into the array). Tests: `tests/ops/agent_capacity_sound_test.py` (10: formulas, size against every count 24..232, rows against the shipped bytes,
+every re-encoded value, the frame layout and the overlap with every other patch). The component logs the list length when it passes 140 and at every further 10 (`character proxy list: N entries`).
 
 ## Scriptable stream buffer pools (a43, 15 Nov 2026)
 
