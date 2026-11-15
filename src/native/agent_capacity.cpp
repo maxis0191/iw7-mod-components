@@ -1220,15 +1220,32 @@ std::uint32_t count_unlinked_targets(const std::uint8_t* s, const std::uint8_t* 
 
 // Values that point into [lo, hi) in the committed memory around `where` (the zone's block of the old record array), at most 1 GB of it, and in
 // the `n` bytes at `extra`; the move leaves none: every user reads the array through S, and a record holding such a pointer would be broken.
-struct pointer_scan { std::uint64_t in_region{}, in_extra{}; const void* region{}; std::size_t scanned{}; const std::uint64_t* first{}; };
-pointer_scan scan_pointers_into(const std::uint8_t* lo, const std::uint8_t* hi, const void* where, const void* extra, std::size_t n) {
+// One is expected: the zone stream's own copy of the scriptable block header (total, reserved, server end, 4 bytes, array pointer: the
+// bytes the loader read S + 0x240 from; the engine never reads it again). A value that sits at +0x10 of a copy of the old header is not
+// stale: it is rewritten with the new header, counted as `mirrored`.
+struct block_header { std::uint32_t total{}, reserved{}, server_end{}; const std::uint8_t* array{}; };
+struct pointer_scan { std::uint64_t in_region{}, in_extra{}, mirrored{}; const void* region{}; std::size_t scanned{}; const std::uint64_t* first{}; };
+pointer_scan scan_pointers_into(const std::uint8_t* lo, const std::uint8_t* hi, const void* where, const void* extra, std::size_t n, const block_header& old_header, const block_header& new_header) {
     pointer_scan result{};
     const auto from = reinterpret_cast<std::uintptr_t>(lo), to = reinterpret_cast<std::uintptr_t>(hi);
     auto count = [&](const void* start, std::size_t bytes, bool remember) {
         std::uint64_t found{};
         const auto* q = reinterpret_cast<const std::uint64_t*>((reinterpret_cast<std::uintptr_t>(start) + 7) & ~std::uintptr_t(7));
         const auto* end = reinterpret_cast<const std::uint64_t*>(reinterpret_cast<std::uintptr_t>(start) + bytes);
-        for (; q + 1 <= end; ++q) if (*q >= from && *q < to) { if (remember && !found) result.first = q; ++found; }
+        for (; q + 1 <= end; ++q) {
+            if (*q < from || *q >= to) continue;
+            if (remember && reinterpret_cast<const std::uint8_t*>(q) - reinterpret_cast<const std::uint8_t*>(start) >= 0x10 && *q == from) {
+                auto* header = reinterpret_cast<std::uint32_t*>(const_cast<std::uint64_t*>(q)) - 4;
+                if (header[0] == old_header.total && header[1] == old_header.reserved && header[2] == old_header.server_end) {
+                    header[0] = new_header.total; header[1] = new_header.reserved; header[2] = new_header.server_end;
+                    *const_cast<std::uint64_t*>(q) = reinterpret_cast<std::uintptr_t>(new_header.array);
+                    ++result.mirrored;
+                    continue;
+                }
+            }
+            if (remember && !found) result.first = q;
+            ++found;
+        }
         return found;
     };
     MEMORY_BASIC_INFORMATION info{};
@@ -1296,7 +1313,7 @@ std::uintptr_t link_mapents_stub(void** pointer) {
     for (unsigned i = 0; i < count; ++i)
         std::memcpy(block + static_cast<std::size_t>(i) * record_bytes, array + static_cast<std::size_t>(moved_record_source(i, reserved, added)) * record_bytes, record_bytes);
     // the stored record indexes (a44): counted first, then remapped in this same step
-    const auto old_total = total, old_reserved = reserved;
+    const auto old_total = total, old_reserved = reserved, old_server_end = server_end;
     const auto before = remap_part_records(s, old_reserved, added, old_total, false);
     wchar_t no_remap_env[16]{};
     const auto remap = !parse_count(L"-agent-capacity-no-record-remap", 1) &&   // the switch (or the variable) only reproduces the a43 fault: stored indexes left as authored
@@ -1309,7 +1326,8 @@ std::uintptr_t link_mapents_stub(void** pointer) {
     reserved += added;
     server_end += added;
     total = count;
-    const auto scan = scan_pointers_into(old_array, old_array + static_cast<std::size_t>(old_total) * record_bytes, old_array, block, static_cast<std::size_t>(count) * record_bytes);
+    const auto scan = scan_pointers_into(old_array, old_array + static_cast<std::size_t>(old_total) * record_bytes, old_array, block, static_cast<std::size_t>(count) * record_bytes,
+        {old_total, old_reserved, old_server_end, old_array}, {total, reserved, server_end, block});
     const auto unlinked = count_unlinked_targets(s, block, reserved, total);
     std::uint64_t in_header{};
     for (unsigned o = 0; o < 0x340; o += 8) {
@@ -1328,10 +1346,10 @@ std::uintptr_t link_mapents_stub(void** pointer) {
     }
     console::info("[agent capacity] map ents remap: map %s, S %p, %s, d %u, part entries %u + %u, record links %u, record events %u; indexes shifted %u to a record and %u beyond the "
         "records (values beyond: %u seen, first %u %u %u %u), kept %u below the reserved range and %u too large; left as authored these would have named an inserted blank %u times "
-        "and turned from no record into a record %u times; other types with a value %u; entries naming a fixed record without a client state block: %u; stale pointers into the old array: %llu in the zone block %p (%zu bytes), %llu in the new "
+        "and turned from no record into a record %u times; other types with a value %u; entries naming a fixed record without a client state block: %u; stale pointers into the old array: %llu in the zone block %p (%zu bytes) besides %llu copies of the block header there, rewritten like S, %llu in the new "
         "block, %llu in the header\n", mapents_name(s).c_str(), static_cast<void*>(s), remap ? "remapped" : "NOT remapped (switch)", added, after.entries[0], after.entries[1], after.link,
         after.event, after.shifted_record, after.shifted_beyond, after.beyond_values, after.beyond_value[0], after.beyond_value[1], after.beyond_value[2], after.beyond_value[3],
-        after.kept_reserved, after.kept_big, before.would_name_blank, before.would_become_record, after.other_nonzero, unlinked, static_cast<unsigned long long>(scan.in_region), scan.region, scan.scanned,
+        after.kept_reserved, after.kept_big, before.would_name_blank, before.would_become_record, after.other_nonzero, unlinked, static_cast<unsigned long long>(scan.in_region), scan.region, scan.scanned, static_cast<unsigned long long>(scan.mirrored),
         static_cast<unsigned long long>(scan.in_extra), static_cast<unsigned long long>(in_header));
     return result;
 }
