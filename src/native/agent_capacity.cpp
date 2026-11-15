@@ -72,7 +72,27 @@ void add(std::uintptr_t address, std::uint32_t before, std::uint32_t after, unsi
     if (width < 4 && after >> (8 * width)) throw std::runtime_error("agent capacity: value does not fit its field");
     plan.push_back({address, width, before, after, code});
 }
+// One unsigned byte: a byte of a block or of a cave window, written exactly as given.
 void add1(std::uintptr_t address, std::uint32_t before, std::uint32_t after) { add(address, before, after, 1); }
+// One byte the CPU sign-extends (a disp8, or the imm8 of an `83 /r`, `6B`, `48 83` form): 0x90 there is -112. `intended` is the
+// value the instruction must read, negative for a negative displacement; one that a signed byte cannot hold is refused at plan time.
+void add1s(std::uintptr_t address, std::uint32_t before, std::int32_t intended) {
+    if (!fits_signed_byte(intended)) {
+        char text[160];
+        sprintf_s(text, "agent capacity: %d does not fit a signed 8-bit field (the CPU sign-extends the byte at %llX)", intended,
+            static_cast<unsigned long long>(address));
+        throw std::runtime_error(text);
+    }
+    add(address, before, static_cast<std::uint8_t>(intended), 1);
+}
+std::uint8_t signed_imm8(std::uint32_t value) {   // an imm8 written inside a `block` (imul r32, r32, imm8)
+    if (!fits_signed_byte(value)) throw std::runtime_error("agent capacity: value does not fit a signed 8-bit immediate");
+    return static_cast<std::uint8_t>(value);
+}
+std::uint8_t unsigned_imm8(std::uint32_t value) { // the low byte of a `mov eax, imm32` whose other three bytes are zero
+    if (value > 0xFF) throw std::runtime_error("agent capacity: value does not fit one byte");
+    return static_cast<std::uint8_t>(value);
+}
 void rip(std::uintptr_t field, std::uintptr_t before, std::uintptr_t after, unsigned tail = 0) {
     std::int32_t o{}, n{};
     if (!relative32(before, field + 4 + tail, o) || !relative32(after, field + 4 + tail, n))
@@ -109,20 +129,20 @@ void plan_agents() {
     // The stock game writes "24" into scr_zombie_maxagents and scr_default_maxagents itself (run h1, 11 Nov 2026: both
     // read 24 with the clamp raised, 24 agents). With the capacity on, the count is the server's: `call atoi` -> `mov eax, n`.
     block(0x140C18D6E, std::array<std::uint8_t, 5>{0xe8, 0x35, 0xed, 0x6a, 0x00},
-          std::array<std::uint8_t, 5>{0xb8, static_cast<std::uint8_t>(l.agents), 0, 0, 0});
+          std::array<std::uint8_t, 5>{0xb8, unsigned_imm8(l.agents), 0, 0, 0});
     add(0x1405AFFF6, stock_characters, l.characters);        // entity layout: characters
     add(0x1405B0000, 58, l.map_start);                       // first map entity
     add(0x14B54FA72, 58, l.map_start); add(0x14B54FA7C, 58, l.map_start); // G_InitGame's own reservation
     add(0x140B6686F, 58 * 0x3F8, l.map_start * 0x3F8);
-    add1(0x140B67402, 42, l.player_corpses);                 // ClonePlayer corpse allocator
-    add1(0x140C1BB22, 50, l.agent_corpses);                  // CloneAgent corpse allocator
-    for (auto f : {0x1407AE403ull, 0x140823B61ull, 0x140826385ull, 0x14086D122ull, 0x140872E65ull}) add1(f, 42, l.player_corpses);
-    for (auto f : {0x1407AF52Full, 0x140823B80ull, 0x140865EB9ull, 0x14086F509ull, 0x140872EECull}) add1(f, 50, l.agent_corpses);
-    add1(0x1408213F4, 0x100 - 50, 0x100 - l.agent_corpses);   // lea ebx, [entity - first agent corpse]
-    add1(0x140B2F536, 42, l.player_corpses);
+    add1s(0x140B67402, 42, l.player_corpses);                 // ClonePlayer corpse allocator
+    add1s(0x140C1BB22, 50, l.agent_corpses);                  // CloneAgent corpse allocator
+    for (auto f : {0x1407AE403ull, 0x140823B61ull, 0x140826385ull, 0x14086D122ull, 0x140872E65ull}) add1s(f, 42, l.player_corpses);
+    for (auto f : {0x1407AF52Full, 0x140823B80ull, 0x140865EB9ull, 0x14086F509ull, 0x140872EECull}) add1s(f, 50, l.agent_corpses);
+    add1s(0x1408213F4, 0x100 - 50, -static_cast<std::int32_t>(l.agent_corpses));   // lea ebx, [entity - first agent corpse]: a negative disp8
+    add1s(0x140B2F536, 42, l.player_corpses);
     // character decode ("Received entnum %d: must index MAX_CHARACTERS_MP", sub_14084A530), lookup, interpolation, teardown
     for (auto f : {0x14084A551ull, 0x140842A20ull, 0x140842B0Bull, 0x14077EDEEull, 0x1407801DEull, 0x140780549ull,
-                   0x140805D4Eull, 0x140282ED8ull, 0x1402854DEull, 0x1405C2578ull, 0x140B202DCull}) add1(f, 42, l.characters);
+                   0x140805D4Eull, 0x140282ED8ull, 0x1402854DEull, 0x1405C2578ull, 0x140B202DCull}) add1s(f, 42, l.characters);
     // agent-state delta: explicit character index 6 -> 7 bits (writer and the live/demo readers)
     for (auto f : {0x140BBFAB5ull, 0x140BBFB08ull, 0x1409B7542ull, 0x140C655D8ull, 0x140C65C51ull}) add(f, 6, 7);
     // entity-state clientNum (offset 0x9C) in the 21 CP field lists: 6 -> 7 bits
@@ -149,8 +169,8 @@ void plan_agents() {
     // 0x1400A9865 is left: its collector fills a 6-int stack array in sub_140B69E20 with no bound (not done).
     for (auto f : {0x140C22AE3ull, 0x140C29144ull, 0x140C390F8ull, 0x140C3A939ull, 0x140C3CB5Cull, 0x140C3D17Bull, 0x140C481FEull})
         add(f, stock_characters * 0x3F8, l.characters * 0x3F8);
-    add1(0x140C217CD, 42, l.characters);                     // per-frame round-robin over characters (sub_140C21740)
-    add1(0x140C3F3AA, 42, l.characters);                     // gametype table setup loop (sub_140C3F1E0)
+    add1s(0x140C217CD, 42, l.characters);                     // per-frame round-robin over characters (sub_140C21740)
+    add1s(0x140C3F3AA, 42, l.characters);                     // gametype table setup loop (sub_140C3F1E0)
     // server hunk budget for the snapshot agent rings (sub_140C68880): frames x 24 x 0xC0 as lea [r+r*8] / shl 9
     block(0x140C68901, std::array<std::uint8_t, 6>{0x8d, 0x04, 0xf6, 0xc1, 0xe0, 0x09},
           std::array<std::uint8_t, 6>{0x69, 0xc6, static_cast<std::uint8_t>(l.agents * 0xC0), static_cast<std::uint8_t>((l.agents * 0xC0) >> 8), 0, 0});
@@ -164,7 +184,7 @@ void plan_agents() {
     add(0x140AF6331, 0x2C60, l.sentient_bytes());
     rip(0x140AF6324, 0x145C6F5A0, sentient_pool.data);
     rip(0x140AF6F2A, 0x145C6F5A0, sentient_pool.data);
-    add1(0x1404494FD, stock_agents, l.agents); add1(0x140449696, stock_agents, l.agents); // G_WriteStruct agent bounds
+    add1s(0x1404494FD, stock_agents, l.agents); add1s(0x140449696, stock_agents, l.agents); // G_WriteStruct agent bounds
     // server character information and the per-player data after it: one object, grown together
     add(0x140B1F4FE, 0x7A0D8, l.server_size()); add(0x140449EE9, 0x7A0D8, l.server_size());
     add(0x140449EAB, 0x7A0D0, l.server_size() - 8);
@@ -182,7 +202,7 @@ void plan_agents() {
     rva(0x140AC6B71, 0x5C51580, table8.data); rva(0x140AC6B7B, 0x5C51584, table8.data + 4);
     rva(0x140AC6C7E, 0x5C516D4, table20.data + 4); rva(0x140AC6C99, 0x5C516D2, table20.data + 2);
     rva(0x140AC6CCE, 0x5C516E0, table20.data + 16); rva(0x140AC6CEB, 0x5C516D0, table20.data);
-    add1(0x140AC67C1, 42, l.characters); add1(0x140AC686E, 42, l.characters);
+    add1s(0x140AC67C1, 42, l.characters); add1s(0x140AC686E, 42, l.characters);
     add(0x140AC6933, 210, l.characters * 5); add(0x140AC6AC2, 336, l.table8_bytes()); add(0x140AC6B0E, 4200, l.table20_bytes());
 }
 
@@ -207,10 +227,11 @@ void plan_archive() {
     add(0x140445B7B, 0x207668, l.rewind_base() + 0x10);
     for (auto a : {0x140445B82ull, 0x140445EDCull}) add(a, 0x207658, l.rewind_base());
     add(0x140445B90, 0x207660, l.rewind_base() + 8);
-    add1(0x140445B45, 42, l.characters);
+    add1s(0x140445B45, 42, l.characters);
+    // FUN_140415bf0+34 `mov [rdi+rbx*8+0x40],rax` (the rewind pointer array) is a disp8 that rewind_pointers() outgrows (0x80 from 84 agents, read as
+    // negative): re-encoded with a 32-bit displacement in a cave, see rewind_cave_table in plan_caves().
     add(0x140445F0C, 42, l.characters);
     add(0x1400A8585, 42, l.characters);
-    add1(0x140415C28, 0x40, l.rewind_pointers());
     for (auto a : {0x140414E42ull, 0x140414E78ull, 0x1404151BCull, 0x1404151E7ull, 0x140415264ull, 0x1404152EAull})
         add(a, 0xCCC, l.controller_size() + l.xanim_counts());
     for (auto a : {0x1404151A7ull, 0x1404151DAull, 0x140415254ull, 0x1404152DAull}) add(a, 0xC24, l.controller_size());
@@ -271,7 +292,7 @@ void plan_client() {
                    0x140241BDAull, 0x140242BF6ull}) add(a, 0xFDEA8, l.client_size());
     for (auto a : {0x140240AA0ull, 0x140241B15ull, 0x140242C13ull}) add(a, 0xFD7F8, l.client_tail());
     for (auto a : {0x140180172ull, 0x1401833EBull, 0x14018340Bull, 0x140183435ull, 0x140D2BE4Aull}) add(a, 0x86B17, l.client_flags());
-    add1(0x140242E22, 41, l.characters - 1); add1(0x140242E3C, 41, l.characters - 1);
+    add1s(0x140242E22, 41, l.characters - 1); add1s(0x140242E3C, 41, l.characters - 1);
     // CL_GetSnapshot copied min(numAgents, 24) agent states: zombies 25+ had entities but no model (invisible).
     for (auto a : {0x1408646D1ull, 0x1408646EAull, 0x140864726ull, 0x1408648BDull}) add(a, 2 * 0x3DC78, 2 * l.snap_size());
     for (auto a : {0x14086470Dull, 0x14086471Full, 0x1408648E9ull, 0x1408648FBull, 0x14086C728ull}) add(a, 0x3DC78, l.snap_size());
@@ -281,19 +302,19 @@ void plan_client() {
     // (count = frames x 24 as lea [r+r*2] / shl 3; the allocator sub_140C68B00 sizes them from that count x 0xC0).
     // With more agents a frame the rings wrap before the oldest frame a client may delta from: frames x agents.
     block(0x140C68A82, std::array<std::uint8_t, 4>{0x43, 0x8d, 0x04, 0x52},
-                       std::array<std::uint8_t, 4>{0x41, 0x6b, 0xc2, static_cast<std::uint8_t>(l.agents)}); // imul eax, r10d, agents
+                       std::array<std::uint8_t, 4>{0x41, 0x6b, 0xc2, signed_imm8(l.agents)}); // imul eax, r10d, agents
     block(0x140C68A8D, std::array<std::uint8_t, 3>{0xc1, 0xe0, 0x03}, std::array<std::uint8_t, 3>{0x0f, 0x1f, 0x00});
     block(0x140C68A96, std::array<std::uint8_t, 4>{0x43, 0x8d, 0x04, 0x5b},
-                       std::array<std::uint8_t, 4>{0x41, 0x6b, 0xc3, static_cast<std::uint8_t>(l.agents)}); // imul eax, r11d, agents
+                       std::array<std::uint8_t, 4>{0x41, 0x6b, 0xc3, signed_imm8(l.agents)}); // imul eax, r11d, agents
     block(0x140C68A9A, std::array<std::uint8_t, 3>{0xc1, 0xe0, 0x03}, std::array<std::uint8_t, 3>{0x0f, 0x1f, 0x00});
     // CL snapshot buffers (sub_14034F1D0, called from sub_1409B2620): the client's agent-state ring is frames x agents a
     // frame. A listen host passes the server's own max agents (byte +0x546, set from the patched selector); a client
     // joining a remote server passes 24 as `mov ebp, 18; lea r14d, [rbp + 6]`: the 6 becomes agents - 18.
-    add1(0x1409B26FC, 6, l.agents - players);
+    add1s(0x1409B26FC, 6, l.agents - players);
     // CG_SetNextSnap: the character change mask (one bit a character) grows into a free stack slot
-    add1(0x14086FBE0, 0x70, 0x68); add(0x14086FBE3, 0x100, 0x108);
-    add1(0x14086FDAF, 0x60, 0x58); add1(0x140870705, 0x60, 0x58);
-    for (auto a : {0x14086FE70ull, 0x14086FE78ull, 0x14086FE87ull, 0x140870670ull, 0x1408706D0ull}) add1(a, 0x40, 0x60);
+    add1s(0x14086FBE0, 0x70, 0x68); add(0x14086FBE3, 0x100, 0x108);
+    add1s(0x14086FDAF, 0x60, 0x58); add1s(0x140870705, 0x60, 0x58);
+    for (auto a : {0x14086FE70ull, 0x14086FE78ull, 0x14086FE87ull, 0x140870670ull, 0x1408706D0ull}) add1s(a, 0x40, 0x60);
 }
 
 // ---- 3b. two per-sentient pools of 71 static objects (built by static constructors sub_140004650, sub_1400046A0) ----
@@ -588,6 +609,12 @@ struct cave_spec {
 const std::vector<cave_spec> cave_table = {
 #include "agent_capacity_caves.inc"
 };
+// The lag-compensation rewind store of FUN_140415bf0 (`mov [rdi+rbx*8+0x40],rax`, 48 89 44 df 40) in a cave with a 32-bit displacement
+// (ops/engine/caves/rewind-pointer.*): the plan holds a placeholder at cave bytes 4..7, plan_caves() writes layout::rewind_pointers()
+// there. The cave is installed at every agent count (24 gives the stock 0x40), like the other caves.
+const std::vector<cave_spec> rewind_cave_table = {
+#include "agent_capacity_caves_rewind.inc"
+};
 buffer code_region;
 std::size_t code_used{};
 std::size_t caves_planned{};
@@ -783,9 +810,66 @@ void plan_unwind_probe() {
     console::info("[agent capacity] unwind probe armed: %u s after the first call of FUN_1403E5700 or FUN_1403E6B10\n", seconds);
 }
 
+// ---- 5d. lab-only probe of the rewind store (FUN_140415bf0+34) ----------------------------------------------------------------
+// `-agent-capacity-rewind-probe` (or IW7_AGENT_CAPACITY_REWIND_PROBE=1) hooks FUN_140415bf0 (called by FUN_140415120 for each rewound
+// character; reached only through the lag-compensated animation of a hit trace) and counts its calls. On the first call it logs the
+// base pointer it was given (rdi), the character (rbx), the address the patched store writes (base + rewind_pointers + rbx * 8, the cave's
+// 32-bit displacement), the array the layout says that is (archive object at [0x143C98468] + rewind_base + rewind_pointers), and the
+// quadword at that address and at the stock address (base + 0x40 + rbx * 8) before and after the call. The count is logged on the first
+// call, every power of ten, and every 20 s while it changes. Inert unless given; never part of a release path.
+utils::hook::detour rewind_probe_hook;
+std::atomic<unsigned long long> rewind_probe_calls{}, rewind_probe_reported{};
+void rewind_probe_log_count() {
+    const auto calls = rewind_probe_calls.load();
+    if (calls == rewind_probe_reported.exchange(calls)) return;
+    console::info("[agent capacity] rewind probe: FUN_140415bf0 called %llu times\n", calls);
+}
+void rewind_probe_stub(void* a, std::int32_t* index, std::uint8_t* base, void* d) {
+    const auto call = ++rewind_probe_calls;
+    const auto first = call == 1;
+    const auto slot = static_cast<std::intptr_t>(*index);
+    const auto target = reinterpret_cast<std::uintptr_t>(base) + L.rewind_pointers() + static_cast<std::uintptr_t>(slot) * 8;
+    const auto stock = reinterpret_cast<std::uintptr_t>(base) + 0x40 + static_cast<std::uintptr_t>(slot) * 8;
+    unsigned long long target_before{}, stock_before{};
+    if (first) {
+        target_before = *reinterpret_cast<const unsigned long long*>(target);
+        stock_before = *reinterpret_cast<const unsigned long long*>(stock);
+    }
+    rewind_probe_hook.invoke<void>(a, index, base, d);
+    if (first) {
+        const auto archive = *reinterpret_cast<const std::uintptr_t*>(0x143C98468ull);
+        const auto array = archive + L.rewind_base() + L.rewind_pointers();
+        console::info("[agent capacity] rewind probe: first call, base (rdi) %llX, character (rbx) %lld, store address %llX = base + %X + 8 x character; "
+                      "layout array %llX (archive %llX + rewind_base %X + rewind_pointers %X), inside it: %s, base matches rewind_base: %s\n",
+            static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(base)), static_cast<long long>(slot),
+            static_cast<unsigned long long>(target), L.rewind_pointers(), static_cast<unsigned long long>(array),
+            static_cast<unsigned long long>(archive), L.rewind_base(), L.rewind_pointers(),
+            (target >= array && target < array + L.characters * 8ull) ? "yes" : "NO",
+            reinterpret_cast<std::uintptr_t>(base) == archive + L.rewind_base() ? "yes" : "NO");
+        console::info("[agent capacity] rewind probe: quadword at the store address %llX before, %llX after; at the stock address %llX (base + 0x40 + 8 x character) %llX before, %llX after\n",
+            target_before, *reinterpret_cast<const unsigned long long*>(target), static_cast<unsigned long long>(stock), stock_before,
+            *reinterpret_cast<const unsigned long long*>(stock));
+    }
+    if (call == 10 || call == 100 || call == 1000 || call == 10000 || call == 100000) rewind_probe_log_count();
+}
+void plan_rewind_probe() {
+    auto on = parse_count(L"-agent-capacity-rewind-probe", 1);
+    wchar_t from_env[16]{};
+    if (!on && GetEnvironmentVariableW(L"IW7_AGENT_CAPACITY_REWIND_PROBE", from_env, 16) && from_env[0])
+        on = static_cast<std::uint32_t>(std::wcstoul(from_env, nullptr, 10));
+    if (!on) return;
+    rewind_probe_hook.create(0x140415BF0, rewind_probe_stub);   // queued: main applies every queued hook after post_unpack
+    command::add("agent_capacity_rewind_probe", [](const command::params&) {
+        console::info("[agent capacity] rewind probe: FUN_140415bf0 called %llu times\n", rewind_probe_calls.load());
+    });
+    scheduler::loop(rewind_probe_log_count, scheduler::main, 20s);
+    console::info("[agent capacity] rewind probe armed (FUN_140415bf0)\n");
+}
+
 void plan_caves() {
     std::size_t total = 0;
     for (const auto& c : cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
+    for (const auto& c : rewind_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     for (const auto* caves : {&frame_caves_a, &frame_caves_b, &frame_caves_c})
         for (const auto& c : *caves) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     if (!total) return;
@@ -802,6 +886,14 @@ void plan_caves() {
             cave(c.window_start, c.old_bytes, trap, {}, c.retargets);
         } else cave(c.window_start, c.old_bytes, c.cave_bytes, c.fixups, c.retargets);
         ++k;
+    }
+    for (const auto& c : rewind_cave_table) {
+        auto bytes = c.cave_bytes;
+        if (bytes.size() != 8 || bytes[0] != 0x48 || bytes[1] != 0x89 || bytes[2] != 0x84 || bytes[3] != 0xDF)
+            throw std::runtime_error("agent capacity: the rewind store cave is not mov [rdi+rbx*8+disp32],rax");
+        const std::uint32_t disp = L.rewind_pointers();
+        std::memcpy(bytes.data() + 4, &disp, 4);
+        cave(c.window_start, c.old_bytes, bytes, c.fixups, c.retargets);
     }
     if (fault) console::info("[agent capacity] cave fault switch: mask %X (ud2 instead of the instruction)\n", fault);
     plan_frames();
@@ -857,6 +949,7 @@ public:
         init_record_hook.create(0x140C2A080, init_record_stub);   // queued: main applies every queued hook after post_unpack
         death_reset_hook.create(0x140C3BDD0, death_reset_stub);
         plan_unwind_probe();
+        plan_rewind_probe();
         active = true;
         contract = "agents-" + std::to_string(L.agents);
         scheduler::once([] {

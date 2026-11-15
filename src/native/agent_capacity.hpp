@@ -96,6 +96,26 @@ constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
     return l;
 }
 
+// A one-byte field the CPU sign-extends (a disp8, an imm8 of `83 /r`, `6B`, `48 83`) holds -128..127; add1s (the .cpp) refuses the rest.
+constexpr bool fits_signed_byte(std::int64_t value) { return value >= -128 && value <= 127; }
+// Every value the plan writes into such a field (the add1s sites and the imul imm8 blocks of agent_capacity.cpp). The rewind pointer
+// array's displacement is not here: FUN_140415bf0 gets a 32-bit displacement through a cave (rewind_cave_table).
+constexpr bool signed_byte_sites_hold(std::uint32_t agents) {
+    const auto l = make(agents, 0x800);
+    return fits_signed_byte(l.characters) && fits_signed_byte(l.player_corpses) && fits_signed_byte(l.agent_corpses) &&
+           fits_signed_byte(l.agents) && fits_signed_byte(static_cast<std::int64_t>(l.characters) - 1) &&
+           fits_signed_byte(static_cast<std::int64_t>(l.agents) - players) && fits_signed_byte(-static_cast<std::int64_t>(l.agent_corpses));
+}
+// Every count refuse() accepts keeps every signed byte in range: widening refuse() without re-encoding those sites does not compile.
+constexpr bool accepted_counts_keep_signed_bytes() {
+    for (std::uint32_t n = 0; n <= 1024; ++n)
+        if (refuse(n)[0] == 0 && !signed_byte_sites_hold(n)) return false;
+    return true;
+}
+static_assert(accepted_counts_keep_signed_bytes());
+static_assert(make(24, 0x800).rewind_pointers() == 0x40 && make(84, 0x800).rewind_pointers() == 0x80 && make(100, 0x800).rewind_pointers() == 0x90);
+static_assert(!fits_signed_byte(make(100, 0x800).rewind_pointers()));   // why that store is a cave with a 32-bit displacement
+
 // The shipped layout gives back the shipped numbers (the patch plan is the identity at 24).
 static_assert(make(64, 0x800).client_size() == ((0xFDEA8 + 40 * 0x2CA0 + 82 + 15) & ~15u));
 static_assert(make(64, 0x800).archive_size() == 0x2279D8);

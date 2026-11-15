@@ -33,6 +33,27 @@ displacements) with guard bytes checked every 0.5 s.
 **Accepted counts:** 24, 28, ..., 100. Two encodings bound it: C - 42 must be a multiple of 4 (the archive copy loops
 move by (2C - 84) / 8 and (82C + 4) / 8 quadwords), and C + 8 <= 127 (signed 8-bit corpse and character bounds).
 
+**One-byte fields (15 Nov 2026).** The component patches 43 instructions with ONE byte, and the CPU sign-extends every one of them (12
+displacements `disp8`, 31 immediates of `83 /r` and `48 83` forms; `agent_capacity_sites_test.py` decodes each from the shipped bytes). They go
+through `add1s(address, before, intended)`, which throws at plan time when the value read as a signed byte differs from the intended one (the
+imul immediates of the snapshot rings through `signed_imm8`), and `agent_capacity.hpp` fails to compile if `refuse()` accepts a count for which
+any of them would not hold. A 44th, the lag-compensation rewind store `mov [rdi+rbx*8+0x40],rax` of FUN_140415bf0 (0x140415C24, called from
+FUN_140415120 from FUN_140414df0 from FUN_140594eb0, the rewound-entity animation path), was patched as one byte too: `rewind_pointers()`
+is 0x80 from 84 agents and 0x90 at 100, read as -128 and -112, so the store landed 0x100 bytes below the pointer array. It is now a
+cave with a 32-bit displacement (`ops/engine/caves/rewind-pointer.*`, `agent_capacity_caves_rewind.inc`; the component writes the layout's value into the
+cave at start, at every count). Counts above 100 are refused by `refuse()` and, independently, by `add1s` (first refused count:
+104 for the agent-corpse sites, 112 for the character and player-corpse sites, 128 for the agent-count sites and the two imul
+immediates, 148 for the client snapshot buffer site).
+
+Proof state of the rewind store: the cave is decoded for every allowed count by `agent_capacity_sites_test.py` (same instruction as the shipped one, only the
+displacement differs, equal to what the planner re-encodes), and the headless plan `capacity-agents-headless.json` passes 22/22 with 51 caves
+installed (50 before). The store itself has NOT been seen executing: `FUN_140415bf0` runs only while a lag-compensated action has the archive's rewind
+active (read statically, never seen running: `FUN_140100d80`, a weapon fire of a client with a command time in the past, calls the archive's vtable +0x88 and so on to the animation of the
+rewound characters, `FUN_140594df0` -> `FUN_140594eb0` -> `FUN_140414df0` -> `FUN_140415120` -> `FUN_140415bf0`), and neither the headless plan (an engine bot) nor
+the network-lab plan (the joined client fires no shot in a plan run) does that. The lab-only probe (`IW7_AGENT_CAPACITY_REWIND_PROBE=1` or `-agent-capacity-rewind-probe`)
+logs the first call of `FUN_140415bf0` with the store address against the layout's pointer array, and the call count every 20 s while it changes; both runs
+armed it and logged no call.
+
 ## Players on another layout
 
 The server announces `agentcap=agents-<n>` in its info and refuses at connect a client whose layout differs (today's
@@ -43,8 +64,8 @@ snapshots), so there is no mixed mode.
 
 ## Not done (the next limits)
 
-- More than 100 agents: about 30 signed 8-bit immediates (corpse and character bounds, `lea r, [r - 50]`, the rewind
-  pointer disp8 0x140415C28) need re-encoding to 32-bit forms (longer instructions: code caves or hooks), and more than
+- More than 100 agents: the 43 signed 8-bit fields above (corpse and character bounds, `lea r, [r - 50]`, the agent-count bounds) need
+  re-encoding to 32-bit forms (longer instructions: code caves or hooks; `add1s` refuses them until then), and more than
   110 agents needs 8-bit character ids on the wire (9 bits for 200 + 105).
 - The collector sub_1400A97C0 (loop bound 0x1400A9865) still walks characters 18..41: widening it overruns the 6-int
   stack array of its caller sub_140B69E20; it must be bounded first.

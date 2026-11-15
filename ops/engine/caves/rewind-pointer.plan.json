@@ -1,0 +1,31 @@
+{
+ "version": 1,
+ "image": "iw7_ship_live.exe",
+ "xrefs": "engine database refs+calls and byte scans",
+ "caves": [
+  {
+   "window_start": "0x140415c24",
+   "window_len": 5,
+   "old_bytes": "488944df40",
+   "cave_bytes": "488984dff0ffff7f",
+   "fixups": [],
+   "return_address": "0x140415c29",
+   "changes": [
+    {
+     "address": "0x140415c24",
+     "kind": "disp",
+     "old_bytes": "488944df40",
+     "new_bytes": "488984dff0ffff7f",
+     "new_disp": 2147483632,
+     "force32": true
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x140415c24": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  }
+ ]
+}
