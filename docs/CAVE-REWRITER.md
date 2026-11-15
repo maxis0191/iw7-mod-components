@@ -235,6 +235,18 @@ The command lines of the live plan are in `ops/engine/caves/frame-1403e61b0.comm
 `--array-top` is the offset from rsp after the prologue (S) where the grown region ends (here the cookie, S+0xCC0). `--extra` is X
 for the self-check, `--max-extra` the largest X the run time may use (the probe cave is planned for it).
 
+**Two options for a function that is not a plain "array under the cookie" (a34, used for CG_SetNextSnap `FUN_14086FBA0`).** The walker refuses an
+indexed stack access and an rbp-based access whose rbp is not a frame base, because it cannot know where the index goes. A caller who has read the
+function can declare it: `--bounded-index LO:HI` (repeatable; offsets from rsp after the prologue, the region must end at or below `--array-top`):
+rsp-indexed accesses based inside it are taken as accesses that do not move (the caller vouches that their index stays inside the region); `--rbp-general`:
+rbp is an ordinary register in this function (a pointer, never loaded from rsp), its memory operands and `mov reg, rbp` are not stack accesses (a
+`mov rbp, rsp` / `lea rbp, [rsp+d]` still defines a frame base and is handled as before). Both are written into the plan (`bounded_index`, `rbp_general`)
+and the self-check repeats them. CG_SetNextSnap: `--array-top 0x170 --extra 32 --bounded-index 0x40:0x50 --bounded-index 0x70:0x170 --rbp-general`
+opens 32 bytes between its locals and its cookie (cookie 0x170 -> 0x190, no probe: the frame is 0x1A0); the character change mask lives in them
+(`ops/engine/caves/setnextsnap-mask.*`, five instructions in caves with a 32-bit displacement and a four-qword clear). Command lines in
+`ops/engine/caves/frame-14086fba0.command.txt`. The 0x70 region is the 0x100-byte entity bit array (index = entity number >> 5, 64 dwords; the shipped
+memset clears exactly those 0x100 bytes); the 0x40 region is the stock mask, whose accesses the mask caves replace.
+
 **What changes (every item is a field: address, width, stock value, unit in bytes, sign; at run time new = stock + sign * X / unit).**
 
 | Change | Field | Sign |

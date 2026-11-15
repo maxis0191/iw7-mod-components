@@ -30,12 +30,14 @@ Every field is compared with its shipped value before anything is written; one d
 address (nothing is half-applied). Relocated tables sit within 2 GB of the image (the code reaches them by 32-bit
 displacements) with guard bytes checked every 0.5 s.
 
-**Accepted counts:** 24, 28, ..., 100 (`refuse()`). The barriers, in the order `refuse()` checks them: C - 42 must be a multiple of 4 (the archive
+**Accepted counts:** 24, 28, ..., 232 (`refuse()`, a34). The barriers, in the order `refuse()` checks them: C - 42 must be a multiple of 4 (the archive
 copy loops move by (2C - 84) / 8 and (82C + 4) / 8 quadwords); at most 232 agents (`max_analysed_agents`: G_GetMaxAgents and the GameStateInfo
-hold the count in a byte, an agent's entity number is one byte up to 238); the snapshot's character change mask (CG_SetNextSnap, 4 words fit: from
-130 characters = 112 agents it needs a frame grow, not done); the page-probe caves of the grown frames of FUN_1403E61B0 (planned for 100 agents:
-104 refuses) and FUN_140ADDED0 (the same), and FUN_140ADB8E0 (no probe cave: its frame passes a page from 204 agents). The corpse and character
-bounds are not a barrier any more (a33, below).
+hold the count in a byte, an agent's entity number is one byte up to 238); the snapshot's character change mask (CG_SetNextSnap: a 32-byte room
+opened by its frame grow, 8 words = 256 characters, 250 at 232 agents); the page-probe caves of the three grown frames, planned for 232 agents
+(frame_extra of FUN_1403E61B0 = (2 x 279 - 71) x 32 = 15,584, frame 0xD58 + X = 19,000 bytes, 5 probes; FUN_140ADDED0 = (279 - 71) x 32 = 6,656,
+3 probes; FUN_140ADB8E0 = (279 - 71) x 16 = 3,328, frame 0x4F0 + X = 4,592 bytes, 2 probes, a cave it did not have before; 279 = n + 47 sentient
+slots). None of these functions had a stack probe call of its own (their stock frames are below a page); the planner adds the probe. The
+corpse and character bounds are not a barrier any more (a33, below). a29 had 15,456 / 3,296 / 6,592 at 230 agents; 232 adds two slots.
 
 **One-byte fields (15 Nov 2026).** The component patched 43 instructions with ONE byte, and the CPU sign-extends every one of them (12
 displacements `disp8`, 31 immediates of `83 /r` and `48 83` forms; `agent_capacity_sites_test.py` decodes each from the shipped bytes). They went
@@ -54,8 +56,7 @@ SV_InitSnapshotBufferSizes). Each is a 32-bit field now: 34 in caves (`ops/engin
 field; `plan_caves()` writes `layout::wide_value(wide_site.what)` into it and throws unless every row has exactly one placeholder. Installed at every
 count (like the other caves): at 24 agents each cave is the shipped instruction, at 100 it computes what the shipped one did. The explicit character
 number of the agent-state delta (5 sites) and the clientNum net field (24 sites) are 7 bits up to 127 characters and 8 bits above
-(`layout::net_id_bits()`, 7 at every count up to 108). Left as one byte, all constants: CG_SetNextSnap's eight stack offsets (`add1s`), and the low byte of
-G_GetMaxAgents' `mov eax, n` (`unsigned_imm8`, at most 255). `agent_capacity_sites_test.py` decodes every cave for every count 24..232 and checks the
+(`layout::net_id_bits()`, 7 at every count up to 108). Left as one byte: the low byte of G_GetMaxAgents' `mov eax, n` (`unsigned_imm8`, at most 255); CG_SetNextSnap's eight stack offsets are gone (a34: the mask is in the room of a frame grow of `FUN_14086FBA0`, see `docs/CAVE-REWRITER.md`). `agent_capacity_sites_test.py` decodes every cave for every count 24..232 and checks the
 field value, and that at 24 the field equals the shipped immediate.
 
 Not converted, read only (a33 step 4): `cmp dword [rbp+0x700], 0x2a` at 0x1407AE222 in FUN_1407ae190 (CG interpolation of one entity: for position type 3

@@ -6,7 +6,7 @@
  "end": "0x1403e6690",
  "array_top": 3264,
  "extra": 2272,
- "max_extra": 7136,
+ "max_extra": 15584,
  "frame": {
   "pushes": 8,
   "stock_size": 3416,
@@ -249,11 +249,11 @@
   "window_start": "0x1403e61c6",
   "window_len": 7,
   "old_bytes": "4881ec580d0000",
-  "cave_bytes": "f6842400f0ffff00f6842400e0ffff00f6842400d0ffff004881ec38290000",
-  "probes": 3,
-  "imm_offset": 27,
+  "cave_bytes": "f6842400f0ffff00f6842400e0ffff00f6842400d0ffff00f6842400c0ffff00f6842400b0ffff004881ec384a0000",
+  "probes": 5,
+  "imm_offset": 43,
   "stock_frame": 3416,
-  "max_extra": 7136,
+  "max_extra": 15584,
   "page": 4096
  },
  "unwind_chunks": [

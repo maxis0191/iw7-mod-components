@@ -1,0 +1,32 @@
+[
+ {
+  "address": "0x14086fe6c",
+  "kind": "bytes",
+  "new_bytes": "4c8d8c2470010000",
+  "note": "CG_SetNextSnap: lea r9,[rsp+0x170]: the character change mask moved into the room the frame grow of 0x14086FBA0 opens at 0x170..0x190 (was [rsp+0x40])"
+ },
+ {
+  "address": "0x14086fe74",
+  "kind": "bytes",
+  "new_bytes": "4889842470010000488984247801000048898424800100004889842488010000",
+  "note": "mov [rsp+0x170],rax (rax = 0) and the three following qwords: the mask is cleared in all 32 bytes (stock cleared 8)"
+ },
+ {
+  "address": "0x14086fe83",
+  "kind": "bytes",
+  "new_bytes": "4c8d842470010000",
+  "note": "lea r8,[rsp+0x170] (the mask, read by FUN_140873870)"
+ },
+ {
+  "address": "0x14087066d",
+  "kind": "bytes",
+  "new_bytes": "8b8c8c70010000",
+  "note": "mov ecx,[rsp+rcx*4+0x170]: the mask word of the entity's character (bt follows)"
+ },
+ {
+  "address": "0x1408706cd",
+  "kind": "bytes",
+  "new_bytes": "8b8c8c70010000",
+  "note": "mov ecx,[rsp+rcx*4+0x170]: the mask word of the entity's character (bt follows)"
+ }
+]

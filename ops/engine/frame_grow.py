@@ -118,7 +118,7 @@ def first_sub(insns):
     _fail("no `sub rsp, imm` frame allocation in the prologue of %#x" % insns[0].address)
 
 
-def walk(insns, array_top):
+def walk(insns, array_top, bounded=(), rbp_general=False):
     """Decode the stack behaviour of a function linearly. Raises Refusal on every unsupported form. Returns a Walk whose
     accesses carry c (offset from the entry stack pointer), s (offset from S), whether their base moves with the frame, and
     the change of their displacement."""
@@ -180,7 +180,7 @@ def walk(insns, array_top):
             else:
                 _fail("%s: frame base from a register that is not a stack-pointer copy" % _text(ins))
             frame_def = (c, mv)
-        elif mn == "mov" and ops[0].type == CS_OP_REG and ops[1].type == CS_OP_REG and _reg(ins, ops[1].reg) in ("rsp", "rbp") \
+        elif mn == "mov" and ops[0].type == CS_OP_REG and ops[1].type == CS_OP_REG and _reg(ins, ops[1].reg) in (("rsp",) if rbp_general else ("rsp", "rbp")) \
                 and ops[0].size == 8:
             dst, src = _reg(ins, ops[0].reg), _reg(ins, ops[1].reg)
             if dst == "rbp" and src == "rsp" and stage == "body":
@@ -224,6 +224,8 @@ def walk(insns, array_top):
             if b == "rsp":
                 base_c, mv = rsp_c, moving_rsp
             elif b == "rbp":
+                if rbp_general and (rbp is None or rbp == ("unknown",)):
+                    continue                  # the caller vouches that rbp is an ordinary register here (--rbp-general), never a stack pointer
                 if rbp is None or rbp == ("unknown",):
                     _fail("%s: rbp-based access but rbp is not a known frame base here" % _text(ins))
                 base_c, mv = rbp
@@ -232,6 +234,11 @@ def walk(insns, array_top):
             else:
                 continue
             if o.mem.index:
+                # an indexed access is accepted only inside a region the caller declared (--bounded-index LO:HI, offsets from rsp
+                # after the prologue) whose index the caller knows stays inside it; it then does not move (it lies below the array top)
+                s_off = base_c + o.mem.disp - w.S
+                if b == "rsp" and moving_rsp and any(lo <= s_off < hi <= array_top for lo, hi in bounded):
+                    continue
                 _fail("%s: indexed stack access" % _text(ins))
             if mn == "lea" and frame_def is not None and ins is w.frame_regs[-1][0]:
                 continue                      # the frame base itself: handled as a frame definition
@@ -394,7 +401,7 @@ def _signed(v, width):
     return v - (1 << (8 * width)) if v >> (8 * width - 1) else v
 
 
-def plan_frame_grow(image, function, array_top, extra, max_extra=None, end=None, db=None, gs_handlers=(GS_HANDLER_CHECK,)):
+def plan_frame_grow(image, function, array_top, extra, max_extra=None, end=None, db=None, gs_handlers=(GS_HANDLER_CHECK,), bounded=(), rbp_general=False):
     """The frame-grow plan (a dict) for the function at `function`, or raises cave_plan.Refusal."""
     max_extra = extra if max_extra is None else max_extra
     if extra <= 0 or extra % 16:
@@ -423,7 +430,7 @@ def plan_frame_grow(image, function, array_top, extra, max_extra=None, end=None,
     if raw is None:
         _fail("the function %#x..%#x is not in the image" % (function, end))
     insns = cp.decode(raw, function)
-    w = walk(insns, array_top)
+    w = walk(insns, array_top, bounded, rbp_general)
     sub, F = w.sub
     changed = classify(w, array_top)
     S = w.S
@@ -455,7 +462,7 @@ def plan_frame_grow(image, function, array_top, extra, max_extra=None, end=None,
                        "instruction": None, "text": text})
     fields.sort(key=lambda f: int(f["address"], 0))
     doc = {"version": 1, "kind": "frame-grow", "image": os.path.basename(getattr(image, "path", "<memory>")),
-           "function": "%#x" % function, "end": "%#x" % end, "array_top": array_top, "extra": extra, "max_extra": max_extra,
+           "function": "%#x" % function, "end": "%#x" % end, "array_top": array_top, "bounded_index": [list(b) for b in bounded], "rbp_general": bool(rbp_general), "extra": extra, "max_extra": max_extra,
            "frame": {"pushes": w.pushes, "stock_size": F, "sub_address": "%#x" % sub.address, "S_from_entry": S},
            "fields": fields, "cave": cave,
            "unwind_chunks": [{"begin": "%#x" % (image.base + r.begin_rva), "end": "%#x" % (image.base + r.end_rva),
@@ -543,7 +550,7 @@ def self_check(image, plan, gs_handlers=(GS_HANDLER_CHECK,), extras=None):
     start, end = int(plan["function"], 0), int(plan["end"], 0)
     top = plan["array_top"]
     before = _decoded(image.read(start, end - start), start)
-    wb = walk(before, top)
+    wb = walk(before, top, [tuple(b) for b in plan.get("bounded_index", ())], plan.get("rbp_general", False))
     classify(wb, top)
     F = wb.sub[1]
     listed = {int(f["address"], 0): f for f in plan["fields"]}
@@ -586,7 +593,7 @@ def self_check(image, plan, gs_handlers=(GS_HANDLER_CHECK,), extras=None):
                 errs.append("X=%d: the probes stop at %#x, the frame is %#x" % (extra, PAGE * len(probes), F + extra))
         # the same walk on the new code: every access keeps its place relative to the caller (high) or moves down by X (low)
         try:
-            wa = walk(after, top)
+            wa = walk(after, top, [tuple(b) for b in plan.get("bounded_index", ())], plan.get("rbp_general", False))
         except cp.Refusal as e:
             errs.append("X=%d: the patched function is not a coherent frame: %s" % (extra, "; ".join(e.reasons)))
             continue
@@ -656,6 +663,10 @@ def main(argv):
     ap.add_argument("--array-top", required=True, help="offset from rsp after the prologue where the grown region ends (the cookie)")
     ap.add_argument("--extra", required=True, help="X: bytes the frame grows (multiple of 16)")
     ap.add_argument("--max-extra", help="the largest X the run time may use (default: --extra); the probe cave is planned for it")
+    ap.add_argument("--bounded-index", action="append", help="LO:HI, offsets from rsp after the prologue: indexed accesses based in this region (below "
+                    "the array top) are accepted unchanged; the caller vouches that their index stays inside it")
+    ap.add_argument("--rbp-general", action="store_true", help="rbp is an ordinary register in this function (never a stack pointer or frame base): "
+                    "its memory operands are not stack accesses. Refused anyway when rbp is loaded from rsp")
     ap.add_argument("--end", help="end address of the function (default: from the unwind chunks)")
     ap.add_argument("-o", "--output")
     ap.add_argument("--image", default=cp.DEFAULT_IMAGE)
@@ -667,7 +678,8 @@ def main(argv):
         db = cp.EngineDb(a.db) if os.path.exists(a.db) else None
         handlers = tuple(int(h, 0) for h in a.gs_handler) if a.gs_handler else (GS_HANDLER_CHECK,)
         plan = plan_frame_grow(image, int(a.function, 0), int(a.array_top, 0), int(a.extra, 0),
-                               int(a.max_extra, 0) if a.max_extra else None, int(a.end, 0) if a.end else None, db, handlers)
+                               int(a.max_extra, 0) if a.max_extra else None, int(a.end, 0) if a.end else None, db, handlers,
+                               tuple(tuple(int(x, 0) for x in b.split(':')) for b in (a.bounded_index or ())), a.rbp_general)
     except (OSError, ValueError, uw.UnwindError) as e:
         print("cannot plan: %s" % e, file=sys.stderr)
         return 2

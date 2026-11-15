@@ -1,0 +1,119 @@
+{
+ "version": 1,
+ "image": "iw7_ship_live.exe",
+ "xrefs": "engine database refs+calls and byte scans",
+ "caves": [
+  {
+   "window_start": "0x14086fe6c",
+   "window_len": 5,
+   "old_bytes": "4c8d4c2440",
+   "cave_bytes": "4c8d8c2470010000",
+   "fixups": [],
+   "return_address": "0x14086fe71",
+   "changes": [
+    {
+     "address": "0x14086fe6c",
+     "kind": "bytes",
+     "old_bytes": "4c8d4c2440",
+     "new_bytes": "4c8d8c2470010000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14086fe6c": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x14086fe74",
+   "window_len": 5,
+   "old_bytes": "4889442440",
+   "cave_bytes": "4889842470010000488984247801000048898424800100004889842488010000",
+   "fixups": [],
+   "return_address": "0x14086fe79",
+   "changes": [
+    {
+     "address": "0x14086fe74",
+     "kind": "bytes",
+     "old_bytes": "4889442440",
+     "new_bytes": "4889842470010000488984247801000048898424800100004889842488010000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14086fe74": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x14086fe83",
+   "window_len": 5,
+   "old_bytes": "4c8d442440",
+   "cave_bytes": "4c8d842470010000",
+   "fixups": [],
+   "return_address": "0x14086fe88",
+   "changes": [
+    {
+     "address": "0x14086fe83",
+     "kind": "bytes",
+     "old_bytes": "4c8d442440",
+     "new_bytes": "4c8d842470010000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14086fe83": 0
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x14087066d",
+   "window_len": 8,
+   "old_bytes": "8b4c8c40440fa3c1",
+   "cave_bytes": "8b8c8c70010000440fa3c1",
+   "fixups": [],
+   "return_address": "0x140870675",
+   "changes": [
+    {
+     "address": "0x14087066d",
+     "kind": "bytes",
+     "old_bytes": "8b4c8c40",
+     "new_bytes": "8b8c8c70010000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x14087066d": 0,
+    "0x140870671": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  },
+  {
+   "window_start": "0x1408706cd",
+   "window_len": 8,
+   "old_bytes": "8b4c8c40440fa3c1",
+   "cave_bytes": "8b8c8c70010000440fa3c1",
+   "fixups": [],
+   "return_address": "0x1408706d5",
+   "changes": [
+    {
+     "address": "0x1408706cd",
+     "kind": "bytes",
+     "old_bytes": "8b4c8c40",
+     "new_bytes": "8b8c8c70010000"
+    }
+   ],
+   "retargets": [],
+   "offsets": {
+    "0x1408706cd": 0,
+    "0x1408706d1": 7
+   },
+   "window_kind": "forward",
+   "tried": []
+  }
+ ]
+}
