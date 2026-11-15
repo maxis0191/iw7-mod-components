@@ -9,6 +9,11 @@ asks for FUN_140415bf0+34 (`mov [rdi+rbx*8+0x40],rax`) with a placeholder displa
 `plan_caves()` writes `layout::rewind_pointers()` into cave bytes 4..7 before the cave is queued. The sites test decodes the cave with that
 displacement for every allowed count and compares it with what the planner produces for the same displacement.
 
+Wide-site caves (a33, 15 Nov 2026): the same placeholder method for 34 count fields at once. `ops/engine/caves/wide-sites.requests.json` (kind `bytes`, one
+request per instruction, imm32/disp32 = `0x5A5A0000 | row`) is planned in one run into `wide-sites.plan.json` (35 caves) and emitted as
+`agent_capacity_caves_wide.inc`; `plan_caves()` looks for each row's placeholder, writes the layout's value and throws unless there is exactly one.
+Regenerate: `py -3.12 -B ops/engine/cave_plan.py wide-sites.requests.json -o wide-sites.plan.json`, then `--emit-cpp`. The sites test checks every cave for every count 24..232.
+
 ## What it is for
 
 The engine's 8-bit displacements and immediates (`mov eax, [rdx+rbx+0x24]`) cannot hold the values the capacity patch
@@ -192,7 +197,8 @@ SAME displacement (`force32`) and moved to a cave. Windows (stock bytes -> cave 
 | `140AE2029` (8) | FUN_140AE2000 (A.29) | `8b44132439440b24` | `8b84132400000039440b24` |
 
 Plan `capacity-agents-headless.json` copied with the 78 phase removed (cap held at 24, same conditions: normal zombies, damage
-refill, protected bot, round 30, 20 s window), run folders `IW7-Runtime\capacityuns\cave-ok` and `cave-ud2`.
+refill, protected bot, round 30, 20 s window), run folders `IW7-Runtime\capacity
+uns\cave-ok` and `cave-ud2`.
 
 - Clean run (4 caves, 514 patches): PASS 13/13 steps, 5/5 expectations, 24 agents alive, 141 hits on the bot in the 20 s
   window (h4: 162, no cave), 24 killed, no script error, no crash; server frame at 24 alive mean 3.72 ms, median 3.59, p99 5.0

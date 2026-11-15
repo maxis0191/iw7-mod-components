@@ -85,10 +85,6 @@ void add1s(std::uintptr_t address, std::uint32_t before, std::int32_t intended) 
     }
     add(address, before, static_cast<std::uint8_t>(intended), 1);
 }
-std::uint8_t signed_imm8(std::uint32_t value) {   // an imm8 written inside a `block` (imul r32, r32, imm8)
-    if (!fits_signed_byte(value)) throw std::runtime_error("agent capacity: value does not fit a signed 8-bit immediate");
-    return static_cast<std::uint8_t>(value);
-}
 std::uint8_t unsigned_imm8(std::uint32_t value) { // the low byte of a `mov eax, imm32` whose other three bytes are zero
     if (value > 0xFF) throw std::runtime_error("agent capacity: value does not fit one byte");
     return static_cast<std::uint8_t>(value);
@@ -109,6 +105,13 @@ template <std::size_t N> void block(std::uintptr_t address, const std::array<std
     if (std::memcmp(reinterpret_cast<void*>(address), before.data(), N))
         throw std::runtime_error("agent capacity: instruction block differs at " + std::to_string(address));
     for (std::size_t i = 0; i < N; ++i) add1(address + i, before[i], after[i]);
+}
+
+// `cmp ax, imm8` (66 83 f8 ib, 4 bytes) -> `cmp ax, imm16` (66 3d iw, 4 bytes): the same length, in place.
+void wide16(std::uintptr_t address, std::uint32_t value) {
+    if (value > 0xFFFF) throw std::runtime_error("agent capacity: value does not fit a 16-bit immediate");
+    block(address, std::array<std::uint8_t, 4>{0x66, 0x83, 0xf8, 0x2a},
+          std::array<std::uint8_t, 4>{0x66, 0x3d, static_cast<std::uint8_t>(value), static_cast<std::uint8_t>(value >> 8)});
 }
 
 bool write(const patch& item, bool rollback) noexcept {
@@ -134,18 +137,14 @@ void plan_agents() {
     add(0x1405B0000, 58, l.map_start);                       // first map entity
     add(0x14B54FA72, 58, l.map_start); add(0x14B54FA7C, 58, l.map_start); // G_InitGame's own reservation
     add(0x140B6686F, 58 * 0x3F8, l.map_start * 0x3F8);
-    add1s(0x140B67402, 42, l.player_corpses);                 // ClonePlayer corpse allocator
-    add1s(0x140C1BB22, 50, l.agent_corpses);                  // CloneAgent corpse allocator
-    for (auto f : {0x1407AE403ull, 0x140823B61ull, 0x140826385ull, 0x14086D122ull, 0x140872E65ull}) add1s(f, 42, l.player_corpses);
-    for (auto f : {0x1407AF52Full, 0x140823B80ull, 0x140865EB9ull, 0x14086F509ull, 0x140872EECull}) add1s(f, 50, l.agent_corpses);
-    add1s(0x1408213F4, 0x100 - 50, -static_cast<std::int32_t>(l.agent_corpses));   // lea ebx, [entity - first agent corpse]: a negative disp8
-    add1s(0x140B2F536, 42, l.player_corpses);
-    // character decode ("Received entnum %d: must index MAX_CHARACTERS_MP", sub_14084A530), lookup, interpolation, teardown
-    for (auto f : {0x14084A551ull, 0x140842A20ull, 0x140842B0Bull, 0x14077EDEEull, 0x1407801DEull, 0x140780549ull,
-                   0x140805D4Eull, 0x140282ED8ull, 0x1402854DEull, 0x1405C2578ull, 0x140B202DCull}) add1s(f, 42, l.characters);
-    // agent-state delta: explicit character index 6 -> 7 bits (writer and the live/demo readers)
-    for (auto f : {0x140BBFAB5ull, 0x140BBFB08ull, 0x1409B7542ull, 0x140C655D8ull, 0x140C65C51ull}) add(f, 6, 7);
-    // entity-state clientNum (offset 0x9C) in the 21 CP field lists: 6 -> 7 bits
+    // The corpse allocators and bounds (ClonePlayer 0x140B67400, CloneAgent 0x140C1BB20, the entity - first corpse subtractions) and the
+    // character bounds ("Received entnum %d: must index MAX_CHARACTERS_MP", lookup, interpolation, teardown) were one-byte fields: they
+    // hold 32-bit values in caves now (wide_site, plan_caves) and, for the two 16-bit compares, in place (wide16).
+    wide16(0x14077EDEB, l.characters);                        // cmp ax, characters (FUN_14077ecd0)
+    wide16(0x1407801DB, l.characters);                        // cmp ax, characters (FUN_14077ff50)
+    // agent-state delta: explicit character index 6 -> 7 bits (8 above 127 characters; writer and the live/demo readers)
+    for (auto f : {0x140BBFAB5ull, 0x140BBFB08ull, 0x1409B7542ull, 0x140C655D8ull, 0x140C65C51ull}) add(f, 6, l.net_id_bits());
+    // entity-state clientNum (offset 0x9C) in the 21 CP field lists: 6 -> 7 bits (8 above 127 characters)
     for (auto f : {0x141BB3F50ull, 0x141BB45FCull, 0x141BB4790ull, 0x141BB4A80ull, 0x141BB4D64ull, 0x141BB50C0ull,
                    0x141BB5410ull, 0x141BB576Cull, 0x141BB59F0ull, 0x141BB5C08ull, 0x141BB5FB8ull, 0x141BB61E8ull,
                    0x141BB6634ull, 0x141BB6858ull, 0x141BB6B24ull, 0x141BB6E50ull, 0x141BB71E8ull, 0x141BB7460ull,
@@ -154,7 +153,7 @@ void plan_agents() {
         std::uint32_t d[3]{};
         std::memcpy(d, reinterpret_cast<void*>(f - 4), sizeof(d));
         if (d[0] != 0x9C) throw std::runtime_error("agent capacity: clientNum net field differs");
-        add(f, 6, 7, 4, false);
+        add(f, 6, l.net_id_bits(), 4, false);
     }
     // three more 6-bit clientNum fields (live .data; map engine-zombie-limits.md 9b): the event-entity list (eType >= 30),
     // list group2[0] and the agentState list (+0x9C)
@@ -163,14 +162,12 @@ void plan_agents() {
         std::uint32_t d[3]{};
         std::memcpy(d, reinterpret_cast<void*>(f - 4), sizeof(d));
         if (d[0] != 0x9C) throw std::runtime_error("agent capacity: clientNum net field differs");
-        add(f, 6, 7, 4, false);
+        add(f, 6, l.net_id_bits(), 4, false);
     }
     // server AI loops over characters by entity byte offset (cmp reg, 42 x 0x3F8): agents past entity 41 were skipped.
     // 0x1400A9865 is left: its collector fills a 6-int stack array in sub_140B69E20 with no bound (not done).
     for (auto f : {0x140C22AE3ull, 0x140C29144ull, 0x140C390F8ull, 0x140C3A939ull, 0x140C3CB5Cull, 0x140C3D17Bull, 0x140C481FEull})
         add(f, stock_characters * 0x3F8, l.characters * 0x3F8);
-    add1s(0x140C217CD, 42, l.characters);                     // per-frame round-robin over characters (sub_140C21740)
-    add1s(0x140C3F3AA, 42, l.characters);                     // gametype table setup loop (sub_140C3F1E0)
     // server hunk budget for the snapshot agent rings (sub_140C68880): frames x 24 x 0xC0 as lea [r+r*8] / shl 9
     block(0x140C68901, std::array<std::uint8_t, 6>{0x8d, 0x04, 0xf6, 0xc1, 0xe0, 0x09},
           std::array<std::uint8_t, 6>{0x69, 0xc6, static_cast<std::uint8_t>(l.agents * 0xC0), static_cast<std::uint8_t>((l.agents * 0xC0) >> 8), 0, 0});
@@ -184,7 +181,6 @@ void plan_agents() {
     add(0x140AF6331, 0x2C60, l.sentient_bytes());
     rip(0x140AF6324, 0x145C6F5A0, sentient_pool.data);
     rip(0x140AF6F2A, 0x145C6F5A0, sentient_pool.data);
-    add1s(0x1404494FD, stock_agents, l.agents); add1s(0x140449696, stock_agents, l.agents); // G_WriteStruct agent bounds
     // server character information and the per-player data after it: one object, grown together
     add(0x140B1F4FE, 0x7A0D8, l.server_size()); add(0x140449EE9, 0x7A0D8, l.server_size());
     add(0x140449EAB, 0x7A0D0, l.server_size() - 8);
@@ -202,7 +198,6 @@ void plan_agents() {
     rva(0x140AC6B71, 0x5C51580, table8.data); rva(0x140AC6B7B, 0x5C51584, table8.data + 4);
     rva(0x140AC6C7E, 0x5C516D4, table20.data + 4); rva(0x140AC6C99, 0x5C516D2, table20.data + 2);
     rva(0x140AC6CCE, 0x5C516E0, table20.data + 16); rva(0x140AC6CEB, 0x5C516D0, table20.data);
-    add1s(0x140AC67C1, 42, l.characters); add1s(0x140AC686E, 42, l.characters);
     add(0x140AC6933, 210, l.characters * 5); add(0x140AC6AC2, 336, l.table8_bytes()); add(0x140AC6B0E, 4200, l.table20_bytes());
 }
 
@@ -227,7 +222,6 @@ void plan_archive() {
     add(0x140445B7B, 0x207668, l.rewind_base() + 0x10);
     for (auto a : {0x140445B82ull, 0x140445EDCull}) add(a, 0x207658, l.rewind_base());
     add(0x140445B90, 0x207660, l.rewind_base() + 8);
-    add1s(0x140445B45, 42, l.characters);
     // FUN_140415bf0+34 `mov [rdi+rbx*8+0x40],rax` (the rewind pointer array) is a disp8 that rewind_pointers() outgrows (0x80 from 84 agents, read as
     // negative): re-encoded with a 32-bit displacement in a cave, see rewind_cave_table in plan_caves().
     add(0x140445F0C, 42, l.characters);
@@ -292,7 +286,6 @@ void plan_client() {
                    0x140241BDAull, 0x140242BF6ull}) add(a, 0xFDEA8, l.client_size());
     for (auto a : {0x140240AA0ull, 0x140241B15ull, 0x140242C13ull}) add(a, 0xFD7F8, l.client_tail());
     for (auto a : {0x140180172ull, 0x1401833EBull, 0x14018340Bull, 0x140183435ull, 0x140D2BE4Aull}) add(a, 0x86B17, l.client_flags());
-    add1s(0x140242E22, 41, l.characters - 1); add1s(0x140242E3C, 41, l.characters - 1);
     // CL_GetSnapshot copied min(numAgents, 24) agent states: zombies 25+ had entities but no model (invisible).
     for (auto a : {0x1408646D1ull, 0x1408646EAull, 0x140864726ull, 0x1408648BDull}) add(a, 2 * 0x3DC78, 2 * l.snap_size());
     for (auto a : {0x14086470Dull, 0x14086471Full, 0x1408648E9ull, 0x1408648FBull, 0x14086C728ull}) add(a, 0x3DC78, l.snap_size());
@@ -301,16 +294,13 @@ void plan_client() {
     // SV snapshot buffers (sub_140C68A00): the two agent-state rings hold 24 states a snapshot frame
     // (count = frames x 24 as lea [r+r*2] / shl 3; the allocator sub_140C68B00 sizes them from that count x 0xC0).
     // With more agents a frame the rings wrap before the oldest frame a client may delta from: frames x agents.
-    block(0x140C68A82, std::array<std::uint8_t, 4>{0x43, 0x8d, 0x04, 0x52},
-                       std::array<std::uint8_t, 4>{0x41, 0x6b, 0xc2, signed_imm8(l.agents)}); // imul eax, r10d, agents
-    block(0x140C68A8D, std::array<std::uint8_t, 3>{0xc1, 0xe0, 0x03}, std::array<std::uint8_t, 3>{0x0f, 0x1f, 0x00});
-    block(0x140C68A96, std::array<std::uint8_t, 4>{0x43, 0x8d, 0x04, 0x5b},
-                       std::array<std::uint8_t, 4>{0x41, 0x6b, 0xc3, signed_imm8(l.agents)}); // imul eax, r11d, agents
-    block(0x140C68A9A, std::array<std::uint8_t, 3>{0xc1, 0xe0, 0x03}, std::array<std::uint8_t, 3>{0x0f, 0x1f, 0x00});
+    // The first (frames x agents, at 0x140C68A82) is in caves (wide_site 37: its lea and its shl are 11 bytes apart); the second is lea + shl
+    // side by side, replaced in place by `imul eax, r11d, imm32` (7 bytes).
+    block(0x140C68A96, std::array<std::uint8_t, 7>{0x43, 0x8d, 0x04, 0x5b, 0xc1, 0xe0, 0x03},
+                       std::array<std::uint8_t, 7>{0x41, 0x69, 0xc3, static_cast<std::uint8_t>(l.agents), static_cast<std::uint8_t>(l.agents >> 8), 0, 0});
     // CL snapshot buffers (sub_14034F1D0, called from sub_1409B2620): the client's agent-state ring is frames x agents a
     // frame. A listen host passes the server's own max agents (byte +0x546, set from the patched selector); a client
     // joining a remote server passes 24 as `mov ebp, 18; lea r14d, [rbp + 6]`: the 6 becomes agents - 18.
-    add1s(0x1409B26FC, 6, l.agents - players);
     // CG_SetNextSnap: the character change mask (one bit a character) grows into a free stack slot
     add1s(0x14086FBE0, 0x70, 0x68); add(0x14086FBE3, 0x100, 0x108);
     add1s(0x14086FDAF, 0x60, 0x58); add1s(0x140870705, 0x60, 0x58);
@@ -615,9 +605,30 @@ const std::vector<cave_spec> cave_table = {
 const std::vector<cave_spec> rewind_cave_table = {
 #include "agent_capacity_caves_rewind.inc"
 };
+// The one-byte fields that held a character, corpse or agent count (a29 section 2.1, 34 instructions: `cmp`/`sub r32, imm8`, `lea r32, [r+disp8]`,
+// the frames x agents `imul`), as 32-bit fields in caves (ops/engine/caves/wide-sites.*, planned by cave_plan.py from wide-sites.requests.json). The
+// plan holds a placeholder 0x5A5A0000 | row in each field; plan_caves() writes layout::wide_value(what) there (exactly one placeholder a row, or it throws).
+// Installed at every agent count, like the other caves; at 24..100 each cave computes what the shipped instruction computed.
+const std::vector<cave_spec> wide_cave_table = {
+#include "agent_capacity_caves_wide.inc"
+};
+struct wide_site { std::uint32_t row; wide_field what; };
+constexpr wide_site wide_sites[] = {
+    {1, wide_field::player_corpses}, {2, wide_field::agent_corpses}, {3, wide_field::player_corpses}, {4, wide_field::player_corpses},
+    {5, wide_field::player_corpses}, {6, wide_field::player_corpses}, {7, wide_field::player_corpses}, {8, wide_field::player_corpses},
+    {9, wide_field::agent_corpses}, {10, wide_field::agent_corpses}, {11, wide_field::agent_corpses}, {12, wide_field::agent_corpses},
+    {13, wide_field::agent_corpses}, {14, wide_field::minus_agent_corpses},
+    {15, wide_field::characters}, {16, wide_field::characters}, {17, wide_field::characters}, {20, wide_field::characters},
+    {21, wide_field::characters}, {22, wide_field::characters}, {23, wide_field::characters}, {24, wide_field::characters},
+    {25, wide_field::characters}, {26, wide_field::characters}, {27, wide_field::characters}, {28, wide_field::characters},
+    {29, wide_field::characters}, {30, wide_field::characters},
+    {31, wide_field::characters_less_one}, {32, wide_field::characters_less_one},
+    {33, wide_field::agents}, {34, wide_field::agents}, {35, wide_field::agents_less_players}, {37, wide_field::agents},
+};
+constexpr std::uint32_t wide_placeholder_base = 0x5A5A0000;
 buffer code_region;
 std::size_t code_used{};
-std::size_t caves_planned{};
+std::size_t caves_planned{}, wide_caves{};
 
 buffer reserve_code(std::size_t bytes) {
     const auto committed = (bytes + 4095) & ~std::size_t(4095);
@@ -870,6 +881,7 @@ void plan_caves() {
     std::size_t total = 0;
     for (const auto& c : cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     for (const auto& c : rewind_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
+    for (const auto& c : wide_cave_table) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     for (const auto* caves : {&frame_caves_a, &frame_caves_b, &frame_caves_c})
         for (const auto& c : *caves) total += (c.cave_bytes.size() + 5 + 15) & ~std::size_t(15);
     if (!total) return;
@@ -895,6 +907,25 @@ void plan_caves() {
         std::memcpy(bytes.data() + 4, &disp, 4);
         cave(c.window_start, c.old_bytes, bytes, c.fixups, c.retargets);
     }
+    unsigned found[std::size(wide_sites)]{};
+    for (const auto& c : wide_cave_table) {
+        auto bytes = c.cave_bytes;
+        for (std::size_t wi = 0; wi < std::size(wide_sites); ++wi) {
+            const std::uint32_t magic = wide_placeholder_base | wide_sites[wi].row;
+            for (std::size_t at = 0; at + 4 <= bytes.size(); ++at) {
+                std::uint32_t here{};
+                std::memcpy(&here, bytes.data() + at, 4);
+                if (here != magic) continue;
+                const auto value = static_cast<std::int32_t>(L.wide_value(wide_sites[wi].what));
+                std::memcpy(bytes.data() + at, &value, 4);
+                ++found[wi];
+            }
+        }
+        cave(c.window_start, c.old_bytes, bytes, c.fixups, c.retargets);
+    }
+    for (std::size_t wi = 0; wi < std::size(wide_sites); ++wi)
+        if (found[wi] != 1) throw std::runtime_error("agent capacity: a wide site has no placeholder in its cave (or more than one)");
+    wide_caves = wide_cave_table.size();
     if (fault) console::info("[agent capacity] cave fault switch: mask %X (ud2 instead of the instruction)\n", fault);
     plan_frames();
 }
@@ -963,6 +994,8 @@ public:
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
             console::info("[agent capacity] entity queue: rows %u at %p, %zu references\n", L.queue_rows(),
                 reinterpret_cast<void*>(entity_queue.data), queue_references);
+            console::info("[agent capacity] wide sites: %zu caves carry %zu 32-bit fields (characters %u, corpses %u / %u, agents %u)\n", wide_caves,
+                std::size(wide_sites), L.characters, L.player_corpses, L.agent_corpses, L.agents);
             console::info("[agent capacity] fast-fail sites patched to ud2: %zu\n", fastfail_sites);
             for (const auto& set : frame_sets)
                 console::info("[agent capacity] frame grow of %s: extra %u bytes, %zu fields, probe caves %zu\n", set.name, set.extra,

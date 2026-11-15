@@ -22,6 +22,7 @@ ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 CPP = os.path.join(ROOT, 'src', 'native', 'agent_capacity.cpp')
 INC = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves.inc')
 INC_REWIND = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves_rewind.inc')
+INC_WIDE = os.path.join(ROOT, 'src', 'native', 'agent_capacity_caves_wide.inc')
 PLANS = os.path.join(ROOT, 'ops', 'engine', 'caves')
 FRAME_FIELDS = os.path.join(ROOT, 'src', 'native', 'agent_capacity_frame_fields.inc')
 FRAME_CAVE = os.path.join(ROOT, 'src', 'native', 'agent_capacity_frame_cave.inc')
@@ -324,7 +325,7 @@ class Sites(unittest.TestCase):
         for x in sites:
             n = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
             spans.append((x['address'], x['address'] + n, 'site'))
-        for c in parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read()):
+        for c in parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read()) + parse_inc(open(INC_WIDE, encoding='utf-8').read()):
             spans.append((c['start'], c['start'] + len(c['old']), 'cave'))
             spans.extend((t['field'], t['field'] + 4, 'retarget') for t in c['retargets'])
         spans.sort()
@@ -398,35 +399,12 @@ class Sites(unittest.TestCase):
         print(f'\ncave windows checked: {len(caves)}')
 
 # ---- one-byte fields the CPU sign-extends ------------------------------------------------------------------------------------
-# Every instruction the component patches with ONE byte (add1 / add1s, and the byte of a `block`) was read in the shipped code:
+# Every instruction the component still patches with ONE byte (add1 / add1s, and the byte of a `block`) was read in the shipped code:
 # field address -> (instruction address, instruction bytes). A displacement byte (disp8) and the immediate of an `83 /r`, `6B`,
 # `48 83` form are sign-extended by the CPU: a value above 0x7F is read as negative. The test below decodes each instruction with
 # capstone, proves the patched byte is such a field, and runs the value the C++ writes for every allowed agent count.
+# After a33 only CG_SetNextSnap's stack offsets are left (constants); the fields that held a count are 32-bit (WIDE_SITES).
 SIGNED_BYTE_SITES = {
-    0x140242E22: (0x140242E20, '83fa29'),
-    0x140242E3C: (0x140242E3A, '83fa29'),
-    0x140282ED8: (0x140282ED6, '83fb2a'),
-    0x1402854DE: (0x1402854DC, '83ff2a'),
-    0x140445B45: (0x140445B43, '83fd2a'),
-    0x1404494FD: (0x1404494FB, '83fa18'),
-    0x140449696: (0x140449693, '4883fe18'),
-    0x1405C2578: (0x1405C2576, '83f82a'),
-    0x14077EDEE: (0x14077EDEB, '6683f82a'),
-    0x1407801DE: (0x1407801DB, '6683f82a'),
-    0x140780549: (0x140780547, '83f82a'),
-    0x1407AE403: (0x1407AE400, '4183e92a'),
-    0x1407AF52F: (0x1407AF52D, '83ef32'),
-    0x140805D4E: (0x140805D4C, '83fb2a'),
-    0x1408213F4: (0x1408213F1, '418d5bce'),
-    0x140823B61: (0x140823B5F, '83e82a'),
-    0x140823B80: (0x140823B7E, '83e832'),
-    0x140826385: (0x140826382, '4183eb2a'),
-    0x140842A20: (0x140842A1E, '83f92a'),
-    0x140842B0B: (0x140842B09, '83f82a'),
-    0x14084A551: (0x14084A54F, '83f82a'),
-    0x140865EB9: (0x140865EB7, '83e932'),
-    0x14086D122: (0x14086D120, '83ef2a'),
-    0x14086F509: (0x14086F507, '83e832'),
     0x14086FBE0: (0x14086FBDC, '488d4c2470'),
     0x14086FDAF: (0x14086FDAB, '4889442460'),
     0x14086FE70: (0x14086FE6C, '4c8d4c2440'),
@@ -435,28 +413,70 @@ SIGNED_BYTE_SITES = {
     0x140870670: (0x14087066D, '8b4c8c40'),
     0x1408706D0: (0x1408706CD, '8b4c8c40'),
     0x140870705: (0x140870701, '488b5c2460'),
-    0x140872E65: (0x140872E63, '83e82a'),
-    0x140872EEC: (0x140872EEA, '83e832'),
-    0x1409B26FC: (0x1409B26F9, '448d7506'),
-    0x140AC67C1: (0x140AC67BE, '4183f92a'),
-    0x140AC686E: (0x140AC686C, '83fb2a'),
-    0x140B202DC: (0x140B202DA, '83fb2a'),
-    0x140B2F536: (0x140B2F533, '4183e92a'),
-    0x140B67402: (0x140B67400, '8d422a'),
-    0x140C1BB22: (0x140C1BB20, '8d4132'),
-    0x140C217CD: (0x140C217CA, '4183f92a'),
-    0x140C3F3AA: (0x140C3F3A8, '83ff2a'),
 }
-# Sites that were one byte and now go through a cave with a 32-bit field: they must not come back as a byte site.
+# The 34 instructions of a29 section 2.1 that held a count in a one-byte field and now hold it in 32 bits: row -> (instruction address,
+# shipped bytes, layout name). 15 corpse sites (rows 1-14 and the two bound subtractions), 16 character-bound sites (15-30 minus the two in
+# place), 2 character-index bounds (31, 32), 2 agent bounds (33, 34), 35 (agents - 18), 37 (the frames x agents imul in caves).
+WIDE_SITES = {
+    1: (0x140B67400, '8d422a', 'l_player_corpses'), 2: (0x140C1BB20, '8d4132', 'l_agent_corpses'),
+    3: (0x1407AE400, '4183e92a', 'l_player_corpses'), 4: (0x140823B5F, '83e82a', 'l_player_corpses'),
+    5: (0x140826382, '4183eb2a', 'l_player_corpses'), 6: (0x14086D120, '83ef2a', 'l_player_corpses'),
+    7: (0x140872E63, '83e82a', 'l_player_corpses'), 8: (0x140B2F533, '4183e92a', 'l_player_corpses'),
+    9: (0x1407AF52D, '83ef32', 'l_agent_corpses'), 10: (0x140823B7E, '83e832', 'l_agent_corpses'),
+    11: (0x140865EB7, '83e932', 'l_agent_corpses'), 12: (0x14086F507, '83e832', 'l_agent_corpses'),
+    13: (0x140872EEA, '83e832', 'l_agent_corpses'), 14: (0x1408213F1, '418d5bce', '-l_agent_corpses'),
+    15: (0x14084A54F, '83f82a', 'l_characters'), 16: (0x140842A1E, '83f92a', 'l_characters'),
+    17: (0x140842B09, '83f82a', 'l_characters'), 20: (0x140780547, '83f82a', 'l_characters'),
+    21: (0x140805D4C, '83fb2a', 'l_characters'), 22: (0x140282ED6, '83fb2a', 'l_characters'),
+    23: (0x1402854DC, '83ff2a', 'l_characters'), 24: (0x1405C2576, '83f82a', 'l_characters'),
+    25: (0x140B202DA, '83fb2a', 'l_characters'), 26: (0x140C217CA, '4183f92a', 'l_characters'),
+    27: (0x140C3F3A8, '83ff2a', 'l_characters'), 28: (0x140AC67BE, '4183f92a', 'l_characters'),
+    29: (0x140AC686C, '83fb2a', 'l_characters'), 30: (0x140445B43, '83fd2a', 'l_characters'),
+    31: (0x140242E20, '83fa29', 'l_characters - 1'), 32: (0x140242E3A, '83fa29', 'l_characters - 1'),
+    33: (0x1404494FB, '83fa18', 'l_agents'), 34: (0x140449693, '4883fe18', 'l_agents'),
+    35: (0x1409B26F9, '448d7506', 'l_agents - 18'), 37: (0x140C68A82, '438d0452', 'l_agents'),
+}
+WIDE_WIDTH = 4
+# Rewritten in place (the new encoding has the stock length): row -> (address, shipped bytes, layout name)
+IN_PLACE_SITES = {18: (0x14077EDEB, '6683f82a', 'l_characters'), 19: (0x1407801DB, '6683f82a', 'l_characters'),
+                  38: (0x140C68A96, '438d045bc1e003', 'l_agents')}
+# Sites that were one byte and now go through a cave with a 32-bit field: they must not come back as a byte site. Field address -> instruction.
 MOVED_TO_CAVE = {0x140415C28: (0x140415C24, '488944df40')}   # FUN_140415bf0+34, mov [rdi+rbx*8+0x40],rax
-ALLOWED_COUNTS = range(24, 101, 4)                           # refuse(): 24, 28, ..., 100
+for _row, (_a, _hx, _name) in WIDE_SITES.items():
+    if _row != 37:
+        MOVED_TO_CAVE[_a + len(_hx) // 2 - 1] = (_a, _hx)
+ALLOWED_COUNTS = range(24, 101, 4)                           # refuse(): 24, 28, ..., 100 (the barrier is now the frame caves, see REFUSE below)
+SITE_COUNTS = [n for n in range(24, 233) if (18 + n - 42) % 4 == 0]   # every count the sites are written for: 24, 28, ..., 232
 
 
 def layout_names(n):
-    """The names of layout (agent_capacity.hpp) a one-byte site can use, for n agents."""
+    """The names of layout (agent_capacity.hpp) a site can use, for n agents."""
     c = 18 + n
     return {'l_agents': n, 'l_characters': c, 'l_player_corpses': c, 'l_agent_corpses': c + 8, 'l_map_start': c + 16,
             'l_rewind_pointers': (0x14 + c + 7) & ~7}
+
+
+def refuse_mirror(n):
+    """agent_capacity.hpp refuse(n) in Python (the text of every rule is pinned by test_the_refuse_mirror_matches_the_hpp)."""
+    c = 18 + n
+    if n < 24:
+        return 'fewer than the stock 24 agents'
+    if (c - 42) % 4:
+        return 'players + agents - 42 must be a multiple of 4'
+    if n > 232:
+        return 'more than 232 agents'
+    if 0x60 + ((c + 31) // 32) * 4 > 0x70:
+        return 'character change mask does not fit'
+    slots = 71 + n - 24
+    if ((2 * slots - 71) * 32 + 15) & ~15 > 0x1BE0:
+        return 'FUN_1403E61B0 probe cave'
+    if (slots - 71) * 32 > 0x980:
+        return 'FUN_140ADDED0 probe cave'
+    if 0x4F0 + (slots - 71) * 16 > 0x1000:
+        return 'FUN_140ADB8E0 grown frame passes a page'
+    if ((0x3F08 + slots * 0x40 + slots * 0x3C + 15) & ~15) > 0x20000:
+        return 'embedded record room'
+    return ''
 
 
 class SignedByteSites(unittest.TestCase):
@@ -488,6 +508,17 @@ class SignedByteSites(unittest.TestCase):
         self.assertEqual(layout_names(100)['l_rewind_pointers'], 0x90)
         self.assertEqual(layout_names(24)['l_rewind_pointers'], 0x40)     # the stock value at 24 agents
 
+    def test_the_remaining_byte_sites_are_constants_and_the_max_agents_byte_is_bounded(self):
+        for s in self.sites:
+            self.assertEqual(evaluate(s['after'], layout_names(24)), evaluate(s['after'], layout_names(232)), f"{s['address']:#x} depends on the count")
+        # G_GetMaxAgents: the low byte of `mov eax, n` with three zero bytes: unsigned_imm8 refuses above 255, refuse() above 232
+        self.assertIn('unsigned_imm8(l.agents)', self.text)
+        self.assertIn('if (value > 0xFF) throw', self.text)
+        self.assertIn('constexpr bool byte_sites_hold(std::uint32_t agents) { return agents <= 255; }', open(HPP, encoding='utf-8').read())
+        # add1s itself still refuses what a signed byte cannot hold (the plan-time guard for anything left one-byte)
+        self.assertIn('does not fit a signed 8-bit field', self.text)
+        self.assertIn('constexpr bool fits_signed_byte(std::int64_t value) { return value >= -128 && value <= 127; }', open(HPP, encoding='utf-8').read())
+
     def test_every_one_byte_site_is_classified_and_every_signed_one_uses_add1s(self):
         by = {s['address']: s for s in self.sites}
         unknown = sorted(hex(a) for a in by if a not in SIGNED_BYTE_SITES and a not in MOVED_TO_CAVE)
@@ -502,7 +533,7 @@ class SignedByteSites(unittest.TestCase):
     def test_no_value_a_signed_byte_receives_is_read_differently_at_any_allowed_count(self):
         bad = []
         for s in self.sites:
-            for n in ALLOWED_COUNTS:
+            for n in SITE_COUNTS:
                 value = evaluate(s['after'], layout_names(n))
                 if not -128 <= value <= 127:
                     note = f'{s["address"]:#x} ({s["call"]}) at {n} agents: writes {value:#x} (a one-byte field read as {((value & 0xFF) ^ 0x80) - 0x80})'
@@ -532,7 +563,7 @@ class SignedByteSites(unittest.TestCase):
         # the displacement is written at cave offset 4 by the C++ (pinned below)
         self.assertRegex(self.text, r'std::memcpy\(bytes\.data\(\) \+ 4, &disp, 4\)')
         self.assertIn('const std::uint32_t disp = L.rewind_pointers();', self.text)
-        for n in ALLOWED_COUNTS:
+        for n in SITE_COUNTS:
             want = layout_names(n)['l_rewind_pointers']
             bytes_ = c['cave'][:4] + want.to_bytes(4, 'little')
             new, = cs.disasm(bytes_, c['start'])
@@ -547,6 +578,176 @@ class SignedByteSites(unittest.TestCase):
             self.assertEqual(bytes.fromhex(plan['cave_bytes']), bytes_, f'{n} agents')
         # the placeholder in the table is not a layout value
         self.assertEqual(int.from_bytes(c['cave'][4:8], 'little'), 0x7FFFFFF0)
+
+
+def magic(row):
+    return 0x5A5A0000 | row
+
+
+class WideSites(unittest.TestCase):
+    """The 34 count fields of a29 section 2.1 that are 32-bit now: caves of single instructions plus the two-window imul pair of row 37, the
+    two 16-bit compares and the lea + shl of 0x140C68A96 in place. Offline proof for every count from 24 to 232: each cave decodes to the
+    shipped instruction with its field holding the intended value; at 24 agents every field holds the shipped value."""
+
+    def setUp(self):
+        self.image, self.source = find_image()
+        if self.image is None:
+            self.skipTest('no unpacked code files or analysed image on this machine')
+        self.text = open(CPP, encoding='utf-8').read()
+        self.hpp = open(HPP, encoding='utf-8').read()
+        self.caves = parse_inc(open(INC_WIDE, encoding='utf-8').read())
+        self.cs = cp._cs()
+
+    def holder(self, row):
+        """-> (cave, offset of the placeholder in it): exactly one placeholder a row over all caves."""
+        want = magic(row).to_bytes(4, 'little')
+        hits = [(c, at) for c in self.caves for at in range(len(c['cave']) - 3) if c['cave'][at:at + 4] == want]
+        self.assertEqual(len(hits), 1, f'row {row}: {len(hits)} placeholders')
+        return hits[0]
+
+    def decode_at(self, cave_bytes, field_offset, start=0x150000000):
+        """The instruction of the cave whose imm32 / disp32 is at field_offset: (instruction, 'imm' or 'disp')."""
+        for i in self.cs.disasm(cave_bytes, start):
+            e = i.encoding
+            off = i.address - start
+            if e.imm_size == 4 and off + e.imm_offset == field_offset:
+                return i, 'imm'
+            if e.disp_size == 4 and off + e.disp_offset == field_offset:
+                return i, 'disp'
+        self.fail(f'no instruction has its imm32/disp32 at cave offset {field_offset}')
+
+    @staticmethod
+    def shape(i):
+        """Mnemonic and operands without the immediate / displacement value."""
+        ops = []
+        for o in i.operands:
+            if o.type == 1:
+                ops.append(('r', o.reg, o.size))
+            elif o.type == 2:
+                ops.append(('i', o.size))
+            else:
+                ops.append(('m', o.mem.base, o.mem.index, o.mem.scale, o.size))
+        return i.mnemonic, tuple(ops)
+
+    @staticmethod
+    def field_value(i, kind):
+        return i.operands[-1].imm if kind == 'imm' else next(o.mem.disp for o in i.operands if o.type == 3)
+
+    def test_the_inc_is_the_plan_and_the_windows_match_the_shipped_code(self):
+        plan = json.load(open(os.path.join(PLANS, 'wide-sites.plan.json'), encoding='utf-8'))['caves']
+        self.assertEqual(len(plan), len(self.caves))
+        for p_, c in zip(plan, self.caves):
+            self.assertEqual((int(p_['window_start'], 0), p_['old_bytes'], p_['cave_bytes']), (c['start'], c['old'].hex(), c['cave'].hex()))
+            self.assertEqual(self.image.read(c['start'], len(c['old'])), c['old'], f"{c['start']:#x}: the shipped bytes differ")
+            cp.self_check(p_, cp.decode(c['old'], c['start']))
+        self.assertEqual(len(plan), 35, '34 sites: 33 single-instruction caves, the imul of row 37 in two')
+
+    def test_the_requests_reproduce_the_plan(self):
+        if not os.path.exists(cp.DEFAULT_DB):
+            self.skipTest('the planner needs the engine database to rule out raw branch hits')
+        reqs = json.load(open(os.path.join(PLANS, 'wide-sites.requests.json'), encoding='utf-8'))
+        plan = json.load(open(os.path.join(PLANS, 'wide-sites.plan.json'), encoding='utf-8'))['caves']
+        got = cp.plan(reqs, self.image, cp.EngineDb(cp.DEFAULT_DB))
+        self.assertEqual([(c['window_start'], c['old_bytes'], c['cave_bytes']) for c in got],
+                         [(c['window_start'], c['old_bytes'], c['cave_bytes']) for c in plan])
+
+    def test_every_row_is_one_placeholder_in_the_instruction_the_table_names(self):
+        self.assertEqual(sorted(WIDE_SITES), [r for r in range(1, 38) if r not in (18, 19, 36)])
+        for row, (address, hx, name) in WIDE_SITES.items():
+            self.assertEqual(self.image.read(address, len(hx) // 2).hex(), hx, f'row {row}: the shipped bytes differ')
+            cave, at = self.holder(row)
+            i, kind = self.decode_at(cave['cave'], at)
+            stock = next(self.cs.disasm(self.image.read(address, 16), address))
+            if row == 37:                                              # lea + shl 3 (r * 24) became imul r, agents
+                self.assertEqual((i.mnemonic, i.op_str), ('imul', 'eax, r10d, 0x5a5a0025'))
+                self.assertEqual(stock.mnemonic, 'lea')
+            else:
+                self.assertEqual(self.shape(i), self.shape(stock), f'row {row}: {i.mnemonic} {i.op_str} is not {stock.mnemonic} {stock.op_str}')
+                self.assertEqual(kind, 'disp' if stock.mnemonic == 'lea' else 'imm', f'row {row}')
+                self.assertEqual(i.size, stock.size + 3, f'row {row}: an imm8/disp8 became an imm32/disp32 (+3 bytes)')
+
+    def test_every_field_holds_the_intended_value_for_every_count_and_the_shipped_one_at_24(self):
+        table = self.text.split('wide_sites[] = {')[1].split('};')[0]
+        cpp = {int(m.group(1)): m.group(2) for m in re.finditer(r'\{(\d+), wide_field::(\w+)\}', table)}
+        self.assertEqual(sorted(cpp), sorted(WIDE_SITES), 'the rows of wide_sites in the .cpp are the rows of the test')
+        kinds = {'player_corpses': 'l_player_corpses', 'agent_corpses': 'l_agent_corpses', 'minus_agent_corpses': '-l_agent_corpses',
+                 'characters': 'l_characters', 'characters_less_one': 'l_characters - 1', 'agents': 'l_agents', 'agents_less_players': 'l_agents - 18'}
+        for row, (address, hx, name) in WIDE_SITES.items():
+            self.assertEqual(kinds[cpp[row]], name, f'row {row}: wide_field in the .cpp')
+            cave, at = self.holder(row)
+            stock = next(self.cs.disasm(self.image.read(address, 16), address))
+            for n in SITE_COUNTS:
+                value = evaluate(name, layout_names(n))
+                self.assertTrue(-2 ** 31 <= value < 2 ** 31, f'row {row} at {n}')
+                b = bytearray(cave['cave'])
+                b[at:at + 4] = (value & 0xFFFFFFFF).to_bytes(4, 'little')
+                i, kind = self.decode_at(bytes(b), at)
+                self.assertEqual(self.field_value(i, kind), value, f'row {row} at {n} agents')
+                if n == 24 and row != 37:                              # the shipped value: the cave is the shipped instruction
+                    self.assertEqual(self.field_value(i, kind), self.field_value(stock, kind), f'row {row}: at 24 agents the field must hold the shipped value')
+                if n == 24 and row == 37:                              # lea r*3 then shl 3 = r * 24
+                    self.assertEqual(value, 24)
+        # the hpp mirror of the names
+        for text in ('case wide_field::characters: return characters;', 'case wide_field::characters_less_one: return static_cast<std::int64_t>(characters) - 1;',
+                     'case wide_field::agent_corpses: return agent_corpses;', 'case wide_field::minus_agent_corpses: return -static_cast<std::int64_t>(agent_corpses);',
+                     'case wide_field::agents_less_players: return static_cast<std::int64_t>(agents) - players;'):
+            self.assertIn(text, self.hpp)
+
+    def test_the_imul_pair_and_the_in_place_sites(self):
+        # row 37: window 1 = imul + the 7-byte mov [rip], r8d; window 2 = shl eax, 3 (becomes a 3-byte nop) + mov [rip], eax
+        starts = {c['start']: c for c in self.caves}
+        self.assertEqual(starts[0x140C68A8D]['old'][:3].hex(), 'c1e003')
+        self.assertEqual(starts[0x140C68A8D]['cave'][:3].hex(), '0f1f00')
+        self.assertEqual(starts[0x140C68A82]['cave'][:3].hex(), '4169c2')
+        # in place: 66 83 f8 2a -> 66 3d iw (cmp ax, imm16, the same 4 bytes), and lea + shl (7 bytes) -> imul r11d, agents (7 bytes)
+        for row, (address, hx, name) in IN_PLACE_SITES.items():
+            self.assertEqual(self.image.read(address, len(hx) // 2).hex(), hx, f'row {row}')
+        windows = [(c['start'], c['start'] + len(c['old'])) for inc in (INC, INC_REWIND, INC_WIDE) for c in parse_inc(open(inc, encoding='utf-8').read())]
+        for address in (0x14077EDEB, 0x1407801DB):
+            self.assertFalse([w for w in windows if w[0] < address + 4 and address < w[1]], f'{address:#x} overlaps a cave window')
+        self.assertIn('wide16(0x14077EDEB, l.characters)', self.text)
+        self.assertIn('wide16(0x1407801DB, l.characters)', self.text)
+        self.assertRegex(self.text, r'block\(0x140C68A96, std::array<std::uint8_t, 7>\{0x43, 0x8d, 0x04, 0x5b, 0xc1, 0xe0, 0x03\}')
+        self.assertIn('std::array<std::uint8_t, 7>{0x41, 0x69, 0xc3, static_cast<std::uint8_t>(l.agents), static_cast<std::uint8_t>(l.agents >> 8), 0, 0}', self.text)
+        self.assertIn('if (value > 0xFFFF) throw', self.text)
+        stock16, = self.cs.disasm(self.image.read(0x14077EDEB, 4), 0x14077EDEB)
+        for n in SITE_COUNTS:
+            c = 18 + n
+            i, = self.cs.disasm(bytes([0x66, 0x3d, c & 0xFF, c >> 8]), 0x14077EDEB)
+            self.assertEqual((i.mnemonic, i.size, i.operands[1].imm, i.operands[0].reg), ('cmp', 4, c, stock16.operands[0].reg), f'{n} agents')
+            i, = self.cs.disasm(bytes([0x41, 0x69, 0xc3, n & 0xFF, n >> 8, 0, 0]), 0x140C68A96)
+            self.assertEqual((i.mnemonic, i.op_str, i.size), ('imul', f'eax, r11d, {n:#x}', 7), f'{n} agents')
+        # at 24 agents: imul by 24 is the lea r*3 << 3 of the shipped code
+        lea, shl = self.cs.disasm(self.image.read(0x140C68A96, 7), 0x140C68A96)
+        self.assertEqual((lea.mnemonic, shl.mnemonic, shl.operands[1].imm), ('lea', 'shl', 3))
+
+    def test_the_net_bit_counts_follow_the_count_of_characters(self):
+        self.assertIn('constexpr std::uint32_t net_id_bits() const { return characters <= 127 ? 7 : 8; }', self.hpp)
+        self.assertEqual(len(re.findall(r'add\(f, 6, l\.net_id_bits\(\)', self.text)), 3, 'agent-state loop, 21-list loop, 3-list loop')
+        self.assertNotRegex(self.text, r'add\(f, 6, 7')
+        bits = {n: (7 if 18 + n <= 127 else 8) for n in SITE_COUNTS}
+        self.assertTrue(all(b == 7 for n, b in bits.items() if n <= 100), 'unchanged (7 bits) at every count up to 100')
+        self.assertEqual([n for n, b in bits.items() if b == 8][0], 112)
+
+    def test_the_refuse_mirror_matches_the_hpp(self):
+        for text in ('constexpr std::uint32_t frame_cave_max_extra_a = 0x1BE0, frame_cave_max_extra_c = 0x980;',
+                     'constexpr std::uint32_t frame_b_stock = 0x4F0, page = 0x1000;', 'constexpr std::uint32_t max_analysed_agents = 232;',
+                     'if (0x60 + ((c + 31) / 32) * 4 > 0x70) return', '(((2 * slots - 71) * 32 + 15) & ~15u) > frame_cave_max_extra_a',
+                     '(slots - 71) * 32 > frame_cave_max_extra_c', 'frame_b_stock + (slots - 71) * 16 > page'):
+            self.assertIn(text, self.hpp)
+        # the probe caves' planned maxima are the ones in the generated tables
+        for name, want in (('agent_capacity_frame_cave.inc', 0x1BE0), ('agent_capacity_frame_cave_added0.inc', 0x980)):
+            m = re.search(r'^\{0x[0-9a-f]+ull, \{[^}]*\}, \{[^}]*\}, \d+, 0x[0-9a-f]+u, (0x[0-9a-f]+)u, \d+\},$', open(src(name), encoding='utf-8').read(), re.M)
+            self.assertEqual(int(m.group(1), 16), want, name)
+        accepted = [n for n in range(0, 1100) if refuse_mirror(n) == '']
+        self.assertEqual(accepted, list(range(24, 101, 4)))
+        self.assertEqual(refuse_mirror(104), 'FUN_1403E61B0 probe cave')
+        reasons = {}
+        for n in SITE_COUNTS:
+            reasons.setdefault(refuse_mirror(n), []).append(n)
+        print('\nrefuse() by count (24..232, valid counts): ' + '; '.join(f'{k or "accepted"}: {v[0]}..{v[-1]}' for k, v in reasons.items()))
+        print(f'highest count the byte and count sites accept: {SITE_COUNTS[-1]}; highest count refuse() accepts: {accepted[-1]}')
+        self.assertEqual(SITE_COUNTS[-1], 232)
 
 
 def src(name):
@@ -673,7 +874,7 @@ class FrameGrow(unittest.TestCase):
         for x in sites:
             n = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
             spans.append((x['address'], x['address'] + n, 'site'))
-        caves = parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read())
+        caves = parse_inc(open(INC, encoding='utf-8').read()) + parse_inc(open(INC_REWIND, encoding='utf-8').read()) + parse_inc(open(INC_WIDE, encoding='utf-8').read())
         for c in caves:
             spans.append((c['start'], c['start'] + len(c['old']), 'cave'))
             spans.extend((t['field'], t['field'] + 4, 'retarget') for t in c['retargets'])
