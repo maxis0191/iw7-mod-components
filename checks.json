@@ -365,6 +365,14 @@
       ]
     },
     {
+      "id": "compile_check_exports_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/compile_check_exports_test.py"
+      ]
+    },
+    {
       "id": "agent_capacity_sites_test",
       "command": [
         "python",

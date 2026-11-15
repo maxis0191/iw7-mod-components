@@ -91,6 +91,13 @@ snapshots), so there is no mixed mode.
 - Save-archive loops over 66 sentients and 24 agents (0x140B309C8, 0x140B314F1, 0x140B31860): not used by a zombies
   match as far as measured; with 100 agents the count (142) no longer fits their 8-bit compare.
 
+## Fast compile check (a34)
+
+Before a full client build of `agent_capacity.cpp` (or any unit of `src/native`) run `pwsh -NoProfile -File ops/Compile-Check.ps1 -NativeRoot <native tree built once with ops/Build-Voice.ps1> -Source src/native/agent_capacity.cpp`.
+It (1) runs `ops/check_boundaries.py` and `ops/compile_check_exports.py` (every local include of the unit, `.inc` and `.hpp` too, must be in `product.json` "exports" and listed in `ops/Build-Voice.ps1`; also for a file that is still untracked), (2) copies the unit and its includes into the tree, (3) compiles only
+that unit with `MSBuild client.vcxproj /t:ClCompile /p:SelectedFiles=...` (real flags, precompiled header, warnings as errors). Measured on the same error (a raw newline in a string): 2.3 s here against 127.5 s through `Invoke-EngineLab -BuildOnly` (prepare 16 s, unit tests and build 111 s); the export refusal takes 0.5 s.
+Exit 0 ok, 1 export refused, 2 compile errors printed, 3 tree not ready or a build of that tree is running. A copied tree must have its `*-overlay.local.json` receipts' `Root` changed to the new path before `Build-Voice` accepts it.
+
 ## Tools made for this work (engine map family)
 
 | Question | Tool | Command |
