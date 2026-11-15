@@ -1194,6 +1194,25 @@ remap_report remap_part_records(std::uint8_t* s, std::uint32_t reserved, std::ui
     return r;
 }
 
+// After the move, every type 3 / 4 entry that names a record of the fixed range ([reserved, total)) must name one the zone linked: its client
+// state block `[record + 0x80 + slot * 0x98]` is not NULL (the crash of a43-p3a read exactly that). Returns the entries that fail.
+std::uint32_t count_unlinked_targets(const std::uint8_t* s, const std::uint8_t* array, std::uint32_t reserved, std::uint32_t total) {
+    std::uint32_t bad{};
+    for (unsigned group = 0; group < 2; ++group) {
+        const auto count = *reinterpret_cast<const std::uint16_t*>(s + 0x170 + 2 * group);
+        const auto* base = *reinterpret_cast<const std::uint8_t* const*>(s + 0x178 + 8 * group);
+        if (!base || !count) continue;
+        for (unsigned i = 0; i < count; ++i) {
+            const auto* entry = base + static_cast<std::size_t>(i) * part_entry_bytes;
+            const auto type = *reinterpret_cast<const std::uint32_t*>(entry + part_entry_type_offset);
+            const auto index = *reinterpret_cast<const std::uint16_t*>(entry + part_entry_record_offset);
+            if ((type != part_type_record_link && type != part_type_record_event) || index < reserved || index >= total) continue;
+            if (!*reinterpret_cast<const std::uintptr_t*>(array + static_cast<std::size_t>(index) * record_bytes + 0x80)) ++bad;
+        }
+    }
+    return bad;
+}
+
 // Values that point into [lo, hi) in the committed memory around `where` (the zone's block of the old record array), at most 1 GB of it, and in
 // the `n` bytes at `extra`; the move leaves none: every user reads the array through S, and a record holding such a pointer would be broken.
 struct pointer_scan { std::uint64_t in_region{}, in_extra{}; const void* region{}; std::size_t scanned{}; };
@@ -1274,7 +1293,9 @@ std::uintptr_t link_mapents_stub(void** pointer) {
     // the stored record indexes (a44): counted first, then remapped in this same step
     const auto old_total = total, old_reserved = reserved;
     const auto before = remap_part_records(s, old_reserved, added, old_total, false);
-    const auto remap = !parse_count(L"-agent-capacity-no-record-remap", 1);   // the switch only reproduces the a43 fault (stored indexes left as authored)
+    wchar_t no_remap_env[16]{};
+    const auto remap = !parse_count(L"-agent-capacity-no-record-remap", 1) &&   // the switch (or the variable) only reproduces the a43 fault: stored indexes left as authored
+        !(GetEnvironmentVariableW(L"IW7_AGENT_CAPACITY_NO_RECORD_REMAP", no_remap_env, 16) && no_remap_env[0] == L'1');
     const auto after = remap_part_records(s, old_reserved, added, old_total, remap);
     const auto* old_array = array;
     record_block = block;
@@ -1284,6 +1305,7 @@ std::uintptr_t link_mapents_stub(void** pointer) {
     server_end += added;
     total = count;
     const auto scan = scan_pointers_into(old_array, old_array + static_cast<std::size_t>(old_total) * record_bytes, old_array, block, static_cast<std::size_t>(count) * record_bytes);
+    const auto unlinked = count_unlinked_targets(s, block, reserved, total);
     std::uint64_t in_header{};
     for (unsigned o = 0; o < 0x340; o += 8) {
         const auto v = *reinterpret_cast<const std::uintptr_t*>(s + o);
@@ -1293,10 +1315,10 @@ std::uintptr_t link_mapents_stub(void** pointer) {
         added, total, server_end, block);
     console::info("[agent capacity] map ents remap: map %s, S %p, %s, d %u, part entries %u + %u, record links %u, record events %u; indexes shifted %u to a record and %u beyond the "
         "records (values beyond: %u seen, first %u %u %u %u), kept %u below the reserved range and %u too large; left as authored these would have named an inserted blank %u times "
-        "and turned from no record into a record %u times; other types with a value %u; stale pointers into the old array: %llu in the zone block %p (%zu bytes), %llu in the new "
+        "and turned from no record into a record %u times; other types with a value %u; entries naming a fixed record without a client state block: %u; stale pointers into the old array: %llu in the zone block %p (%zu bytes), %llu in the new "
         "block, %llu in the header\n", mapents_name(s).c_str(), static_cast<void*>(s), remap ? "remapped" : "NOT remapped (switch)", added, after.entries[0], after.entries[1], after.link,
         after.event, after.shifted_record, after.shifted_beyond, after.beyond_values, after.beyond_value[0], after.beyond_value[1], after.beyond_value[2], after.beyond_value[3],
-        after.kept_reserved, after.kept_big, before.would_name_blank, before.would_become_record, after.other_nonzero, static_cast<unsigned long long>(scan.in_region), scan.region, scan.scanned,
+        after.kept_reserved, after.kept_big, before.would_name_blank, before.would_become_record, after.other_nonzero, unlinked, static_cast<unsigned long long>(scan.in_region), scan.region, scan.scanned,
         static_cast<unsigned long long>(scan.in_extra), static_cast<unsigned long long>(in_header));
     return result;
 }

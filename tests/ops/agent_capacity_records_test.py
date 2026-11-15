@@ -95,7 +95,7 @@ class Records(unittest.TestCase):
         self.assertIn('part_entry_bytes = 0x70, part_entry_type_offset = 0, part_entry_record_offset = 0x4C, part_type_record_link = 3, part_type_record_event = 4;', hpp)
         cpp = open(CPP, encoding='utf-8').read()
         for needle in ('remap_part_records(s, old_reserved, added, old_total, remap)', 'map ents remap: map', 'stale pointers into the old array',
-                       '-agent-capacity-no-record-remap', 'base = *reinterpret_cast<std::uint8_t**>(s + 0x178 + 8 * group)',
+                       '-agent-capacity-no-record-remap', 'IW7_AGENT_CAPACITY_NO_RECORD_REMAP', 'count_unlinked_targets(s, block, reserved, total)', 'base = *reinterpret_cast<std::uint8_t**>(s + 0x178 + 8 * group)',
                        'std::uint16_t*>(entry + part_entry_record_offset)', 'remapped_record_index(index, reserved, added)'):
             self.assertIn(needle, cpp)
 
