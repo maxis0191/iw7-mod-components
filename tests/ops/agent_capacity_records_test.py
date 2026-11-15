@@ -34,12 +34,8 @@ def scriptable_parts(n):
     return max(8192, (need + 1023) // 1024 * 1024)
 
 
-def remapped_record_index(index, reserved, added, total):
-    return index + added if reserved <= index < total else index
-
-
-def turns_into_record(index, added, total):
-    return total <= index < total + added
+def remapped_record_index(index, reserved, added):
+    return index + added if index >= reserved and index + added <= 0xFFFF else index
 
 
 class Records(unittest.TestCase):
@@ -95,50 +91,48 @@ class Records(unittest.TestCase):
 
     def test_remap_text_is_pinned(self):
         hpp = open(HPP, encoding='utf-8').read()
-        self.assertIn('return index >= reserved && index < total ? index + added : index;', hpp)
-        self.assertIn('return index >= total && index < total + added;', hpp)
+        self.assertIn('return index >= reserved && index + added <= 0xFFFF ? index + added : index;', hpp)
         self.assertIn('part_entry_bytes = 0x70, part_entry_type_offset = 0, part_entry_record_offset = 0x4C, part_type_record_link = 3, part_type_record_event = 4;', hpp)
         cpp = open(CPP, encoding='utf-8').read()
         for needle in ('remap_part_records(s, old_reserved, added, old_total, remap)', 'map ents remap: map', 'stale pointers into the old array',
-                       '-agent-capacity-no-record-remap', 'S + 0x178 + 8 * group'.replace('S + 0x178 + 8 * group', 'base = *reinterpret_cast<std::uint8_t**>(s + 0x178 + 8 * group)'),
-                       'std::uint16_t*>(entry + part_entry_record_offset)', 'guard d'):
+                       '-agent-capacity-no-record-remap', 'base = *reinterpret_cast<std::uint8_t**>(s + 0x178 + 8 * group)',
+                       'std::uint16_t*>(entry + part_entry_record_offset)', 'remapped_record_index(index, reserved, added)'):
             self.assertIn(needle, cpp)
 
-    def test_remap_follows_the_move_every_allowed_n(self):
-        # a stored index names the same old record after the move as before: the record at the new index is the old record the index meant
+    def test_remap_keeps_every_stored_index_meaning_the_same(self):
+        # a stored index names the same old record after the move; "no record" (>= the old total) stays "no record" (>= the new total)
         for total, reserved in ((STOCK_TOTAL, STOCK_RESERVED), (60, 58)):   # cp_zmb and the frontend zone
             old = list(range(total))
             for n in COUNTS:
                 added = max(0, reserved_records(n) - reserved)
-                new = [old[moved_source(i, reserved, added)] for i in range(total + added)]
-                for stored in range(total):
-                    moved = remapped_record_index(stored, reserved, added, total)
-                    self.assertLess(moved, total + added)
-                    if stored >= reserved:
-                        self.assertEqual(new[moved], stored, (total, n, stored))   # the same record
-                        self.assertGreaterEqual(moved, reserved + added)           # never an inserted blank
-                    else:
-                        self.assertEqual(moved, stored)                            # a reserved record stays
+                new_total = total + added
+                new = [old[moved_source(i, reserved, added)] for i in range(new_total)]
+                for stored in range(0, total + 40):
+                    moved = remapped_record_index(stored, reserved, added)
+                    if stored < reserved:
+                        self.assertEqual(moved, stored)                                      # a reserved record stays
                         self.assertEqual(new[moved], stored)
-                # values at or above the old total are not records: they stay, and none may turn into one
-                for stored in (total, total + 1, 0xFFFE, 0xFFFF):
-                    self.assertEqual(remapped_record_index(stored, reserved, added, total), stored)
-                if added:
-                    self.assertTrue(turns_into_record(total, added, total))
-                    self.assertTrue(turns_into_record(total + added - 1, added, total))
-                    self.assertFalse(turns_into_record(total - 1, added, total))
-                    self.assertFalse(turns_into_record(total + added, added, total))
-                    self.assertFalse(turns_into_record(0xFFFF, added, total))
-                else:
-                    self.assertFalse(turns_into_record(total, 0, total))
+                    elif stored < total:
+                        self.assertEqual(new[moved], stored, (total, n, stored))             # the same record
+                        self.assertGreaterEqual(moved, reserved + added)                     # never an inserted blank
+                    else:
+                        self.assertGreaterEqual(moved, new_total, (total, n, stored))        # still no record
+                for stored in (0xFFFE, 0xFFFF):
+                    self.assertEqual(remapped_record_index(stored, reserved, added), stored if added else stored)
+                    self.assertGreaterEqual(remapped_record_index(stored, reserved, added), new_total)
 
-    def test_old_a43_fault_without_the_remap(self):
-        # the frontend zone: 58 reserved, 2 fixed (58, 59), n = 232 inserts 230 blanks; the stored 58 / 59 name blanks without the remap
-        total, reserved, added = 60, 58, reserved_records(232) - 58
+    def test_a43_fault_without_the_remap(self):
+        # the frontend zone: 58 reserved, 2 fixed (58, 59), total 60; n = 232 inserts 230 blanks. Left as authored, the stored 60 (= no record)
+        # is record 60 of 290 (an inserted blank: the crash of a43-p3a, record (0x12ADB79500 - 0x12ADB72840) / 0x1D0 = 60) and 58 / 59 name blanks.
+        total, reserved = 60, 58
+        added = reserved_records(232) - reserved
         self.assertEqual(added, 230)
-        for stored in (58, 59):
+        self.assertEqual((0x12ADB79500 - 0x12ADB72840) // 0x1D0, total)
+        self.assertEqual((0x12ADB79500 - 0x12ADB72840) % 0x1D0, 0)
+        for stored in (58, 59, 60):
             self.assertTrue(reserved <= stored < reserved + added)
-            self.assertGreaterEqual(remapped_record_index(stored, reserved, added, total), reserved + added)
+        self.assertEqual(remapped_record_index(60, reserved, added), total + added)   # 290 = the new total: no record again
+        self.assertEqual(remapped_record_index(58, reserved, added), 58 + added)      # the first fixed record at its new place
 
     def test_parts_default(self):
         previous = 0

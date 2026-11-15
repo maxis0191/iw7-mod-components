@@ -160,16 +160,14 @@ constexpr std::uint32_t moved_record_source(std::uint32_t index, std::uint32_t r
     return index < reserved ? index : (index < reserved + added ? 0 : index - added);
 }
 // Record indexes stored in the zone's data (a44): the part tables of the MapEnts (two groups, S + 0x178 / S + 0x180, `count` entries of 0x70
-// bytes, entry +0 the type, entry +0x4c a u16 record index for the types 3 and 4) name a scriptable record by its authored index. After the
-// move the old record `i` >= `reserved` sits at `i + added`: a stored index in [reserved, total) shifts, one below `reserved` (a reserved
-// record) stays, and one at or above the old `total` is not a record (FUN_140BD8B40 queues it) and stays too.
+// bytes, entry +0 the type, entry +0x4C a u16 record index for the types 3 and 4) name a scriptable record by its authored index, and a value
+// at or above the old total is "no record" (FUN_140BD8B40 queues that event: the frontend zone stores 60 = its total). After the move the old
+// record `i` >= `reserved` sits at `i + added` and the total grows by `added`: every stored value >= `reserved` shifts by `added`, the ones
+// below `total` stay the same record, the ones at or above it stay "no record" (>= the new total). A value below `reserved` is a reserved
+// record and stays; one that cannot take `added` inside a u16 (0xFFFF-like) stays, it is far above any total.
 constexpr std::uint32_t part_entry_bytes = 0x70, part_entry_type_offset = 0, part_entry_record_offset = 0x4C, part_type_record_link = 3, part_type_record_event = 4;
-constexpr std::uint32_t remapped_record_index(std::uint32_t index, std::uint32_t reserved, std::uint32_t added, std::uint32_t total) {
-    return index >= reserved && index < total ? index + added : index;
-}
-// A kept value in [total, total + added) would become a record index through the larger total: the move refuses such data.
-constexpr bool record_index_turns_into_record(std::uint32_t index, std::uint32_t added, std::uint32_t total) {
-    return index >= total && index < total + added;
+constexpr std::uint32_t remapped_record_index(std::uint32_t index, std::uint32_t reserved, std::uint32_t added) {
+    return index >= reserved && index + added <= 0xFFFF ? index + added : index;
 }
 // Reserved scriptable part links (u16 links, at most 65,535): about 31 for each agent's scriptable (a41; measured 4,137 at 132 alive) on top
 // of the stock 2,048 and a margin of 1,024, rounded up to 1,024, never below the 8,192 of a39.
