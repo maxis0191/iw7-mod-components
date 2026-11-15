@@ -690,6 +690,15 @@ class FrameGrow(unittest.TestCase):
         inside = [c for c in caves if 0x140ADB8E0 <= c['start'] < 0x140ADBC08]
         self.assertGreaterEqual(len(inside), 3)
 
+    def test_the_build_copies_every_file_the_cpp_includes(self):
+        """A new `#include "x.inc"` that Build-Voice.ps1 does not copy into the native tree fails the build (error C1083)."""
+        with open(os.path.join(ROOT, 'ops', 'Build-Voice.ps1'), encoding='utf-8') as f:
+            build = f.read()
+        copied = set(re.findall(r"'(agent_capacity[\w]*\.(?:cpp|hpp|inc))'", build.split('foreach ($capFile in @(')[1].split(')')[0]))
+        with open(CPP, encoding='utf-8') as f:
+            included = set(re.findall(r'#include "(agent_capacity[\w]*\.(?:hpp|inc))"', f.read()))
+        self.assertEqual(sorted(included - copied), [], 'included by agent_capacity.cpp but not copied by ops/Build-Voice.ps1')
+
     def test_the_cpp_sees_every_table(self):
         text = open(CPP, encoding='utf-8').read()
         for name in ('agent_capacity_frame_fields.inc', 'agent_capacity_frame_fields_adb8e0.inc', 'agent_capacity_frame_fields_added0.inc',
