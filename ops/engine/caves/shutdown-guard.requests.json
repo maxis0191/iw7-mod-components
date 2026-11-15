@@ -1,0 +1,8 @@
+[
+ {
+  "address": "0x140BF5802",
+  "kind": "bytes",
+  "new_bytes": "4885c9488d140a480f44d4410f95c140382a410f95c24520d1",
+  "note": "FUN_140bf5730+0xD2 (walker of 0xB0-byte part records, type 2: cmp byte [rdx+rcx],bpl with rcx = the instance's state-byte buffer, null for an instance whose ScriptableSv_LinkReservedScriptable raised the replicated-parts ERR_DROP before FUN_140be1770 allocated it; the shutdown walk read byte 0x78 of null and crashed). Null buffer is treated as a state byte of 0 (ZF=1, the je that follows is taken, the same branch the stock code takes for a zero state), without a branch and without touching memory: test rcx,rcx; lea rdx,[rdx+rcx]; cmovz rdx,rsp (read the stack instead of the null address); setnz r9b; cmp byte [rdx],bpl; setnz r10b; and r9b,r10b -> ZF=1 iff (null or byte==0). rcx/rdx are dead after the compare (rewritten at 140BF580B/140BF5813/140BF5819), r9/r10 are volatile and unused by the function."
+ }
+]
