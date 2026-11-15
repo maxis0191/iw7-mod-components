@@ -24,7 +24,8 @@
 // - the snapshot entity counts (read only, no cap is changed): the entity records one client's snapshot list holds (FUN_140C67230
 //   writes it; the count is the local at [rsp+0x40] of its frame, read in the call that closes the list with 0x7FF at
 //   0x140C6765B) and the two common lists of the frame (FUN_140C64310 returns the count of the all-client list, FUN_140C647A0
-//   leaves the count of the list of entities above 17 in [0x146B39830]). Per list: calls, max, mean and how many times the
+//   built the list of entities above 17, whose count stays in [0x146B39830]; it is built once after a reset, not every frame, so it is
+//   read once per frame in the list A hook). Per list: calls, max, mean and how many times the
 //   count had reached the cap (768, 1024, 1024: the list was closed early). Every hook is verified against the expected
 //   code bytes first and is left out, with an error line, when they differ;
 // - the script function table (file, function, start of its code) so the reader names every position offline.
@@ -60,12 +61,10 @@ namespace paris_sperf
         constexpr std::uintptr_t snapshot_close_call = 0x140C6765B;  // call FUN_140BC2D70 (write 0x7FF in 11 bits) in FUN_140C67230
         constexpr std::uintptr_t snapshot_cap_compare = 0x140C67478; // cmp eax,[sv_maxSnapshotEntities] in FUN_140C67230
         constexpr std::uintptr_t common_a_function = 0x140C64310;    // int FUN_140C64310(): count of the all-client list
-        constexpr std::uintptr_t common_b_function = 0x140C647A0;    // void FUN_140C647A0(): leaves its list count in common_b_count
         constexpr std::uintptr_t cap_snapshot = 0x146B3985C;         // sv_maxSnapshotEntities (768)
         constexpr std::uintptr_t cap_common_a = 0x146B39858;         // 1024
         constexpr std::uintptr_t cap_common_b = 0x146B39860;         // 1024
-        constexpr std::uintptr_t common_b_count = 0x146B39830;
-        constexpr std::uintptr_t common_b_built = 0x146B3CC0C;       // nonzero: FUN_140C647A0 returns at once
+        constexpr std::uintptr_t common_b_count = 0x146B39830;       // count of the list FUN_140C647A0 builds (once per reset of FUN_140C64BA0, not per frame)
 
         struct count_meter
         {
@@ -93,7 +92,7 @@ namespace paris_sperf
             }
         };
         count_meter snapshot_meter, common_a_meter, common_b_meter;
-        utils::hook::detour common_a_hook, common_b_hook;
+        utils::hook::detour common_a_hook;
 
         int read_int(const std::uintptr_t address) { return *reinterpret_cast<const volatile int*>(address); }
 
@@ -112,15 +111,12 @@ namespace paris_sperf
         int common_a_stub()
         {
             const int count = common_a_hook.invoke<int>();
-            if (window_open.load(std::memory_order_acquire)) common_a_meter.add(count, read_int(cap_common_a));
+            if (window_open.load(std::memory_order_acquire))
+            {
+                common_a_meter.add(count, read_int(cap_common_a));
+                common_b_meter.add(read_int(common_b_count), read_int(cap_common_b)); // sampled once per frame here
+            }
             return count;
-        }
-
-        void common_b_stub()
-        {
-            const bool builds = read_int(common_b_built) == 0;
-            common_b_hook.invoke<void>();
-            if (builds && window_open.load(std::memory_order_acquire)) common_b_meter.add(read_int(common_b_count), read_int(cap_common_b));
         }
 
         bool code_is(const std::uintptr_t address, const char* name, const unsigned char* expected, const std::size_t size)
@@ -136,7 +132,6 @@ namespace paris_sperf
             static const unsigned char close_call[] = {0xE8, 0x10, 0xB7, 0xF5, 0xFF};
             static const unsigned char cap_compare[] = {0x3B, 0x05, 0xDE, 0x23, 0xED, 0x05};
             static const unsigned char common_a_code[] = {0x48, 0x89, 0x6C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x41};
-            static const unsigned char common_b_code[] = {0x48, 0x83, 0xEC, 0x38, 0x83, 0x3D, 0x61, 0x84, 0xED, 0x05, 0x00, 0x0F, 0x85, 0x6F, 0x02, 0x00};
             int installed = 0;
             if (code_is(snapshot_close_call, "snapshot list close", close_call, sizeof(close_call)) &&
                 code_is(snapshot_cap_compare, "snapshot cap compare", cap_compare, sizeof(cap_compare)))
@@ -149,12 +144,7 @@ namespace paris_sperf
                 common_a_hook.create(common_a_function, common_a_stub);
                 ++installed;
             }
-            if (code_is(common_b_function, "common list B", common_b_code, sizeof(common_b_code)))
-            {
-                common_b_hook.create(common_b_function, common_b_stub);
-                ++installed;
-            }
-            console::info("[Paris sperf] snapshot counters installed=%d of 3\n", installed);
+            console::info("[Paris sperf] snapshot counters installed=%d of 2\n", installed);
         }
 
         std::int64_t now()

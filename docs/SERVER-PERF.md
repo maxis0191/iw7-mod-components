@@ -40,10 +40,8 @@ headless runner moves the windows into `<run>/sperf/` before it removes the benc
   frame; the list is closed with 0x7FF (11 bits) at 0x140C6765B, the single exit of both the normal end and the cap path (cap: `[0x146B3985C]`,
   `sv_maxSnapshotEntities`, 768; the loop stops at `cmp eax,[0x146B3985C]`, 0x140C67478), so the call there is replaced by a stub that reads the count
   (the frame is `_AddressOfReturnAddress()` + 8) and runs the original call unchanged; one call per client per snapshot. `common_a` is `FUN_140C64310`'s
-  return value (the all-client list, cap `[0x146B39858]` = 1024; wrapped as a detour). `common_b` is the count `FUN_140C647A0` leaves in `[0x146B39830]` when
-  it built the list of entities above 17 (cap `[0x146B39860]` = 1024; wrapped as a detour, a call that returns at once because `[0x146B3CC0C]` is set is not
-  counted). "Capped" means count >= cap: a list that holds exactly the cap and no more is counted as capped too. Every hook compares the expected code bytes
-  first and is left out with an error line when they differ (the line `snapshot counters installed=<n> of 3` says how many were installed).
+  return value (the all-client list, cap `[0x146B39858]` = 1024; wrapped as a detour). `common_b` is the count the list of entities above 17 holds in `[0x146B39830]` (cap `[0x146B39860]` = 1024; `FUN_140C647A0` builds it once after a reset by `FUN_140C64BA0` (it writes the count and the built flag `[0x146B3CC0C]`), not every frame: the first smoke run saw no call of it in 600 s of frames, so the value is read once per frame inside the list A hook; `calls` of `common_b` therefore equals those of `common_a`). "Capped" means count >= cap: a list that holds exactly the cap and no more is counted as capped too. Every hook compares the expected code bytes
+  first and is left out with an error line when they differ (the line `snapshot counters installed=<n> of 2` says how many were installed).
 
 Outside a window the cost is two counter reads and one flag test per server frame.
 
