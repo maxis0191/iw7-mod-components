@@ -1,0 +1,212 @@
+[
+ {
+  "address": "0x140b67400",
+  "kind": "bytes",
+  "new_bytes": "8d8201005a5a",
+  "note": "row 1: entity - first player corpse = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140c1bb20",
+  "kind": "bytes",
+  "new_bytes": "8d8102005a5a",
+  "note": "row 2: entity - first agent corpse = characters + 8; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x1407ae400",
+  "kind": "bytes",
+  "new_bytes": "4181e903005a5a",
+  "note": "row 3: entity - first player corpse = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140823b5f",
+  "kind": "bytes",
+  "new_bytes": "81e804005a5a",
+  "note": "row 4: entity - first player corpse = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140826382",
+  "kind": "bytes",
+  "new_bytes": "4181eb05005a5a",
+  "note": "row 5: entity - first player corpse = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x14086d120",
+  "kind": "bytes",
+  "new_bytes": "81ef06005a5a",
+  "note": "row 6: entity - first player corpse = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140872e63",
+  "kind": "bytes",
+  "new_bytes": "81e807005a5a",
+  "note": "row 7: entity - first player corpse = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140b2f533",
+  "kind": "bytes",
+  "new_bytes": "4181e908005a5a",
+  "note": "row 8: entity - first player corpse = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x1407af52d",
+  "kind": "bytes",
+  "new_bytes": "81ef09005a5a",
+  "note": "row 9: entity - first agent corpse = characters + 8; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140823b7e",
+  "kind": "bytes",
+  "new_bytes": "81e80a005a5a",
+  "note": "row 10: entity - first agent corpse = characters + 8; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140865eb7",
+  "kind": "bytes",
+  "new_bytes": "81e90b005a5a",
+  "note": "row 11: entity - first agent corpse = characters + 8; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x14086f507",
+  "kind": "bytes",
+  "new_bytes": "81e80c005a5a",
+  "note": "row 12: entity - first agent corpse = characters + 8; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140872eea",
+  "kind": "bytes",
+  "new_bytes": "81e80d005a5a",
+  "note": "row 13: entity - first agent corpse = characters + 8; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x1408213f1",
+  "kind": "bytes",
+  "new_bytes": "418d9b0e005a5a",
+  "note": "row 14: lea ebx,[r11 - (characters + 8)]; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x14084a54f",
+  "kind": "bytes",
+  "new_bytes": "81f80f005a5a",
+  "note": "row 15: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140842a1e",
+  "kind": "bytes",
+  "new_bytes": "81f910005a5a",
+  "note": "row 16: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140842b09",
+  "kind": "bytes",
+  "new_bytes": "81f811005a5a",
+  "note": "row 17: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140780547",
+  "kind": "bytes",
+  "new_bytes": "81f814005a5a",
+  "note": "row 20: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140805d4c",
+  "kind": "bytes",
+  "new_bytes": "81fb15005a5a",
+  "note": "row 21: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140282ed6",
+  "kind": "bytes",
+  "new_bytes": "81fb16005a5a",
+  "note": "row 22: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x1402854dc",
+  "kind": "bytes",
+  "new_bytes": "81ff17005a5a",
+  "note": "row 23: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x1405c2576",
+  "kind": "bytes",
+  "new_bytes": "81f818005a5a",
+  "note": "row 24: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140b202da",
+  "kind": "bytes",
+  "new_bytes": "81fb19005a5a",
+  "note": "row 25: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140c217ca",
+  "kind": "bytes",
+  "new_bytes": "4181f91a005a5a",
+  "note": "row 26: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140c3f3a8",
+  "kind": "bytes",
+  "new_bytes": "81ff1b005a5a",
+  "note": "row 27: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140ac67be",
+  "kind": "bytes",
+  "new_bytes": "4181f91c005a5a",
+  "note": "row 28: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140ac686c",
+  "kind": "bytes",
+  "new_bytes": "81fb1d005a5a",
+  "note": "row 29: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140445b43",
+  "kind": "bytes",
+  "new_bytes": "81fd1e005a5a",
+  "note": "row 30: character number bound = characters; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140242e20",
+  "kind": "bytes",
+  "new_bytes": "81fa1f005a5a",
+  "note": "row 31: character index bound = characters - 1; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140242e3a",
+  "kind": "bytes",
+  "new_bytes": "81fa20005a5a",
+  "note": "row 32: character index bound = characters - 1; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x1404494fb",
+  "kind": "bytes",
+  "new_bytes": "81fa21005a5a",
+  "note": "row 33: agent count bound; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140449693",
+  "kind": "bytes",
+  "new_bytes": "4881fe22005a5a",
+  "note": "row 34: agent count bound; imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x1409b26f9",
+  "kind": "bytes",
+  "new_bytes": "448db523005a5a",
+  "note": "row 35: agents - 18 (lea r14d,[rbp+6] after mov ebp,18); imm32/disp32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140c68a82",
+  "kind": "bytes",
+  "new_bytes": "4169c225005a5a",
+  "note": "row 37: imul eax,r10d,agents (frames x agents), replaces lea+shl; the imm32 holds a placeholder written at start"
+ },
+ {
+  "address": "0x140c68a8d",
+  "kind": "bytes",
+  "new_bytes": "0f1f00",
+  "note": "row 37: the shl eax,3 of the stock lea+shl becomes a 3-byte nop"
+ }
+]

@@ -14,10 +14,27 @@ namespace agent_capacity {
 constexpr std::uint32_t stock_agents = 24, players = 18, stock_characters = players + stock_agents;
 constexpr std::uint32_t stock_parts = 0x800;
 
+// What a 32-bit field of the wide caves holds (agent_capacity.cpp `wide_sites`): the value the shipped one-byte instruction had, as a function of the count.
+enum class wide_field { characters, characters_less_one, player_corpses, agent_corpses, minus_agent_corpses, agents, agents_less_players };
+
 // One layout, computed from the agent count. Every limit below follows from the shipped code (addresses in the .cpp).
 struct layout {
     std::uint32_t agents{}, characters{}, map_start{}, player_corpses{}, agent_corpses{};
     std::uint32_t parts{};
+    constexpr std::int64_t wide_value(wide_field what) const {
+        switch (what) {
+        case wide_field::characters: return characters;
+        case wide_field::characters_less_one: return static_cast<std::int64_t>(characters) - 1;
+        case wide_field::player_corpses: return player_corpses;
+        case wide_field::agent_corpses: return agent_corpses;
+        case wide_field::minus_agent_corpses: return -static_cast<std::int64_t>(agent_corpses);
+        case wide_field::agents: return agents;
+        case wide_field::agents_less_players: return static_cast<std::int64_t>(agents) - players;
+        }
+        return 0;
+    }
+    // Bits of an explicit character number in the agent-state delta and of the clientNum net field: 6 stock; 7 holds numbers below 128; 8 above.
+    constexpr std::uint32_t net_id_bits() const { return characters <= 127 ? 7 : 8; }
     constexpr std::uint32_t agent_bytes() const { return agents * 0x5010; }
     constexpr std::uint32_t sentient_slots() const { return 71 + agents - stock_agents; }
     constexpr std::uint32_t sentient_bytes() const { return sentient_slots() * 0xA0; }
@@ -71,18 +88,30 @@ struct layout {
 // A bot client keeps its agent record inside client_t, on the 128 x 0x408 byte reliable-command ring (unused by a bot).
 constexpr std::uint32_t embedded_record_room = 0x20000;
 
+// The probe caves of the grown frames (agent_capacity_frame_cave*.inc, `max_extra`): planned for 100 agents until they are planned again.
+constexpr std::uint32_t frame_cave_max_extra_a = 0x1BE0, frame_cave_max_extra_c = 0x980;
+// FUN_140ADB8E0 has no probe cave: its grown frame (stock 0x4F0) must stay inside one page.
+constexpr std::uint32_t frame_b_stock = 0x4F0, page = 0x1000;
+// The largest count this component has been analysed for (a29: an agent's entity number must fit a byte up to 238, G_GetMaxAgents and
+// GameStateInfo hold the count in a byte up to 255).
+constexpr std::uint32_t max_analysed_agents = 232;
+
 // Why a count is refused (empty: accepted). The bounds are the encodings of the shipped code, not choices:
 //  - characters - 42 must be a multiple of 4: the archive's controller base moves by a disp32 of (2c - 84) / 8 and its
 //    copy loops by (82c + 4) / 8 quadwords (both whole only then);
-//  - characters + 8 (first agent corpse) <= 127: eight corpse bounds are signed 8-bit immediates;
-//  - the snapshot's character change mask (32 per word) must end before 0x70 on CG_SetNextSnap's stack.
+//  - the corpse and character bounds are 32-bit fields in caves since a33 (they were signed 8-bit immediates: 100 agents at most);
+//  - the snapshot's character change mask (32 per word) must end before 0x70 on CG_SetNextSnap's stack (frame grow not done);
+//  - the page-probe caves of two grown frames were planned for 100 agents, and the third grown frame has no probe.
 constexpr const char* refuse(std::uint32_t agents) {
     const auto c = players + agents;
     if (agents < stock_agents) return "fewer than the stock 24 agents";
-    if ((c - stock_characters) % 4) return "players + agents - 42 must be a multiple of 4 (24, 28, ..., 100)";
-    if (c + 8 > 127) return "more than 100 agents needs 8-bit corpse and character bounds rewritten (not done)";
-    if (0x60 + ((c + 31) / 32) * 4 > 0x70) return "character change mask does not fit";
+    if ((c - stock_characters) % 4) return "players + agents - 42 must be a multiple of 4 (24, 28, ..., 232)";
+    if (agents > max_analysed_agents) return "more than 232 agents: entity numbers and the agent count are one byte in places not yet analysed";
+    if (0x60 + ((c + 31) / 32) * 4 > 0x70) return "character change mask does not fit (CG_SetNextSnap frame grow not done)";
     const auto slots = 71 + agents - stock_agents;
+    if ((((2 * slots - 71) * 32 + 15) & ~15u) > frame_cave_max_extra_a) return "FUN_1403E61B0: the page-probe cave of its grown frame was planned for 100 agents";
+    if ((slots - 71) * 32 > frame_cave_max_extra_c) return "FUN_140ADDED0: the page-probe cave of its grown frame was planned for 100 agents";
+    if (frame_b_stock + (slots - 71) * 16 > page) return "FUN_140ADB8E0: its grown frame passes a page and has no probe cave";
     if (((0x3F08 + slots * 0x40 + slots * 0x3C + 15) & ~15u) > embedded_record_room)
         return "the agent record with its per-sentient tables would not fit the room of a bot client's embedded record (0x20000 bytes)";
     return "";
@@ -98,21 +127,22 @@ constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
 
 // A one-byte field the CPU sign-extends (a disp8, an imm8 of `83 /r`, `6B`, `48 83`) holds -128..127; add1s (the .cpp) refuses the rest.
 constexpr bool fits_signed_byte(std::int64_t value) { return value >= -128 && value <= 127; }
-// Every value the plan writes into such a field (the add1s sites and the imul imm8 blocks of agent_capacity.cpp). The rewind pointer
-// array's displacement is not here: FUN_140415bf0 gets a 32-bit displacement through a cave (rewind_cave_table).
-constexpr bool signed_byte_sites_hold(std::uint32_t agents) {
-    const auto l = make(agents, 0x800);
-    return fits_signed_byte(l.characters) && fits_signed_byte(l.player_corpses) && fits_signed_byte(l.agent_corpses) &&
-           fits_signed_byte(l.agents) && fits_signed_byte(static_cast<std::int64_t>(l.characters) - 1) &&
-           fits_signed_byte(static_cast<std::int64_t>(l.agents) - players) && fits_signed_byte(-static_cast<std::int64_t>(l.agent_corpses));
-}
-// Every count refuse() accepts keeps every signed byte in range: widening refuse() without re-encoding those sites does not compile.
-constexpr bool accepted_counts_keep_signed_bytes() {
+// The fields that held a count are 32-bit now (wide caves, `wide16` in place, imm32 `imul`). What stays one byte: CG_SetNextSnap's stack
+// offsets (constants, add1s) and the low byte of G_GetMaxAgents' `mov eax, n` (unsigned_imm8: at most 255). The rewind pointer array's
+// displacement is a 32-bit field in a cave too (rewind_cave_table).
+constexpr bool byte_sites_hold(std::uint32_t agents) { return agents <= 255; }
+constexpr bool accepted_counts_keep_byte_sites() {
     for (std::uint32_t n = 0; n <= 1024; ++n)
-        if (refuse(n)[0] == 0 && !signed_byte_sites_hold(n)) return false;
+        if (refuse(n)[0] == 0 && !byte_sites_hold(n)) return false;
     return true;
 }
-static_assert(accepted_counts_keep_signed_bytes());
+static_assert(accepted_counts_keep_byte_sites());
+// Every wide field holds its value as a signed 32-bit number for every count up to the analysed maximum.
+static_assert(make(max_analysed_agents, 0x800).wide_value(wide_field::agent_corpses) == 18 + 232 + 8 &&
+              make(max_analysed_agents, 0x800).wide_value(wide_field::minus_agent_corpses) == -(18 + 232 + 8) &&
+              make(100, 0x800).wide_value(wide_field::characters_less_one) == 117 && make(100, 0x800).wide_value(wide_field::agents_less_players) == 82);
+static_assert(make(100, 0x800).net_id_bits() == 7 && make(108, 0x800).net_id_bits() == 7 && make(112, 0x800).net_id_bits() == 8 &&
+              make(232, 0x800).net_id_bits() == 8);
 static_assert(make(24, 0x800).rewind_pointers() == 0x40 && make(84, 0x800).rewind_pointers() == 0x80 && make(100, 0x800).rewind_pointers() == 0x90);
 static_assert(!fits_signed_byte(make(100, 0x800).rewind_pointers()));   // why that store is a cave with a 32-bit displacement
 
@@ -128,7 +158,7 @@ static_assert(make(24, 0x800).frame_extra() == 2272 && make(100, 0x800).frame_ex
 static_assert(make(24, 0x800).frame_extra_b() == 0 && make(100, 0x800).frame_extra_b() == 1216 && make(24, 0x800).frame_extra_c() == 0 &&
               make(100, 0x800).frame_extra_c() == 2432);
 static_assert(make(24, 0x800).queue_bytes() == 0x5550 && make(100, 0x800).queue_rows() == 118 && 18 + 100 == make(100, 0x800).queue_rows());
-static_assert(refuse(100)[0] == 0 && refuse(78)[0] != 0 && refuse(104)[0] != 0 && refuse(96)[0] == 0);
+static_assert(refuse(100)[0] == 0 && refuse(78)[0] != 0 && refuse(104)[0] != 0 && refuse(96)[0] == 0 && refuse(233)[0] != 0);
 
 bool installed() noexcept;
 std::uint32_t agents() noexcept;      // 24 when not installed
