@@ -1,0 +1,114 @@
+{
+ "version": 1,
+ "kind": "frame-grow",
+ "image": "iw7_ship_live.exe",
+ "function": "0x1405532d0",
+ "end": "0x1405539a2",
+ "array_top": 2992,
+ "bounded_index": [
+  [
+   192,
+   752
+  ]
+ ],
+ "rbp_general": true,
+ "extra": 37904,
+ "max_extra": 37904,
+ "frame": {
+  "pushes": 7,
+  "stock_size": 3008,
+  "sub_address": "0x1405532e0",
+  "S_from_entry": -3064
+ },
+ "fields": [
+  {
+   "address": "0x1405532f5",
+   "width": 4,
+   "stock": 2992,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x1405532f1",
+   "text": "mov qword ptr [rsp + 0xbb0], rax"
+  },
+  {
+   "address": "0x14055397b",
+   "width": 4,
+   "stock": 2992,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140553977",
+   "text": "mov rcx, qword ptr [rsp + 0xbb0]"
+  },
+  {
+   "address": "0x14055398b",
+   "width": 4,
+   "stock": 3096,
+   "unit": 1,
+   "sign": 1,
+   "role": "access-high",
+   "instruction": "0x140553987",
+   "text": "mov rbx, qword ptr [rsp + 0xc18]"
+  },
+  {
+   "address": "0x140553992",
+   "width": 4,
+   "stock": 3008,
+   "unit": 1,
+   "sign": 1,
+   "role": "epilogue-add",
+   "instruction": "0x14055398f",
+   "text": "add rsp, 0xbc0"
+  },
+  {
+   "address": "0x141682f76",
+   "width": 2,
+   "stock": 387,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-save",
+   "instruction": null,
+   "text": "SAVE_NONVOL rbx at rsp+0xc18"
+  },
+  {
+   "address": "0x141682f7a",
+   "width": 2,
+   "stock": 376,
+   "unit": 8,
+   "sign": 1,
+   "role": "unwind-alloc",
+   "instruction": null,
+   "text": "ALLOC_LARGE 0xbc0"
+  },
+  {
+   "address": "0x141682f90",
+   "width": 4,
+   "stock": 2992,
+   "unit": 1,
+   "sign": 1,
+   "role": "unwind-gs-cookie",
+   "instruction": null,
+   "text": "GS handler cookie offset 0xbb0"
+  }
+ ],
+ "cave": {
+  "window_start": "0x1405532e0",
+  "window_len": 7,
+  "old_bytes": "4881ecc00b0000",
+  "cave_bytes": "f6842400f0ffff00f6842400e0ffff00f6842400d0ffff00f6842400c0ffff00f6842400b0ffff00f6842400a0ffff00f684240090ffff00f684240080ffff00f684240070ffff00f684240060ffff004881ecd09f0000",
+  "probes": 10,
+  "imm_offset": 83,
+  "stock_frame": 3008,
+  "max_extra": 37904,
+  "page": 4096
+ },
+ "unwind_chunks": [
+  {
+   "begin": "0x1405532d0",
+   "end": "0x1405539a2",
+   "entry": "0x14b0c2020",
+   "unwind": "0x141682f70"
+  }
+ ]
+}

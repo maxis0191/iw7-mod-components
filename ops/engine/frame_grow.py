@@ -168,7 +168,7 @@ def walk(insns, array_top, bounded=(), rbp_general=False):
             _fail("%s: writes rsp (dynamic stack adjustment)" % _text(ins))
         # ---- rbp (frame base) and the register copies of rsp
         frame_def = None
-        if mn == "lea" and ops[0].type == CS_OP_REG and _reg(ins, ops[0].reg) == "rbp":
+        if mn == "lea" and ops[0].type == CS_OP_REG and _reg(ins, ops[0].reg) == "rbp" and not rbp_general:
             m = ops[1].mem
             if m.index:
                 _fail("%s: frame base with an index register" % _text(ins))
