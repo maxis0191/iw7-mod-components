@@ -266,6 +266,8 @@ initialisers (FUN_140C09200 for the ids, FUN_140C09280 for the children) with th
 **Not covered.** The client fork's own `scr_VarGlob` accessors (`scripting/array.cpp`, `execution.cpp`, `script_value.cpp`: `childVariableValue[id + 0xA000 * (parent & 3)]`, struct sized for 40,960 objects) read the stock address; their layout
 already does not match this exe (objects 0xDC00, not 40,960) whether the Paris mod calls them in a match was not checked; with `-agent-capacity` they would read the old, empty tables.
 
+**Runs (headless, private loopback, a46, client built from this component).** n = 100 `capacity-agents-headless` (stock-table pages inaccessible): PASS 22/22, 9/9, peak alive 78, children 115,578 / parents 30,901 at the peak. n = 232 `capacity-agents-soak-headless` with `alive=200` (25 windows of 30 s): PASS 168/168, 30/30, alive 197 to 200, 232 instances, **children peak 178,433 (fullest segment 45,054 of 65,535), parents peak 52,571 (fullest segment 14,964 of 16,383, 91 %)**, no engine error text. The parent ids are the next limit (the walls: about 215 alive for the parents, about 290 for the children); past it the u16 parent id of the child entry has to widen (docs/SCRIPT-VARIABLES.md in the server repository, "What the full mission target needs").
+
 ## Players on another layout
 
 The server announces `agentcap=agents-<n>` in its info and refuses at connect a client whose layout differs (today's
