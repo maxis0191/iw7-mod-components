@@ -44,7 +44,7 @@ namespace paris_write_watch
         constexpr std::uint64_t hit_offset = 0x74278;     // the hit-result array of cg
         constexpr std::uint64_t hit_stride = 0x350;
         constexpr int max_targets = 4, max_terms = 6;
-        constexpr unsigned ring_size = 128, stack_depth = 16, scan_depth = 12, scan_qwords = 192, event_count = 32, event_len = 148, history_size = 64, writer_slots = 32;
+        constexpr unsigned ring_size = 512, stack_depth = 16, scan_depth = 12, scan_qwords = 192, event_count = 32, event_len = 148, history_size = 64, writer_slots = 32;
 
         struct term { char kind; int sign; std::uint64_t value; }; // kind: n number, c cg[value], g game base, d qword at the number, s scratch cell
         struct target
@@ -93,6 +93,10 @@ namespace paris_write_watch
         std::uint64_t image_size{};
         alignas(64) volatile std::uint64_t scratch_cell[8];
         utils::hook::detour console_hook;
+        std::string selftest_modes;                       // -paris-write-watch-selftest <modes>: the proof commands run by themselves (lab only)
+        std::size_t selftest_next{};
+        std::uint64_t selftest_due{};
+        void run_test(const std::string& mode);
 
         // helper statistics
         std::atomic<std::uint64_t> sweeps{0}, scans{0}, armed_threads{0}, lost_total{0}, rearm_total{0}, refused_total{0}, suspend_failed{0}, known_threads{0};
@@ -550,7 +554,7 @@ namespace paris_write_watch
         }
         void helper_main()
         {
-            struct known { DWORD tid; std::uint64_t generation; };
+            struct known { DWORD tid; std::uint64_t generation; std::uint64_t retry_at; };
             static known threads[512];
             unsigned thread_count = 0;
             std::uint64_t generation = 1, last_addr[max_targets]{}, last_scan = 0, last_sweep = GetTickCount64();
@@ -610,13 +614,14 @@ namespace paris_write_watch
                         known* k = nullptr;
                         for (unsigned i = 0; i < thread_count; ++i) if (threads[i].tid == seen[j]) k = &threads[i];
                         const bool is_new = !k;
-                        if (is_new && thread_count < 512) { threads[thread_count] = { seen[j], 0 }; k = &threads[thread_count++]; }
+                        if (is_new && thread_count < 512) { threads[thread_count] = { seen[j], 0, 0 }; k = &threads[thread_count++]; }
                         if (!k) continue;
                         if (!is_new && k->generation == generation && !sweep) continue;
+                        if (now < k->retry_at) continue;
                         unsigned refused_here = 0;
                         const bool was_armed = k->generation != 0;
                         const auto result = apply_thread(k->tid, sweep && was_armed && k->generation == generation, refused_here);
-                        if (result == arm_result::failed) continue; // exited or protected: tried again at the next scan
+                        if (result == arm_result::failed) { k->retry_at = now + 2000; continue; } // exited or protected: tried again in 2 s
                         k->generation = generation;
                         if (result == arm_result::lost)
                         {
@@ -673,7 +678,7 @@ namespace paris_write_watch
         void console_stub(int type, const std::string& message)
         {
             if (enabled && interesting(message)) add_event(message.data(), message.size());
-            console_hook.invoke<void>(type, message);
+            console_hook.invoke<void, int, const std::string*>(type, &message);
         }
         void frame()
         {
@@ -698,12 +703,28 @@ namespace paris_write_watch
                     if ((!log_all && !t.any && !bad_before && !bad_now) || t.guard_logs >= 20) continue;
                     ++t.guard_logs;
                     char line[256]{};
-                    std::snprintf(line, sizeof(line), "[WW] guard: target %s changed at frame %llu, %llu ms after the first frame, 0x%llX -> 0x%llX (expected 0x%llX), main thread %u; hardware hits so far %llu\n",
+                    std::snprintf(line, sizeof(line), "[WW] guard: target %s changed at frame %llu, %llu ms after start, 0x%llX -> 0x%llX (expected 0x%llX), main thread %u; hardware hits so far %llu\n",
                         t.name, static_cast<unsigned long long>(frames), static_cast<unsigned long long>(GetTickCount64() - first_tick), static_cast<unsigned long long>(before),
                         static_cast<unsigned long long>(value), static_cast<unsigned long long>(t.expect), GetCurrentThreadId(), static_cast<unsigned long long>(t.logged.load()));
                     std::string text = line + recent_events(8);
                     write_file(text);
                     print_console(text);
+                }
+            }
+            if (!selftest_modes.empty() && selftest_next < selftest_modes.size())
+            {
+                const auto now_ms = GetTickCount64();
+                if (!selftest_due) selftest_due = now_ms + 15000; // the helper needs a moment to arm every thread
+                else if (now_ms >= selftest_due)
+                {
+                    auto end = selftest_modes.find(',', selftest_next);
+                    if (end == std::string::npos) end = selftest_modes.size();
+                    const auto mode = selftest_modes.substr(selftest_next, end - selftest_next);
+                    bool ready_to_run = true;
+                    if (mode == "real") { ready_to_run = false; for (int i = 0; i < target_count; ++i) if (targets[i].terms[0].kind == 'c' && targets[i].addr.load()) ready_to_run = true; }
+                    if (ready_to_run) { run_test(mode); selftest_next = end + 1; selftest_due = now_ms + 3000; }
+                    else selftest_due = now_ms + 1000;
+                    if (selftest_next >= selftest_modes.size()) console::info("[WW-TEST] self test finished\n");
                 }
             }
             // records of the handler, printed here (the console belongs to the main thread)
@@ -778,9 +799,12 @@ namespace paris_write_watch
             const bool pass = (block ? stack_in : rip_in) && thread_ok;
             char place[96]{};
             locate(r.rip, place, sizeof(place));
-            console::info("[WW-TEST] %s %s: function [0x%llX, 0x%llX) hit rip=%s rip_in_function=%d function_in_stack=%d tid=%u main=%u old=0x%llX new=0x%llX\n",
+            char line[400]{};
+            std::snprintf(line, sizeof(line), "[WW-TEST] %s %s: function [0x%llX, 0x%llX) hit rip=%s rip_in_function=%d function_in_stack=%d tid=%u main=%u old=0x%llX new=0x%llX\n",
                 pass ? "PASS" : "FAIL", what, reinterpret_cast<unsigned long long>(begin), reinterpret_cast<unsigned long long>(end), place, rip_in, stack_in, r.tid, main_tid.load(),
                 static_cast<unsigned long long>(r.old_value), static_cast<unsigned long long>(r.new_value));
+            write_file(line);
+            console::info("%s", line);
             return pass;
         }
         void run_test(const std::string& mode)
@@ -854,6 +878,7 @@ namespace paris_write_watch
             use_guard = !argument(L"-paris-write-watch-no-guard", flag_value);
             main_only = argument(L"-paris-write-watch-main-only", flag_value);
             log_all = argument(L"-paris-write-watch-all", flag_value);
+            if (lab && argument(L"-paris-write-watch-selftest", flag_value) && !flag_value.empty()) selftest_modes = std::string(flag_value.begin(), flag_value.end());
             sweep_ms = number_argument(L"-paris-write-watch-sweep", 2000);
             if (sweep_ms < 200) sweep_ms = 200;
             LARGE_INTEGER frequency{};
@@ -862,6 +887,7 @@ namespace paris_write_watch
             std::uint32_t pe_offset{}, size{};
             if (read_bytes(game_base + 0x3C, &pe_offset, 4) && read_bytes(game_base + pe_offset + 0x50, &size, 4)) image_size = size;
             if (!image_size) image_size = 0x2000000;
+            for (auto& cell : scratch_cell) cell = hit_vtable;
             first_tick = GetTickCount64();
             CreateDirectoryW(L"iw7-mod", nullptr);
             CreateDirectoryW(L"iw7-mod\\paris-write-watch", nullptr);
