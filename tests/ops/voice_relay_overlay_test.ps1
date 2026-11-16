@@ -122,9 +122,6 @@ try {
     $text = Get-Content -LiteralPath $receipt -Raw
     Set-Content -LiteralPath $receipt -Value ($text.Replace('iw7.voice-relay-overlay/1', 'iw7.voice-relay-overlay/0')) -NoNewline
     Refuses { Remove-IW7VoiceRelayOverlay $native } 'Invalid voice overlay receipt' 'A receipt with another schema was trusted.'
-    $json = $text | ConvertFrom-Json; $json.Root = Join-Path $sandbox 'elsewhere'
-    $json | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receipt
-    Refuses { Remove-IW7VoiceRelayOverlay $native } 'Invalid voice overlay receipt' 'A receipt for another root was trusted.'
     Set-Content -LiteralPath $receipt -Value $text -NoNewline
     Remove-IW7VoiceRelayOverlay $native
     Assert (& $untouched) 'Recovery after refusals did not restore the original bytes.'

@@ -51,6 +51,15 @@ try{
     [IO.File]::WriteAllBytes("$component/auth.cpp",[Convert]::FromBase64String(($receipt.Files|Where-Object Name -CEQ 'auth.cpp').Before))
     Remove-IW7CapacityPeerOverlay $root
     if((Get-FileHash "$component/auth.cpp").Hash -cne $original -or (Get-FileHash "$component/party.cpp").Hash -cne $partyOriginal -or (Test-Path "$root/capacity-peer-overlay.local.json")){throw 'Partial-application recovery changed original bytes.'}
+    # a copied or moved tree must still remove its overlay: the receipt carries no absolute root, the file hashes are the proof
+    Add-IW7CapacityPeerOverlay $root|Out-Null
+    $copy=$root+'-copy';Copy-Item -LiteralPath $root -Destination $copy -Recurse
+    try{
+        if((Get-Content -LiteralPath "$copy/capacity-peer-overlay.local.json" -Raw) -match '"Root"'){throw 'Receipt holds a root.'}
+        Remove-IW7CapacityPeerOverlay $copy
+        if((Get-FileHash "$copy/src/client/component/auth.cpp").Hash -cne $original -or (Get-FileHash "$copy/src/client/component/party.cpp").Hash -cne $partyOriginal){throw 'Copied tree did not restore.'}
+    }finally{Remove-Item -LiteralPath $copy -Recurse -Force}
+    Remove-IW7CapacityPeerOverlay $root
     Add-IW7CapacityPeerOverlay $root|Out-Null
     Remove-IW7CapacityPeerOverlay $root
     if((Get-FileHash "$component/auth.cpp").Hash -cne $original -or (Get-FileHash "$component/party.cpp").Hash -cne $partyOriginal){throw 'Normal round trip changed original bytes.'}
