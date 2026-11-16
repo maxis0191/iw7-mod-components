@@ -479,6 +479,14 @@
       ]
     },
     {
+      "id": "script_children_census_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/script_children_census_test.py"
+      ]
+    },
+    {
       "id": "frame_cuts_test",
       "command": [
         "python",
