@@ -89,6 +89,7 @@ namespace paris_write_watch
         record ring[ring_size];
         site sites[site_capacity];
         std::atomic<unsigned> site_total{0}, sites_lost{0};
+        std::atomic<bool> test_capture{false};
         std::atomic<unsigned> ring_head{0}, ring_dropped{0};
         unsigned printed{};              // main thread only: records printed to the console
         unsigned written{};              // helper thread only: records written to the file
@@ -517,7 +518,7 @@ namespace paris_write_watch
                     }
                     else sites_lost.fetch_add(1);
                 }
-                if (!fresh || (!log_all && !t.any && value == t.expect)) continue;
+                if (!test_capture.load(std::memory_order_relaxed) && (!fresh || (!log_all && !t.any && value == t.expect))) continue;
                 const auto slot = ring_head.fetch_add(1);
                 if (slot >= ring_size) { ring_dropped.fetch_add(1); continue; }
                 auto& r = ring[slot];
@@ -890,7 +891,8 @@ namespace paris_write_watch
 
         // ---- test commands (lab only) --------------------------------------------------------------------------------------------------------------
         __declspec(noinline) void test_store(volatile std::uint64_t* address, const std::uint64_t value) { *address = value; }
-        __declspec(noinline) void test_block(volatile void* address) { static void* (*volatile fill)(void*, int, std::size_t) = std::memset; fill(const_cast<void*>(address), 0, 64); }
+        static volatile int test_sink;
+        __declspec(noinline) void test_block(volatile void* address) { static void* (*volatile fill)(void*, int, std::size_t) = std::memset; fill(const_cast<void*>(address), 0, 64); test_sink = test_sink + 1; }
         // Taking a function's address can give an incremental-link thunk (jmp rel32): follow it; the size comes from the unwind data, or 0x30 for a leaf.
         const char* resolve_code(const void* function)
         {
@@ -951,6 +953,7 @@ namespace paris_write_watch
             const auto h0 = ring_head.load();
             const unsigned before = h0 < ring_size ? h0 : ring_size;
             add_event(("test " + mode).c_str(), mode.size() + 5);
+            test_capture.store(true);
             if (mode == "scratch_memset")
             {
                 test_block(cell);
@@ -970,6 +973,7 @@ namespace paris_write_watch
                 test_store(cell, expect);
                 judge(mode.c_str(), reinterpret_cast<const void*>(&test_store), reinterpret_cast<const char*>(&test_store) + 0x30, before, false, false);
             }
+            test_capture.store(false);
         }
     }
 
