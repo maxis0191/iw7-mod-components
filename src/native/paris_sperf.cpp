@@ -9,11 +9,18 @@
 #include <utils/io.hpp>
 #include <psapi.h>
 #include <intrin.h>
+#include <algorithm>
 
 // Server meter for isolated lab dedicated servers (-dedicated with -paris-isolated-lab; compiled only with -Perf).
 //
 //   paris_sperf_begin <name>   start a window
+//   paris_sperf_begin <name> light   the same without the sampler thread: frame times and the snapshot counters only
 //   paris_sperf_end            stop it and write iw7-mod/paris-sperf/<name>.json
+//   paris_fr_give <0|1>        one [FR] line for every G_GivePlayerWeapon (weapon index, player state, the script functions that asked)
+//   paris_fr_slow <ms>         the slow-frame watchdog of the flight recorder (0 = off, the default). A server frame that runs longer
+//                              than <ms> is sampled while it is still running (a thread that wakes every 4 ms, reads one atomic and,
+//                              inside a slow frame only, suspends the server thread for one VM stack read as the sampler does) and
+//                              the frame's end prints one line: [FR] t=<level time> native_slow_frame ms=<n> ...
 //
 // A window holds:
 // - every server frame: its start and its duration, timed around the game's frame function of the multiplayer/CP game
@@ -47,6 +54,7 @@ namespace paris_sperf
         std::atomic<bool> in_frame{false};
         std::atomic<bool> window_open{false};
         std::atomic<bool> sampler_stop{false};
+        std::atomic<bool> light_window{false};
         std::thread sampler;
         std::mutex window_mutex;  // begin/end only
         std::mutex frames_mutex;  // server thread push, end() read; never taken by the sampler
@@ -154,15 +162,34 @@ namespace paris_sperf
             return value.QuadPart;
         }
 
+        // Slow-frame watchdog (the flight recorder, docs/SERVER-PERF.md "Slow frames"). Off until paris_fr_slow <ms> is given.
+        std::atomic<int> slow_limit_ms{0};
+        std::atomic<std::int64_t> frame_start_qpc{0};
+        std::atomic<std::uint64_t> frame_serial{0};
+        std::atomic<int> frame_level_time{0};
+        std::atomic<std::uint64_t> slow_frames{0};
+        std::atomic<bool> watchdog_stop{false};
+        std::atomic<bool> watchdog_running{false};
+        std::thread watchdog;
+
+        void report_slow_frame(int level_time, std::int64_t start, std::int64_t end, std::uint64_t serial);
+
         void server_frame_stub(const int level_time)
         {
             if (!server_thread.load(std::memory_order_relaxed)) server_thread = GetCurrentThreadId();
             const auto start = now();
+            const auto serial = frame_serial.fetch_add(1, std::memory_order_relaxed) + 1;
+            frame_start_qpc.store(start, std::memory_order_relaxed);
+            frame_level_time.store(level_time, std::memory_order_relaxed);
             in_frame.store(true, std::memory_order_relaxed);
             server_frame_hook.invoke<void>(level_time);
             in_frame.store(false, std::memory_order_relaxed);
-            if (!window_open.load(std::memory_order_acquire)) return;
+            const auto limit = slow_limit_ms.load(std::memory_order_relaxed);
+            const bool recording = window_open.load(std::memory_order_acquire);
+            if (limit <= 0 && !recording) return;
             const auto end = now();
+            if (limit > 0 && (end - start) * 1000 >= static_cast<std::int64_t>(limit) * qpc_hz) report_slow_frame(level_time, start, end, serial);
+            if (!recording) return;
             std::lock_guard<std::mutex> lock(frames_mutex);
             if (frames.size() < max_frames) frames.emplace_back(start, end);
         }
@@ -241,12 +268,189 @@ namespace paris_sperf
             if (timer) CloseHandle(timer);
         }
 
+        // ---- slow-frame watchdog -------------------------------------------------------------------------------------------
+        std::mutex slow_mutex;                       // watchdog (after it resumed the thread) and the server thread at the end of a frame
+        std::vector<vm_sample> slow_samples;         // VM stacks read inside the frame whose serial is slow_serial
+        std::uint64_t slow_serial{};
+        std::uint64_t slow_script_samples{}, slow_engine_samples{};
+        constexpr std::size_t max_slow_samples = 12;
+
+        void watchdog_loop()
+        {
+            const HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, 0x00000002, TIMER_ALL_ACCESS);
+            HANDLE thread = nullptr;
+            while (!watchdog_stop.load())
+            {
+                LARGE_INTEGER due{};
+                due.QuadPart = -40000; // 4 ms
+                if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) WaitForSingleObject(timer, 20);
+                else Sleep(4);
+                const auto limit = slow_limit_ms.load(std::memory_order_relaxed);
+                if (limit <= 0 || !in_frame.load(std::memory_order_relaxed)) continue;
+                const auto serial = frame_serial.load(std::memory_order_relaxed);
+                const auto start = frame_start_qpc.load(std::memory_order_relaxed);
+                if ((now() - start) * 1000 < static_cast<std::int64_t>(limit) * qpc_hz) continue;
+                if (!thread)
+                {
+                    const auto id = server_thread.load();
+                    if (!id) continue;
+                    thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_QUERY_INFORMATION, FALSE, id);
+                    if (!thread) continue;
+                }
+                {
+                    std::lock_guard<std::mutex> lock(slow_mutex);
+                    if (slow_serial == serial && slow_samples.size() >= max_slow_samples) continue;
+                }
+                vm_sample sample{};
+                bool ok = false, inside = false;
+                std::uint64_t seen = 0;
+                if (SuspendThread(thread) != static_cast<DWORD>(-1))
+                {
+                    inside = in_frame.load(std::memory_order_relaxed);
+                    seen = frame_serial.load(std::memory_order_relaxed);
+                    ok = read_vm(sample);
+                    ResumeThread(thread);
+                }
+                if (!ok || !inside || seen != serial) continue;
+                std::lock_guard<std::mutex> lock(slow_mutex);
+                if (slow_serial != serial) { slow_samples.clear(); slow_serial = serial; slow_script_samples = slow_engine_samples = 0; }
+                if (sample.depth) ++slow_script_samples; else ++slow_engine_samples;
+                if (sample.depth && slow_samples.size() < max_slow_samples) slow_samples.push_back(sample);
+            }
+            if (thread) CloseHandle(thread);
+            if (timer) CloseHandle(timer);
+        }
+
+        // Code position -> "file::function" through the function table iw7-mod keeps (the same table the window file carries).
+        // Built once per set of loaded scripts, searched by position.
+        struct function_row { std::uintptr_t start; const std::string* file; const std::string* name; };
+        std::vector<function_row> function_rows;
+        std::size_t function_rows_files = ~static_cast<std::size_t>(0);
+
+        std::string function_at(const std::uint64_t position)
+        {
+            if (function_rows_files != scripting::script_function_table_sort.size())
+            {
+                function_rows.clear();
+                for (const auto& [file, functions] : scripting::script_function_table_sort)
+                    for (const auto& entry : functions)
+                        function_rows.push_back({reinterpret_cast<std::uintptr_t>(entry.second), &file, &entry.first});
+                std::sort(function_rows.begin(), function_rows.end(), [](const function_row& a, const function_row& b) { return a.start < b.start; });
+                function_rows_files = scripting::script_function_table_sort.size();
+            }
+            const auto at = std::upper_bound(function_rows.begin(), function_rows.end(), position, [](const std::uint64_t value, const function_row& row) { return value < row.start; });
+            if (at == function_rows.begin()) return "?";
+            const auto& row = *(at - 1);
+            if (*row.name == "__end__") return "?";
+            std::string file = *row.file;
+            const auto slash = file.find_last_of("/\\");
+            if (slash != std::string::npos) file = file.substr(slash + 1);
+            return file + "::" + *row.name;
+        }
+
+        // Server thread, at the end of a frame that took longer than the limit: one line with what the watchdog saw inside it.
+        void report_slow_frame(const int level_time, const std::int64_t start, const std::int64_t end, const std::uint64_t serial)
+        {
+            ++slow_frames;
+            std::vector<vm_sample> taken;
+            std::uint64_t script_n = 0, engine_n = 0;
+            {
+                std::lock_guard<std::mutex> lock(slow_mutex);
+                if (slow_serial == serial) { taken.swap(slow_samples); script_n = slow_script_samples; engine_n = slow_engine_samples; }
+            }
+            std::map<std::string, int> leaves, roots;
+            for (const auto& sample : taken)
+            {
+                ++leaves[function_at(sample.pos[sample.depth - 1])];
+                ++roots[function_at(sample.pos[0])];
+            }
+            auto join = [](const std::map<std::string, int>& counts)
+            {
+                std::vector<std::pair<int, std::string>> ordered;
+                for (const auto& [name, n] : counts) ordered.emplace_back(n, name);
+                std::sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+                std::string out;
+                for (std::size_t i = 0; i < ordered.size() && i < 3; ++i) { if (i) out += ','; out += ordered[i].second + "*" + std::to_string(ordered[i].first); }
+                return out.empty() ? std::string("-") : out;
+            };
+            char text[900]{};
+            _snprintf_s(text, sizeof(text), _TRUNCATE,
+                "[FR] t=%d native_slow_frame ms=%.1f serial=%llu samples=%llu script=%llu engine=%llu leaf=%s thread=%s\n",
+                level_time, static_cast<double>(end - start) * 1000.0 / static_cast<double>(qpc_hz), static_cast<unsigned long long>(serial),
+                static_cast<unsigned long long>(script_n + engine_n), static_cast<unsigned long long>(script_n), static_cast<unsigned long long>(engine_n),
+                join(leaves).c_str(), join(roots).c_str());
+            console::info("%s", text);
+        }
+
+        // ---- weapon gives with the script function that asked ------------------------------------------------------------------
+        // G_GivePlayerWeapon (0x140B69400; named in symbols.hpp) is what the script builtin giveweapon, the loadout and the
+        // weapon swaps end in (3 callers: sub_140B1D3A0 twice, sub_140B06130, sub_140B09080). Disassembly: rcx = the player's
+        // state, rdx = the weapon (its first word is the weapon index), r8d and r9d flags, the result is 0 or 1 in eax. The hook
+        // runs on the server thread, so the VM stack it reads is the one of the script that called: the innermost function is the
+        // caller. Prints one line per give while paris_fr_give is 1; the weapon index is joined to its name by the script
+        // recorder (play_flight: the player's weapon list at the same level time).
+        constexpr std::uintptr_t give_function = 0x140B69400;
+        utils::hook::detour give_hook;
+        std::atomic<bool> give_log{false};
+        bool give_installed = false;
+        std::atomic<std::uint64_t> gives_seen{0};
+
+        int give_stub(void* state, const void* weapon, const int flags_a, const int flags_b)
+        {
+            if (give_log.load(std::memory_order_relaxed))
+            {
+                ++gives_seen;
+                vm_sample sample{};
+                std::string chain = "-";
+                if (read_vm(sample) && sample.depth)
+                {
+                    chain.clear();
+                    for (std::size_t k = 0; k < 4 && k < sample.depth; ++k)
+                    {
+                        if (k) chain += "<";
+                        chain += function_at(sample.pos[sample.depth - 1 - k]);
+                    }
+                }
+                unsigned weapon_index = 0xFFFFu;
+                if (weapon && !IsBadReadPtr(weapon, 2)) weapon_index = *static_cast<const std::uint16_t*>(weapon);
+                char text[600]{};
+                _snprintf_s(text, sizeof(text), _TRUNCATE, "[FR] t=%d give state=%p weapon_index=%u flags=%d,%d depth=%zu caller=%s\n",
+                    frame_level_time.load(std::memory_order_relaxed), state, weapon_index, flags_a, flags_b, sample.depth, chain.c_str());
+                console::info("%s", text);
+            }
+            return give_hook.invoke<int>(state, weapon, flags_a, flags_b);
+        }
+
+        void set_give_log(const bool on)
+        {
+            if (on && !give_installed)
+            {
+                static const unsigned char prologue[] = {0x55, 0x53, 0x56, 0x57, 0x41, 0x55, 0x48, 0x8B, 0xEC};
+                if (!code_is(give_function, "G_GivePlayerWeapon", prologue, sizeof(prologue))) return;
+                give_hook.create(give_function, give_stub);
+                give_installed = true;
+            }
+            give_log = on;
+            console::info("[Paris sperf] paris_fr_give=%d gives_seen=%llu\n", on ? 1 : 0, static_cast<unsigned long long>(gives_seen.load()));
+        }
+
+        void set_slow_limit(const int ms)
+        {
+            slow_limit_ms = ms < 0 ? 0 : ms;
+            if (ms > 0 && !watchdog_running.exchange(true))
+            {
+                watchdog_stop = false;
+                watchdog = std::thread(watchdog_loop);
+            }
+            console::info("[Paris sperf] paris_fr_slow=%d slow_frames_so_far=%llu\n", slow_limit_ms.load(), static_cast<unsigned long long>(slow_frames.load()));
+        }
+
         bool valid_name(const std::string& name)
         {
             return !name.empty() && name.size() <= 32 && name.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_") == std::string::npos;
         }
 
-        void begin(const std::string& name)
+        void begin(const std::string& name, const bool light)
         {
             std::lock_guard<std::mutex> lock(window_mutex);
             if (window_open.load()) { console::error("[Paris sperf] a window is already open: %s\n", window_name.c_str()); return; }
@@ -265,10 +469,11 @@ namespace paris_sperf
             }
             window_name = name;
             sampler_stop = false;
+            light_window = light;
             begin_qpc = now();
             window_open = true;
-            sampler = std::thread(sampler_loop);
-            console::info("[Paris sperf] begin name=%s thread=%lu\n", name.c_str(), id);
+            if (!light) sampler = std::thread(sampler_loop);
+            console::info("[Paris sperf] begin name=%s thread=%lu mode=%s\n", name.c_str(), id, light ? "light" : "sampled");
         }
 
         void hex(std::string& out, const std::uint64_t value)
@@ -331,8 +536,8 @@ namespace paris_sperf
             common_a_meter.write(out, "common_a", false);
             common_b_meter.write(out, "common_b", false);
             _snprintf_s(line, sizeof(line), _TRUNCATE,
-                "},\n\"sampler\":{\"ticks\":%llu,\"hz\":%.1f,\"script\":%llu,\"frame_no_script\":%llu,\"idle\":%llu,\"failures\":%llu,\"dropped\":%llu},\n\"stacks\":[",
-                static_cast<unsigned long long>(ticks), seconds > 0 ? static_cast<double>(ticks) / seconds : 0.0,
+                "},\n\"sampler\":{\"mode\":\"%s\",\"ticks\":%llu,\"hz\":%.1f,\"script\":%llu,\"frame_no_script\":%llu,\"idle\":%llu,\"failures\":%llu,\"dropped\":%llu},\n\"stacks\":[",
+                light_window.load() ? "light" : "sampled", static_cast<unsigned long long>(ticks), seconds > 0 ? static_cast<double>(ticks) / seconds : 0.0,
                 static_cast<unsigned long long>(script), static_cast<unsigned long long>(frame_only), static_cast<unsigned long long>(idle),
                 static_cast<unsigned long long>(failures), static_cast<unsigned long long>(dropped));
             out += line;
@@ -396,7 +601,15 @@ namespace paris_sperf
             install_snapshot_counters();
             command::add("paris_sperf_begin", [](const command::params& params)
             {
-                begin(params.size() > 1 ? params.get(1) : "");
+                begin(params.size() > 1 ? params.get(1) : "", params.size() > 2 && std::string(params.get(2)) == "light");
+            });
+            command::add("paris_fr_give", [](const command::params& params)
+            {
+                set_give_log(params.size() > 1 && std::atoi(params.get(1)) != 0);
+            });
+            command::add("paris_fr_slow", [](const command::params& params)
+            {
+                set_slow_limit(params.size() > 1 ? std::atoi(params.get(1)) : 0);
             });
             command::add("paris_sperf_end", [] { end(); });
             console::info("[Paris sperf] ready\n");
@@ -404,6 +617,8 @@ namespace paris_sperf
 
         void pre_destroy() override
         {
+            watchdog_stop = true;
+            if (watchdog.joinable()) watchdog.join();
             if (window_open.load())
             {
                 sampler_stop = true;
