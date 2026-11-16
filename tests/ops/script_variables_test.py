@@ -32,8 +32,9 @@ sys.path.insert(0, os.path.join(ROOT, 'ops', 'engine'))
 
 STOCK = {'A': 0x14665A180, 'B': 0x146675980, 'P8': 0x146691180, 'P4': 0x1466FF180, 'CH': 0x146756180}
 STOCK_BYTES = {'A': 0x1B800, 'B': 0x1B800, 'P8': 0x6E000, 'P4': 0x37000, 'CH': 0x3C0000}
-N = 0x10000
-NEW_BYTES = {'A': 2 * N, 'B': 2 * N, 'P8': 8 * N, 'P4': 4 * N, 'CH': 4 * N * 0x18}
+N = 0x10000       # child entries a segment
+PN = 0x40000      # parent ids (a56: 4 segments of 0x10000 locals)
+NEW_BYTES = {'A': 2 * PN, 'B': 2 * PN, 'P8': 8 * PN, 'P4': 4 * PN, 'CH': 4 * N * 0x18}
 # arbitrary storage addresses (16 byte aligned, 16 bytes apart in the real allocation): above the image, in the order the component reserves them
 NEW = {}
 _at = 0x150000010
@@ -82,14 +83,14 @@ class Rows(unittest.TestCase):
 
     def test_the_hpp_layout(self):
         self.assertIn('child_entries = 0x10000', self.hpp)
-        self.assertIn('parent_ids = 0x10000', self.hpp)
+        self.assertIn('parent_ids = 0x40000', self.hpp)
         self.assertIn('stock_child_entries = 0xA000, stock_parent_ids = 0xDC00', self.hpp)
         # the u16 fields hold every index and id; the names of object keys stay below the integer key base
-        self.assertLessEqual(0x40000 + N, 0x800000)
+        self.assertLessEqual(0x40000 + PN, 0x800000)
         self.assertEqual(NEW_BYTES['CH'], 0x600000)
 
     def test_the_cpp_applies_the_table(self):
-        for op in ('hash_half', 'child_bound', 'parent_bound', 'name_bound', 'recip', 'p4_bytes', 'p2_bytes', 'idiom16'):
+        for op in ('hash_half', 'child_bound', 'parent_bound', 'name_bound', 'recip', 'p4_bytes', 'p2_bytes', 'idiom16', 'int_low', 'int_high'):
             self.assertIn('case script_op::%s' % op, self.cpp)
         self.assertIn('add(field, 0xD, 0x10, 1)', self.cpp)
         self.assertIn('0x80000000u', self.cpp)
@@ -99,7 +100,7 @@ class Rows(unittest.TestCase):
         for r in self.data['imms']:
             by.setdefault(r['op'], []).append(r)
         self.assertEqual({k: len(v) for k, v in by.items()},
-                         {'child_bound': 2, 'parent_bound': 5, 'name_bound': 8, 'recip': 4, 'p4_bytes': 1, 'p2_bytes': 2, 'idiom16': 4, 'hash_half': 2})
+                         {'child_bound': 2, 'parent_bound': 5, 'name_bound': 8, 'recip': 4, 'p4_bytes': 1, 'p2_bytes': 2, 'idiom16': 4, 'hash_half': 2, 'int_low': 5, 'int_high': 5})
         # the reciprocal: hi32(seg * 0x10000 * 0x80000000) >> 15 == seg ; the stock: hi32(seg * 0xA000 * 0xCCCCCCCD) >> 15 == seg
         for seg in range(4):
             self.assertEqual(((seg * 0x10000 * 0x80000000) >> 32) >> 15, seg)

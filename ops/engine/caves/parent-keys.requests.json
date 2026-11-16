@@ -1,0 +1,110 @@
+[
+ {
+  "address": "0x140C04DDC",
+  "kind": "bytes",
+  "new_bytes": "41c1eb0241c1e310",
+  "note": "key builder in 140C04D80: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C05156",
+  "kind": "bytes",
+  "new_bytes": "41c1e90241c1e110",
+  "note": "key builder in 140C05100: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C054EA",
+  "kind": "bytes",
+  "new_bytes": "c1e802c1e010",
+  "note": "key builder in 140C054E0: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C0554A",
+  "kind": "bytes",
+  "new_bytes": "c1e802c1e010",
+  "note": "key builder in 140C05540: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C055B3",
+  "kind": "bytes",
+  "new_bytes": "c1e802c1e010",
+  "note": "key builder in 140C055A0: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C05613",
+  "kind": "bytes",
+  "new_bytes": "c1e802c1e010",
+  "note": "key builder in 140C05600: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C05673",
+  "kind": "bytes",
+  "new_bytes": "41c1ea0241c1e210",
+  "note": "key builder in 140C05660: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C05AD1",
+  "kind": "bytes",
+  "new_bytes": "41c1e80241c1e010",
+  "note": "key builder in 140C05A90: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C06013",
+  "kind": "bytes",
+  "new_bytes": "41c1ed0241c1e510",
+  "note": "key builder in 140C05F90: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C0624F",
+  "kind": "bytes",
+  "new_bytes": "c1ee02c1e610",
+  "note": "key builder in 140C061F0: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C07558",
+  "kind": "bytes",
+  "new_bytes": "41c1ea0241c1e210",
+  "note": "key builder in 140C07450: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C098C4",
+  "kind": "bytes",
+  "new_bytes": "41c1e80241c1e010",
+  "note": "key builder in 140C09880: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C09A1D",
+  "kind": "bytes",
+  "new_bytes": "c1e902c1e110",
+  "note": "key builder in 140C09980: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C09B2D",
+  "kind": "bytes",
+  "new_bytes": "c1e902c1e110",
+  "note": "key builder in 140C09A90: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)"
+ },
+ {
+  "address": "0x140C04DE0",
+  "kind": "bytes",
+  "new_bytes": "c1e510",
+  "note": "segment base edit of the previous stage, inside the window of the key builder at 140C04DDC"
+ },
+ {
+  "address": "0x140C0755C",
+  "kind": "bytes",
+  "new_bytes": "89c390",
+  "note": "segment base edit of the previous stage, inside the window of the key builder at 140C07558"
+ },
+ {
+  "address": "0x140C098C8",
+  "kind": "bytes",
+  "new_bytes": "4489d390",
+  "note": "segment base edit of the previous stage, inside the window of the key builder at 140C098C4"
+ },
+ {
+  "address": "0x140C0531A",
+  "kind": "bytes",
+  "new_bytes": "0fb74b0e89f2c1ea108d0c8a",
+  "note": "FUN_140C05280: the parent id of a child entry is 4 * local + segment (segment = base >> 16, the base is in esi)"
+ }
+]

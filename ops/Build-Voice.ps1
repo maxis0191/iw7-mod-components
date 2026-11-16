@@ -141,6 +141,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\script_var_lay
 if errorlevel 1 exit /b 1
 "$runtime\script-var-layout-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\script_parent_pools_test.cpp" /Fe:"$runtime\script-parent-pools-test.exe" /Fo:"$runtime\script-parent-pools-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\script-parent-pools-test.exe"
+if errorlevel 1 exit /b 1
 "$runtime\dvar-metadata-test.exe"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\vm_filter_test.cpp" /Fe:"$runtime\vm-filter-test.exe" /Fo:"$runtime\vm-filter-test.obj"
@@ -276,7 +280,7 @@ foreach ($capFile in @('agent_capacity.cpp', 'agent_capacity.hpp', 'agent_capaci
     elseif (Test-Path -LiteralPath $capTarget) { Remove-Item -LiteralPath $capTarget -Force }
 }
 # GSC variable pools (script_variables.cpp): inert unless the game starts with -agent-capacity; compiled with the agent capacity.
-foreach ($varFile in @('script_variables.cpp', 'script_variables.hpp', 'script_variables_sites.inc')) {
+foreach ($varFile in @('script_variables.cpp', 'script_variables.hpp', 'script_variables_sites.inc', 'script_variables_caves.inc', 'script_parent_pools.hpp')) {
     $varTarget = Join-Path $root "src/client/component/$varFile"
     if ($AgentCapacity) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$varFile") -Destination $varTarget -Force; $nativeSources += @($varFile) }
     elseif (Test-Path -LiteralPath $varTarget) { Remove-Item -LiteralPath $varTarget -Force }

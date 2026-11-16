@@ -463,6 +463,14 @@
       ]
     },
     {
+      "id": "script_parent_ids_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/script_parent_ids_test.py"
+      ]
+    },
+    {
       "id": "frame_cuts_test",
       "command": [
         "python",

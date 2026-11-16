@@ -431,6 +431,30 @@ initialisers (FUN_140C09200 for the ids, FUN_140C09280 for the children) with th
 
 **Runs (headless, private loopback, a46, client built from this component).** n = 100 `capacity-agents-headless` (stock-table pages inaccessible): PASS 22/22, 9/9, peak alive 78, children 115,578 / parents 30,901 at the peak. n = 232 `capacity-agents-soak-headless` with `alive=200` (25 windows of 30 s): PASS 168/168, 30/30, alive 197 to 200, 232 instances, **children peak 178,433 (fullest segment 45,054 of 65,535), parents peak 52,571 (fullest segment 14,964 of 16,383, 91 %)**, no engine error text. The parent ids are the next limit (the walls: about 215 alive for the parents, about 290 for the children); past it the u16 parent id of the child entry has to widen (docs/SCRIPT-VARIABLES.md in the server repository, "What the full mission target needs").
 
+
+## Parent ids beyond u16 (a56, 16 Nov 2026)
+
+`script_variables.cpp` now also lifts the u16 parent id: ids of 18 bits (4 x 65,535 = 262,140 usable, stage 1: 65,532). An id is `4 x local + segment`. The u16 limit lived in
+three places only (the VM stack, the hash and the callers carry 32 bits): the child's parent field (+0xE), the lookup key (`parent << 16 | name >> 8`) and the free list links of
+the parent table. They now hold the **local index** (`id >> 2`). Sites, all printed before the edit by `python -B ops/engine/variable_sites.py parents`:
+
+- 14 key builders (`shl r,0x10` of a copy of the parent id beside the hash `imul 0x65`) and the one reader of the parent field (FUN_140C05280, which rebuilds `id = 4 x local + (base >> 16)`): 15 code caves
+  (`ops/engine/caves/parent-keys.*`, planned by `cave_plan.py`: `shr r,2` before the shift; the three windows that held an edit of stage 1 carry it). One of the 14 is Scr_AddClassField
+  (0x140C0624F), **code that no function of the engine database holds** (the database has functions that swallow the rest of the image and gaps between them): the finder decodes every byte of
+  the variable system's range, not the database's functions.
+- the free list code is replaced by the component (`script_parent_pools.hpp`, native test `tests/native/script_parent_pools_test.cpp`): AllocVariable (pop), FUN_140C04910 / FUN_140C05C50 / the tail of
+  RemoveRefToObject / FUN_140C08E70 (push), the list initialiser; the rebuild after loading a saved game (FUN_140C08C30) is refused with a message. The free ids of a segment are two stacks: the ids below
+  0x10000 and the rest. **The shipped code is compiled with interprocedural register allocation** (a caller relies on every register the shipped callee leaves alone: FindVariable's callers read `r8d` after
+  the call): a replacement written in C++ is reached through a wrapper that saves `rcx, rdx, r8..r11, xmm0..xmm5` and restores them (`wrapper_for`, `save_all` / `restore_all`, tested).
+- ids the engine keeps in 16 bits outside the variable system take pool 0 (ids below 0x10000): threads (`Scr_ExecThread` / `Scr_ExecEntThread` return the thread id as u16, `Scr_FreeThread` takes a u16, two game structs keep
+  it in a u16 field), the `self` of a thread (u16 in the thread object, so structs, entity objects and class entities too), the class arrays (u16 table 0x141BBA600), the dead entity chain, the server client arrays
+  (`client+0x9F352`): 9 allocation sites of AllocVariable and 2 of Scr_AllocArray are redirected. Every other object takes a high id first: a 16-bit holder of a general id fails at once. A thread started on an object with
+  an id above 0xFFFF stops with a message naming the object and its type (a prologue stub on the two thread allocators).
+- the integer key range follows the object key bound: object key names `0x40000 + id` end at 0x7FFFF, integer key names start at 0x80000 (8 `name_bound` sites, 5 `int_low` / `int_high` pairs).
+
+Test switches: `-script-variables-low-first` or `IW7_SCRIPT_VARIABLES_LOW_FIRST=1` (general objects take the low pool first: the stage 1 order), `-script-variables-stock` (off). Tests: `tests/ops/script_parent_ids_test.py` (finder,
+every cave against the shipped bytes, the free path window, replaced functions, key ranges, the wrapper), `tests/native/script_parent_pools_test.cpp`.
+
 ## Players on another layout
 
 The server announces `agentcap=agents-<n>` in its info and refuses at connect a client whose layout differs (today's

@@ -38,27 +38,27 @@ int main() {
     CHECK(refusals().load() == 6);
     CHECK(logged.empty());  // no hook installed yet
 
-    // relocated: 0x10000 parent ids, 0x10000 children a segment, tables elsewhere
+    // relocated: 0x40000 parent ids (a56: 18 bits), 0x10000 children a segment, tables elsewhere
     refusal_log() = log_one;
     refusals() = 0;
     std::vector<unsigned char> storage(1);
     const auto base = reinterpret_cast<std::uintptr_t>(storage.data());
     install({base + 0x1000, base + 0x400000, base + 0x800000, script_variables::parent_ids, script_variables::child_entries, true});
     CHECK(current().relocated);
-    CHECK(object_address(0xFFFF) == base + 0x1000 + 0xFFFFull * 8);
-    CHECK(object_children_address(0xFFFF) == base + 0x400000 + 0xFFFFull * 4);
+    CHECK(object_address(0x3FFFF) == base + 0x1000 + 0x3FFFFull * 8);
+    CHECK(object_children_address(0x3FFFF) == base + 0x400000 + 0x3FFFFull * 4);
     CHECK(child_address(4, 1) == base + 0x800000 + 1ull * 0x18);                                        // segment 0
     CHECK(child_address(5, 1) == base + 0x800000 + (0x10000ull + 1) * 0x18);                            // segment 1
     CHECK(child_address(0xFFFF, 0xFFFF) == base + 0x800000 + (3ull * 0x10000 + 0xFFFF) * 0x18);          // the last entry of the last segment
     CHECK(child_address(4, 0xA000) != 0);                                                                // valid now, refused on stock
-    CHECK(object_address(0xDC00) != 0);
-    // refusals: past 16 bits and the list head; the first one reaches the hook, once
-    CHECK(object_address(0x10000) == 0 && child_address(0x10000, 1) == 0 && child_address(4, 0x10000) == 0 && child_address(4, 0) == 0);
+    CHECK(object_address(0xDC00) != 0 && object_address(0x10000) != 0 && child_address(0x3FFFF, 1) != 0);
+    // refusals: past the 18 bit ids, past the 16 bit child index and the list head; the first one reaches the hook, once
+    CHECK(object_address(0x40000) == 0 && child_address(0x40000, 1) == 0 && child_address(4, 0x10000) == 0 && child_address(4, 0) == 0);
     CHECK(refusals().load() == 4 && logged.size() == 1);
     // typed access
     struct entry { std::uint8_t bytes[0x18]; };
     CHECK(child<entry>(4, 2) == reinterpret_cast<entry*>(base + 0x800000 + 2 * 0x18));
-    CHECK(child<entry>(4, 0) == nullptr && object<std::uint64_t>(0x10000) == nullptr);
+    CHECK(child<entry>(4, 0) == nullptr && object<std::uint64_t>(0x40000) == nullptr);
 
     // a stock layout installed back (the component off): the shipped formula again
     install(stock);
