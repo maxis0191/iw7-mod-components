@@ -160,8 +160,8 @@ namespace paris_sperf
         {
             FILETIME created{}, exited{}, kernel{}, user{};
             if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) return 0.0;
-            const auto ticks = [](const FILETIME& t) { return static_cast<double>((static_cast<std::uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime); };
-            return (ticks(kernel) + ticks(user)) / 1.0e7;
+            const auto filetime_ticks = [](const FILETIME& t) { return static_cast<double>((static_cast<std::uint64_t>(t.dwHighDateTime) << 32) | static_cast<std::uint64_t>(t.dwLowDateTime)); };
+            return (filetime_ticks(kernel) + filetime_ticks(user)) / 1.0e7;
         }
         double window_cpu_begin{};
 
