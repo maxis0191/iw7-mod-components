@@ -1,18 +1,22 @@
 #pragma once
 #include <cstdint>
 
-// GSC variable pools (a46): the child table (4 segments) and the parent id space of the engine's script variable system, grown from the
-// shipped 0xA000 entries a segment / 0xDC00 parent ids to 0x10000 each. Layout and every edited instruction: docs/SCRIPT-VARIABLES.md,
-// ops/engine/variable_sites.py, script_variables_sites.inc. Off unless the process starts with -agent-capacity (and not -script-variables-stock).
+// GSC variable pools (a46, a56): the child table (4 segments) grown from the shipped 0xA000 entries a segment to 0x10000, and the parent id
+// space grown from 0xDC00 ids (u16) to 0x40000 (18 bits: 4 x 65,535 usable). An id is 4 x local + segment; the u16 fields that held a whole id
+// hold the local index. Layout and every edited instruction: docs/SCRIPT-VARIABLES.md, ops/engine/variable_sites.py (find, parents),
+// script_variables_sites.inc, script_variables_caves.inc. Off unless the process starts with -agent-capacity (and not -script-variables-stock).
 namespace script_variables {
 
 constexpr std::uint32_t stock_child_entries = 0xA000, stock_parent_ids = 0xDC00;
 // entries a segment: local index 0 (the free list head) and 1..0xFFFF (u16 links; 0xFFFF is not a sentinel anywhere in the code)
 constexpr std::uint32_t child_entries = 0x10000;
-// ids 0..3 are the heads of the four id lists, 4..0xFFFF usable (u16 id in the child; 0xFFFF is not a sentinel)
-constexpr std::uint32_t parent_ids = 0x10000;
+// ids 0..3 are the heads of the four id lists, 4..0x3FFFF usable: id = 4 x local + segment, local 1..0xFFFF (u16 in the child entry, in the key
+// and in the free list links). The ids below 0x10000 (locals below 0x4000, the low pool) are kept for the objects whose id the engine holds in
+// 16 bits (threads and their `self`, entity objects, the class arrays, the server client arrays); every other object takes a high id first.
+constexpr std::uint32_t parent_ids = 0x40000;
+constexpr std::uint32_t parent_low_locals = 0x4000;
 constexpr std::uint32_t segments = 4, child_bytes_each = 0x18;
-// object key names are 0x40000 + parent id (below: strings, from 0x800000: integers)
+// object key names are 0x40000 + parent id (below: strings, from 0x800000: integers): ids up to 0x3FFFF give names up to 0x7FFFF
 constexpr std::uint32_t name_bound = 0x40000 + parent_ids;
 static_assert(name_bound <= 0x800000);
 
@@ -28,6 +32,7 @@ constexpr std::uint64_t ch_bytes() { return static_cast<std::uint64_t>(segments)
 // usable entries a segment / usable parent ids a segment (ids interleave over the segments: id & 3)
 constexpr std::uint32_t child_usable() { return child_entries - 1; }
 constexpr std::uint32_t parent_usable() { return parent_ids / 4 - 1; }
+constexpr std::uint32_t parent_low_usable() { return parent_low_locals - 1; }
 
 bool installed() noexcept;
 }
