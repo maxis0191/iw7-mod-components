@@ -64,7 +64,10 @@ struct layout {
     constexpr std::uint32_t server_size() const { return 0x7A0D8 + character_growth(); }
     constexpr std::uint32_t client_tail() const { return 0xFD7F8 + character_growth(); }
     constexpr std::uint32_t client_flags() const { return 0xFDEA8 + character_growth(); }
-    constexpr std::uint32_t client_size() const { return (client_flags() + characters + 15) & ~15u; }
+    // The per-character table of FUN_140945FD0 (0xC0 bytes a character, stock 42 rows at cg + 0x70950, ends where another member of cg starts at 0x728D0): moved to the tail of cg like the flags,
+    // zeroed with the object, freed with it (a76; ops/engine/client_tables.py).
+    constexpr std::uint32_t client_char_table() const { return (client_flags() + characters + 15) & ~15u; }
+    constexpr std::uint32_t client_size() const { return (client_char_table() + characters * 0xC0 + 15) & ~15u; }
     constexpr std::uint32_t reference_bytes() const { return 8 + characters * 0x40; }
     constexpr std::uint32_t table8_bytes() const { return characters * 8; }
     constexpr std::uint32_t table20_bytes() const { return characters * 5 * 20; }
@@ -322,7 +325,9 @@ static_assert(make(100, 0x800).snap_entity_offset() == 0x3DC78 + 100 * 0xC0 + 85
 static_assert(ring_frame_term == 6464 && 16 * ring_frame_term + 16 * snapshot_entities == 136192 && 16 * 4 * snapshot_entities <= 136192);
 
 // The shipped layout gives back the shipped numbers (the patch plan is the identity at 24).
-static_assert(make(64, 0x800).client_size() == ((0xFDEA8 + 40 * 0x2CA0 + 82 + 15) & ~15u));
+static_assert(make(64, 0x800).client_char_table() == ((0xFDEA8 + 40 * 0x2CA0 + 82 + 15) & ~15u));
+static_assert(make(64, 0x800).client_size() == ((make(64, 0x800).client_char_table() + 82 * 0xC0 + 15) & ~15u));
+static_assert(make(24, 0x800).client_char_table() - 0xFDEA8 < 0x30 && make(24, 0x800).client_size() - make(24, 0x800).client_char_table() == 42 * 0xC0);
 static_assert(make(64, 0x800).archive_size() == 0x2279D8);
 static_assert(make(64, 0x800).query_stack_growth() == 0x210 && make(64, 0x800).query_position_growth() == 0x1E0);
 static_assert(make(24, 0x800).archive_size() == 0x2077F0 && make(24, 0x800).frame_size() == 0xC7A8);

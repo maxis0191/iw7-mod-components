@@ -399,6 +399,14 @@
       ]
     },
     {
+      "id": "client_tables_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/client_tables_test.py"
+      ]
+    },
+    {
       "id": "agent_capacity_pools_test",
       "command": [
         "python",
