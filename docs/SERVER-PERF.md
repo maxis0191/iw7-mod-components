@@ -104,6 +104,24 @@ A window is about 300 KB; most of it is the function table (210 script files, 8,
   function is then the first thread's.
 - One window at a time; the server thread is the thread that ran the first server frame.
 
+## Light windows, slow frames and weapon gives (a74, 16 Nov 2026)
+
+The three commands below are in `src/native/paris_sperf.cpp`; the flight recorder of the server repository (`docs/ZOMBIE-CAPACITY.md` 6e, `ops/play/flight_report.py`) uses them.
+
+- `paris_sperf_begin <name> light` (and `paris_perf_begin <name> light` in the client's meter, `src/native/paris_perf.cpp`): the same window without the sampler thread. It holds the server frame times, the snapshot entity counters and, new in both
+  recorders, the CPU seconds of the whole process over the window (`cpu_seconds` in the window file of the server meter, `user_ms`/`kernel_ms` of each thread in the client's). The sampler thread (a thread suspension about 600 times a second)
+  was measured at +0.27 of a core on the server and +0.24 on the client while a window is open (a68); a light window has no such thread. The file says `"sampler":{"mode":"light",...}` with no ticks and no stacks, and `iw7_sperf.py` and
+  `iw7_perf.py` read it (frame statistics; no script cost). A window without the word is as before.
+- `paris_fr_slow <ms>`: the slow-frame watchdog, off by default (0). One thread wakes every 4 ms and reads two atomics (the frame in progress and when it began). Only when the frame in progress is already older than `<ms>` it suspends the server thread
+  for one read of the script VM's call stack, as the window sampler does, up to 12 times in that frame. At the end of such a frame the server thread prints one line:
+  `[FR] t=<level time> native_slow_frame ms=<the frame> serial=<frame count> samples=<n> script=<n in script> engine=<n outside the script VM> leaf=<innermost functions, counted> thread=<outermost functions, counted>`.
+  The frame is sampled while it runs, so the line names what made THIS frame slow (a script function by file and name), and `engine=` counts the samples that found no script running (the frame was in engine code). The first <ms> of the frame are not sampled.
+- `paris_fr_give <0|1>`: while 1, every call of `G_GivePlayerWeapon` (0x140B69400, named in `symbols.hpp`; callers `sub_140B1D3A0` twice, `sub_140B06130`, `sub_140B09080`; prologue checked before the hook is made) prints
+  `[FR] t=<level time> give state=<player state pointer> weapon_index=<the weapon's index> flags=<r8d>,<r9d> depth=<VM depth> caller=<innermost script function<its caller<...>>`. The hook runs on the server thread inside the script's builtin, so the VM stack is the
+  one of the script that asked. The weapon index is joined to a name by the script recorder's `weapon_added` line of the same player and level time.
+
+Cost: see the measured runs in the server repository's `docs/ZOMBIE-CAPACITY.md` 6e.
+
 ## Tests
 
 `tests/ops/sperf_report_test.py` runs the reader on synthetic windows.
