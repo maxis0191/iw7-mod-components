@@ -477,8 +477,7 @@ namespace paris_perf
                             list_capacity[i], static_cast<unsigned long long>(skipped));
                         out += line;
                     }
-                    _snprintf_s(line, sizeof(line), _TRUNCATE, "},\"skipped\":{\"total\":%llu,\"max_scene\":%llu}},
-", static_cast<unsigned long long>(skipped_total),
+                    _snprintf_s(line, sizeof(line), _TRUNCATE, "},\"skipped\":{\"total\":%llu,\"max_scene\":%llu}},\n", static_cast<unsigned long long>(skipped_total),
                         static_cast<unsigned long long>(skip_frame_max.load()));
                     out += line;
                 }
@@ -569,8 +568,7 @@ namespace paris_perf
             static const unsigned char copy_code[] = {0x48, 0x83, 0xEC, 0x28, 0x8B, 0x05};
             if (std::memcmp(reinterpret_cast<const void*>(scene_copy_function), copy_code, sizeof(copy_code)) == 0)
                 scene_copy_hook.create(scene_copy_function, scene_copy_stub);
-            else console::error("[Paris perf] scene copy at 0x%llX: code differs from the expected bytes, the render list meter is left out
-",
+            else console::error("[Paris perf] scene copy at 0x%llX: code differs from the expected bytes, the render list meter is left out\n",
                 static_cast<unsigned long long>(scene_copy_function));
             install_motion_hook();
             scheduler::loop([]
