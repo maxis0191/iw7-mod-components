@@ -401,12 +401,12 @@ void replace_function(std::uintptr_t entry, std::initializer_list<std::uint8_t> 
 // Off unless the process starts with -script-variables-meter (or IW7_SCRIPT_VARIABLES_METER=1; the headless runner passes no flags of its own). FindVariable
 // (0x140C05100: parent id in ecx, name in edx) walks the chain of bucket ((parent * 0x65 + name) & 0x3FFF) + (parent & 3) * 0x4000 of the u16 bucket table
 // (0x146736180, never moved) through the u16 `next` at child entry +8 until the key (local parent index << 16 | name >> 8) at +0xC matches. A stub in front of it
-// counts every call (one `sub [counter], 1`; 1 call in 64 runs the sampler first); the sampler walks the same chain read only and records how many
+// counts every call (one `sub [counter], 1`; 1 call in 256 runs the sampler first); the sampler walks the same chain read only and records how many
 // entries were compared (hit: the position of the key; miss: the whole chain). The stub clobbers no register: the shipped callers rely on all of them.
 // Every 10 s one `[var meter] {...}` line goes to the console; each report also re-hashes the entries of 1,024 buckets to prove that this reading of the
 // bucket function and the key is the engine's (checked_bad must stay 0).
 constexpr std::uintptr_t find_variable = 0x140C05100ull;
-constexpr std::uint32_t meter_period = 64, meter_hist = 66;       // steps 0 .. 64, 65 = more
+constexpr std::uint32_t meter_period = 256, meter_hist = 66;       // steps 0 .. 64, 65 = more
 struct meter_state {
     std::uint32_t countdown;                    // the stub's counter (first member: its address is handed to the stub)
     std::uint32_t pad;
@@ -464,7 +464,7 @@ void meter_stub() {
     // sub dword [rip + counter], 1 ; jz slow ; back: <stock first instruction> ; jmp FindVariable + 5 ; slow: save, call meter_sample, restore, jmp back
     static const std::uint8_t first[] = {0x48, 0x89, 0x5C, 0x24, 0x08};
     readable(find_variable, 5);
-    // a page of its own, not executable: a store into the page of running code flushes the pipeline (measured: 0.8 ns a call with the counter in its own page, ~300 ns in the page of the stub)
+    // a page of its own, not executable: a store into the page of running code flushes the pipeline (measured with the stub bytes in a loop: 0.4 to 0.8 ns a call with the counter in its own page, ~300 ns in the page of the stub)
     meter = reinterpret_cast<meter_state*>(reserve(sizeof(meter_state)).data);
     std::memset(meter, 0, sizeof(meter_state));
     meter->countdown = meter_period;
