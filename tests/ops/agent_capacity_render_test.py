@@ -32,10 +32,12 @@ SITES = {
 
 
 def parse_blocks(text):
+    """address -> (stock bytes, new bytes): the new bytes are the named array of the call (after_a, after_b), whose call rel32 the plan re-aims at the counting stub at run time."""
+    arrays = {m.group(1): bytes(int(x, 16) for x in re.findall(r'0x[0-9A-Fa-f]+', m.group(2)))
+              for m in re.finditer(r'std::array<std::uint8_t,\s*\d+>\s+(after_\w+)\{([^}]*)\}', text)}
     out = {}
-    for m in re.finditer(r'block\(\s*(0x[0-9A-Fa-f]+),\s*std::array<std::uint8_t,\s*(\d+)>\{([^}]*)\},\s*std::array<std::uint8_t,\s*\d+>\{([^}]*)\}', text):
-        a = int(m.group(1), 16)
-        out[a] = (bytes(int(x, 16) for x in re.findall(r'0x[0-9A-Fa-f]+', m.group(3))), bytes(int(x, 16) for x in re.findall(r'0x[0-9A-Fa-f]+', m.group(4))))
+    for m in re.finditer(r'block\(\s*(0x[0-9A-Fa-f]+),\s*std::array<std::uint8_t,\s*(\d+)>\{([^}]*)\},\s*(after_\w+)\)', text):
+        out[int(m.group(1), 16)] = (bytes(int(x, 16) for x in re.findall(r'0x[0-9A-Fa-f]+', m.group(3))), arrays[m.group(4)])
     return out
 
 
@@ -46,6 +48,7 @@ class RenderList(unittest.TestCase):
             self.skipTest('no unpacked code files or analysed image on this machine')
         text = open(CPP, encoding='utf-8').read()
         body = text.split('void plan_render_list()')[1].split('\n}\n')[0]
+        self.body = body
         self.blocks = parse_blocks(body)
         self.cs = cp._cs()
 
@@ -101,7 +104,7 @@ class RenderList(unittest.TestCase):
             call = ins[-2] if text[-1].startswith('nop') is False else ins[-3]
             jmp = ins[-1] if not text[-1].startswith('nop') else ins[-2]
             self.assertEqual(call.mnemonic, 'call')
-            self.assertEqual(int(call.op_str, 16), HOOK, 'the same renderer warning, raised as before')
+            self.assertEqual(int(call.op_str, 16), HOOK, 'the warning (the plan re-aims this call at the counting stub, which jumps to it)')
             self.assertEqual(jmp.mnemonic, 'jmp')
             self.assertEqual(jmp.size, 2, 'a short jump')
             self.assertEqual(int(jmp.op_str, 16), spec['short_to'])
@@ -125,6 +128,24 @@ class RenderList(unittest.TestCase):
                 stores.add('qword ptr [rsp + 0x78]')
             for slot in reloads:
                 self.assertIn(slot, stores, f'{a:#x} the epilogue reloads {slot} which is not stored before the window')
+
+    def test_every_call_of_the_warning_in_the_three_functions_goes_through_the_counting_stub(self):
+        """Seven calls of FUN_140E4B0B0 (ids 0x9A, 5, 2 in each draw command, 1 in the draw record allocator): the two rewritten ones are re-aimed in the
+        new bytes, the other five by `retarget`; the stub counts the id (ecx) and jumps to the warning."""
+        text = self.body
+        for call in ('0x140E2DB04ull', '0x140E2DCF0ull', '0x140E300B9ull', '0x140E3012Eull', '0x140E30C8Full'):
+            self.assertIn(call, text)
+            at = int(call[:-3], 16)
+            self.assertEqual(self.image.read(at, 1), bytes([0xE8]))
+            ins = next(self.cs.disasm(self.image.read(at, 5), at))
+            self.assertEqual(int(ins.op_str, 16), HOOK)
+        for needle in ('mov rax, table', 'lock inc dword [rax + rcx*4]', 'jmp rax', 'render_skip_table'):
+            self.assertIn(needle, open(CPP, encoding='utf-8').read())
+        all_calls = []
+        for func, end in ((0x140E2D9D0, 0x140E2DE5C), (0x140E2FF80, 0x140E30352)):
+            all_calls += [i.address for i in self.cs.disasm(self.image.read(func, end - func), func) if i.mnemonic == 'call' and i.op_str == hex(HOOK)]
+        self.assertEqual(sorted(all_calls), [0x140E2DAB8, 0x140E2DB04, 0x140E2DCF0, 0x140E3005D, 0x140E300B9, 0x140E3012E])
+
 
     def test_the_count_and_the_list_are_what_the_comment_says(self):
         """FUN_140E328E0 copies count x 32 bytes from the list; the list holds 0x400 records up to the next table (the light count)."""
