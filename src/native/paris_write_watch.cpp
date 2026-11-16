@@ -10,12 +10,15 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <thread>
 
 // Write watch for lab clients (-paris-write-watch [<targets>]; compiled with -Perf): names the code that writes a qword of the client's memory.
 //
 // Why: an owner crash (16 Nov 2026, iw7_ship.exe+0x8CA8E2) read the vtable qword of element 0 of the hit-result array of the client's cg object
-// (cg + 0x74278, the constructor writes 0x141440EE0 there; no stock path stores 0) and found 0. A dump without the heap cannot say who wrote the 0.
+// (cg + 0x74278, the constructor writes 0x141440EE0 there) and found 0. A dump without the heap cannot say who wrote the 0. cg is not cg[] (0x141FA6C88: scrambled pointers) but the plain
+// array base of the Zombies client (0x141FDBEF0, 0xFDEA8 bytes an object) or of the Multiplayer client (0x141FDCF50, 0xD64C0).
+// The first sessions (docs/WRITE-WATCH.md) found the engine itself storing 0 there every frame (FUN_140949810, game+0x94A837 and +0x94A842), so a write is logged once per site.
 //
 // What it does, per target (up to four, each 1, 2, 4 or 8 bytes, aligned):
 //  1. A hardware data breakpoint (DR0-DR3, write) on every thread of the process. A helper thread suspends a thread, writes the debug registers with
@@ -23,8 +26,9 @@
 //     the registers of every thread back every -paris-write-watch-sweep ms (default 2000): a thread whose registers were reset is counted ("[WW] lost") and armed again.
 //     The target address is evaluated again every 50 ms (cg moves at every map load) and all threads are re-armed when it changes. A slot that a thread already uses
 //     for another address is never taken: another free slot is used, or the target is refused for that thread (counted).
-//  2. A vectored exception handler (first in the chain) that answers only EXCEPTION_SINGLE_STEP with one of our addresses in a set DR6 bit. It reads the value
-//     (old = the last value seen, new = now), and unless the new value is the expected one (or -paris-write-watch-all) it stores a record in a lock-free ring:
+//  2. A vectored exception handler (first in the chain) that answers only EXCEPTION_SINGLE_STEP with a set DR6 bit of ours (every such trap is swallowed: an unhandled single step ends the client).
+//     It reads the value (old = the last value seen, new = now) and counts the trap per site (rip, target, kind of old value, kind of new value: expected, zero or other). Only the first trap of a
+//     site, and only if the new value is not the expected one (or -paris-write-watch-all), is stored as a record in a lock-free ring:
 //     thread, RIP, registers, the 16 bytes before RIP, a stack unwind (RtlVirtualUnwind) and a scan of the stack for return addresses after a call.
 //     It never allocates, logs or takes a lock. A data breakpoint traps AFTER the store: RIP is the instruction that follows it (inside memset or memcpy for a block write, so the stack names the writer).
 //  3. Records are written to iw7-mod/paris-write-watch/ww-<time>-<pid>.log by the helper thread (at once, durable) and printed with the [WW] prefix by the
@@ -46,7 +50,7 @@ namespace paris_write_watch
         constexpr std::uint64_t hit_offset = 0x74278;     // the hit-result array of cg
         constexpr std::uint64_t hit_stride = 0x350;
         constexpr int max_targets = 4, max_terms = 6;
-        constexpr unsigned ring_size = 512, stack_depth = 16, scan_depth = 12, scan_qwords = 192, event_count = 32, event_len = 148, history_size = 64, writer_slots = 32;
+        constexpr unsigned ring_size = 512, stack_depth = 16, scan_depth = 12, scan_qwords = 192, event_count = 32, event_len = 148, history_size = 1024, writer_slots = 32;
 
         struct term { char kind; int sign; std::uint64_t value; }; // kind: n number, c cg object of local client `value`, g game base, d qword at the number, s scratch cell
         struct target
@@ -77,10 +81,12 @@ namespace paris_write_watch
         struct site
         {
             std::atomic<std::uint64_t> rip{0};
-            std::uint64_t old_value{}, new_value{}, first_tick{};
-            unsigned target_index{}, first_tid{};
-            std::atomic<std::uint64_t> count{0};
+            std::uint64_t old_value{}, new_value{}, first_tick{};   // the first old and new value seen at this site
+            unsigned target_index{}, first_tid{}, old_class{}, new_class{};
+            std::atomic<std::uint64_t> count{0}, last_new{0};
         };
+        // 0: the expected value, 1: zero, 2: anything else: a store of changing values from one instruction is one site, not one per value
+        unsigned value_class(const std::uint64_t value, const std::uint64_t expect) noexcept { return value == expect ? 0u : value == 0 ? 1u : 2u; }
 
         target targets[max_targets];
         int target_count{};
@@ -108,6 +114,7 @@ namespace paris_write_watch
         std::uint64_t image_size{};
         alignas(64) volatile std::uint64_t scratch_cell[8];
         utils::hook::detour console_hook;
+        std::deque<std::string> pending_lines; // main thread: the lines of the records not printed yet
         std::string selftest_modes;                       // -paris-write-watch-selftest <modes>: the proof commands run by themselves (lab only)
         std::size_t selftest_next{};
         std::uint64_t selftest_due{};
@@ -305,8 +312,7 @@ namespace paris_write_watch
         {
             if (!address || in_history(address)) return;
             const auto i = history_count.load();
-            if (i >= history_size) return;
-            history[i].store(address, std::memory_order_relaxed);
+            history[i % history_size].store(address, std::memory_order_relaxed); // a ring: the oldest address is forgotten, never the new one
             history_count.store(i + 1, std::memory_order_release);
         }
         bool slot_enabled(const std::uint64_t ctl7, const int slot) noexcept { return (ctl7 >> (2 * slot)) & 3; }
@@ -319,6 +325,25 @@ namespace paris_write_watch
         enum class arm_result { ok, rearmed, lost, refused, failed };
         // a thread that cannot be opened or suspended is named once (a thread that ended is not an error)
         void write_file(const std::string& text);
+        void locate(const std::uint64_t address, char* out, const std::size_t size);
+        // the name and the start address of a thread (the report names what is not covered)
+        void describe_thread(const DWORD tid, char* out, const std::size_t size)
+        {
+            out[0] = 0;
+            const HANDLE h = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, tid);
+            if (!h) return;
+            using query_thread = LONG(NTAPI*)(HANDLE, ULONG, PVOID, ULONG, PULONG);
+            static const auto query = reinterpret_cast<query_thread>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationThread"));
+            std::uint64_t start{};
+            char place[96]{}, name[48]{};
+            if (query && query(h, 9, &start, sizeof(start), nullptr) >= 0 && start) locate(start, place, sizeof(place));
+            using get_description = HRESULT(WINAPI*)(HANDLE, PWSTR*);
+            static const auto description = reinterpret_cast<get_description>(GetProcAddress(GetModuleHandleA("kernelbase.dll"), "GetThreadDescription"));
+            PWSTR text{};
+            if (description && SUCCEEDED(description(h, &text)) && text) { WideCharToMultiByte(CP_UTF8, 0, text, -1, name, sizeof(name) - 1, nullptr, nullptr); LocalFree(text); }
+            CloseHandle(h);
+            std::snprintf(out, size, " (start %s%s%s)", place[0] ? place : "unknown", name[0] ? ", name " : "", name);
+        }
         DWORD arm_failed_tids[64]; std::atomic<unsigned> arm_failed_count{0};
         void note_arm_failure(const DWORD tid, const char* what, const DWORD error)
         {
@@ -328,7 +353,9 @@ namespace paris_write_watch
             if (n >= 64) return;
             arm_failed_tids[arm_failed_count.fetch_add(1)] = tid;
             char line[200]{};
-            std::snprintf(line, sizeof(line), "[WW] thread %lu cannot be armed: %s failed (error %lu)\n", tid, what, error);
+            char where[160]{};
+            describe_thread(tid, where, sizeof(where));
+            std::snprintf(line, sizeof(line), "[WW] thread %lu cannot be armed: %s failed (error %lu)%s\n", tid, what, error, where);
             write_file(line);
         }
 
@@ -500,7 +527,8 @@ namespace paris_write_watch
             {
                 if (!(bits & (1u << s))) continue;
                 const auto address = *dr[s];
-                if (!in_history(address)) continue;
+                // Nothing else in this process sets hardware breakpoints (the engine clears them at start), so every trap of a slot while the watch is on is swallowed, whether the address is one of
+                // the current targets or a stale register of a target that moved: an unhandled single step would end the client.
                 ours = true;
                 c.Dr6 &= ~(1ull << s);
                 int index = -1;
@@ -518,7 +546,8 @@ namespace paris_write_watch
                 for (unsigned k = 0; k < known_sites && k < site_capacity; ++k)
                 {
                     auto& x = sites[k];
-                    if (x.rip.load(std::memory_order_acquire) == c.Rip && x.old_value == old_value && x.new_value == value && x.target_index == static_cast<unsigned>(index)) { x.count.fetch_add(1); fresh = false; break; }
+                    if (x.rip.load(std::memory_order_acquire) == c.Rip && x.target_index == static_cast<unsigned>(index) && x.old_class == value_class(old_value, t.expect) && x.new_class == value_class(value, t.expect))
+                    { x.count.fetch_add(1); x.last_new.store(value); fresh = false; break; }
                 }
                 if (fresh)
                 {
@@ -527,10 +556,11 @@ namespace paris_write_watch
                     {
                         auto& x = sites[claimed];
                         x.old_value = old_value; x.new_value = value; x.target_index = static_cast<unsigned>(index); x.first_tick = GetTickCount64(); x.first_tid = GetCurrentThreadId();
-                        x.count.store(1);
+                        x.old_class = value_class(old_value, t.expect); x.new_class = value_class(value, t.expect);
+                        x.count.store(1); x.last_new.store(value);
                         x.rip.store(c.Rip, std::memory_order_release);
                     }
-                    else sites_lost.fetch_add(1);
+                    else { sites_lost.fetch_add(1); fresh = false; } // the table is full: counted, not logged
                 }
                 if (!test_capture.load(std::memory_order_relaxed) && (!fresh || (!log_all && !t.any && value == t.expect))) continue;
                 const auto slot = ring_head.fetch_add(1);
@@ -822,14 +852,16 @@ namespace paris_write_watch
             const auto head = ring_head.load();
             const unsigned limit = head < ring_size ? head : ring_size;
             const auto print_start = qpc();
-            for (unsigned shown = 0; printed < limit && shown < 4 && ring[printed].ready.load(std::memory_order_acquire); ++shown)
+            if (pending_lines.empty() && printed < limit && ring[printed].ready.load(std::memory_order_acquire))
             {
                 std::string text;
                 format_record(ring[printed], text);
                 text += recent_events(8);
-                print_console(text);
+                std::size_t from = 0;
+                while (from < text.size()) { auto to = text.find('\n', from); if (to == std::string::npos) to = text.size(); pending_lines.emplace_back(text.substr(from, to - from)); from = to + 1; }
                 ++printed;
             }
+            for (unsigned shown = 0; shown < 2 && !pending_lines.empty(); ++shown) { console::info("%s\n", pending_lines.front().c_str()); pending_lines.pop_front(); }
             const auto print_dt = to_ns(qpc() - print_start);
             if (print_dt > print_max_ns) print_max_ns = print_dt;
             if (!selftest_modes.empty() && selftest_next < selftest_modes.size())
@@ -884,8 +916,8 @@ namespace paris_write_watch
                         const auto& x = sites[order[i]];
                         char place[96]{}, t[320]{};
                         locate(x.rip.load(), place, sizeof(place));
-                        std::snprintf(t, sizeof(t), "[WW] stats site rip=%s target=%s old=0x%llX new=0x%llX count=%llu first_tid=%u first_ms=%llu\n", place, targets[x.target_index].name,
-                            static_cast<unsigned long long>(x.old_value), static_cast<unsigned long long>(x.new_value), static_cast<unsigned long long>(x.count.load()), x.first_tid,
+                        std::snprintf(t, sizeof(t), "[WW] stats site rip=%s target=%s old=0x%llX new=0x%llX last_new=0x%llX count=%llu first_tid=%u first_ms=%llu\n", place, targets[x.target_index].name,
+                            static_cast<unsigned long long>(x.old_value), static_cast<unsigned long long>(x.new_value), static_cast<unsigned long long>(x.last_new.load()), static_cast<unsigned long long>(x.count.load()), x.first_tid,
                             static_cast<unsigned long long>(x.first_tick - first_tick));
                         text += t;
                     }
@@ -906,6 +938,7 @@ namespace paris_write_watch
         // ---- test commands (lab only) --------------------------------------------------------------------------------------------------------------
         __declspec(noinline) void test_store(volatile std::uint64_t* address, const std::uint64_t value) { *address = value; }
         static volatile int test_sink;
+        __declspec(noinline) void test_crash() { *reinterpret_cast<volatile int*>(0x10) = 1; }
         __declspec(noinline) void test_block(volatile void* address) { static void* (*volatile fill)(void*, int, std::size_t) = std::memset; fill(const_cast<void*>(address), 0, 64); test_sink = test_sink + 1; }
         // Taking a function's address can give an incremental-link thunk (jmp rel32): follow it; the size comes from the unwind data, or 0x30 for a leaf.
         const char* resolve_code(const void* function)
@@ -967,6 +1000,30 @@ namespace paris_write_watch
             const auto h0 = ring_head.load();
             const unsigned before = h0 < ring_size ? h0 : ring_size;
             add_event(("test " + mode).c_str(), mode.size() + 5);
+            if (mode == "crash")
+            {
+                console::info("[WW-TEST] crash: a write through a null pointer on the main thread now\n");
+                test_crash();
+                return;
+            }
+            if (mode == "scratch_values")
+            {
+                // 300 stores of 300 different values from one instruction: one site, a few records, 300 traps counted
+                const auto traps_before = traps_total.load();
+                const auto sites_before = site_total.load();
+                const auto logged_before = ring_head.load();
+                for (std::uint64_t v = 1; v <= 300; ++v) test_store(cell, 0x1000 + v);
+                test_store(cell, expect);
+                const auto traps = traps_total.load() - traps_before;
+                const auto new_sites = site_total.load() - sites_before;
+                const auto logged = ring_head.load() - logged_before;
+                char line[300]{};
+                std::snprintf(line, sizeof(line), "[WW-TEST] %s scratch_values: 301 stores of changing values from one instruction: %llu traps counted, %u new sites, %u records logged (a site is logged once per kind of value)\n",
+                    traps >= 301 && new_sites <= 3 && logged <= 3 ? "PASS" : "FAIL", static_cast<unsigned long long>(traps), new_sites, logged);
+                write_file(line);
+                console::info("%s", line);
+                return;
+            }
             test_capture.store(true);
             if (mode == "scratch_memset")
             {
@@ -1000,7 +1057,7 @@ namespace paris_write_watch
             const bool lab = utils::flags::has_flag("paris-isolated-lab");
             std::wstring value;
             argument(L"-paris-write-watch", value);
-            std::string list = value.empty() ? "hitresult" : std::string(value.begin(), value.end());
+            std::string list = value.empty() ? "hitresult4" : std::string(value.begin(), value.end());
             std::size_t start = 0;
             while (start <= list.size())
             {
