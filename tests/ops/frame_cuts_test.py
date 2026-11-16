@@ -7,7 +7,8 @@ Offline checks:
     and a jump straight to the original instructions; the slow path (pushad, exact map lookup) is unchanged;
   - every writer of the replace map marks the filter: replacefunc, and the cutscene overlay's redirect; the shutdown clear clears both;
   - G_LogPrintf keeps a fallback to the old write, and the component flushes once per server frame, at script shutdown and at exit;
-  - the build copies the sources, applies the overlay after the debugger overlay, and the debugger overlay takes the cuts out before its comparison.
+  - the build copies the sources, applies the overlay after the debugger overlay, and the debugger overlay takes the cuts out before its comparison
+    (the exports in product.json are checked by checks.ps1 itself; the prepared source workspace has no product.json).
 """
 import json
 import os
@@ -130,13 +131,6 @@ class Wiring(unittest.TestCase):
         text = read('ops', 'Apply-DebuggerOverlay.ps1')
         self.assertIn('FrameCuts.Core.ps1', text)
         self.assertLess(text.index('Remove-IW7FrameCutText $Relative $current $Commit'), text.index('if ($current -ne $base'))
-
-    def test_exports(self):
-        product = read('product.json')
-        for name in ('ops/Apply-FrameCutsOverlay.ps1', 'ops/FrameCuts.Core.ps1', 'ops/frame-cuts/frame-cut-edits.json', 'src/native/paris_vm_filter.hpp',
-                     'src/native/paris_log_stream.hpp', 'src/native/paris_log_stream.cpp', 'tests/native/vm_filter_test.cpp', 'tests/native/log_stream_test.cpp',
-                     'tests/ops/frame_cuts_test.py', 'tests/ops/frame_cuts_overlay_test.ps1'):
-            self.assertIn('"' + name + '"', product, name)
 
 
 if __name__ == '__main__':
