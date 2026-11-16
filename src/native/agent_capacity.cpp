@@ -5,6 +5,7 @@
 #include "scheduler.hpp"
 #include "console/console.hpp"
 #include "command.hpp"
+#include "avoidance_clip.hpp"
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <shellapi.h>
@@ -1169,10 +1170,12 @@ void unwind_probe_stub_a(void* a, std::intptr_t b, float* c, float* d) {
     if (unwind_probe_gate(0, "FUN_1403E5700")) return;
     unwind_probe_hook_a.invoke<void>(a, b, c, d);
 }
+char avoidance_clip_dispatch(void* a, std::intptr_t b, void* c, void* d);   // 5e: the replacement clip, or the shipped one while `-avoidance-stock`
 char unwind_probe_stub_b(void* a, std::intptr_t b, void* c, void* d) {
     if (unwind_probe_gate(1, "FUN_1403E6B10")) return 0;
-    return unwind_probe_hook_b.invoke<char>(a, b, c, d);
+    return avoidance_clip_dispatch(a, b, c, d);
 }
+bool unwind_probe_armed{};
 void plan_unwind_probe() {
     auto seconds = parse_count(L"-agent-capacity-unwind-probe", 60);
     wchar_t from_env[16]{};
@@ -1180,6 +1183,7 @@ void plan_unwind_probe() {
         seconds = static_cast<std::uint32_t>(std::wcstoul(from_env, nullptr, 10));
     if (!seconds) return;
     unwind_probe_seconds = seconds;
+    unwind_probe_armed = true;
     unwind_probe_hook_a.create(0x1403E5700, unwind_probe_stub_a);   // queued: main applies every queued hook after post_unpack
     unwind_probe_hook_b.create(0x1403E6B10, unwind_probe_stub_b);
     // the lab plan times the error itself: `agent_capacity_unwind_probe <s>` (a plan `cmd` step) sets the due time to now + s seconds, whatever
@@ -1191,6 +1195,73 @@ void plan_unwind_probe() {
             unwind_probe_calls[0].load(), unwind_probe_calls[1].load());
     });
     console::info("[agent capacity] unwind probe armed: %u s after the first call of FUN_1403E5700 or FUN_1403E6B10\n", seconds);
+}
+
+// ---- 5e. the avoidance solver's polygon clip with no 32 vertex bound (a75) -------------------------------------------------------------------------
+// FUN_1403E61B0 is the avoidance solver of one agent: a polygon of 4 box corners clipped once per nearby sentient by FUN_1403E6B10, which writes its result into a 32
+// vertex local array right under its stack cookie (its capacity argument, 0x20, is never read). Stock holds 24 agents + 4 players + 4 = 32 sentients, 4 + 28 = 32 vertices:
+// the record count was the only bound. A raised capacity passes it two ways: parked agent records are active sentients at (0,0,0) and every one is an identical plane (a72,
+// four dumps: fast fail 2), and a really dense crowd has more than 28 obstacles in the 600 x 600 box. `avoidance_clip.hpp` is the clip with a workspace of the real maximum:
+// up to 32 vertices it leaves the caller's buffer exactly as the shipped function did (byte identical, tests/native/avoidance_clip_test.cpp, ops/engine/avoidance_clip.py);
+// past 32 the workspace holds the polygon, the caller's buffer its first 32 vertices and `*count` the true count. The only consumer of the polygon is FUN_1403E51C0
+// (one caller; FUN_1403E60B0 and FUN_1403E5380 below it read the polygon through its pointer and assume no size), hooked here to read the workspace's polygon when the
+// count is above 32 (a count above 32 that is not the workspace's polygon is clamped to 32 and counted). Both functions have one caller, FUN_1403E61B0, and its volatile
+// registers across the two clip calls and the consumer call are dead (read in the disassembly: loop registers are non-volatile, `al` is set by the clip), so a plain C++
+// replacement is safe without the a56 wrapper. Switches: `-avoidance-stock` (or IW7_AVOIDANCE_STOCK=1) leaves the shipped functions, `-avoidance-meter` (or IW7_AVOIDANCE_METER=1)
+// logs `[avoidance] {json}` every 10 s while the counters move.
+utils::hook::detour avoidance_clip_hook, avoidance_solve_hook;
+bool avoidance_on{}, avoidance_meter_on{};
+avoidance::stats avoidance_stats;
+std::atomic<std::uint64_t> avoidance_solves{}, avoidance_solves_big{}, avoidance_solves_unviewable{};
+bool env_switch(const char* flag, const wchar_t* env) {
+    if (utils::flags::has_flag(flag)) return true;
+    wchar_t v[8]{};
+    return GetEnvironmentVariableW(env, v, 8) && v[0] == L'1';
+}
+avoidance::workspace& avoidance_workspace() {
+    // one workspace a thread: the solver may run on more than one; sized for two entries a sentient slot (the entry array's capacity) plus the box and a margin
+    static thread_local avoidance::workspace ws(4 * L.sentient_slots() + 64);
+    return ws;
+}
+char avoidance_clip_stub(float* poly, int, int* count, const float* plane) {
+    return avoidance_workspace().clip(avoidance_stats, poly, count, plane);
+}
+char avoidance_clip_dispatch(void* a, std::intptr_t b, void* c, void* d) {
+    if (avoidance_on) return avoidance_clip_stub(static_cast<float*>(a), static_cast<int>(b), static_cast<int*>(c), static_cast<const float*>(d));
+    return unwind_probe_hook_b.invoke<char>(a, b, c, d);
+}
+void avoidance_solve_stub(void* self, void* config, float* poly, int count, void* out, void* callback) {
+    ++avoidance_solves;
+    if (count > avoidance::stock_vertices) {
+        ++avoidance_solves_big;
+        const float* whole = avoidance_workspace().view(poly, count);
+        if (whole) poly = const_cast<float*>(whole);
+        else { count = avoidance::stock_vertices; ++avoidance_solves_unviewable; }   // fail closed: stock code never reads past the caller's 32 vertices
+    }
+    avoidance_solve_hook.invoke<void>(self, config, poly, count, out, callback);
+}
+void avoidance_meter() {
+    static std::uint64_t last_calls{}, last_solves{};
+    const auto calls = avoidance_stats.calls.load(), solves = avoidance_solves.load();
+    if (calls == last_calls && solves == last_solves) return;
+    last_calls = calls; last_solves = solves;
+    console::info("[avoidance] {\"calls\":%llu,\"solves\":%llu,\"max_vertices\":%u,\"max_input\":%u,\"over_stock\":%llu,\"solves_big\":%llu,\"truncated\":%llu,\"inconsistent\":%llu,\"unviewable\":%llu}
+",
+        static_cast<unsigned long long>(calls), static_cast<unsigned long long>(solves), avoidance_stats.max_vertices.load(), avoidance_stats.max_input.load(),
+        static_cast<unsigned long long>(avoidance_stats.over_stock.load()), static_cast<unsigned long long>(avoidance_solves_big.load()),
+        static_cast<unsigned long long>(avoidance_stats.truncated.load()), static_cast<unsigned long long>(avoidance_stats.inconsistent.load()),
+        static_cast<unsigned long long>(avoidance_solves_unviewable.load()));
+}
+void plan_avoidance() {
+    avoidance_meter_on = env_switch("avoidance-meter", L"IW7_AVOIDANCE_METER");
+    avoidance_on = !env_switch("avoidance-stock", L"IW7_AVOIDANCE_STOCK");
+    if (!avoidance_on) { console::info("[agent capacity] avoidance clip: shipped functions kept (-avoidance-stock)
+"); return; }
+    if (!unwind_probe_armed) avoidance_clip_hook.create(0x1403E6B10, avoidance_clip_stub);   // an armed unwind probe already detours it and calls the dispatch
+    avoidance_solve_hook.create(0x1403E51C0, avoidance_solve_stub);
+    if (avoidance_meter_on) scheduler::loop(avoidance_meter, scheduler::main, 10s);
+    console::info("[agent capacity] avoidance clip: polygon workspace of %u vertices a thread (stock 32), meter %s
+", 4 * L.sentient_slots() + 64, avoidance_meter_on ? "on" : "off");
 }
 
 // ---- 5d. lab-only probe of the rewind store (FUN_140415bf0+34) ----------------------------------------------------------------
@@ -1622,6 +1693,7 @@ public:
         death_reset_hook.create(0x140C3BDD0, death_reset_stub);
         link_mapents_hook.create(0x1403B8610, link_mapents_stub);
         plan_unwind_probe();
+        plan_avoidance();
         plan_rewind_probe();
         active = true;
         contract = "agents-" + std::to_string(L.agents);
