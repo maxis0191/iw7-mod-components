@@ -38,10 +38,12 @@ Inferred (not yet proven by a change): the table at `cg + 0x70950` (entry 0xC0 b
    again every 50 ms (`cg` moves at each map load) and re-arms all threads when it changed, and reads the registers of every thread back every
    `-paris-write-watch-sweep` ms (default 2000): a thread whose registers were reset is counted and armed again (`[WW] lost`). A slot that a thread already uses for another
    address is never taken. Threads that start and write within 100 ms of their start are not covered (the per-frame guard below is the backup).
-2. **Vectored exception handler** (first in the chain). It answers only `EXCEPTION_SINGLE_STEP` with one of our addresses in a set DR6 bit, clears that bit and continues.
-   It reads the value (old = the last value the trap saw, new = now). Unless the new value is the expected one (or `-paris-write-watch-all`), it stores a record in a
-   lock-free ring: thread, RIP, eight registers, the 16 bytes before RIP, an unwind of the stack (`RtlVirtualUnwind`) and a scan of the stack for return addresses that
-   follow a `call`. It never allocates, logs or takes a lock. A data breakpoint traps **after** the store: RIP is the instruction that follows it. For a block write
+2. **Vectored exception handler** (first in the chain). It answers only `EXCEPTION_SINGLE_STEP` with a set DR6 bit of a slot, clears that bit and continues (every such trap is swallowed: nothing else in the process sets
+   hardware breakpoints, and an unhandled single step would end the client, for example a stale register of a thread not yet re-armed after the target moved).
+   It reads the value (old = the last value the trap saw, new = now) and counts the trap against a **site**: (RIP, target, kind of the old value, kind of the new value), the kinds being the expected value, zero, or other (up to 64 sites; a store of changing
+   values from one instruction is one site). Only the first trap of a site, and only when the new value is not the expected one (or `-paris-write-watch-all`), is stored as a record in a
+   lock-free ring (512): thread, RIP, eight registers, the 16 bytes before RIP, an unwind of the stack (`RtlVirtualUnwind`) and a scan of the stack for return addresses that
+   follow a `call`. A full table counts and logs nothing more. The statistics line lists the eight busiest sites with their count and last value. It never allocates, logs or takes a lock. A data breakpoint traps **after** the store: RIP is the instruction that follows it. For a block write
    (memset, memcpy, `rep stos`) RIP is inside the block routine and the stack names the writer.
 3. **Output.** Each record is written at once to `iw7-mod/paris-write-watch/ww-<UTC time>-<pid>.log` by the helper thread (durable) and printed with the `[WW]` prefix by the
    main thread each frame, followed by the last console lines that mention a zone or a weapon (`Loading zone mp_weapon_world_...`: the engine's own text, taken by a hook of
@@ -64,10 +66,26 @@ Inferred (not yet proven by a change): the table at `cg + 0x70950` (entry 0xC0 b
 | `-paris-write-watch-no-hw`, `-paris-write-watch-no-guard` | only the guard, or only the hardware breakpoints |
 | `-paris-write-watch-selftest <modes>` | lab only: run the test writes by themselves 15 s after the first frame (modes below) |
 
-Lab only (`-paris-isolated-lab`): the console command `paris_ww_test <scratch\|scratch_thread\|scratch_memset\|real>` writes 0 into a watched cell from a function of the
+Names of the targets that are not given are `hitresult4`.
+
+Lab only (`-paris-isolated-lab`): the console command `paris_ww_test <scratch\|scratch_thread\|scratch_memset\|scratch_values\|real>` (and, for `-paris-write-watch-selftest`, `crash`) writes 0 into a watched cell from a function of the
 component (`test_store`; `test_block` calls `memset`) and judges the newest record: `[WW-TEST] PASS` when its RIP is inside `test_store` (a block write: when `test_block` is on its stack),
 `scratch_thread` writes from a thread created after the arming (and needs `tid` other than the main thread), `real` writes 0 into the real `cg+0x74278` of the running client for one instruction
 and writes the stock value back.
+
+`scratch_values` stores 300 different values from one instruction and passes when the watch counted the traps and logged at most three records; `crash` writes through a null pointer on the main thread (the crash
+handler then writes its dump: the launcher must wait for it and end the session as `client_crashed`).
+
+## Baseline: the writers a healthy session already shows (16 Nov 2026, `-agent-capacity 264`, `cg+0x74278`)
+
+| RIP | What | When |
+|---|---|---|
+| `game+0x6709A`, `game+0x67073` | constructor stores of the hit-result vtable (a base vtable `0x14143D6D0`, then `0x141440EE0`) | at each cg construction (map start), 4 to 6 times a session |
+| `game+0x16202D`, `game+0x161DBB` | the stock vtable written back by the hit-result constructor/destructor loop | same |
+| `game+0x12BFCD9` | block clear (the zero fill of `FUN_140240A00` before the constructor) | same |
+| `game+0x94A837`, `game+0x94A842` | **the per-frame stores of `FUN_140949810` through table entry 76 (see above): the finding** | every frame with a client info update, about 20 a second |
+
+A site outside this table in an owner log is a new writer.
 
 ## Reading a hit
 
@@ -84,7 +102,12 @@ and writes the stock value back.
 `FUN_140240A00` zero the whole `cg` block before constructing it (right after `cg[i]` is stored, before the helper arms), the constructors `FUN_140161E50` / `FUN_140161D80` write the stock value
 (not logged), the destructor `FUN_140161FA0` writes the stock value back (not logged).
 
-## Cost
+## Cost and coverage (measured, 16 Nov 2026)
 
-See the measured runs in the server repository's [ZOMBIE-CAPACITY](https://github.com/maxis0191/iw7-paris-server/blob/main/docs/ZOMBIE-CAPACITY.md), "Write watch". The per-frame guard is two small memory reads inside a structured-exception guard; the helper thread
-wakes every 50 ms; a trap costs one exception round trip (microseconds) and happens only when the watched qword is written.
+A Paris session of 917 s (662 s after the join) with `hitresult4` on a hidden lab client, `-agent-capacity 264`, a weapon churn: the helper thread 5.8 s of cpu in 668 s (0.9 % of one core: a thread scan with `NtGetNextThread` every 100 ms,
+every thread read back every 2 s), the guard 1.1 us a frame (max 10 ms, the frame of a map change), the handler body 0.7 us a trap (max 93 us) for 25,326 traps (38 a second, one writer of the engine), 84 threads, the console printing of a new
+record at most two lines a frame. The client frame rate was 62 (the launcher caps it at 60): a frame-time effect below the cap is not shown, and nothing is claimed about frame time. More in the server repository's
+[ZOMBIE-CAPACITY](https://github.com/maxis0191/iw7-paris-server/blob/main/docs/ZOMBIE-CAPACITY.md), 6f.
+
+Not covered: about 9 threads of the 84 deny `SuspendThread` (error 5; each is named once in the log with its start address and name) and cannot be armed, a thread that starts and writes within 100 ms, and writes made by the kernel or by another process.
+`lost` counted 0 to 8 threads per session (once, right after `cg` moved at a map start; the helper arms them again within one sweep; why they were reset is not determined).
