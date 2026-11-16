@@ -299,6 +299,33 @@ class AnimCache(unittest.TestCase):
         # the 193 buckets follow the head: 0x147994898 .. 0x147994EA0 (193 x 8 bytes)
         self.assertEqual(0x147994EA0 - 0x147994898, 193 * 8)
 
+    def test_the_anim_info_heap_init_is_the_seven_patched_fields(self):
+        """FUN_140D83DF0 (the XAnim anim-info heap init): the instructions the component retargets, decoded from the shipped bytes."""
+        cs = cp._cs()
+        raw = self.image.read(0x140D83DF0, 0x111)
+        ins = {i.address: i for i in cs.disasm(raw, 0x140D83DF0)}
+        def target(a):
+            i = ins[a]
+            m = next(o for o in i.operands if o.type == 3).mem
+            return i.address + i.size + m.disp
+        self.assertEqual(target(0x140D83E05), 0x147995420)                            # lea rax, [heap data]
+        self.assertEqual((ins[0x140D83E0C].operands[1].imm, target(0x140D83E0C)), (0x3FFC0, 0x147994EE0))   # mov dword [size], 0x3FFC0
+        self.assertEqual(target(0x140D83EB8), 0x1479953E0)                            # lea rax, [base]
+        self.assertEqual((ins[0x140D83EBF].operands[1].imm, target(0x140D83EBF)), (0x40000, 0x147994ED8))   # mov dword [total], 0x40000
+        for k, a in enumerate((0x140D83ED2, 0x140D83ED9, 0x140D83EE0, 0x140D83EE7)):
+            self.assertEqual(target(a), 0x147995400 + 8 * k)                         # the four zeroed qwords (units 2 and 3)
+        self.assertEqual(0x147995420 - 0x1479953E0, 0x40)
+        # the field offsets of the .cpp: the rip displacement of `lea rax,[rip+d]` sits 3 bytes in, the imm32 of `mov dword [rip+d], imm` 6 bytes in, the qword stores 3 bytes in
+        self.assertEqual((0x140D83E05 + 3, 0x140D83E0C + 6, 0x140D83EB8 + 3, 0x140D83EBF + 6), (0x140D83E08, 0x140D83E12, 0x140D83EBB, 0x140D83EC5))
+        self.assertEqual([a + 3 for a in (0x140D83ED2, 0x140D83ED9, 0x140D83EE0, 0x140D83EE7)], [0x140D83ED5, 0x140D83EDC, 0x140D83EE3, 0x140D83EEA])
+        hpp, cpp = open(HPP, encoding='utf-8').read(), open(CPP, encoding='utf-8').read()
+        self.assertIn('anim_info_stock_bytes = 0x40000, anim_info_heap_bytes = 0x100000, anim_info_header = 0x40;', hpp)
+        self.assertIn('anim_info_heap_bytes / 16 <= 0x10000', hpp)                     # the units are addressed by u16 indexes
+        for line in ('rip(0x140D83E08, anim_info_stock_heap, base + anim_info_header);', 'rip(0x140D83EBB, anim_info_stock_base, base);',
+                     'add(0x140D83E12, anim_info_stock_bytes - anim_info_header, anim_info_heap_bytes - anim_info_header);',
+                     'add(0x140D83EC5, anim_info_stock_bytes, anim_info_heap_bytes);', 'plan_anim_info();'):
+            self.assertIn(line, cpp)
+
     def test_the_hpp_and_the_component_extend_the_list_to_every_key(self):
         hpp, cpp = open(HPP, encoding='utf-8').read(), open(CPP, encoding='utf-8').read()
         self.assertIn('constexpr std::uintptr_t anim_cache_head = 0x147994890ull;', hpp)

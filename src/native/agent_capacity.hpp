@@ -252,6 +252,16 @@ constexpr std::uint32_t anim_cache_node_bytes = 0x360, anim_cache_stock_nodes = 
 constexpr std::uint32_t anim_cache_extra_nodes = dobj_records - anim_cache_stock_nodes;
 static_assert(anim_cache_extra_nodes == 1964 && anim_cache_node_bytes * dobj_records == 0x1B0000);
 
+// The XAnim anim-info heap (a57): every animated entity's animation state is chained from 16 byte "anim info" units of ONE static heap (0x147995420, 0x3FFC0 usable bytes
+// of 0x40000 = 16,384 units, initialised by FUN_140D83DF0; the units are addressed by u16 indexes from the base 0x1479953E0 = heap - 0x40). A client that animates about 250
+// agents runs out: FUN_140D72DB0 asks FUN_140D846B0 for a unit, gets 0 and calls the fatal "exceeded maximum number of anim info" (a message box that blocks the client's
+// main thread for good; run a57-hB: 250 alive agents, 220 in run a57-hA were fine). The heap becomes the largest the u16 index allows, 0x100000 bytes (65,536 units, 4x), in a new
+// block: the init's seven fields (heap start, usable bytes, base, total bytes and the four zeroed units) are retargeted. The heap object keeps its own bookkeeping inside the heap.
+constexpr std::uintptr_t anim_info_stock_heap = 0x147995420ull, anim_info_stock_base = 0x1479953E0ull;
+constexpr std::uint32_t anim_info_stock_bytes = 0x40000, anim_info_heap_bytes = 0x100000, anim_info_header = 0x40;
+static_assert(anim_info_stock_heap - anim_info_stock_base == anim_info_header && anim_info_heap_bytes / 16 <= 0x10000 && anim_info_heap_bytes % 16 == 0 &&
+              anim_info_stock_bytes - anim_info_header == 0x3FFC0);
+
 constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
     layout l{};
     l.agents = agents; l.characters = players + agents;

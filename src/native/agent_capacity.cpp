@@ -31,7 +31,7 @@ std::string contract = "24";
 
 struct buffer { std::uintptr_t data{}; std::size_t bytes{}; };
 buffer reserve_code(std::size_t bytes);
-buffer agent_pool, sentient_pool, sentient_refs, table8, table20, parts_pool, entity_queue;
+buffer agent_pool, sentient_pool, sentient_refs, table8, table20, parts_pool, entity_queue, anim_info_heap;
 buffer state_a, state_c, state_client, state_x;   // replicated scriptable state (section 4b)
 buffer pool_server[stream_pool_classes], pool_client[stream_pool_classes];   // scriptable stream buffer pools (section 4d)
 buffer proxy_list;   // the client's character proxy list tables (section 4e)
@@ -441,6 +441,21 @@ void plan_parts() {
     rip(0x140BFA40F, 0x1460B22F0, parts_pool.data);
     rip(0x140BF6FF8, 0x1460B22F0, parts_pool.data); add(0x140BF6FFD, stock_parts * 4, l.parts * 4);
     rip(0x140BF731C, 0x1460B22F0, parts_pool.data); add(0x140BF7321, stock_parts * 4, l.parts * 4);
+}
+
+// ---- 4a2. the XAnim anim-info heap (a57, see anim_info_heap_bytes in the hpp) ---------------------------------------------------------------------
+// FUN_140D83DF0 builds it at start: `lea rax,[heap data]`, `mov dword [size], 0x3FFC0`, `lea rax,[base]`, `mov dword [total], 0x40000` and four zero qword stores over the
+// units 2 and 3 (base + 0x20..0x38). Seven fields, no cave.
+void plan_anim_info() {
+    const auto base = anim_info_heap.data;
+    rip(0x140D83E08, anim_info_stock_heap, base + anim_info_header);
+    add(0x140D83E12, anim_info_stock_bytes - anim_info_header, anim_info_heap_bytes - anim_info_header);
+    rip(0x140D83EBB, anim_info_stock_base, base);
+    add(0x140D83EC5, anim_info_stock_bytes, anim_info_heap_bytes);
+    rip(0x140D83ED5, 0x147995400, base + 0x20);
+    rip(0x140D83EDC, 0x147995408, base + 0x28);
+    rip(0x140D83EE3, 0x147995410, base + 0x30);
+    rip(0x140D83EEA, 0x147995418, base + 0x38);
 }
 
 // ---- 4b. replicated scriptable state: the 1,016 dword budget (a39) ------------------------------------------------------------
@@ -1558,6 +1573,7 @@ public:
         table20 = reserve(L.table20_bytes());
         parts_pool = reserve(L.parts * 4);
         entity_queue = reserve(L.queue_bytes());
+        anim_info_heap = reserve(anim_info_heap_bytes);
         state_a = reserve(L.state_bytes());
         state_c = reserve(L.state_list_bytes());
         state_client = reserve(2 * (L.state_bytes() + 8));   // the two static client blocks with their 8 byte trailers (stock stride 0x17F0)
@@ -1567,6 +1583,7 @@ public:
         plan_archive();
         plan_client();
         plan_parts();
+        plan_anim_info();
         plan_state();
         plan_pools();
         plan_proxy_list();
@@ -1600,6 +1617,8 @@ public:
             // after the static initialisers chained the stock 64: add room for every sentient slot twice over
             extend_free_list(0x143C1A580, 0x810, 2 * L.sentient_slots());
             extend_free_list(0x143BFA140, 0x30, 2 * L.sentient_slots());
+            console::info("[agent capacity] anim info heap: %u usable bytes at %llX (stock 0x3FFC0 at 0x147995420), index base %llX\n", *reinterpret_cast<std::uint32_t*>(0x147994EE0ull),
+                static_cast<unsigned long long>(*reinterpret_cast<std::uintptr_t*>(0x147994EE8ull)), static_cast<unsigned long long>(*reinterpret_cast<std::uintptr_t*>(0x147994ED0ull)));
             // the saved animation cache: 84 nodes for 2,048 possible keys (see anim_cache_head in the hpp)
             extend_free_list(anim_cache_head, anim_cache_node_bytes, anim_cache_extra_nodes);
             // G_GetMaxAgents reads scr_<gametype>_maxagents, else scr_default_maxagents: make the default the new count.
