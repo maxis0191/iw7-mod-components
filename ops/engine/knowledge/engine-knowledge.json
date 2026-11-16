@@ -596,7 +596,7 @@
   },
   {
    "address": "140C68A34",
-   "text": "per-snapshot entity cap [0x146B3985C] = 768 set by SV snapshot init; checked in 0x140C67230 at 0x140C67478 (count >= cap): sv_errorOnMaxSnapshotEntities (dvar 0x146B2D240, default 0) -> ERR_DROP EXE_DISCONNECTED; else unless sv_sendOverMaxSnapshotEntities (0x146B2D248, default 0) the list is closed (write 0x7FF in 11 bits at 0x140C6764B): entities past 768 are silently NOT SENT. NOT patched by PR137",
+   "text": "per-snapshot entity cap [0x146B3985C] = 768 set by SV snapshot init; checked in 0x140C67230 at 0x140C67478 (count >= cap): sv_errorOnMaxSnapshotEntities (dvar 0x146B2D240, registered by FUN_140C55310 with default 1 = TRUE, \"end the game when reaching MAX_SNAPSHOT_ENTITIES\") -> ERR_DROP: the match ends for everyone at the 769th entity (run a49-c3g-old: ShutdownGame at 400 flooded models); only with that dvar 0 and sv_sendOverMaxSnapshotEntities (0x146B2D248, default 1) 0 is the list closed (write 0x7FF in 11 bits at 0x140C6764B) and the rest silently not sent. a49: the cap is 2048 with -agent-capacity (agent_capacity_snapshot.inc), see docs/AGENT-CAPACITY-ENGINE.md \"Snapshot entities\". The first version of this note said default 0 for both dvars: wrong",
    "by": "zombie-limits",
    "date": "2026-11-12",
    "tag": "limit",

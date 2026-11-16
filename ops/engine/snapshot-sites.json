@@ -1,0 +1,355 @@
+{
+ "schema": "iw7.snapshot-sites/1",
+ "other_0x4ab8": {
+  "0x1400a9db6": "FUN_1400A9BB0 struct copy (movups of another object)",
+  "0x1400a9fdb": "FUN_1400A9F30 struct copy",
+  "0x1400aa04e": "FUN_1400A9F30 struct copy",
+  "0x1400aa0da": "FUN_1400A9F30 struct copy",
+  "0x1400b5732": "FUN_1400B2FD0 net field table (a field offset 0x4AB8 of a state struct)",
+  "0x1400b92a2": "FUN_1400B6B40 net field table",
+  "0x1402564ea": "FUN_1402560F0 clear of a state struct",
+  "0x140416625": "FUN_140416610 struct copy",
+  "0x14047a784": "FUN_14047A740 struct copy",
+  "0x1404928ba": "FUN_140492790 field of a state struct",
+  "0x140492fec": "FUN_140492E50 field of a state struct",
+  "0x1408d40bf": "FUN_1408D3ED0 copy of playerstate-like fields (0x4AA4..0x4ABC next to 0x491A0)",
+  "0x140909699": "FUN_1409095F0 playerstate-like copy",
+  "0x140afaba1": "FUN_140AFAB30 struct copy",
+  "0x140b68222": "FUN_140B68200 field of a state struct",
+  "0x140b683be": "FUN_140B68340 field of a state struct",
+  "0x140b689f2": "FUN_140B68340 field of a state struct",
+  "0x14c2f176c": "data decoded as code (`enter`)"
+ },
+ "rows": [
+  {
+   "at": 5370933580,
+   "field": 5370933583,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea r14, [rax + 0x4ab8]",
+   "bytes": "4c8db0b84a0000",
+   "why": "unmapped function 0x14021F124 (FUN_1402E2AD0 result, loop over numEntities)"
+  },
+  {
+   "at": 5371296377,
+   "field": 5371296380,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rdi, [rax + 0x4ab8]",
+   "bytes": "488db8b84a0000",
+   "why": "FUN_140277A10"
+  },
+  {
+   "at": 5372178972,
+   "field": 5372178975,
+   "width": 4,
+   "stock": 600,
+   "op": "client_ring",
+   "text": "imul eax, r8d, 0x258",
+   "bytes": "4169c058020000",
+   "why": "FUN_14034F1D0: `imul eax, r8d, 0x258` = the client parsed-entity ring, frames x 600 records (cl+0x11C08)"
+  },
+  {
+   "at": 5372183745,
+   "field": 5372183746,
+   "width": 4,
+   "stock": 278528,
+   "op": "records_bytes",
+   "text": "mov edx, 0x44000",
+   "bytes": "ba00400400",
+   "why": "FUN_14034F3E0: `mov edx, 0x44000` = alloc of the client baseline array, 0x400 x 0x110 (DAT_1421EDA60)"
+  },
+  {
+   "at": 5372183750,
+   "field": 5372183756,
+   "width": 4,
+   "stock": 768,
+   "op": "cap",
+   "text": "mov dword ptr [rip + 0x1e9d59c], 0x300",
+   "bytes": "c7059cd5e90100030000",
+   "why": "FUN_14034F3E0: DAT_1421EDA6C = 0x300 (the most records CL_ParseSnapshot copies into the cgame snapshot)"
+  },
+  {
+   "at": 5372183766,
+   "field": 5372183772,
+   "width": 4,
+   "stock": 1024,
+   "op": "cap",
+   "text": "mov dword ptr [rip + 0x1e9d588], 0x400",
+   "bytes": "c70588d5e90100040000",
+   "why": "FUN_14034F3E0: DAT_1421EDA68 = 0x400 (the client baseline array capacity, FUN_1409AD830 clears it)"
+  },
+  {
+   "at": 5373994400,
+   "field": 5373994403,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "add r14, 0x4ab8",
+   "bytes": "4981c6b84a0000",
+   "why": "FUN_140509590 (add r14, 0x4AB8)"
+  },
+  {
+   "at": 5374770056,
+   "field": 5374770059,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rsi, [r14 + 0x4ab8]",
+   "bytes": "498db6b84a0000",
+   "why": "FUN_1405C6B60"
+  },
+  {
+   "at": 5375541863,
+   "field": 5375541866,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rbx, [rax + 0x4ab8]",
+   "bytes": "488d98b84a0000",
+   "why": "FUN_140684140"
+  },
+  {
+   "at": 5376425989,
+   "field": 5376425992,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rdi, [rax + 0x4ab8]",
+   "bytes": "488db8b84a0000",
+   "why": "FUN_14075BFE0"
+  },
+  {
+   "at": 5376567238,
+   "field": 5376567241,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rax, [r15 + 0x4ab8]",
+   "bytes": "498d87b84a0000",
+   "why": "FUN_14077E630"
+  },
+  {
+   "at": 5376743270,
+   "field": 5376743273,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rdi, [r15 + 0x4ab8]",
+   "bytes": "498dbfb84a0000",
+   "why": "FUN_1407A75F0"
+  },
+  {
+   "at": 5376747735,
+   "field": 5376747738,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "add rsi, 0x4ab8",
+   "bytes": "4881c6b84a0000",
+   "why": "FUN_1407A98A0 (add rsi, 0x4AB8)"
+  },
+  {
+   "at": 5377233701,
+   "field": 5377233704,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rdi, [rax + 0x4ab8]",
+   "bytes": "488db8b84a0000",
+   "why": "FUN_140821300"
+  },
+  {
+   "at": 5377289720,
+   "field": 5377289723,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "add rdi, 0x4ab8",
+   "bytes": "4881c7b84a0000",
+   "why": "FUN_14082EDC0 (add rdi, 0x4AB8)"
+  },
+  {
+   "at": 5377381215,
+   "field": 5377381218,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rdi, [rax + 0x4ab8]",
+   "bytes": "488db8b84a0000",
+   "why": "FUN_140845330"
+  },
+  {
+   "at": 5377555561,
+   "field": 5377555564,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea r14, [rax + 0x4ab8]",
+   "bytes": "4c8db0b84a0000",
+   "why": "CG_SetNextSnap FUN_14086FBA0"
+  },
+  {
+   "at": 5377555724,
+   "field": 5377555727,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rbx, [rax + 0x4ab8]",
+   "bytes": "488d98b84a0000",
+   "why": "CG_SetNextSnap"
+  },
+  {
+   "at": 5377557581,
+   "field": 5377557584,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea r15, [rsi + 0x4ab8]",
+   "bytes": "4c8dbeb84a0000",
+   "why": "CG_SetNextSnap"
+  },
+  {
+   "at": 5377557946,
+   "field": 5377557950,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea r14, [r12 + 0x4ab8]",
+   "bytes": "4d8db424b84a0000",
+   "why": "CG_SetNextSnap"
+  },
+  {
+   "at": 5377568252,
+   "field": 5377568255,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea r15, [rsi + 0x4ab8]",
+   "bytes": "4c8dbeb84a0000",
+   "why": "FUN_140871AF0"
+  },
+  {
+   "at": 5377570021,
+   "field": 5377570024,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rbx, [rax + 0x4ab8]",
+   "bytes": "488d98b84a0000",
+   "why": "FUN_1408734C0"
+  },
+  {
+   "at": 5377570646,
+   "field": 5377570649,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rbx, [rdi + 0x4ab8]",
+   "bytes": "488d9fb84a0000",
+   "why": "FUN_140873530"
+  },
+  {
+   "at": 5378749064,
+   "field": 5378749067,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea rcx, [r14 + 0x4ab8]",
+   "bytes": "498d8eb84a0000",
+   "why": "CL_ParseSnapshot FUN_140992000: copy of the parsed records into the cgame snapshot"
+  },
+  {
+   "at": 5378749210,
+   "field": 5378749213,
+   "width": 4,
+   "stock": 19128,
+   "op": "entity_offset",
+   "text": "lea r11, [r14 + 0x4ab8]",
+   "bytes": "4d8d9eb84a0000",
+   "why": "CL_ParseSnapshot FUN_140992000: the same copy, baseline path"
+  },
+  {
+   "at": 5381720250,
+   "field": 5381720253,
+   "width": 4,
+   "stock": 278528,
+   "op": "records_bytes",
+   "text": "imul edx, r15d, 0x44000",
+   "bytes": "4169d700400400",
+   "why": "FUN_140C68880 (server hunk size): clients x 0x400 x 0x110, the per client part of the ring"
+  },
+  {
+   "at": 5381720257,
+   "field": 5381720259,
+   "width": 4,
+   "stock": 713728,
+   "op": "frame_bytes",
+   "text": "imul ecx, ebx, 0xae400",
+   "bytes": "69cb00e40a00",
+   "why": "FUN_140C68880: frames x 0xA40 x 0x110, the per frame part of the ring"
+  },
+  {
+   "at": 5381720549,
+   "field": 5381720550,
+   "width": 4,
+   "stock": 282624,
+   "op": "baseline_bytes",
+   "text": "add eax, 0x45000",
+   "bytes": "0500500400",
+   "why": "FUN_140C68880: list B 0x400 x 0x110 (0x44000) + the 0xFF8 block (0x1000)"
+  },
+  {
+   "at": 5381720616,
+   "field": 5381720622,
+   "width": 4,
+   "stock": 1024,
+   "op": "cap",
+   "text": "mov dword ptr [rip + 0x5ed0e26], 0x400",
+   "bytes": "c705260eed0500040000",
+   "why": "SV_InitSnapshotBufferSizes: DAT_146B39858 = 0x400 (list A cap, FUN_140C64310 / FUN_140C67F50)"
+  },
+  {
+   "at": 5381720628,
+   "field": 5381720634,
+   "width": 4,
+   "stock": 768,
+   "op": "cap",
+   "text": "mov dword ptr [rip + 0x5ed0e1e], 0x300",
+   "bytes": "c7051e0eed0500030000",
+   "why": "SV_InitSnapshotBufferSizes: DAT_146B3985C = 0x300 (sv_maxSnapshotEntities, checked at 0x140C67478)"
+  },
+  {
+   "at": 5381720655,
+   "field": 5381720657,
+   "width": 1,
+   "stock": 10,
+   "op": "client_shift",
+   "text": "shl eax, 0xa",
+   "bytes": "c1e00a",
+   "why": "SV_InitSnapshotBufferSizes: `shl eax, 0xA` = clients x 0x400 (the per client room of the entity ring)"
+  },
+  {
+   "at": 5381720658,
+   "field": 5381720661,
+   "width": 4,
+   "stock": 2624,
+   "op": "frame_term",
+   "text": "imul r8d, ecx, 0xa40",
+   "bytes": "4469c1400a0000",
+   "why": "SV_InitSnapshotBufferSizes: `imul r8d, ecx, 0xA40` = frames x 0xA40 (the per frame room of the ring DAT_146B39810)"
+  },
+  {
+   "at": 5381720675,
+   "field": 5381720681,
+   "width": 4,
+   "stock": 1024,
+   "op": "cap",
+   "text": "mov dword ptr [rip + 0x5ed0df3], 0x400",
+   "bytes": "c705f30ded0500040000",
+   "why": "SV_InitSnapshotBufferSizes: DAT_146B39860 = 0x400 (list B cap, the baselines; FUN_140C647A0, alloc imul 0x110)"
+  }
+ ]
+}
