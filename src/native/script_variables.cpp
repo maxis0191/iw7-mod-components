@@ -464,7 +464,8 @@ void meter_stub() {
     // sub dword [rip + counter], 1 ; jz slow ; back: <stock first instruction> ; jmp FindVariable + 5 ; slow: save, call meter_sample, restore, jmp back
     static const std::uint8_t first[] = {0x48, 0x89, 0x5C, 0x24, 0x08};
     readable(find_variable, 5);
-    meter = reinterpret_cast<meter_state*>(code_alloc(sizeof(meter_state)));
+    // a page of its own, not executable: a store into the page of running code flushes the pipeline (measured: 0.8 ns a call with the counter in its own page, ~300 ns in the page of the stub)
+    meter = reinterpret_cast<meter_state*>(reserve(sizeof(meter_state)).data);
     std::memset(meter, 0, sizeof(meter_state));
     meter->countdown = meter_period;
     auto* at = code_alloc(sizeof(save_all) + sizeof(restore_all) + 80);
