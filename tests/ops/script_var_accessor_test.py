@@ -105,6 +105,13 @@ class Wiring(unittest.TestCase):
         # after the code patches: an install before a failed write would leave the accessors on tables that were not used
         self.assertLess(text.index('write(plan[applied], false)'), text.index('script_var_layout::install'))
 
+    def test_refusal_text_is_one_line(self):
+        # a string literal broken by a raw newline stops the compile (a48 build 1)
+        for line in read(CPP).split('
+'):
+            if 'accessor refused' in line:
+                self.assertTrue(line.rstrip().endswith('};'), line)
+
     def test_header_stock_row_is_the_engines(self):
         header = read(HPP)
         self.assertIn('stock{0x146691180ull, 0x1466FF180ull, 0x146756180ull, 0xDC00, 0xA000, false}', header)

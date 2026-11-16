@@ -203,8 +203,7 @@ public:
             }
         if (initialised) reinterpret_cast<void (*)()>(0x140C09280ull)();   // the stock tables were already formatted: format the new ones
         // the client project's accessors (scripting::array, entity fields) follow the moved tables; an id outside them is refused and logged once
-        script_var_layout::refusal_log() = [](const char* what) { console::error("[script variables] accessor refused: %s
-", what); };
+        script_var_layout::refusal_log() = [](const char* what) { console::error("[script variables] accessor refused: %s\n", what); };
         script_var_layout::install({regions[2].storage.data, regions[3].storage.data, regions[4].storage.data, parent_ids, child_entries, true});
         active = true;
         scheduler::once([initialised, poisoned] {
