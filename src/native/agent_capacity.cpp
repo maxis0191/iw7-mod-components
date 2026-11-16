@@ -1600,6 +1600,8 @@ public:
             // after the static initialisers chained the stock 64: add room for every sentient slot twice over
             extend_free_list(0x143C1A580, 0x810, 2 * L.sentient_slots());
             extend_free_list(0x143BFA140, 0x30, 2 * L.sentient_slots());
+            // the saved animation cache: 84 nodes for 2,048 possible keys (see anim_cache_head in the hpp)
+            extend_free_list(anim_cache_head, anim_cache_node_bytes, anim_cache_extra_nodes);
             // G_GetMaxAgents reads scr_<gametype>_maxagents, else scr_default_maxagents: make the default the new count.
             const auto value = std::to_string(L.agents);
             game::Dvar_RegisterString("scr_default_maxagents", value.data(), game::DVAR_FLAG_NONE, "Agents this server can hold");

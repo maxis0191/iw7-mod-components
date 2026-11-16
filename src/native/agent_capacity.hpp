@@ -242,6 +242,16 @@ static_assert(proxy_list_entries == 2035 && proxy_list_entries % 5 == 0 && proxy
               proxy_frame_extra % 16 == 0 && proxy_frame_shift == 7584 && proxy_frame_extra == 37904 && 4 * stock_proxy_entries == 0x230 &&
               proxy_entry_bytes == 120);
 
+// The saved animation cache (a57): a hash map of 193 buckets (0x147994898) from a DObj index (the key, FUN_140bb16d0: the index of a 0x110 byte DObj record, 2,048 of
+// them) to a saved animation state; its nodes of 0x360 bytes come from ONE static pool of 84 chained by a static initialiser (0x14001AE20, free list head 0x147994890, an
+// empty list ends at the head's own address). The insert (FUN_140d815a0, 0x140D818xx: pop the head, no emptiness check) took the head variable itself as a node when the
+// 85th key was saved and wrote the key and the state over the first buckets: the walk of the chain (FUN_140d80d60) then read a garbage pointer (runs a57-m264 and m232: the
+// 84th ghost). One node a key at most, so 2,048 nodes cover every key; the extra nodes are appended to the free list at start like the two pools of plan_3c.
+constexpr std::uintptr_t anim_cache_head = 0x147994890ull;
+constexpr std::uint32_t anim_cache_node_bytes = 0x360, anim_cache_stock_nodes = 84, dobj_records = 2048;
+constexpr std::uint32_t anim_cache_extra_nodes = dobj_records - anim_cache_stock_nodes;
+static_assert(anim_cache_extra_nodes == 1964 && anim_cache_node_bytes * dobj_records == 0x1B0000);
+
 constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
     layout l{};
     l.agents = agents; l.characters = players + agents;

@@ -272,5 +272,41 @@ class PoolCode(unittest.TestCase):
                 self.assertEqual(stride - array_bytes(n, c), 8, 'slot 1 starts right after slot 0 head')
 
 
+class AnimCache(unittest.TestCase):
+    """The saved animation cache (a57): the stock pool of 84 nodes of 0x360 bytes, chained by the static initialiser at 0x14001AE20, and the extension."""
+
+    def setUp(self):
+        self.image, self.source = st.find_image()
+        if self.image is None:
+            self.skipTest('no unpacked code files or analysed image on this machine')
+
+    def test_the_stock_pool_is_84_nodes_of_0x360_bytes_ending_at_the_head(self):
+        raw = self.image.read(0x14001AE20, 0x40)
+        cs = cp._cs()
+        ins = list(cs.disasm(raw, 0x14001AE20))
+        # lea rax,[head]; lea rcx,[head]; lea rdx,[limit]; ...; sub rax,0x360; mov [rax],rcx; mov rcx,rax; cmp rax,rdx; ja
+        self.assertEqual([i.mnemonic for i in ins[:3]], ['lea', 'lea', 'lea'])
+        target = lambda i: i.address + i.size + i.operands[1].mem.disp
+        head, limit = target(ins[0]), target(ins[2])
+        self.assertEqual(target(ins[1]), head)
+        self.assertEqual(head, 0x147994890)
+        sub = next(i for i in ins if i.mnemonic == 'sub')
+        self.assertEqual((sub.op_str, sub.operands[1].imm), ('rax, 0x360', 0x360))
+        self.assertEqual([i.mnemonic for i in ins[5:9]], ['mov', 'mov', 'cmp', 'ja'])
+        nodes = -(-(head - limit) // 0x360)
+        self.assertEqual(nodes, 84)
+        self.assertEqual(head - nodes * 0x360, limit)
+        # the 193 buckets follow the head: 0x147994898 .. 0x147994EA0 (193 x 8 bytes)
+        self.assertEqual(0x147994EA0 - 0x147994898, 193 * 8)
+
+    def test_the_hpp_and_the_component_extend_the_list_to_every_key(self):
+        hpp, cpp = open(HPP, encoding='utf-8').read(), open(CPP, encoding='utf-8').read()
+        self.assertIn('constexpr std::uintptr_t anim_cache_head = 0x147994890ull;', hpp)
+        self.assertIn('constexpr std::uint32_t anim_cache_node_bytes = 0x360, anim_cache_stock_nodes = 84, dobj_records = 2048;', hpp)
+        self.assertIn('anim_cache_extra_nodes = dobj_records - anim_cache_stock_nodes;', hpp)
+        self.assertIn('extend_free_list(anim_cache_head, anim_cache_node_bytes, anim_cache_extra_nodes);', cpp)
+        self.assertEqual(2048 - 84, 1964)
+
+
 if __name__ == '__main__':
     unittest.main()
