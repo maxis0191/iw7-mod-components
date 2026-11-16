@@ -337,10 +337,15 @@ def imm_rows(ins_list, walk, md, vm_function):
                     out.append(dict(at=ins.address, field=field, op='p4_bytes', stock=value))
                 elif value == 0x1B800 and mn == 'mov':
                     out.append(dict(at=ins.address, field=field, op='p2_bytes', stock=value))
+                elif value == 0xFB23FF and mn == 'cmp':
+                    out.append(dict(at=ins.address, field=field, op='int_high', stock=value))
                 elif value == 0xCCCCCCCD and mn == 'mov':
                     nxt = ' | '.join(i.mnemonic + ' ' + i.op_str for i in ins_list[k + 1:k + 8])
                     if 'mul' in nxt and 'shr edx, 0xf' in nxt:
                         out.append(dict(at=ins.address, field=field, op='recip', stock=value))
+            elif kind == 'disp' and value == 0x7B2400 and ins.mnemonic == 'lea' and m.base != 0 and m.index == 0:
+                # integer key range check `lea eax,[rdx+0x7B2400]; cmp eax,0xFB23FF; ja`: integer key names n + 0x800000 start at the object key bound
+                out.append(dict(at=ins.address, field=field, op='int_low', stock=value))
             elif kind == 'disp' and value == 0xC500 and ins.mnemonic == 'lea' and m.base != 0 and m.index == 0:
                 nxt = ins_list[k + 1] if k + 1 < len(ins_list) else None
                 if nxt is not None and nxt.mnemonic == 'lea' and '*2' in nxt.op_str:
@@ -483,7 +488,7 @@ def check(args):
     return 1 if bad else 0
 
 
-OPS = ['hash_half', 'child_bound', 'parent_bound', 'name_bound', 'recip', 'p4_bytes', 'p2_bytes', 'idiom16']
+OPS = ['hash_half', 'child_bound', 'parent_bound', 'name_bound', 'recip', 'p4_bytes', 'p2_bytes', 'idiom16', 'int_low', 'int_high']
 REGION_INDEX = {'A': 0, 'B': 1, 'P8': 2, 'P4': 3, 'CH': 4}
 
 
@@ -509,12 +514,178 @@ def emit(args):
     print('wrote', len(ref_lines), 'refs', len(imm_lines), 'imms', len(lea_lines), 'pairs to', args.o)
 
 
+# ------------------------------------------------------------------------------------------------ parent ids beyond u16 (a56)
+# Stage 2: an id is 4 x local + segment (segment = id & 3), 18 bits; the u16 fields that held a whole id hold the LOCAL index (id >> 2) and the
+# segment is taken from where the entry lives. `parents` finds every site of the kinds below, prints them, and (with -o) writes the cave requests.
+THREAD_FUNCS = (0x140C0ACD0, 0x140C0AF90, 0x140C0AC80, 0x140B516C0, 0x140B516F0, 0x140B51730)   # return a thread id (a u16 holder follows): Scr_ExecThread, Scr_ExecEntThread and its wrappers
+ALLOC_CLASSES = {      # allocation sites whose id is held in a u16 outside the pool code: they take ids below 0x10000 (the low pool)
+    0x140C043C5: 'AllocThread of FUN_140C043A0 (thread object, id returned as u16 by Scr_ExecEntThread, held in u16 fields of two game structs)',
+    0x140C0458D: 'AllocThread (thread object, id returned as u16 by Scr_ExecThread)',
+    0x140C096C6: 'FUN_140C096B0 class array (id stored in the u16 table 0x141BBA600)',
+    0x140C096EF: 'FUN_140C096B0 class array (id stored in the u16 table 0x141BBA600)',
+    0x140C0900B: 'Scr_GetEntityId (entity object; the dead entity chain BLK0+0x2C links them through P8 +2, u16)',
+    0x140C04559: 'FUN_140C04550 struct (type 0x13: a thread may run on a struct, its self is a u16 in the thread object)',
+    0x140C059B8: 'FUN_140C05990 struct (type 0x13)',
+    0x140C090B0: 'FUN_140C09080 struct (type 0x13)',
+    0x140C04523: 'FUN_140C04510 entity object with its class (type 0x12; +2 holds the entity number, a thread may run on it)',
+}
+CLIENT_ARRAY_CALLS = (0x140C4F64E, 0x140C503EF)    # call Scr_AllocArray, result `mov word [client + 0x9F352], ax`
+FREE_FUNCS = {0x140C04650: 'AllocVariable (pop)', 0x140C04910: 'release with children (push)', 0x140C05C50: 'release (push)',
+              0x140C05CA0: 'RemoveRefToObject (push in its tail 0x140C05D70..0x140C05D9D)', 0x140C08E70: 'release all structs (push)',
+              0x140C09200: 'list initialiser', 0x140C08C30: 'list rebuild (save game loading only)'}
+
+
+def key_builders_in(ins_list):
+    """`shl r,0x10` whose register is a copy of a register that is the source of `imul x, parent, 0x65` (the hash) in the same function."""
+    from capstone import x86_const as X
+    srcs, out = set(), []
+    for ins in ins_list:
+        if ins.mnemonic == 'imul' and len(ins.operands) == 3 and ins.operands[2].type == X.X86_OP_IMM and ins.operands[2].imm == 0x65 and ins.operands[1].type == X.X86_OP_REG:
+            srcs.add(FULL.get(ins.reg_name(ins.operands[1].reg)))
+    if not srcs:
+        return out
+    for k, ins in enumerate(ins_list):
+        if ins.mnemonic == 'shl' and len(ins.operands) == 2 and ins.operands[1].type == X.X86_OP_IMM and ins.operands[1].imm == 0x10 and ins.operands[0].type == X.X86_OP_REG:
+            r = FULL.get(ins.reg_name(ins.operands[0].reg))
+            ok = r in srcs
+            for j in range(k - 1, max(-1, k - 16), -1):
+                p = ins_list[j]
+                if p.mnemonic == 'mov' and len(p.operands) == 2 and p.operands[0].type == X.X86_OP_REG and p.operands[1].type == X.X86_OP_REG \
+                        and FULL.get(p.reg_name(p.operands[0].reg)) == r and FULL.get(p.reg_name(p.operands[1].reg)) in srcs:
+                    ok = True
+                    break
+            after = ' | '.join(i.mnemonic + ' ' + i.op_str for i in ins_list[k + 1:k + 60])
+            if ok and ' or ' in ' | ' + after:
+                out.append(ins)
+    return out
+
+
+def shr2_bytes(shl):
+    """`shr r,2` for the register of `shl r,0x10` (same prefix and ModRM register, C1 /5 ib)."""
+    raw = bytes(shl.bytes)
+    if raw[-1] != 0x10 or raw[-3] != 0xC1 or (raw[-2] & 0xF8) != 0xE0:
+        raise SystemExit('unexpected shl encoding at %X: %s' % (shl.address, raw.hex()))
+    return raw[:-2] + bytes([0xE8 | (raw[-2] & 7), 2])
+
+
+def complete_ranges(img, md, db_file):
+    """[(start, instructions)] for every byte of the variable system's address range. The engine database holds functions that swallow code (FUN_140C04573 ends
+    at 0x14130598A) and leaves code in no function at all (Scr_AddClassField, 0x140C061F5): the ranges run from one function start to the next, and a decode that
+    stops at data or at an invalid byte resumes one byte on."""
+    starts = sorted({s for s, e in func_bounds(db_file) if VM_CALLS[0] <= s < VM_CALLS[1]} | {VM_CALLS[0]})
+    out = []
+    for i, a in enumerate(starts):
+        end = starts[i + 1] if i + 1 < len(starts) else VM_CALLS[1]
+        ins, pos = [], a
+        while pos < end:
+            got = [x for x in md.disasm(img.read(pos, min(end - pos, 0x4000)), pos) if x.address < end]
+            if not got:
+                pos += 1
+                continue
+            ins += got
+            pos = got[-1].address + got[-1].size
+        out.append((a, ins))
+    return out
+
+
+def parent_sites(img, md, db_file):
+    """-> (key builders [(ins, function)], parent reads [(ins, function)], u16 holders of thread ids [(address, text)], thread call sites scanned)"""
+    from capstone import x86_const as X
+    import sqlite3
+    ins_ranges = complete_ranges(img, md, db_file)
+    builders, reads = [], []
+    for s, ins_list in ins_ranges:
+        builders += [(ins, s) for ins in key_builders_in(ins_list)]
+        for k, ins in enumerate(ins_list):
+            if ins.mnemonic == 'movzx' and len(ins.operands) == 2 and ins.operands[1].type == X.X86_OP_MEM and ins.operands[1].size == 2 \
+                    and ins.operands[1].mem.disp == 0xE and ins.operands[1].mem.index == 0 and ins.operands[1].mem.base not in (X.X86_REG_RSP, X.X86_REG_RBP):
+                if any(i.mnemonic == 'imul' and i.op_str.endswith('0x65') for i in ins_list[k + 1:k + 8]):
+                    reads.append((ins, s))
+    db = sqlite3.connect('file:' + db_file.replace('\\', '/') + '?mode=ro', uri=True)
+    sites = [(f, a) for f in THREAD_FUNCS for _, a in db.execute('select src_func, at from calls where dst=?', (f,)).fetchall() if a is not None]
+    holders = []
+    for f, a in sites:
+        taint, k = {'rax'}, 0
+        for ins in md.disasm(img.read(a + 5, 100), a + 5):
+            k += 1
+            if k > 14:
+                break
+            ops = ins.operands
+            if ins.mnemonic == 'mov' and len(ops) == 2 and ops[0].type == X.X86_OP_MEM and ops[1].type == X.X86_OP_REG and ops[0].size == 2 \
+                    and FULL.get(ins.reg_name(ops[1].reg)) in taint:
+                holders.append((ins.address, ins.mnemonic + ' ' + ins.op_str))
+            if ins.mnemonic in ('ret', 'jmp', 'call') or ins.mnemonic.startswith('j'):
+                break
+            if ins.mnemonic == 'mov' and len(ops) == 2 and ops[0].type == X.X86_OP_REG and ops[1].type == X.X86_OP_REG and ops[0].size >= 4 \
+                    and FULL.get(ins.reg_name(ops[1].reg)) in taint:
+                taint.add(FULL.get(ins.reg_name(ops[0].reg)))
+                continue
+            try:
+                for r in ins.regs_access()[1]:
+                    taint.discard(FULL.get(ins.reg_name(r)))
+            except Exception:
+                pass
+            if not taint:
+                break
+    builders = list({i.address: (i, f) for i, f in builders}.values())
+    reads = list({i.address: (i, f) for i, f in reads}.values())
+    return builders, reads, sorted(set(holders)), len(sites)
+
+
+def parents(args):
+    image_file, db_file = ss.image_path()
+    img, md = ss.Image(image_file), ss.cs()
+    builders, reads, holders, scanned = parent_sites(img, md, db_file)
+    builders.sort(key=lambda x: x[0].address)
+    print('key builders (shl r,0x10 of a copy of the parent id, next to the hash imul 0x65): %d in %d functions' % (len(builders), len({s for _, s in builders})))
+    for ins, s in builders:
+        print('  %X  %-14s %s %s  (function %X)' % (ins.address, ins.bytes.hex(), ins.mnemonic, ins.op_str, s))
+    print('parent id read back from a child entry (+0xE, then the hash again): %d' % len(reads))
+    for ins, s in reads:
+        print('  %X  %-14s %s %s  (function %X)' % (ins.address, ins.bytes.hex(), ins.mnemonic, ins.op_str, s))
+    print('free list code (ids pushed and popped as u16 links, rewritten in the component):')
+    for a, why in sorted(FREE_FUNCS.items()):
+        print('  %X  %s' % (a, why))
+    print('allocation sites whose id is held in a u16 outside the pool code (they take ids below 0x10000):')
+    for a, why in sorted(ALLOC_CLASSES.items()):
+        print('  %X  [%s]  %s' % (a, img.read(a, 5).hex(), why))
+    for a in CLIENT_ARRAY_CALLS:
+        print('  %X  [%s]  call Scr_AllocArray, result stored in a u16 of the server client struct (+0x9F352)' % (a, img.read(a, 5).hex()))
+    print('word stores of a thread id found after %d call sites of Scr_ExecThread / Scr_ExecEntThread and wrappers:' % scanned)
+    for a, t in holders:
+        print('  %X  %s' % (a, t))
+    if args.o:
+        reqs = [dict(address='0x%X' % ins.address, kind='bytes', new_bytes=(shr2_bytes(ins) + bytes(ins.bytes)).hex(),
+                     note='key builder in %X: shr r,2 before shl r,0x10 (the key holds the LOCAL parent index, id >> 2)' % s) for ins, s in builders]
+        # a cave window copies the stock bytes of its neighbours: an edit of the previous stage (segment base pair) inside a window moves into the cave
+        sites = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'variable-sites.json')))
+        by_at = {r['at']: r for r in sites['pairs']}
+        for ins, s in builders:
+            covered, k = 0, ins.address
+            while covered < 5:
+                nxt = next(md.disasm(img.read(k, 16), k))
+                covered += nxt.size
+                if k != ins.address and k in by_at:
+                    r = by_at[k]
+                    after = bytes.fromhex(r['after']) if r['op'] == 'seg_lea' else bytes(nxt.bytes)[:-1] + bytes([r['after']])
+                    reqs.append(dict(address='0x%X' % k, kind='bytes', new_bytes=after.hex(), note='segment base edit of the previous stage, inside the window of the key builder at %X' % ins.address))
+                k += nxt.size
+        for ins, s in reads:
+            # movzx ecx,word [rbx+0xE] ; mov edx,esi ; shr edx,0x10 ; lea ecx,[rdx+rcx*4]: id = 4 * local + segment, the segment is the base (seg << 16) in esi
+            reqs.append(dict(address='0x%X' % ins.address, kind='bytes', new_bytes=bytes(ins.bytes).hex() + '89f2c1ea108d0c8a',
+                             note='FUN_140C05280: the parent id of a child entry is 4 * local + segment (segment = base >> 16, the base is in esi)'))
+        json.dump(reqs, open(args.o, 'w'), indent=1)
+        print('wrote', len(reqs), 'cave requests to', args.o)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest='cmd', required=True)
     p = sub.add_parser('find'); p.add_argument('-o', required=True); p.set_defaults(fn=find)
     p = sub.add_parser('check'); p.add_argument('file'); p.set_defaults(fn=check)
     p = sub.add_parser('emit'); p.add_argument('file'); p.add_argument('-o', required=True); p.set_defaults(fn=emit)
+    p = sub.add_parser('parents'); p.add_argument('-o', default=None); p.set_defaults(fn=parents)
     args = ap.parse_args()
     sys.exit(args.fn(args) or 0)
 

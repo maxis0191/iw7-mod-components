@@ -1,15 +1,19 @@
 #include <std_include.hpp>
 #include "script_variables.hpp"
+#include "script_parent_pools.hpp"
 #include "script_var_layout.hpp"
 #include "loader/component_loader.hpp"
 #include "game/game.hpp"
 #include "console/console.hpp"
 #include "scheduler.hpp"
 #include <utils/flags.hpp>
+#include <utils/hook.hpp>
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -71,7 +75,7 @@ std::int32_t fits32(std::int64_t v) {
     return static_cast<std::int32_t>(v);
 }
 
-enum class script_op : std::uint8_t { hash_half, child_bound, parent_bound, name_bound, recip, p4_bytes, p2_bytes, idiom16 };
+enum class script_op : std::uint8_t { hash_half, child_bound, parent_bound, name_bound, recip, p4_bytes, p2_bytes, idiom16, int_low, int_high };
 struct ref_site { std::uintptr_t field; unsigned rip; std::uint64_t base, target; unsigned tail; };
 struct imm_site { std::uintptr_t field; script_op op; };
 struct lea_site { std::uintptr_t at; unsigned length; std::uint32_t before, after; };
@@ -106,6 +110,8 @@ std::uint32_t imm_value(script_op op) {
     case script_op::p4_bytes: return static_cast<std::uint32_t>(p4_bytes());
     case script_op::p2_bytes: return static_cast<std::uint32_t>(a_bytes());
     case script_op::idiom16: return static_cast<std::uint32_t>(fits32((static_cast<std::int64_t>(regions[4].storage.data) - static_cast<std::int64_t>(regions[2].storage.data)) / 16));
+    case script_op::int_low: return 0x800000u - name_bound;                  // integer key names n + 0x800000 start at the object key bound: n >= -(0x800000 - name_bound)
+    case script_op::int_high: return 0x800000u - name_bound + 0x7FFFFFu;
     }
     return 0;
 }
@@ -119,6 +125,8 @@ std::uint32_t imm_stock(script_op op) {
     case script_op::p4_bytes: return 0x37000;
     case script_op::p2_bytes: return 0x1B800;
     case script_op::idiom16: return 0xC500;
+    case script_op::int_low: return 0x7B2400;
+    case script_op::int_high: return 0xFB23FF;
     }
     return 0;
 }
@@ -144,6 +152,250 @@ void check_guards() {
             }
 }
 
+// ---- parent ids beyond u16 (a56) ----------------------------------------------------------------------------------------------------------------
+// An id is 4 x local + segment. The free lists of the shipped code link the ids as u16 (P8 +0 / +2), so they could not pass 0xFFFF; the key of a child
+// entry (parent << 16 | name >> 8) and the child's parent field (+0xE) held the whole id for the same reason. Here the key and the field hold the LOCAL
+// index (id >> 2, u16, up to 65,535 a segment: 262,140 ids) and the code below replaces the free list machinery:
+//   AllocVariable (pop), the four places that push a freed id, the list initialiser, and the rebuild used by save game loading (refused).
+// The free ids of a segment are two stacks (pool 0: ids below 0x10000, pool 1: ids from 0x10000), linked through P8 +2 with LOCAL indices, heads kept here.
+// Objects whose id the engine holds in 16 bits take pool 0 only: threads (and the `self` they store in 16 bits), entity objects, the class arrays, the
+// server client arrays (alloc_variable_low); every other object takes pool 1 first, so a 16-bit holder of a general id fails at once, not at 65,536 parents.
+constexpr std::uint32_t id_locals = parent_ids / 4;
+static_assert(id_locals <= 0x10000 && parent_low_locals < id_locals);
+parent_entry* parents_table{};
+std::uint16_t* save_numbers{};
+parent_pools pools;
+unsigned force_low{};                  // > 0 while an allocation that needs an id below 0x10000 runs (alloc_array_low)
+
+[[noreturn]] void parents_exhausted(bool low_only) {
+    reinterpret_cast<void (*)(const char*)>(0x140D34180ull)(low_only ? "Exceeded maximum number of script objects with a 16-bit id (parents below 0x10000)"
+                                                                     : "Exceeded maximum number of script objects (parents)");
+    std::abort();
+}
+std::uint16_t* take_parent(std::uint32_t* out, bool low_only) {
+    const auto id = pools.take(low_only);
+    if (!id) parents_exhausted(low_only);
+    *out = id;
+    return &parents_table[id].refs;
+}
+std::uint16_t* alloc_variable(std::uint32_t* out) { return take_parent(out, force_low != 0); }      // 0x140C04650
+std::uint16_t* alloc_variable_low(std::uint32_t* out) { return take_parent(out, true); }
+std::uint32_t alloc_array_low() {              // Scr_AllocArray (0x140C068B0) for the two server client arrays: the id is stored in a u16 of the client
+    ++force_low;
+    const auto id = reinterpret_cast<std::uint32_t (*)()>(0x140C068B0ull)();
+    --force_low;
+    return id;
+}
+void push_parent(std::uint32_t id) { pools.give(id); }
+void free_children(std::uint32_t id) { reinterpret_cast<void (*)(std::uint32_t)>(0x140C04990ull)(id); }
+void release_with_children(std::uint32_t id) {   // 0x140C04910: take a reference, free the children, drop it and free the object when it was the last
+    auto& entry = parents_table[id];
+    ++entry.refs;
+    free_children(id);
+    if (entry.refs) { --entry.refs; return; }
+    entry.type = 0x18;
+    push_parent(id);
+}
+void release_reference(std::uint32_t id) {       // 0x140C05C50
+    auto& entry = parents_table[id];
+    if (entry.refs) { --entry.refs; return; }
+    entry.type = 0x18;
+    push_parent(id);
+}
+void release_free_tail(std::uint32_t id) { push_parent(id); }      // the free path of RemoveRefToObject (0x140C05D70..0x140C05D9D): the type is already 0x18
+void release_unreferenced_structs() {           // 0x140C08E70
+    for (std::uint32_t id = 1; id < parent_ids; ++id) {
+        if (save_numbers[id] || (parents_table[id].type & 0xFF) != 0x13) continue;
+        auto& entry = parents_table[id];
+        ++entry.refs;
+        free_children(id);
+        if (entry.refs) { --entry.refs; continue; }
+        entry.type = 0x18;
+        push_parent(id);
+    }
+}
+void format_parents() {                          // 0x140C09200: every id is free, the four heads (ids 0..3) are not allocatable
+    std::memset(reinterpret_cast<void*>(regions[3].storage.data), 0, static_cast<std::size_t>(p4_bytes()));
+    pools.format();
+}
+void rebuild_refused() {                        // 0x140C08C30 rebuilds stock format free lists after a save game was read
+    game::Com_Error(game::ERR_FATAL, "script variables: loading a saved game is not supported with -agent-capacity (wide parent ids)");
+}
+// A thread keeps its `self` object id in 16 bits (P8 +2 of the thread): refuse one above 0xFFFF with a message instead of freeing the wrong object later.
+void thread_guard_check(std::uint64_t self) {
+    if (static_cast<std::uint32_t>(self) >= 0x10000u)
+        game::Com_Error(game::ERR_FATAL, "script variables: a thread was started on object %u (type 0x%X): a thread stores its self object in 16 bits, the object needs an id below 0x10000",
+                        static_cast<std::uint32_t>(self), parents_table[static_cast<std::uint32_t>(self) & (parent_ids - 1)].type & 0xFFu);
+}
+
+// ---- code memory within 2 GB of the image: caves, thunks, the stub ------------------------------------------------------------------------------
+buffer code_region;
+std::size_t code_used{};
+buffer reserve_code(std::size_t bytes) {
+    const auto committed = (bytes + 4095) & ~std::size_t(4095);
+    for (unsigned attempt = 0; attempt < 4096; ++attempt) {
+        const auto wanted = 0x150400000ull + static_cast<std::uintptr_t>(attempt) * 0x10000;
+        auto memory = VirtualAlloc(reinterpret_cast<void*>(wanted), committed, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        if (!memory) continue;
+        std::memset(memory, 0xCC, committed);
+        return {reinterpret_cast<std::uintptr_t>(memory), committed};
+    }
+    throw std::runtime_error("script variables: no code memory within 2 GB of the image");
+}
+std::uint8_t* code_alloc(std::size_t bytes) {
+    const auto size = (bytes + 15) & ~std::size_t(15);
+    if (code_used + size > code_region.bytes) throw std::runtime_error("script variables: code memory exhausted");
+    const auto at = reinterpret_cast<std::uint8_t*>(code_region.data + code_used);
+    code_used += size;
+    return at;
+}
+bool rel32(std::uintptr_t target, std::uintptr_t from_end, std::int32_t& out) {
+    const auto delta = static_cast<std::int64_t>(target) - static_cast<std::int64_t>(from_end);
+    if (delta < INT32_MIN || delta > INT32_MAX) return false;
+    out = static_cast<std::int32_t>(delta);
+    return true;
+}
+// The shipped code is compiled with interprocedural register allocation: a caller relies on every register that the shipped callee does not touch, and the
+// AllocVariable family touches few. A replacement written in C++ clobbers every volatile register, so the shipped code reaches it through a wrapper that saves
+// rcx, rdx, r8..r11 and xmm0..xmm5, calls it with the arguments untouched, restores them (rax is the result) and returns: `wrapper_for`. `entry_hook` below does the
+// same in front of a function's own first instructions.
+constexpr std::uint8_t save_all[] = {0x51, 0x52, 0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53,           // push rcx, rdx, r8, r9, r10, r11
+                                     0x48, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00,                             // sub rsp, 0x88
+                                     0x0F, 0x11, 0x44, 0x24, 0x20, 0x0F, 0x11, 0x4C, 0x24, 0x30, 0x0F, 0x11, 0x54, 0x24, 0x40,        // movups [rsp+0x20..0x40], xmm0..2
+                                     0x0F, 0x11, 0x5C, 0x24, 0x50, 0x0F, 0x11, 0x64, 0x24, 0x60, 0x0F, 0x11, 0x6C, 0x24, 0x70};      // movups [rsp+0x50..0x70], xmm3..5
+constexpr std::uint8_t restore_all[] = {0x0F, 0x10, 0x44, 0x24, 0x20, 0x0F, 0x10, 0x4C, 0x24, 0x30, 0x0F, 0x10, 0x54, 0x24, 0x40,
+                                        0x0F, 0x10, 0x5C, 0x24, 0x50, 0x0F, 0x10, 0x64, 0x24, 0x60, 0x0F, 0x10, 0x6C, 0x24, 0x70,
+                                        0x48, 0x81, 0xC4, 0x88, 0x00, 0x00, 0x00,                             // add rsp, 0x88
+                                        0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, 0x5A, 0x59};          // pop r11, r10, r9, r8, rdx, rcx
+std::uintptr_t wrapper_for(const void* function) {
+    auto* at = code_alloc(sizeof(save_all) + sizeof(restore_all) + 16);
+    auto* out = at;
+    std::memcpy(out, save_all, sizeof(save_all)); out += sizeof(save_all);
+    *out++ = 0x48; *out++ = 0xB8;                                                                          // mov rax, function
+    const auto target = reinterpret_cast<std::uintptr_t>(function);
+    std::memcpy(out, &target, 8); out += 8;
+    *out++ = 0xFF; *out++ = 0xD0;                                                                          // call rax
+    std::memcpy(out, restore_all, sizeof(restore_all)); out += sizeof(restore_all);
+    *out++ = 0xC3;                                                                                         // ret
+    return reinterpret_cast<std::uintptr_t>(at);
+}
+struct window { std::uintptr_t start; std::size_t length; };
+std::vector<window> windows;      // code replaced by a jump: the rows of the previous stage inside are dropped
+bool in_window(std::uintptr_t address, std::size_t width) {
+    for (const auto& w : windows)
+        if (address < w.start + w.length && address + width > w.start) return true;
+    return false;
+}
+struct cave_fixup { std::uint32_t offset, end; std::uintptr_t target; };
+struct cave_retarget { std::uintptr_t field; std::uint32_t kind, old_value, cave_offset; };
+struct cave_entry { std::uintptr_t window_start; std::vector<std::uint8_t> old_bytes, cave_bytes; std::vector<cave_fixup> fixups; std::vector<cave_retarget> retargets; };
+const std::vector<cave_entry> cave_table = {
+#include "script_variables_caves.inc"
+};
+std::size_t caves_planned{}, stubs_planned{}, calls_planned{}, functions_planned{};
+
+// the window of whole instructions is replaced by `jmp rel32` (+ int3 fill); the checked stock bytes are every byte of it
+void jump_window(std::uintptr_t start, const std::vector<std::uint8_t>& stock, std::uintptr_t target) {
+    std::int32_t rel{};
+    if (stock.size() < 5 || !rel32(target, start + 5, rel)) throw std::runtime_error("script variables: window too short or target too far");
+    std::uint8_t bytes[64];
+    bytes[0] = 0xE9;
+    std::memcpy(bytes + 1, &rel, 4);
+    std::memset(bytes + 5, 0xCC, stock.size() - 5);
+    for (std::size_t i = 0; i < stock.size(); ++i) add(start + i, stock[i], bytes[i], 1);
+    windows.push_back({start, stock.size()});
+}
+void cave(const cave_entry& c) {
+    if (!c.fixups.empty() || !c.retargets.empty()) throw std::runtime_error("script variables: a cave with fixups is not expected here");
+    const auto length = c.old_bytes.size();
+    readable(c.window_start, static_cast<unsigned>(length));
+    auto* out = code_alloc(c.cave_bytes.size() + 5);
+    std::memcpy(out, c.cave_bytes.data(), c.cave_bytes.size());
+    std::int32_t back{};
+    if (!rel32(c.window_start + length, reinterpret_cast<std::uintptr_t>(out) + c.cave_bytes.size() + 5, back)) throw std::runtime_error("script variables: cave too far");
+    out[c.cave_bytes.size()] = 0xE9;
+    std::memcpy(out + c.cave_bytes.size() + 1, &back, 4);
+    jump_window(c.window_start, c.old_bytes, reinterpret_cast<std::uintptr_t>(out));
+    ++caves_planned;
+}
+// the free path of RemoveRefToObject: r8..r11 and xmm0..xmm5 saved, mov ecx,ebx ; call release_free_tail ; restored ; jmp 0x140C05D9D (rsp is 16 byte aligned there)
+void free_tail_stub() {
+    constexpr std::uintptr_t start = 0x140C05D70ull, resume = 0x140C05D9Dull;
+    static const std::uint8_t stock[] = {0x8b,0xcb,0x83,0xe1,0x03,0x48,0x8d,0x14,0xcd,0x82,0x11,0x69,0x06,0x0f,0xb7,0x04,0x32,0x66,0x89,0x84,0xde,0x82,0x11,0x69,0x06,0x66,0x89,0x8c,0xde,0x80,0x11,0x69,0x06,0x66,0x89,0x9c,0xc6,0x80,0x11,0x69,0x06,0x66,0x89,0x1c,0x32};
+    static_assert(sizeof(stock) == 45);
+    auto* out = code_alloc(160);
+    auto* at = out;
+    const std::uint8_t pushes[] = {0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53, 0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00};         // push r8..r11 ; sub rsp, 0x80
+    std::memcpy(out, pushes, sizeof(pushes)); out += sizeof(pushes);
+    std::memcpy(out, save_all + 17, sizeof(save_all) - 17); out += sizeof(save_all) - 17;                       // the six movups (xmm0..5 to [rsp+0x20..0x70])
+    *out++ = 0x89; *out++ = 0xD9;                                                                              // mov ecx, ebx
+    *out++ = 0x48; *out++ = 0xB8;
+    const auto function = reinterpret_cast<std::uintptr_t>(&release_free_tail);
+    std::memcpy(out, &function, 8); out += 8;
+    *out++ = 0xFF; *out++ = 0xD0;                                                                              // call rax
+    std::memcpy(out, restore_all, 30); out += 30;                                                              // the six movups back
+    const std::uint8_t pops[] = {0x48, 0x81, 0xC4, 0x80, 0x00, 0x00, 0x00, 0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58};         // add rsp, 0x80 ; pop r11..r8
+    std::memcpy(out, pops, sizeof(pops)); out += sizeof(pops);
+    *out++ = 0xE9;
+    std::int32_t back{};
+    if (!rel32(resume, reinterpret_cast<std::uintptr_t>(out) + 4, back)) throw std::runtime_error("script variables: stub too far");
+    std::memcpy(out, &back, 4); out += 4;
+    if (static_cast<std::size_t>(out - at) > 160) throw std::runtime_error("script variables: stub overflow");
+    jump_window(start, std::vector<std::uint8_t>(stock, stock + sizeof(stock)), reinterpret_cast<std::uintptr_t>(at));
+    ++stubs_planned;
+}
+// the first instructions of a function (whole instructions, five bytes or more, no rip relative operand, no branch) run after `check(rcx)`: a stub with every volatile register saved
+void entry_hook(std::uintptr_t entry, std::initializer_list<std::uint8_t> expected, void (*check)(std::uint64_t)) {
+    std::vector<std::uint8_t> stock(expected);
+    if (stock.size() < 5 || stock.size() > 16) throw std::runtime_error("script variables: an entry hook window is five to sixteen bytes");
+    readable(entry, static_cast<unsigned>(stock.size()));
+    auto* at = code_alloc(sizeof(save_all) + sizeof(restore_all) + 48);
+    auto* out = at;
+    std::memcpy(out, save_all, sizeof(save_all)); out += sizeof(save_all);
+    *out++ = 0x48; *out++ = 0xB8;
+    const auto function = reinterpret_cast<std::uintptr_t>(check);
+    std::memcpy(out, &function, 8); out += 8;
+    *out++ = 0xFF; *out++ = 0xD0;
+    std::memcpy(out, restore_all, sizeof(restore_all)); out += sizeof(restore_all);
+    std::memcpy(out, stock.data(), stock.size()); out += stock.size();                                        // the function's own first instructions
+    *out++ = 0xE9;
+    std::int32_t back{};
+    if (!rel32(entry + stock.size(), reinterpret_cast<std::uintptr_t>(out) + 4, back)) throw std::runtime_error("script variables: entry hook too far");
+    std::memcpy(out, &back, 4);
+    jump_window(entry, stock, reinterpret_cast<std::uintptr_t>(at));
+    ++functions_planned;
+}
+// a `call rel32` of the shipped code now reaches `function`
+void redirect_call(std::uintptr_t site, std::uintptr_t expected_target, const void* function) {
+    readable(site, 5);
+    std::uint8_t stock[5];
+    std::memcpy(stock, reinterpret_cast<void*>(site), 5);
+    std::int32_t stock_rel{};
+    std::memcpy(&stock_rel, stock + 1, 4);
+    if (stock[0] != 0xE8 || static_cast<std::uintptr_t>(static_cast<std::int64_t>(site) + 5 + stock_rel) != expected_target)
+        throw std::runtime_error("script variables: not the expected call at a redirected site");
+    std::int32_t rel{};
+    if (!rel32(wrapper_for(function), site + 5, rel)) throw std::runtime_error("script variables: thunk too far");
+    std::uint8_t now[5] = {0xE8};
+    std::memcpy(now + 1, &rel, 4);
+    for (unsigned i = 0; i < 5; ++i) add(site + i, stock[i], now[i], 1);
+    windows.push_back({site, 5});
+    ++calls_planned;
+}
+// the first five bytes of a function become `jmp thunk`: the function is replaced (its own body is never entered at another address)
+void replace_function(std::uintptr_t entry, std::initializer_list<std::uint8_t> expected, const void* function) {
+    readable(entry, 5);
+    std::uint8_t stock[5];
+    std::copy(expected.begin(), expected.end(), stock);
+    std::int32_t rel{};
+    if (!rel32(wrapper_for(function), entry + 5, rel)) throw std::runtime_error("script variables: thunk too far");
+    std::uint8_t now[5] = {0xE9};
+    std::memcpy(now + 1, &rel, 4);
+    for (unsigned i = 0; i < 5; ++i) add(entry + i, stock[i], now[i], 1);
+    windows.push_back({entry, 5});
+    ++functions_planned;
+}
+
 class component final : public component_interface {
 public:
     void post_unpack() override {
@@ -155,9 +407,33 @@ public:
         regions[4].storage = reserve(ch_bytes());
         // the code fetches the P8 -> CH distance as (distance / 16) in a lea: keep it exact
         if ((regions[4].storage.data - regions[2].storage.data) % 16) throw std::runtime_error("script variables: tables not 16 byte apart");
+        parents_table = reinterpret_cast<parent_entry*>(regions[2].storage.data);
+        save_numbers = reinterpret_cast<std::uint16_t*>(regions[0].storage.data);
+        char low_first_env[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOW_FIRST", low_first_env, sizeof(low_first_env));      // test switch, like the flag: the headless runner passes no flags of its own
+        pools.attach(parents_table, reinterpret_cast<const volatile std::uint32_t*>(0x14665A134ull), parent_ids, parent_low_locals,
+                     utils::flags::has_flag("script-variables-low-first") || low_first_env[0] == '1');
+        code_region = reserve_code(0x10000);
         // the VM initialisers have not run yet while the stock tables are still all zero (first child entry and first parent entry type bytes)
         const bool initialised = *reinterpret_cast<const std::uint8_t*>(stock_ch + 0xA) != 0 || *reinterpret_cast<const std::uint8_t*>(stock_p8 + 4) != 0;
+        // parent ids beyond u16: caves for the keys and the parent field, the free list code, the allocation classes (before the rows of the previous
+        // stage, whose rows inside a replaced window are dropped)
+        for (const auto& c : cave_table) cave(c);
+        free_tail_stub();
+        for (const auto site : {0x140C043C5ull, 0x140C0458Dull, 0x140C096C6ull, 0x140C096EFull, 0x140C0900Bull, 0x140C04559ull, 0x140C059B8ull, 0x140C090B0ull, 0x140C04523ull})
+            redirect_call(site, 0x140C04650ull, reinterpret_cast<const void*>(&alloc_variable_low));
+        for (const auto site : {0x140C4F64Eull, 0x140C503EFull}) redirect_call(site, 0x140C068B0ull, reinterpret_cast<const void*>(&alloc_array_low));
+        replace_function(0x140C04650ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&alloc_variable));
+        replace_function(0x140C04910ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&release_with_children));
+        replace_function(0x140C05C50ull, {0x44, 0x8B, 0xC9, 0x4C, 0x8D}, reinterpret_cast<const void*>(&release_reference));
+        replace_function(0x140C08E70ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&release_unreferenced_structs));
+        replace_function(0x140C09200ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&format_parents));
+        replace_function(0x140C08C30ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&rebuild_refused));
+        entry_hook(0x140C043A0ull, {0x48, 0x89, 0x5C, 0x24, 0x10}, &thread_guard_check);
+        entry_hook(0x140C04580ull, {0x40, 0x53, 0x48, 0x83, 0xEC, 0x20}, &thread_guard_check);
+        std::size_t dropped_refs{}, dropped_imms{}, dropped_pairs{};
         for (const auto& s : ref_sites) {
+            if (in_window(s.field, 4)) { ++dropped_refs; continue; }
             std::int64_t before, after;
             if (s.rip) {
                 before = static_cast<std::int64_t>(s.target) - static_cast<std::int64_t>(s.field + 4 + s.tail);
@@ -174,12 +450,18 @@ public:
         const bool move_only = !std::strcmp(mode, "move");
         for (const auto& s : imm_sites) {
             if (move_only && s.op != script_op::idiom16) continue;
+            if (in_window(s.field, 4)) { ++dropped_imms; continue; }
             add(s.field, imm_stock(s.op), imm_value(s.op));
         }
         if (!move_only) {
-            for (const auto& s : lea_sites)
+            for (const auto& s : lea_sites) {
+                if (in_window(s.at, s.length)) { ++dropped_pairs; continue; }
                 for (unsigned i = 0; i < s.length; ++i) add(s.at + i, (s.before >> (8 * i)) & 0xFF, (s.after >> (8 * i)) & 0xFF, 1);
-            for (const auto field : shl_sites) add(field, 0xD, 0x10, 1);
+            }
+            for (const auto field : shl_sites) {
+                if (in_window(field, 1)) { ++dropped_pairs; continue; }
+                add(field, 0xD, 0x10, 1);
+            }
         }
         std::sort(plan.begin(), plan.end(), [](const patch& a, const patch& b) { return a.address < b.address; });
         for (std::size_t i = 1; i < plan.size(); ++i)
@@ -201,12 +483,15 @@ public:
                 DWORD old{};
                 if (hi > lo && VirtualProtect(reinterpret_cast<void*>(lo), static_cast<SIZE_T>(hi - lo), PAGE_NOACCESS, &old)) poisoned += static_cast<std::size_t>(hi - lo);
             }
+        format_parents();
         if (initialised) reinterpret_cast<void (*)()>(0x140C09280ull)();   // the stock tables were already formatted: format the new ones
         // the client project's accessors (scripting::array, entity fields) follow the moved tables; an id outside them is refused and logged once
         script_var_layout::refusal_log() = [](const char* what) { console::error("[script variables] accessor refused: %s\n", what); };
         script_var_layout::install({regions[2].storage.data, regions[3].storage.data, regions[4].storage.data, parent_ids, child_entries, true});
         active = true;
-        scheduler::once([initialised, poisoned] {
+        scheduler::once([initialised, poisoned, dropped_refs, dropped_imms, dropped_pairs] {
+            console::info("[script variables] parent ids: %zu key and parent field caves, %zu stub, %zu call sites and %zu functions redirected; rows of the previous stage inside them dropped: %zu fields, %zu constants, %zu pairs; general ids take the %s pool first\n",
+                caves_planned, stubs_planned, calls_planned, functions_planned, dropped_refs, dropped_imms, dropped_pairs, pools.low_first() ? "low" : "high");
             console::info("[script variables] children %u entries x %u segments (stock %u), parent ids %u (stock %u): %zu fields, %zu constants, %zu segment base pairs, patches %zu, tables A %p P8 %p P4 %p CH %p%s\n",
                 child_entries, segments, stock_child_entries, parent_ids, stock_parent_ids, std::size(ref_sites), std::size(imm_sites), std::size(shl_sites), plan.size(),
                 reinterpret_cast<void*>(regions[0].storage.data), reinterpret_cast<void*>(regions[2].storage.data), reinterpret_cast<void*>(regions[3].storage.data),
