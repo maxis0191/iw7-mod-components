@@ -1,4 +1,4 @@
-"""Reserved scriptable records and part links (a42): the formulas of agent_capacity.hpp, mirrored, for every allowed count 24..232.
+"""Reserved scriptable records and part links (a42): the formulas of agent_capacity.hpp, mirrored, for every allowed count 24..320.
 
 The component rebuilds the MapEnts scriptable block at load (agent_capacity.cpp section 4c): R(n) = max(200, n + 56) reserved records,
 d = R - 200 copies of reserved record 0 inserted after the stock reserved ones, the fixed records shifted by d. Offline checks:
@@ -16,7 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 HPP = os.path.join(HERE, '..', '..', 'src', 'native', 'agent_capacity.hpp')
 CPP = os.path.join(HERE, '..', '..', 'src', 'native', 'agent_capacity.cpp')
 
-COUNTS = list(range(24, 233, 4))
+COUNTS = list(range(24, 321, 4))
 STOCK_RESERVED, STOCK_SERVER_END, STOCK_TOTAL, STOCK_AGENTS, MARGIN = 200, 414, 523, 24, 32
 ENTITY_FIELD_BITS = 10   # entity type 6, descriptor offset 0x78 (net field list 0x141BB6480): index + 1 of a fixed scriptable
 
@@ -65,6 +65,7 @@ class Records(unittest.TestCase):
             if n <= 144:
                 self.assertEqual(r, STOCK_RESERVED, n)   # inert while the stock room is enough
         self.assertEqual(reserved_records(232), 288)
+        self.assertEqual(reserved_records(320), 376)
         self.assertEqual(reserved_records(100), 200)
         self.assertEqual(reserved_records(148), 204)
 
@@ -148,6 +149,7 @@ class Records(unittest.TestCase):
         self.assertEqual(scriptable_parts(100), 8192)
         self.assertEqual(scriptable_parts(164), 9216)
         self.assertEqual(scriptable_parts(232), 11264)
+        self.assertEqual(scriptable_parts(320), 13312)
 
 
 if __name__ == '__main__':

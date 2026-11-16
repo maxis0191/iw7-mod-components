@@ -1,4 +1,4 @@
-python -B ops/engine/cave_plan.py frame-grow --function 0x14086FBA0 --array-top 0x170 --extra 32 --bounded-index 0x40:0x50 --bounded-index 0x70:0x170 --rbp-general -o ops/engine/caves/frame-14086fba0.frame.json
+python -B ops/engine/cave_plan.py frame-grow --function 0x14086FBA0 --array-top 0x170 --extra 48 --bounded-index 0x40:0x50 --bounded-index 0x70:0x170 --rbp-general -o ops/engine/caves/frame-14086fba0.frame.json
 python -B ops/engine/cave_plan.py --emit-cpp ops/engine/caves/frame-14086fba0.frame.json -o src/native/agent_capacity_frame_fields_86fba0.inc
 python -B ops/engine/cave_plan.py ops/engine/caves/setnextsnap-mask.requests.json -o ops/engine/caves/setnextsnap-mask.plan.json
 python -B ops/engine/cave_plan.py --emit-cpp ops/engine/caves/setnextsnap-mask.plan.json -o src/native/agent_capacity_caves_mask.inc

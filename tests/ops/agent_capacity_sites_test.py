@@ -445,8 +445,8 @@ MOVED_TO_CAVE.update({0x14086FE70: (0x14086FE6C, '4c8d4c2440'), 0x14086FE78: (0x
 for _row, (_a, _hx, _name) in WIDE_SITES.items():
     if _row != 37:
         MOVED_TO_CAVE[_a + len(_hx) // 2 - 1] = (_a, _hx)
-ALLOWED_COUNTS = range(24, 233, 4)                           # refuse(): 24, 28, ..., 232
-SITE_COUNTS = [n for n in range(24, 233) if (18 + n - 42) % 4 == 0]   # every count the sites are written for: 24, 28, ..., 232
+ALLOWED_COUNTS = range(24, 321, 4)                           # refuse(): 24, 28, ..., 320
+SITE_COUNTS = [n for n in range(24, 321) if (18 + n - 42) % 4 == 0]   # every count the sites are written for: 24, 28, ..., 320
 
 
 def layout_names(n):
@@ -463,16 +463,16 @@ def refuse_mirror(n):
         return 'fewer than the stock 24 agents'
     if (c - 42) % 4:
         return 'players + agents - 42 must be a multiple of 4'
-    if n > 232:
-        return 'more than 232 agents'
-    if ((c + 31) // 32) * 4 > 32:
+    if n > 320:
+        return 'more than 320 agents'
+    if ((c + 31) // 32) * 4 > 48:
         return 'character change mask does not fit'
     slots = 71 + n - 24
-    if ((2 * slots - 71) * 32 + 15) & ~15 > 0x3CE0:
+    if ((2 * slots - 71) * 32 + 15) & ~15 > 0x52E0:
         return 'FUN_1403E61B0 probe cave'
-    if (slots - 71) * 32 > 0x1A00:
+    if (slots - 71) * 32 > 0x2500:
         return 'FUN_140ADDED0 probe cave'
-    if (slots - 71) * 16 > 0xD00:
+    if (slots - 71) * 16 > 0x1280:
         return 'FUN_140ADB8E0 probe cave'
     if ((0x3F08 + slots * 0x40 + slots * 0x3C + 15) & ~15) > 0x20000:
         return 'embedded record room'
@@ -510,11 +510,12 @@ class SignedByteSites(unittest.TestCase):
 
     def test_the_remaining_byte_sites_are_constants_and_the_max_agents_byte_is_bounded(self):
         for s in self.sites:
-            self.assertEqual(evaluate(s['after'], layout_names(24)), evaluate(s['after'], layout_names(232)), f"{s['address']:#x} depends on the count")
-        # G_GetMaxAgents: the low byte of `mov eax, n` with three zero bytes: unsigned_imm8 refuses above 255, refuse() above 232
-        self.assertIn('unsigned_imm8(l.agents)', self.text)
+            self.assertEqual(evaluate(s['after'], layout_names(24)), evaluate(s['after'], layout_names(320)), f"{s['address']:#x} depends on the count")
+        # G_GetMaxAgents: the low byte of `mov eax, n` with three zero bytes: unsigned_imm8 refuses above 255; the byte is min(n, 255) (gamestate_agent_byte)
+        self.assertIn('unsigned_imm8(gamestate_agent_byte(l.agents))', self.text)
+        self.assertIn('add(0x140C18D77, stock_agents, gamestate_agent_byte(l.agents));', self.text)
         self.assertIn('if (value > 0xFF) throw', self.text)
-        self.assertIn('constexpr bool byte_sites_hold(std::uint32_t agents) { return agents <= 255; }', open(HPP, encoding='utf-8').read())
+        self.assertIn('constexpr bool byte_sites_hold(std::uint32_t agents) { return gamestate_agent_byte(agents) <= 255; }', open(HPP, encoding='utf-8').read())
         # add1s itself still refuses what a signed byte cannot hold (the plan-time guard for anything left one-byte)
         self.assertIn('does not fit a signed 8-bit field', self.text)
         self.assertIn('constexpr bool fits_signed_byte(std::int64_t value) { return value >= -128 && value <= 127; }', open(HPP, encoding='utf-8').read())
@@ -586,7 +587,7 @@ def magic(row):
 
 class WideSites(unittest.TestCase):
     """The 34 count fields of a29 section 2.1 that are 32-bit now: caves of single instructions plus the two-window imul pair of row 37, the
-    two 16-bit compares and the lea + shl of 0x140C68A96 in place. Offline proof for every count from 24 to 232: each cave decodes to the
+    two 16-bit compares and the lea + shl of 0x140C68A96 in place. Offline proof for every count from 24 to 320: each cave decodes to the
     shipped instruction with its field holding the intended value; at 24 agents every field holds the shipped value."""
 
     def setUp(self):
@@ -722,32 +723,34 @@ class WideSites(unittest.TestCase):
         self.assertEqual((lea.mnemonic, shl.mnemonic, shl.operands[1].imm), ('lea', 'shl', 3))
 
     def test_the_net_bit_counts_follow_the_count_of_characters(self):
-        self.assertIn('constexpr std::uint32_t net_id_bits() const { return characters <= 127 ? 7 : 8; }', self.hpp)
+        self.assertIn('constexpr std::uint32_t net_id_bits() const { return characters <= 127 ? 7 : (characters <= 256 ? 8 : 9); }', self.hpp)
         self.assertEqual(len(re.findall(r'add\(f, 6, l\.net_id_bits\(\)', self.text)), 3, 'agent-state loop, 21-list loop, 3-list loop')
         self.assertNotRegex(self.text, r'add\(f, 6, 7')
-        bits = {n: (7 if 18 + n <= 127 else 8) for n in SITE_COUNTS}
+        bits = {n: (7 if 18 + n <= 127 else (8 if 18 + n <= 256 else 9)) for n in SITE_COUNTS}
         self.assertTrue(all(b == 7 for n, b in bits.items() if n <= 100), 'unchanged (7 bits) at every count up to 100')
         self.assertEqual([n for n, b in bits.items() if b == 8][0], 112)
+        self.assertEqual([n for n, b in bits.items() if b == 9][0], 240)
+        self.assertEqual(max(n for n, b in bits.items() if b == 8), 236)
 
     def test_the_refuse_mirror_matches_the_hpp(self):
-        for text in ('constexpr std::uint32_t frame_cave_max_extra_a = 0x3CE0, frame_cave_max_extra_b = 0xD00, frame_cave_max_extra_c = 0x1A00;',
-                     'constexpr std::uint32_t snap_mask_room = 32;', 'constexpr std::uint32_t max_analysed_agents = 232;',
+        for text in ('constexpr std::uint32_t frame_cave_max_extra_a = 0x52E0, frame_cave_max_extra_b = 0x1280, frame_cave_max_extra_c = 0x2500;',
+                     'constexpr std::uint32_t snap_mask_room = 48;', 'constexpr std::uint32_t max_analysed_agents = 320;',
                      'if (((c + 31) / 32) * 4 > snap_mask_room) return', '(((2 * slots - 71) * 32 + 15) & ~15u) > frame_cave_max_extra_a',
                      '(slots - 71) * 32 > frame_cave_max_extra_c', '(slots - 71) * 16 > frame_cave_max_extra_b'):
             self.assertIn(text, self.hpp)
         # the probe caves' planned maxima are the ones in the generated tables
-        for name, want in (('agent_capacity_frame_cave.inc', 0x3CE0), ('agent_capacity_frame_cave_added0.inc', 0x1A00), ('agent_capacity_frame_cave_adb8e0.inc', 0xD00)):
+        for name, want in (('agent_capacity_frame_cave.inc', 0x52E0), ('agent_capacity_frame_cave_added0.inc', 0x2500), ('agent_capacity_frame_cave_adb8e0.inc', 0x1280)):
             m = re.search(r'^\{0x[0-9a-f]+ull, \{[^}]*\}, \{[^}]*\}, \d+, 0x[0-9a-f]+u, (0x[0-9a-f]+)u, \d+\},$', open(src(name), encoding='utf-8').read(), re.M)
             self.assertEqual(int(m.group(1), 16), want, name)
         accepted = [n for n in range(0, 1100) if refuse_mirror(n) == '']
-        self.assertEqual(accepted, list(range(24, 233, 4)))
-        self.assertEqual(refuse_mirror(236), 'more than 232 agents')
+        self.assertEqual(accepted, list(range(24, 321, 4)))
+        self.assertEqual(refuse_mirror(324), 'more than 320 agents')
         reasons = {}
         for n in SITE_COUNTS:
             reasons.setdefault(refuse_mirror(n), []).append(n)
-        print('\nrefuse() by count (24..232, valid counts): ' + '; '.join(f'{k or "accepted"}: {v[0]}..{v[-1]}' for k, v in reasons.items()))
+        print('\nrefuse() by count (24..320, valid counts): ' + '; '.join(f'{k or "accepted"}: {v[0]}..{v[-1]}' for k, v in reasons.items()))
         print(f'highest count the byte and count sites accept: {SITE_COUNTS[-1]}; highest count refuse() accepts: {accepted[-1]}')
-        self.assertEqual(SITE_COUNTS[-1], 232)
+        self.assertEqual(SITE_COUNTS[-1], 320)
 
 
 def src(name):
@@ -765,10 +768,10 @@ FRAME_TABLES = [
     {'plan': 'frame-140added0.frame.json', 'fields': 'agent_capacity_frame_fields_added0.inc', 'cave': 'agent_capacity_frame_cave_added0.inc',
      'function': 0x140ADDED0, 'entry': 32, 'formula': 'frame_extra_c() const { return (sentient_slots() - 71) * 32; }',
      'extra': lambda n: (n - 24) * 32, 'need': lambda n: (n - 24) * 32},
-    # CG_SetNextSnap: a constant room for the 8-word change mask (planned with two bounded index regions and rbp as an ordinary register)
+    # CG_SetNextSnap: a constant room for the 12-word change mask (planned with two bounded index regions and rbp as an ordinary register)
     {'plan': 'frame-14086fba0.frame.json', 'fields': 'agent_capacity_frame_fields_86fba0.inc', 'cave': None,
-     'function': 0x14086FBA0, 'entry': 4, 'formula': 'constexpr std::uint32_t snap_mask_room = 32;',
-     'extra': lambda n: 32, 'need': lambda n: ((18 + n + 31) // 32) * 4},
+     'function': 0x14086FBA0, 'entry': 4, 'formula': 'constexpr std::uint32_t snap_mask_room = 48;',
+     'extra': lambda n: 48, 'need': lambda n: ((18 + n + 31) // 32) * 4},
 ]
 
 
@@ -842,7 +845,7 @@ class FrameGrow(unittest.TestCase):
                     self.skipTest('the probe cave of %s needs the engine database to rule out raw branch hits: %s' % (t['plan'], e.reasons))
                 self.assertEqual(doc['fields'], plan['fields'])
                 self.assertEqual((doc['cave'] or {}).get('cave_bytes'), (plan['cave'] or {}).get('cave_bytes'))
-                frame_grow.self_check(self.image, doc, extras=[16 * k for k in range(1, 4)] + [t['extra'](n) for n in range(28, 233, 4)])
+                frame_grow.self_check(self.image, doc, extras=[16 * k for k in range(1, 4)] + [t['extra'](n) for n in range(28, 321, 4)])
 
     def test_the_run_time_arithmetic_for_every_agent_count(self):
         import frame_grow
@@ -921,8 +924,8 @@ from capstone.x86 import X86_REG_RSP  # noqa: E402
 
 class MaskSites(unittest.TestCase):
     """CG_SetNextSnap's character change mask (a34): the five instructions of the shipped function that used [rsp+0x40] (two 32-bit words) are
-    caves with the mask at [rsp+0x170, +0x190) (8 words = 256 characters), in the room the frame grow of 0x14086FBA0 opens below the cookie."""
-    ROOM_START, ROOM = 0x170, 32
+    caves with the mask at [rsp+0x170, +0x190) (12 words = 384 characters since a57), in the room the frame grow of 0x14086FBA0 opens below the cookie."""
+    ROOM_START, ROOM = 0x170, 48
 
     def setUp(self):
         self.image, self.source = find_image()
@@ -945,12 +948,12 @@ class MaskSites(unittest.TestCase):
             self.assertEqual((mem.base, mem.index, mem.scale, mem.disp), (lambda m: (m.base, m.index, m.scale, self.ROOM_START))(
                 next(o for o in stock.operands if o.type == 3).mem), f'{start:#x} the same address form, the mask at 0x170')
             self.assertEqual(first.encoding.disp_size, 4)
-            if stock.mnemonic == 'mov' and stock.operands[0].type == 3:          # the store: all 8 words are cleared (rax is 0 there)
+            if stock.mnemonic == 'mov' and stock.operands[0].type == 3:          # the store: all 12 words are cleared (rax is 0 there)
                 stores = [(i.mnemonic, i.operands[1].reg, next(o for o in i.operands if o.type == 3).mem.disp) for i in new]
-                self.assertEqual([d for _, _, d in stores], [0x170, 0x178, 0x180, 0x188])
+                self.assertEqual([d for _, _, d in stores], [0x170, 0x178, 0x180, 0x188, 0x190, 0x198])
                 self.assertEqual({m for m, _, _ in stores}, {'mov'})
                 self.assertEqual(len({r for _, r, _ in stores}), 1)
-        self.assertEqual(self.ROOM_START + self.ROOM, 0x190)
+        self.assertEqual(self.ROOM_START + self.ROOM, 0x1A0)
 
     def test_nothing_else_of_the_function_touches_the_room_and_the_index_claims_hold(self):
         """In the shipped function the only stack accesses at or above 0x170 are the cookie (store and check) and the saved rbp (0x1d0); the indexed
@@ -973,12 +976,12 @@ class MaskSites(unittest.TestCase):
 
     def test_the_frame_plan_opens_the_room_and_the_component_pins_it(self):
         plan = json.load(open(os.path.join(PLANS, 'frame-14086fba0.frame.json'), encoding='utf-8'))
-        self.assertEqual((plan['array_top'], plan['extra'], plan['max_extra'], plan['cave']), (0x170, 32, 32, None))
+        self.assertEqual((plan['array_top'], plan['extra'], plan['max_extra'], plan['cave']), (0x170, 48, 48, None))
         self.assertEqual(plan['bounded_index'], [[0x40, 0x50], [0x70, 0x170]])
         roles = {f['role'] for f in plan['fields']}
         self.assertIn('frame-sub', roles)
         hpp = open(HPP, encoding='utf-8').read()
-        self.assertIn('constexpr std::uint32_t snap_mask_room = 32;', hpp)
+        self.assertIn('constexpr std::uint32_t snap_mask_room = 48;', hpp)
         text = open(CPP, encoding='utf-8').read()
         self.assertIn('frame_sets.push_back({"14086FBA0", frame_fields_d, frame_caves_d, snap_mask_room});', text)
         for n in SITE_COUNTS:
