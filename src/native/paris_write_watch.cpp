@@ -792,9 +792,9 @@ namespace paris_write_watch
                 for (int i = 0; i < target_count; ++i)
                 {
                     auto& t = targets[i];
-                    const auto address = evaluate(t);
-                    // VirtualQuery of the engine's 47 GB pool is slow (100 us and more): the address is checked when it changes, not every frame
-                    if (address != t.guard_addr) { t.guard_addr = address; t.guard_seen = false; t.guard_valid = address && plausible_address(address, t.len); }
+                    // the address the helper thread evaluated and checked (VirtualQuery of the engine's 47 GB pool can take milliseconds: never on the main thread)
+                    const auto address = t.addr.load(std::memory_order_acquire);
+                    if (address != t.guard_addr) { t.guard_addr = address; t.guard_seen = false; t.guard_valid = address != 0; }
                     if (!address || !t.guard_valid) continue;
                     std::uint64_t value{};
                     if (!read_value(address, t.len, value)) continue;
