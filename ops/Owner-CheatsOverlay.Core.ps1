@@ -32,7 +32,7 @@ function Remove-IW7OwnerCheatsOverlay([string]$NativeRoot) {
     $receiptPath=Join-Path $NativeRoot 'owner-cheats-overlay.local.json'
     if(!(Test-Path -LiteralPath $receiptPath)){return}
     $receipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
-    if($receipt.Schema -cne 'iw7.owner-cheats-overlay/1' -or $receipt.Root -cne [IO.Path]::GetFullPath($NativeRoot)){throw 'Invalid owner-cheats overlay receipt.'}
+    if($receipt.Schema -cne 'iw7.owner-cheats-overlay/1'){throw 'Invalid owner-cheats overlay receipt.'}
     $allowed=@('command.cpp','auth.cpp','dvar_cheats.cpp','owner_cheats.cpp','owner_cheats.hpp','owner_cheats_policy.hpp','owner_cheats_crypto.hpp')
     if(@($receipt.Files).Count -ne $allowed.Count){throw 'Incomplete owner-cheats overlay receipt.'}
     $seen=@{}
@@ -67,7 +67,7 @@ function Add-IW7OwnerCheatsOverlay([string]$NativeRoot,[string]$SourceRoot) {
     }
     # All inputs are validated before the first write; retain restoration bytes.
     $rows=@($files|ForEach-Object{@{Name=$_.Name;Before=$_.Before;AfterSHA256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($_.Bytes))}})
-    $receipt=@{Schema='iw7.owner-cheats-overlay/1';Root=$root;Files=$rows}
+    $receipt=@{Schema='iw7.owner-cheats-overlay/1';Files=$rows}
     $receipt|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $receiptPath -Encoding utf8NoBOM
     foreach($file in $files){[IO.File]::WriteAllBytes((Join-Path $root ('src/client/component/'+$file.Name)),$file.Bytes)}
     $receipt

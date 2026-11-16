@@ -122,7 +122,7 @@ function Add-IW7VoiceRelayOverlay {
         [ordered]@{Path=$_.Path;Before=$(if($null -ne $original){[Convert]::ToBase64String($original)}else{$null})
             BeforeSHA256=$(if($null -ne $original){Get-IW7VoiceHash $original}else{$null});AfterSHA256=$_.AfterSHA256}
     })
-    $receipt=[ordered]@{Schema='iw7.voice-relay-overlay/1';Root=$root;NativeCommit=$Pin.NativeCommit;UpstreamCommit=$Pin.UpstreamCommit;
+    $receipt=[ordered]@{Schema='iw7.voice-relay-overlay/1';NativeCommit=$Pin.NativeCommit;UpstreamCommit=$Pin.UpstreamCommit;
         UpstreamBase=$Pin.UpstreamBase;PatchSHA256=$Pin.PatchSHA256;Files=$rows}
     # The receipt exists before the first source byte changes.
     $receipt|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $receiptPath -Encoding utf8NoBOM
@@ -149,7 +149,7 @@ function Read-IW7VoiceOverlayReceipt([string]$NativeRoot,[string]$Name,[string]$
     $receiptPath=Join-Path $root $Name
     if(!(Test-Path -LiteralPath $receiptPath)){return $null}
     $receipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
-    if($receipt.Schema -cne $Schema -or $receipt.Root -cne $root){throw "Invalid voice overlay receipt $Name."}
+    if($receipt.Schema -cne $Schema){throw "Invalid voice overlay receipt $Name."}
     $files=@($receipt.Files)
     if($files.Count -ne $Paths.Count -or (@($files.Path|Sort-Object) -join ',') -cne (@($Paths|Sort-Object) -join ',')){throw "Incomplete voice overlay receipt $Name."}
     $restored=@()
@@ -194,7 +194,7 @@ function Add-IW7VoiceCertifyOverlay {
     if(Test-Path -LiteralPath $target){throw 'Unowned voice_test.cpp in the native checkout; preserve it.'}
     $bytes=[IO.File]::ReadAllBytes((Join-Path $SourceRoot 'src/native/voice_test.cpp'))
     $hash=Get-IW7VoiceHash $bytes
-    $receipt=[ordered]@{Schema='iw7.voice-certify-overlay/1';Root=$root;SourceSHA256=$hash
+    $receipt=[ordered]@{Schema='iw7.voice-certify-overlay/1';SourceSHA256=$hash
         Files=@([ordered]@{Path=$script:IW7VoiceCertifyPath;Before=$null;BeforeSHA256=$null;AfterSHA256=$hash})}
     $receipt|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $receiptPath -Encoding utf8NoBOM
     [IO.File]::WriteAllBytes($target,$bytes)

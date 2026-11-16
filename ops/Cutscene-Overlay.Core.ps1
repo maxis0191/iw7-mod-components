@@ -34,7 +34,7 @@ function Remove-IW7CutsceneOverlay([string]$NativeRoot){
     if(!(Test-Path -LiteralPath $receiptPath)){return}
     $r=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
     $allowed=@('gsc/script_extension.cpp','gsc/script_loading.cpp','input.cpp','cutscene.cpp','cutscene.hpp','cutscene_policy.hpp')
-    if($r.Schema -cne 'iw7.cutscene-overlay/1' -or $r.Root -cne [IO.Path]::GetFullPath($NativeRoot) -or @($r.Files).Count -ne $allowed.Count){throw 'Invalid cutscene overlay receipt.'}
+    if($r.Schema -cne 'iw7.cutscene-overlay/1' -or @($r.Files).Count -ne $allowed.Count){throw 'Invalid cutscene overlay receipt.'}
     $seen=@{}
     foreach($f in $r.Files){
         if($f.Name -cnotin $allowed -or $seen.ContainsKey($f.Name)){throw 'Unowned/duplicate cutscene overlay path.'}
@@ -65,7 +65,7 @@ function Add-IW7CutsceneOverlay([string]$NativeRoot,[string]$SourceRoot){
         $files+=@{Name=$name;Before=$null;Bytes=[IO.File]::ReadAllBytes((Join-Path $SourceRoot ('src/native/'+$name)))}
     }
     $rows=@($files|ForEach-Object{@{Name=$_.Name;Before=$_.Before;AfterSHA256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($_.Bytes))}})
-    $r=@{Schema='iw7.cutscene-overlay/1';Root=$root;Files=$rows}
+    $r=@{Schema='iw7.cutscene-overlay/1';Files=$rows}
     $r|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $receiptPath -Encoding utf8NoBOM
     foreach($f in $files){[IO.File]::WriteAllBytes((Join-Path $root ('src/client/component/'+$f.Name)),$f.Bytes)}
     $r

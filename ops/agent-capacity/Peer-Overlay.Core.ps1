@@ -48,7 +48,7 @@ function Remove-IW7CapacityPeerOverlay([string]$NativeRoot) {
     $path=Join-Path $root 'capacity-peer-overlay.local.json'
     if(!(Test-Path -LiteralPath $path)){return}
     $r=Get-Content -LiteralPath $path -Raw|ConvertFrom-Json
-    if($r.Schema -cne 'iw7.capacity-peer-overlay/1' -or $r.Root -cne $root -or @($r.Files).Count -ne 2){throw 'Invalid capacity peer receipt.'}
+    if($r.Schema -cne 'iw7.capacity-peer-overlay/1' -or @($r.Files).Count -ne 2){throw 'Invalid capacity peer receipt.'}
     $seen=@{}
     foreach($f in $r.Files){
         if($f.Name -cnotin @('auth.cpp','party.cpp') -or $seen.ContainsKey($f.Name)){throw 'Unowned or duplicate capacity peer file.'}
@@ -74,7 +74,7 @@ function Add-IW7CapacityPeerOverlay([string]$NativeRoot) {
         $bytes=[Text.UTF8Encoding]::new($false).GetBytes($after)
         $files+=@{Name=$name;Before=[Convert]::ToBase64String($before);BeforeSHA256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($before));AfterSHA256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes));Bytes=$bytes}
     }
-    $r=@{Schema='iw7.capacity-peer-overlay/1';Root=$root;Files=@($files|ForEach-Object{@{Name=$_.Name;Before=$_.Before;BeforeSHA256=$_.BeforeSHA256;AfterSHA256=$_.AfterSHA256}})}
+    $r=@{Schema='iw7.capacity-peer-overlay/1';Files=@($files|ForEach-Object{@{Name=$_.Name;Before=$_.Before;BeforeSHA256=$_.BeforeSHA256;AfterSHA256=$_.AfterSHA256}})}
     $out=[Text.UTF8Encoding]::new($false).GetBytes(($r|ConvertTo-Json -Depth 6));$stream=[IO.File]::Open($path,'CreateNew','Write','None')
     try{$stream.Write($out,0,$out.Length)}finally{$stream.Dispose()}
     foreach($f in $files){[IO.File]::WriteAllBytes((Join-Path $root ('src/client/component/'+$f.Name)),$f.Bytes)}
