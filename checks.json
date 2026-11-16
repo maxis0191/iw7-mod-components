@@ -431,6 +431,14 @@
       ]
     },
     {
+      "id": "agent_capacity_net_rows_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/agent_capacity_net_rows_test.py"
+      ]
+    },
+    {
       "id": "agent_capacity_sound_test",
       "command": [
         "python",

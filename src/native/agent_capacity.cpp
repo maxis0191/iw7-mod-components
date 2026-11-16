@@ -31,7 +31,7 @@ std::string contract = "24";
 
 struct buffer { std::uintptr_t data{}; std::size_t bytes{}; };
 buffer reserve_code(std::size_t bytes);
-buffer agent_pool, sentient_pool, sentient_refs, table8, table20, parts_pool, entity_queue;
+buffer agent_pool, sentient_pool, sentient_refs, table8, table20, parts_pool, entity_queue, anim_info_heap, bone_buffer;
 buffer state_a, state_c, state_client, state_x;   // replicated scriptable state (section 4b)
 buffer pool_server[stream_pool_classes], pool_client[stream_pool_classes];   // scriptable stream buffer pools (section 4d)
 buffer proxy_list;   // the client's character proxy list tables (section 4e)
@@ -134,11 +134,25 @@ bool write(const patch& item, bool rollback) noexcept {
 // ---- 1. agent records, sentients, characters, entity layout (server; the dedicated and a listen host) ----------
 void plan_agents() {
     const auto& l = L;
-    add(0x140C18D77, stock_agents, l.agents);               // G_GetMaxAgents (sub_140C18D00): min(atoi(scr_*_maxagents), 24)
+    add(0x140C18D77, stock_agents, gamestate_agent_byte(l.agents));   // G_GetMaxAgents (sub_140C18D00): min(atoi(scr_*_maxagents), 24); a byte: min(n, 255)
     // The stock game writes "24" into scr_zombie_maxagents and scr_default_maxagents itself (run h1, 11 Nov 2026: both
     // read 24 with the clamp raised, 24 agents). With the capacity on, the count is the server's: `call atoi` -> `mov eax, n`.
     block(0x140C18D6E, std::array<std::uint8_t, 5>{0xe8, 0x35, 0xed, 0x6a, 0x00},
-          std::array<std::uint8_t, 5>{0xb8, unsigned_imm8(l.agents), 0, 0, 0});
+          std::array<std::uint8_t, 5>{0xb8, unsigned_imm8(gamestate_agent_byte(l.agents)), 0, 0, 0});
+    // GameStateInfo +0x546 is a byte (also a byte of the gamestate message): min(n, 255). Above 255 agents its three readers of the VALUE take n as
+    // an immediate (a57; the five `cmp byte [+0x546], 0` tests only need it nonzero): SV init FUN_140c56a90, the client snapshot ring
+    // FUN_1409b2620 (a listen host) and the script builtin getmaxagents. Each is a `movzx r32, byte [reg + 0x546]` replaced in place by
+    // `mov r32, imm32` and nops. Not touched up to 255: the byte is exact there.
+    if (l.agents > 255) {
+        const auto n = l.agents;
+        const std::uint8_t n0 = n & 0xff, n1 = (n >> 8) & 0xff, n2 = (n >> 16) & 0xff, n3 = (n >> 24) & 0xff;
+        block(0x140C56AF8, std::array<std::uint8_t, 7>{0x0f, 0xb6, 0xbf, 0x46, 0x05, 0x00, 0x00},
+                           std::array<std::uint8_t, 7>{0xbf, n0, n1, n2, n3, 0x90, 0x90});                  // movzx edi, byte [rdi+0x546]
+        block(0x1409B266C, std::array<std::uint8_t, 8>{0x44, 0x0f, 0xb6, 0xb0, 0x46, 0x05, 0x00, 0x00},
+                           std::array<std::uint8_t, 8>{0x41, 0xbe, n0, n1, n2, n3, 0x90, 0x90});            // movzx r14d, byte [rax+0x546]
+        block(0x140C1DD99, std::array<std::uint8_t, 7>{0x0f, 0xb6, 0x88, 0x46, 0x05, 0x00, 0x00},
+                           std::array<std::uint8_t, 7>{0xb9, n0, n1, n2, n3, 0x90, 0x90});                  // movzx ecx, byte [rax+0x546]
+    }
     add(0x1405AFFF6, stock_characters, l.characters);        // entity layout: characters
     add(0x1405B0000, 58, l.map_start);                       // first map entity
     add(0x14B54FA72, 58, l.map_start); add(0x14B54FA7C, 58, l.map_start); // G_InitGame's own reservation
@@ -169,6 +183,21 @@ void plan_agents() {
         std::memcpy(d, reinterpret_cast<void*>(f - 4), sizeof(d));
         if (d[0] != 0x9C) throw std::runtime_error("agent capacity: clientNum net field differs");
         add(f, 6, l.net_id_bits(), 4, false);
+    }
+    // Above 256 characters (a57): the other integer rows of 6..8 bits of the entity and agent state lists, among them the 8 bit clientNum of the base
+    // list 32 (0x141BB7C08), are widened to 9 bits; none was proven free of character numbers (ops/engine/net_rows.py, docs/AGENT-CAPACITY-ENGINE.md).
+    if (l.wide_net_fields()) {
+        struct net_row { std::uintptr_t field; std::uint32_t offset, bits; };
+        static const net_row net_rows[] = {
+#include "agent_capacity_net_rows.inc"
+        };
+        for (const auto& r : net_rows) {
+            readable(r.field - 4, 12);
+            std::uint32_t d[3]{};
+            std::memcpy(d, reinterpret_cast<void*>(r.field - 4), sizeof(d));
+            if (d[0] != r.offset) throw std::runtime_error("agent capacity: a net field row differs");
+            add(r.field, r.bits, l.net_id_bits(), 4, false);
+        }
     }
     // server AI loops over characters by entity byte offset (cmp reg, 42 x 0x3F8): agents past entity 41 were skipped.
     // 0x1400A9865 is left: its collector fills a 6-int stack array in sub_140B69E20 with no bound (not done).
@@ -313,7 +342,7 @@ void plan_client() {
     // frame. A listen host passes the server's own max agents (byte +0x546, set from the patched selector); a client
     // joining a remote server passes 24 as `mov ebp, 18; lea r14d, [rbp + 6]`: the 6 becomes agents - 18.
     // CG_SetNextSnap: the character change mask (one bit a character) lives in the room its frame grow opens (frame_fields_d,
-    // agent_capacity_caves_mask.inc): [rsp+0x170, +0x190), 8 words, enough for 256 characters. No one-byte stack offset is left here (a34).
+    // agent_capacity_caves_mask.inc): [rsp+0x170, +0x1A0), 12 words, enough for 384 characters (a57; 8 words, 256 characters, before). No one-byte stack offset is left here (a34).
 }
 
 // ---- 3b. two per-sentient pools of 71 static objects (built by static constructors sub_140004650, sub_1400046A0) ----
@@ -412,6 +441,31 @@ void plan_parts() {
     rip(0x140BFA40F, 0x1460B22F0, parts_pool.data);
     rip(0x140BF6FF8, 0x1460B22F0, parts_pool.data); add(0x140BF6FFD, stock_parts * 4, l.parts * 4);
     rip(0x140BF731C, 0x1460B22F0, parts_pool.data); add(0x140BF7321, stock_parts * 4, l.parts * 4);
+}
+
+// ---- 4a2. the XAnim anim-info heap (a57, see anim_info_heap_bytes in the hpp) ---------------------------------------------------------------------
+// FUN_140D83DF0 builds it at start: `lea rax,[heap data]`, `mov dword [size], 0x3FFC0`, `lea rax,[base]`, `mov dword [total], 0x40000` and four zero qword stores over the
+// units 2 and 3 (base + 0x20..0x38). Seven fields, no cave.
+void plan_anim_info() {
+    const auto base = anim_info_heap.data;
+    rip(0x140D83E08, anim_info_stock_heap, base + anim_info_header);
+    add(0x140D83E12, anim_info_stock_bytes - anim_info_header, anim_info_heap_bytes - anim_info_header);
+    rip(0x140D83EBB, anim_info_stock_base, base);
+    add(0x140D83EC5, anim_info_stock_bytes, anim_info_heap_bytes);
+    rip(0x140D83ED5, 0x147995400, base + 0x20);
+    rip(0x140D83EDC, 0x147995408, base + 0x28);
+    rip(0x140D83EE3, 0x147995410, base + 0x30);
+    rip(0x140D83EEA, 0x147995418, base + 0x38);
+}
+
+// ---- 4a3. the per-frame animated bone buffers (a57, see bone_shift in the hpp) ---------------------------------------------------------------------
+// FUN_140342790: `lea r8,[0x141FE5F23]` (rip), `shl rax, 0x14` (the half size 0x100000); the two allocators compare the running end with `cmp eax, 0xFFFF0` (imm32).
+void plan_bone_buffer() {
+    rip(0x1403427B3, bone_stock_base, bone_buffer.data);
+    static_assert(bone_stock_shift == 0x14 && bone_shift == 0x16);
+    block(0x1403427B7, std::array<std::uint8_t, 4>{0x48, 0xc1, 0xe0, 0x14}, std::array<std::uint8_t, 4>{0x48, 0xc1, 0xe0, 0x16});
+    add(0x1403464E4, bone_stock_cap, bone_cap);
+    add(0x14034657D, bone_stock_cap, bone_cap);
 }
 
 // ---- 4b. replicated scriptable state: the 1,016 dword budget (a39) ------------------------------------------------------------
@@ -1023,7 +1077,7 @@ const std::vector<frame_field> frame_fields_c = {
 const std::vector<frame_cave_spec> frame_caves_c = {
 #include "agent_capacity_frame_cave_added0.inc"
 };
-// CG_SetNextSnap (d): the frame grows by snap_mask_room (32) bytes at the top of its locals, below the stack cookie, for the 8-word change
+// CG_SetNextSnap (d): the frame grows by snap_mask_room (48) bytes at the top of its locals, below the stack cookie, for the 12-word change
 // mask; a constant, so no probe cave (0x180 + 32 is far from a page). Its field table: agent_capacity_frame_fields_86fba0.inc.
 const std::vector<frame_field> frame_fields_d = {
 #include "agent_capacity_frame_fields_86fba0.inc"
@@ -1529,6 +1583,8 @@ public:
         table20 = reserve(L.table20_bytes());
         parts_pool = reserve(L.parts * 4);
         entity_queue = reserve(L.queue_bytes());
+        anim_info_heap = reserve(anim_info_heap_bytes);
+        bone_buffer = reserve(2u << bone_shift);
         state_a = reserve(L.state_bytes());
         state_c = reserve(L.state_list_bytes());
         state_client = reserve(2 * (L.state_bytes() + 8));   // the two static client blocks with their 8 byte trailers (stock stride 0x17F0)
@@ -1538,6 +1594,8 @@ public:
         plan_archive();
         plan_client();
         plan_parts();
+        plan_anim_info();
+        plan_bone_buffer();
         plan_state();
         plan_pools();
         plan_proxy_list();
@@ -1571,6 +1629,10 @@ public:
             // after the static initialisers chained the stock 64: add room for every sentient slot twice over
             extend_free_list(0x143C1A580, 0x810, 2 * L.sentient_slots());
             extend_free_list(0x143BFA140, 0x30, 2 * L.sentient_slots());
+            console::info("[agent capacity] anim info heap: %u usable bytes at %llX (stock 0x3FFC0 at 0x147995420), index base %llX\n", *reinterpret_cast<std::uint32_t*>(0x147994EE0ull),
+                static_cast<unsigned long long>(*reinterpret_cast<std::uintptr_t*>(0x147994EE8ull)), static_cast<unsigned long long>(*reinterpret_cast<std::uintptr_t*>(0x147994ED0ull)));
+            // the saved animation cache: 84 nodes for 2,048 possible keys (see anim_cache_head in the hpp)
+            extend_free_list(anim_cache_head, anim_cache_node_bytes, anim_cache_extra_nodes);
             // G_GetMaxAgents reads scr_<gametype>_maxagents, else scr_default_maxagents: make the default the new count.
             const auto value = std::to_string(L.agents);
             game::Dvar_RegisterString("scr_default_maxagents", value.data(), game::DVAR_FLAG_NONE, "Agents this server can hold");

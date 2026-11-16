@@ -8,8 +8,8 @@
  {
   "address": "0x14086fe74",
   "kind": "bytes",
-  "new_bytes": "4889842470010000488984247801000048898424800100004889842488010000",
-  "note": "mov [rsp+0x170],rax (rax = 0) and the three following qwords: the mask is cleared in all 32 bytes (stock cleared 8)"
+  "new_bytes": "488984247001000048898424780100004889842480010000488984248801000048898424900100004889842498010000",
+  "note": "mov [rsp+0x170],rax (rax = 0) and the five following qwords: the mask is cleared in all 48 bytes (stock cleared 8)"
  },
  {
   "address": "0x14086fe83",

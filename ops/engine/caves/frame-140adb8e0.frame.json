@@ -5,8 +5,10 @@
  "function": "0x140adb8e0",
  "end": "0x140adbc08",
  "array_top": 1200,
+ "bounded_index": [],
+ "rbp_general": false,
  "extra": 64,
- "max_extra": 3328,
+ "max_extra": 4736,
  "frame": {
   "pushes": 3,
   "stock_size": 1264,
@@ -289,11 +291,11 @@
   "window_start": "0x140adb8e5",
   "window_len": 7,
   "old_bytes": "4881ecf0040000",
-  "cave_bytes": "f6842400f0ffff00f6842400e0ffff004881ecf0110000",
+  "cave_bytes": "f6842400f0ffff00f6842400e0ffff004881ec70170000",
   "probes": 2,
   "imm_offset": 19,
   "stock_frame": 1264,
-  "max_extra": 3328,
+  "max_extra": 4736,
   "page": 4096
  },
  "unwind_chunks": [
