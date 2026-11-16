@@ -315,6 +315,7 @@
     "src/native/paris_word_provenance.cpp",
     "src/native/paris_word_provenance.hpp",
     "src/native/paris_world.cpp",
+    "src/native/paris_write_watch.cpp",
     "src/native/script_parent_pools.hpp",
     "src/native/script_var_layout.hpp",
     "src/native/script_variables.cpp",
