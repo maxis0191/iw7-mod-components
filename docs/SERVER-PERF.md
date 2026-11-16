@@ -104,22 +104,20 @@ A window is about 300 KB; most of it is the function table (210 script files, 8,
   function is then the first thread's.
 - One window at a time; the server thread is the thread that ran the first server frame.
 
-## Light windows, slow frames and weapon gives (a74, 16 Nov 2026)
+## Light windows and slow frames (a74, 16 Nov 2026)
 
-The three commands below are in `src/native/paris_sperf.cpp`; the flight recorder of the server repository (`docs/ZOMBIE-CAPACITY.md` 6e, `ops/play/flight_report.py`) uses them.
+The commands below are in `src/native/paris_sperf.cpp`; the flight recorder of the server repository (`docs/ZOMBIE-CAPACITY.md` 6e, `ops/play/flight_report.py`) uses them.
 
-- `paris_sperf_begin <name> light` (and `paris_perf_begin <name> light` in the client's meter, `src/native/paris_perf.cpp`): the same window without the sampler thread. It holds the server frame times, the snapshot entity counters and, new in both
-  recorders, the CPU seconds of the whole process over the window (`cpu_seconds` in the window file of the server meter, `user_ms`/`kernel_ms` of each thread in the client's). The sampler thread (a thread suspension about 600 times a second)
+- `paris_sperf_begin <name> light` (and `paris_perf_begin <name> light` in the client's meter, `src/native/paris_perf.cpp`): the same window without the sampler thread. It holds the server frame times, the snapshot entity counters and the CPU of the process over
+  the window (`cpu_seconds` in the window file of the server meter, new; `user_ms`/`kernel_ms` of each thread in the client's). The sampler thread (a thread suspension about 600 times a second)
   was measured at +0.27 of a core on the server and +0.24 on the client while a window is open (a68); a light window has no such thread. The file says `"sampler":{"mode":"light",...}` with no ticks and no stacks, and `iw7_sperf.py` and
   `iw7_perf.py` read it (frame statistics; no script cost). A window without the word is as before.
 - `paris_fr_slow <ms>`: the slow-frame watchdog, off by default (0). One thread wakes every 4 ms and reads two atomics (the frame in progress and when it began). Only when the frame in progress is already older than `<ms>` it suspends the server thread
-  for one read of the script VM's call stack, as the window sampler does, up to 12 times in that frame. At the end of such a frame the server thread prints one line:
+  for one read of the script VM's call stack, as the window sampler does, up to 12 times in that frame. At the end of such a frame the server thread writes one line:
   `[FR] t=<level time> native_slow_frame ms=<the frame> serial=<frame count> samples=<n> script=<n in script> engine=<n outside the script VM> leaf=<innermost functions, counted> thread=<outermost functions, counted>`.
+  The line goes to the server's game log (`iw7-mod/logs/games_mp.log`) through the buffered handle `G_LogPrintf` uses (`paris_log_stream`), not to the console: console output costs about 0.16 ms for every byte on the lab server
+  (a 1,300 byte `print` added 215 ms to a frame at 200 alive, 16 Nov 2026), so a recorder that printed would make the frames it measures. The same holds for GSC `print` in any recorder: use `logprint`.
   The frame is sampled while it runs, so the line names what made THIS frame slow (a script function by file and name), and `engine=` counts the samples that found no script running (the frame was in engine code). The first <ms> of the frame are not sampled.
-- `paris_fr_give <0|1>`: while 1, every call of the script builtin `giveweapon` (`sub_140B06130`, 593 bytes; the entity reference arrives in `ecx`, parameter 0 is the weapon name; code bytes checked before the hook is made) prints
-  `[FR] t=<level time> give player=<entity number> weapon=<name> depth=<VM depth> caller=<innermost script function<its caller<...>>`, before the builtin runs. The stock `scripts\cp\utility::_giveweapon`, the loadouts, the box and the wheel end
-  in this builtin, so the chain starts at `utility::_giveweapon` and the next name is who asked. The hook runs on the server thread, inside the script's call, so the VM stack is the caller's.
-  (A first version hooked `G_GivePlayerWeapon`, 0x140B69400: a script `giveweapon` of the proof run did not pass through it, `gives_seen` stayed 0; the builtin itself was found from the callers of `G_GetWeaponForName` that also call it.)
 
 Cost: see the measured runs in the server repository's `docs/ZOMBIE-CAPACITY.md` 6e.
 
