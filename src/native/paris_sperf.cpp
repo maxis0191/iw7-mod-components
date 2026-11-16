@@ -16,7 +16,7 @@
 //   paris_sperf_begin <name>   start a window
 //   paris_sperf_begin <name> light   the same without the sampler thread: frame times and the snapshot counters only
 //   paris_sperf_end            stop it and write iw7-mod/paris-sperf/<name>.json
-//   paris_fr_give <0|1>        one [FR] line for every G_GivePlayerWeapon (weapon index, player state, the script functions that asked)
+//   paris_fr_give <0|1>        one [FR] line for every script giveweapon (player, weapon name, the script functions that asked)
 //   paris_fr_slow <ms>         the slow-frame watchdog of the flight recorder (0 = off, the default). A server frame that runs longer
 //                              than <ms> is sampled while it is still running (a thread that wakes every 4 ms, reads one atomic and,
 //                              inside a slow frame only, suspends the server thread for one VM stack read as the sampler does) and
@@ -393,19 +393,21 @@ namespace paris_sperf
         }
 
         // ---- weapon gives with the script function that asked ------------------------------------------------------------------
-        // G_GivePlayerWeapon (0x140B69400; named in symbols.hpp) is what the script builtin giveweapon, the loadout and the
-        // weapon swaps end in (3 callers: sub_140B1D3A0 twice, sub_140B06130, sub_140B09080). Disassembly: rcx = the player's
-        // state, rdx = the weapon (its first word is the weapon index), r8d and r9d flags, the result is 0 or 1 in eax. The hook
-        // runs on the server thread, so the VM stack it reads is the one of the script that called: the innermost function is the
-        // caller. Prints one line per give while paris_fr_give is 1; the weapon index is joined to its name by the script
-        // recorder (play_flight: the player's weapon list at the same level time).
-        constexpr std::uintptr_t give_function = 0x140B69400;
+        // The script builtin giveweapon (sub_140B06130, 593 bytes; found from the callers of G_GetWeaponForName that also call G_GivePlayerWeapon, and
+        // read in the disassembly: the entity reference arrives in ecx, class 0 = entity, number in the low word; parameter 0 is the weapon name, 2 to 4 integers).
+        // The stock script function scripts\cp\utility::_giveweapon, the loadouts, the box and the wheel all end in it, so the VM stack read here is the chain of
+        // script functions that asked: the innermost is usually _giveweapon, the next one is the caller. G_GivePlayerWeapon (0x140B69400) is NOT what a script
+        // giveweapon runs when the player already has the weapon or on the other paths of the builtin: a first version hooked it and saw none of the gives of the proof run.
+        // The hook runs on the server thread. Prints one line per call while paris_fr_give is 1, before the builtin runs:
+        //   [FR] t=<level time> give player=<entity number> weapon=<name> depth=<VM depth> caller=<innermost<next<...>>
+        constexpr std::uintptr_t give_function = 0x140B06130;
+        constexpr std::uintptr_t scr_get_string = 0x140C0BCC0;   // sub_140C0BCC0(index): the string parameter (SL_ConvertToString of the parameter's string id)
         utils::hook::detour give_hook;
         std::atomic<bool> give_log{false};
         bool give_installed = false;
         std::atomic<std::uint64_t> gives_seen{0};
 
-        int give_stub(void* state, const void* weapon, const int flags_a, const int flags_b)
+        void give_stub(const unsigned entref)
         {
             if (give_log.load(std::memory_order_relaxed))
             {
@@ -421,22 +423,22 @@ namespace paris_sperf
                         chain += function_at(sample.pos[sample.depth - 1 - k]);
                     }
                 }
-                unsigned weapon_index = 0xFFFFu;
-                if (weapon && !IsBadReadPtr(weapon, 2)) weapon_index = *static_cast<const std::uint16_t*>(weapon);
-                char text[600]{};
-                _snprintf_s(text, sizeof(text), _TRUNCATE, "[FR] t=%d give state=%p weapon_index=%u flags=%d,%d depth=%zu caller=%s\n",
-                    frame_level_time.load(std::memory_order_relaxed), state, weapon_index, flags_a, flags_b, sample.depth, chain.c_str());
+                const char* weapon = "?";
+                if (const auto* name = reinterpret_cast<const char* (*)(unsigned)>(scr_get_string)(0)) weapon = name;
+                char text[700]{};
+                _snprintf_s(text, sizeof(text), _TRUNCATE, "[FR] t=%d give player=%u weapon=%s depth=%zu caller=%s\n",
+                    frame_level_time.load(std::memory_order_relaxed), entref & 0xFFFFu, weapon, sample.depth, chain.c_str());
                 console::info("%s", text);
             }
-            return give_hook.invoke<int>(state, weapon, flags_a, flags_b);
+            give_hook.invoke<void>(entref);
         }
 
         void set_give_log(const bool on)
         {
             if (on && !give_installed)
             {
-                static const unsigned char prologue[] = {0x40, 0x55, 0x53, 0x56, 0x57, 0x41, 0x55, 0x48, 0x8B, 0xEC};
-                if (!code_is(give_function, "G_GivePlayerWeapon", prologue, sizeof(prologue))) return;
+                static const unsigned char prologue[] = {0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x55, 0x57};
+                if (!code_is(give_function, "GScr_GiveWeapon (sub_140B06130)", prologue, sizeof(prologue))) return;
                 give_hook.create(give_function, give_stub);
                 give_installed = true;
             }
