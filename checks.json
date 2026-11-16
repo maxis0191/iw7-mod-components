@@ -408,6 +408,14 @@
       ]
     },
     {
+      "id": "agent_capacity_render_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/agent_capacity_render_test.py"
+      ]
+    },
+    {
       "id": "agent_capacity_snapshot_test",
       "command": [
         "python",

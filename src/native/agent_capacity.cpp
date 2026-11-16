@@ -628,6 +628,29 @@ void plan_snapshot() {
     }
 }
 
+// ---- 3c. the renderer's per-model parameter list: a full list skips the draw (a52) -------------------------------------------------
+// Every dynamic model the scene draws (FUN_140E2D9D0 and FUN_140E2FF80, one call a drawn DObj) takes 1 or 2 records of 32 bytes (the model's
+// material / UV parameters, FUN_140E366C0) from a list of 1,024 at 0x149FF3E1C that the engine copies to the GPU every frame (FUN_140E328E0 copies
+// count x 32 bytes into the frame data, FUN_1400C13B0 into the mapped buffer). The reservation is `lock xadd` on the count 0x149FF3E18; when it
+// passes 0x400 the stock code calls the renderer warning 0x9A and goes on with a NULL buffer: FUN_140E366C0 then writes through null (the lab client
+// crash of a49, about 1,170 records = 650 flooded models), and the count stays past 0x400, so the copy of the frame would also run past its 0x8000
+// bytes. Both overflow branches are rewritten in place (31 and 30 bytes): the reservation is given back (`lock sub`), the warning is still raised,
+// and the function returns the way its other full-list branch does (the jump to the `jmp` of the lights overflow: a short jump that ends at the
+// function's own epilogue; the second function first stores r12 in the slot its epilogue reloads). The model is not drawn: the list is a hard
+// limit of the renderer (the next lists, 1,024 draw records, 512 draw records and 1,024 lights, are skipped the same way by the stock code, and the
+// draw record's sort key holds the light index in 10 bits: docs/AGENT-CAPACITY-ENGINE.md "Renderer lists"); what this patch changes is that a
+// full list now costs only the models over it, not the client.
+void plan_render_list() {
+    block(0x140E2DAA0, std::array<std::uint8_t, 31>{0x48, 0x8B, 0xD1, 0x41, 0xB8, 0x00, 0x04, 0x00, 0x00, 0x48, 0xC1, 0xE2, 0x05, 0xB9, 0x9A, 0x00,
+                                                    0x00, 0x00, 0x44, 0x8B, 0xF5, 0x4C, 0x8B, 0xFD, 0xE8, 0xF3, 0xD5, 0x01, 0x00, 0xEB, 0x06},
+          std::array<std::uint8_t, 31>{0xF0, 0x29, 0x0D, 0x71, 0x63, 0x1C, 0x09, 0x89, 0xCA, 0xC1, 0xE2, 0x05, 0x41, 0xB8, 0x00, 0x04, 0x00, 0x00,
+                                       0xB9, 0x9A, 0x00, 0x00, 0x00, 0xE8, 0xF4, 0xD5, 0x01, 0x00, 0xEB, 0x4B, 0x90});
+    block(0x140E30046, std::array<std::uint8_t, 30>{0x48, 0x8B, 0xD1, 0x41, 0xB8, 0x00, 0x04, 0x00, 0x00, 0x48, 0xC1, 0xE2, 0x05, 0xB9, 0x9A, 0x00,
+                                                    0x00, 0x00, 0x8B, 0xF3, 0x48, 0x8B, 0xEB, 0xE8, 0x4E, 0xB0, 0x01, 0x00, 0xEB, 0x05},
+          std::array<std::uint8_t, 30>{0xF0, 0x29, 0x0D, 0xCB, 0x3D, 0x1C, 0x09, 0x4C, 0x89, 0x64, 0x24, 0x78, 0x41, 0xB8, 0x00, 0x04, 0x00, 0x00,
+                                       0xB9, 0x9A, 0x00, 0x00, 0x00, 0xE8, 0x4E, 0xB0, 0x01, 0x00, 0xEB, 0x5A});
+}
+
 // ---- 3d. the two per-sentient tables of an SV agent record (map A1) ---------------------------------------------------
 // Each SV agent record (0x3F08 bytes, one per agent) holds table 1 (64-byte rows at +0x10) and table 2 (60-byte rows at +0x23E4),
 // 66 rows each, indexed by the sentient slot; with more than 24 agents a slot passes 65 and the stock code writes past the
@@ -1490,6 +1513,7 @@ public:
         plan_pools();
         plan_proxy_list();
         plan_snapshot();
+        plan_render_list();
         plan_ai_pool();
         plan_tables();
         plan_entity_queue();
