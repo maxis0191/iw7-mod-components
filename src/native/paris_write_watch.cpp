@@ -213,8 +213,8 @@ namespace paris_write_watch
             if (target_count >= max_targets) return false;
             auto& t = targets[target_count];
             char text[160]{};
-            std::strncpy(text, spec, sizeof(text) - 1);
-            std::strncpy(t.name, spec, sizeof(t.name) - 1);
+            strcpy_s(text, spec);
+            strncpy_s(t.name, spec, _TRUNCATE);
             t.len = 8; t.expect = hit_vtable; t.any = false;
             if (auto* colon = std::strchr(text, ':')) { *colon = 0; t.len = static_cast<unsigned>(std::atoi(colon + 1)); }
             if (auto* equals = std::strchr(text, '='))
