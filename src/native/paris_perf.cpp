@@ -8,7 +8,13 @@
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
 #include "game/game.hpp"
+#if __has_include("agent_capacity.hpp")
 #include "agent_capacity.hpp"
+#else
+// A build without the AgentCapacity switch has no agent_capacity.hpp (ops/Build-Voice.ps1 removes it): the render skip counters read zero.
+#include <cstdint>
+namespace agent_capacity { inline std::uint32_t render_skipped(unsigned) noexcept { return 0; } }
+#endif
 #include <algorithm>
 #include <array>
 #include <cmath>
