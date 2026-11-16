@@ -36,6 +36,7 @@ table distances but whose base register is not known is reported as `unresolved`
 import argparse
 import json
 import os
+import re
 import sqlite3
 import struct
 import sys
@@ -679,6 +680,325 @@ def parents(args):
     return 0
 
 
+# ------------------------------------------------------------------------------------------------ hash buckets (a62)
+# The child hash table (HASH, 4 segments x 2^B u16 heads; stock B = 14, 0x20000 bytes) never grew with the children (a60: load factor 2.7 at 200 alive,
+# 3.3 at 280). `buckets` finds every site that depends on B and prints the data flow evidence of each one; with -o it writes variable-buckets.json
+# (`emit-buckets` turns it into script_variables_buckets.inc). Sites:
+#   mask   `and r,0x3FFF` whose operand holds `parent * 0x65 + name` (imul by 0x65 reaches it) -> (1 << B) - 1
+#   shl    `shl r,0xE` of `parent & 3` (the segment) that is added to a mask result and indexes the table -> B
+#   ref    a rip, image relative or register relative field that names the table (the six stage 1 rows `[P8 + 0xA5000]` and the new ones) -> follows the table
+#   half   `add rax,0x52800` (distance P8 -> HASH in units of 2 bytes; the stage 1 `hash_half` rows)
+#   clear  `mov r8d,0x20000` after `lea rcx,[rip + HASH]` (the initialiser's memset) -> 8 << B
+BUCKET_STOCK_BITS = 14
+HASH_BASE, HASH_BYTES = REGIONS['HASH']
+TABLES_FOR_DISTANCE = ('A', 'B', 'P8', 'P4', 'CH', 'BLOCK0', 'IMG')
+LABEL_CLASSES = ('imul', 'mov', 'movzx', 'movsx', 'movsxd', 'add', 'sub', 'or', 'lea', 'and', 'shl', 'shr', 'sar', 'inc', 'dec', 'xor', 'neg', 'not',
+                 'cmovne', 'cmove', 'cmovb', 'cmova')
+
+
+def _regs_rw(ins):
+    try:
+        r, w = ins.regs_access()
+    except Exception:
+        return [], []
+    return [FULL[ins.reg_name(x)] for x in r if ins.reg_name(x) in FULL], [FULL[ins.reg_name(x)] for x in w if ins.reg_name(x) in FULL]
+
+
+def bucket_flow(ins_list, mask_at, shl_at):
+    """Linear forward label propagation over one function: labels ('H', imul address) from `imul x,y,0x65`, ('G', address) from `and r,3`, ('M', address) at every
+    `and r,0x3FFF` whose operand carries an H label, ('S', address) at every `shl r,0xE` whose operand carries a G label. A load clears the destination, except from a
+    stack slot `[rsp + d]` (no index): the loop of FUN_140C04D80 spills the multiply and the shifted segment and reads them back, so a slot keeps the labels of what was stored.
+    -> ({site address: [consumers]}, {site address: provenance of its operand})"""
+    from capstone import x86_const as X
+    lab = {}
+    slots = {}
+    out = {}
+    trail = {}
+    for ins in ins_list:
+        rd, wr = _regs_rw(ins)
+        mn = ins.mnemonic
+        mem = next((o for o in ins.operands if o.type == X.X86_OP_MEM), None)
+        # a consumer: a memory operand whose index register holds an M label and an S label, scale 2
+        if mem is not None and mem.mem.index != 0 and mem.mem.scale == 2:
+            idx = FULL.get(ins.reg_name(mem.mem.index))
+            ls = lab.get(idx, set())
+            ms = [a for k, a in ls if k == 'M']
+            ss_ = [a for k, a in ls if k == 'S']
+            if ms and ss_:
+                for a in ms + ss_:
+                    out.setdefault(a, []).append(dict(consumer=ins.address, text=ins.mnemonic + ' ' + ins.op_str, with_m=ms, with_s=ss_))
+        imm = ins.operands[1].imm if len(ins.operands) == 2 and ins.operands[1].type == X.X86_OP_IMM else None
+        new = set()
+        for r in rd:
+            new |= lab.get(r, set())
+        slot = mem.mem.disp if mem is not None and mem.mem.base == X.X86_REG_RSP and mem.mem.index == 0 else None
+        if slot is not None and mn == 'mov' and ins.operands[0].type == X.X86_OP_MEM and ins.operands[1].type == X.X86_OP_REG:
+            src = FULL.get(ins.reg_name(ins.operands[1].reg))
+            if lab.get(src):
+                slots[slot] = set(lab[src])
+            else:
+                slots.pop(slot, None)
+            continue
+        if slot is not None and mn not in ('lea',) and ins.operands[0].type != X.X86_OP_MEM:
+            new = new | slots.get(slot, set())
+        is_load = mem is not None and mn in ('mov', 'movzx', 'movsx', 'movsxd') and ins.operands[0].type == X.X86_OP_REG and slot is None
+        if mn == 'imul' and len(ins.operands) == 3 and ins.operands[2].type == X.X86_OP_IMM and ins.operands[2].imm == 0x65:
+            new = {('H', ins.address)}
+        elif mn == 'and' and imm == 3 and ins.operands[0].type == X.X86_OP_REG:
+            new = {('G', ins.address)}
+        elif mn == 'and' and imm == 0x3FFF and ins.operands[0].type == X.X86_OP_REG:
+            r0 = FULL.get(ins.reg_name(ins.operands[0].reg))
+            have_h = any(k == 'H' for k, _ in lab.get(r0, set()))
+            if ins.address in mask_at:
+                trail[ins.address] = dict(h=sorted(a for k, a in lab.get(r0, set()) if k == 'H'), ok=have_h)
+            new = {('M', ins.address)} if have_h else set()
+        elif mn == 'shl' and imm == 0xE and ins.operands[0].type == X.X86_OP_REG:
+            r0 = FULL.get(ins.reg_name(ins.operands[0].reg))
+            have_g = any(k == 'G' for k, _ in lab.get(r0, set()))
+            if ins.address in shl_at:
+                trail[ins.address] = dict(g=sorted(a for k, a in lab.get(r0, set()) if k == 'G'), ok=have_g)
+            new = {('S', ins.address)} if have_g else set()
+        elif is_load or (mn == 'xor' and len(ins.operands) == 2 and ins.operands[0].type == X.X86_OP_REG and ins.operands[1].type == X.X86_OP_REG
+                         and ins.operands[0].reg == ins.operands[1].reg):
+            new = set()
+        elif mn == 'call':
+            for r in ('rax', 'rcx', 'rdx', 'r8', 'r9', 'r10', 'r11'):
+                lab.pop(r, None)
+            continue
+        elif mn not in LABEL_CLASSES:
+            new = set()
+        for w in wr:
+            if w == 'rsp':
+                continue
+            if new:
+                lab[w] = set(new)
+            else:
+                lab.pop(w, None)
+    return out, trail
+
+
+def il_slice(il, k, back):
+    return il[max(0, k - back):k]
+
+
+def buckets(args):
+    from capstone import x86_const as X
+    global MOVED
+    MOVED = ('A', 'B', 'P8', 'P4', 'CH', 'HASH')
+    image_file, db_file = ss.image_path()
+    img, md = ss.Image(image_file), ss.cs()
+    here = os.path.dirname(os.path.abspath(__file__))
+    stage1 = json.load(open(os.path.join(here, 'variable-sites.json')))
+    stage1_refs = {r['field']: r for r in stage1['refs'] if r['region'] == 'HASH'}
+    stage1_half = {r['field']: r for r in stage1['imms'] if r['op'] == 'hash_half'}
+    ranges = complete_ranges(img, md, db_file)
+    problems = []
+    masks, shls, clears = [], [], []
+    by_func = {}
+    for s, il in ranges:
+        for k, ins in enumerate(il):
+            imm = ins.operands[1].imm if len(ins.operands) == 2 and ins.operands[1].type == X.X86_OP_IMM else None
+            if ins.mnemonic == 'and' and imm == 0x3FFF and ins.operands[0].type == X.X86_OP_REG:
+                masks.append((ins, s))
+            elif ins.mnemonic == 'shl' and imm == 0xE and ins.operands[0].type == X.X86_OP_REG:
+                shls.append((ins, s))
+            elif imm == 0x20000:
+                clears.append((ins, s, k))
+        by_func[s] = il
+    print('variable system range %X..%X decoded byte by byte: %d instructions in %d pieces' % (VM_CALLS[0], VM_CALLS[1], sum(len(il) for _, il in ranges), len(ranges)))
+    mask_at, shl_at = {i.address for i, _ in masks}, {i.address for i, _ in shls}
+    consumers, trails = {}, {}
+    for s, il in ranges:
+        c, t = bucket_flow(il, mask_at, shl_at)
+        for a, lst in c.items():
+            consumers.setdefault(a, []).extend(lst)
+        trails.update(t)
+    print('\nmask sites (and r,0x3FFF): %d' % len(masks))
+    mask_rows = []
+    for ins, s in masks:
+        t, c = trails.get(ins.address, {}), consumers.get(ins.address, [])
+        ok = bool(t.get('ok')) and bool(c)
+        field = ins.address + ins.encoding.imm_offset
+        print('  %X  %-16s %-22s function %X  imul 0x65 at %s  index %s' % (
+            ins.address, ins.bytes.hex(), ins.mnemonic + ' ' + ins.op_str, s, ','.join('%X' % a for a in t.get('h', [])) or '-',
+            ('%X %s (with shl at %s)' % (c[0]['consumer'], c[0]['text'], ','.join('%X' % a for a in c[0]['with_s']))) if c else 'NOT REACHED'))
+        if not ok:
+            problems.append('mask %X not proven on the bucket path' % ins.address)
+        mask_rows.append(dict(at=ins.address, field=field, func=s, text=ins.mnemonic + ' ' + ins.op_str, bytes=ins.bytes.hex(),
+                              imul=t.get('h', []), consumer=c[0]['consumer'] if c else 0, consumer_text=c[0]['text'] if c else ''))
+    print('\nsegment shift sites (shl r,0xE): %d' % len(shls))
+    shl_rows = []
+    for ins, s in shls:
+        t, c = trails.get(ins.address, {}), consumers.get(ins.address, [])
+        ok = bool(t.get('ok')) and bool(c)
+        field = ins.address + ins.encoding.imm_offset
+        print('  %X  %-16s %-22s function %X  segment (and r,3) at %s  index %s' % (
+            ins.address, ins.bytes.hex(), ins.mnemonic + ' ' + ins.op_str, s, ','.join('%X' % a for a in t.get('g', [])) or '-',
+            ('%X %s (with mask at %s)' % (c[0]['consumer'], c[0]['text'], ','.join('%X' % a for a in c[0]['with_m']))) if c else 'NOT REACHED'))
+        if not ok:
+            problems.append('shl %X not proven on the bucket path' % ins.address)
+        shl_rows.append(dict(at=ins.address, field=field, func=s, text=ins.mnemonic + ' ' + ins.op_str, bytes=ins.bytes.hex(),
+                             segment=t.get('g', []), consumer=c[0]['consumer'] if c else 0, consumer_text=c[0]['text'] if c else ''))
+    # the clear: every 0x20000 immediate of the range; the one after `lea r,[rip + HASH]` is the table's memset
+    print('\n0x20000 immediates in the range: %d' % len(clears))
+    clear_rows = []
+    for ins, s, k in clears:
+        near = [i for i in il_slice(by_func[s], k, 6) if i.mnemonic == 'lea' and i.operands[1].mem.base == X.X86_REG_RIP
+                and HASH_BASE <= i.address + i.size + i.operands[1].mem.disp < HASH_BASE + HASH_BYTES]
+        txt = ins.mnemonic + ' ' + ins.op_str
+        if near:
+            print('  %X  %-18s %-24s function %X  the table memset: lea at %X names HASH' % (ins.address, ins.bytes.hex(), txt, s, near[0].address))
+            clear_rows.append(dict(at=ins.address, field=ins.address + ins.encoding.imm_offset, func=s, text=txt, bytes=ins.bytes.hex(), lea=near[0].address))
+        else:
+            print('  %X  %-18s %-24s function %X  not the table: no reference to HASH in the 6 instructions before it' % (ins.address, ins.bytes.hex(), txt, s))
+    if len(clear_rows) != 1:
+        problems.append('expected exactly one table clear, found %d' % len(clear_rows))
+    # every reference to the table: the walker with HASH among the moved tables, on the whole range and on every candidate function outside it
+    SCALED_DISTANCES.update({v: w for v, w in scaled_distances().items()})
+    walker = Walker(img, md)
+    rows, unresolved, halves = {}, [], {}
+
+    def walk_piece(start, ins_list):
+        res = walker.walk(ins_list, '')
+        for r in res['rows']:
+            if r['region'] == 'HASH':
+                r['func'] = start
+                rows.setdefault(r['field'], r)
+        for u in res['unresolved']:
+            u['func'] = start
+            unresolved.append(u)
+        for r in imm_rows(ins_list, res, md, True):
+            if r['op'] == 'hash_half':
+                r['func'] = start
+                halves[r['field']] = r
+    for s, il in ranges:
+        walk_piece(s, il)
+    bounds = func_bounds(db_file)
+    starts = [b[0] for b in bounds]
+    import bisect
+
+    def func_of(at):
+        i = bisect.bisect_right(starts, at) - 1
+        if i >= 0 and bounds[i][0] <= at < bounds[i][1]:
+            return bounds[i]
+        lo = bounds[i][1] if i >= 0 else at
+        hi = bounds[i + 1][0] if i + 1 < len(bounds) else at + 0x400
+        return (lo, hi)
+    outside = set()
+    for fn, items in candidates(None).items():
+        for at, why in items:
+            f = func_of(at)
+            if not (VM_CALLS[0] <= f[0] < VM_CALLS[1]):
+                outside.add(f)
+    for s, e in sorted(outside):
+        il = walker.decode_range(s, e)
+        if il:
+            walk_piece(s, il)
+    print('\ncandidate functions outside the variable system walked: %d' % len(outside))
+    real = {f: r for f, r in rows.items() if r['target'] - HASH_BASE <= 0x1F}
+    junk = {f: r for f, r in rows.items() if f not in real}
+    print('references to the table: %d (stage 1 rows: %d, new: %d); rejected as a constant that only looks like an address (deeper than the first entry): %d' % (
+        len(real), len([f for f in real if f in stage1_refs]), len([f for f in real if f not in stage1_refs]), len(junk)))
+    for f, r in sorted(real.items()):
+        inside = VM_CALLS[0] <= r['func'] < VM_CALLS[1]
+        print('  %X  field %X  %-5s %-48s function %X%s%s' % (r['at'], f, r['form'], r['text'], r['func'], '' if inside else '  OUTSIDE THE VARIABLE SYSTEM', '  [stage 1 row]' if f in stage1_refs else ''))
+        if not inside:
+            problems.append('reference to the table outside the variable system at %X' % r['at'])
+    for f, r in sorted(junk.items()):
+        print('  rejected %X  %s  (target %X is %#x into the table)' % (r['at'], r['text'], r['target'], r['target'] - HASH_BASE))
+        if VM_CALLS[0] <= r['func'] < VM_CALLS[1]:
+            problems.append('rejected reference inside the variable system at %X' % r['at'])
+    for f in stage1_refs:
+        if f not in real:
+            problems.append('stage 1 hash row %X not found again' % f)
+    for u in unresolved:
+        print('  UNRESOLVED %X %s: %s' % (u['at'], u['text'], u['why']))
+        problems.append('unresolved reference at %X' % u['at'])
+    print('\nhash_half (add rax,imm = (HASH - P8) / 2): %d' % len(halves))
+    for f, r in sorted(halves.items()):
+        print('  %X  field %X  stage 1 row: %s' % (r['at'], f, f in stage1_half))
+    if set(halves) != set(stage1_half):
+        problems.append('hash_half rows differ from stage 1')
+    # distances from every other table to the hash table, plain and folded by 2, 4, 8, 16: any instruction of the range that holds one and that no row classifies
+    known = set(real) | set(halves) | {m['field'] for m in mask_rows} | {m['field'] for m in shl_rows} | {c['field'] for c in clear_rows}
+    # a stage 1 row (reference, constant, segment base pair) already classifies the field: the stock tables are laid out so that the distance from A to HASH / 2 is also the
+    # size of P8, and so on; such a constant is the other table's own and its stage 1 row is checked by `check`
+    for kind in ('refs', 'imms'):
+        known |= {r['field'] for r in stage1[kind]}
+    known |= {r['field'] for r in stage1['pairs'] if 'field' in r}
+    folded = {}
+    for t in TABLES_FOR_DISTANCE:
+        d = HASH_BASE - REGIONS[t][0]
+        for k in (1, 2, 4, 8, 16):
+            if d % k == 0 and d // k >= 0x1000:
+                for ext in range(0, 0x20, 2):
+                    folded.setdefault(d // k + ext // k, '%s -> HASH / %d (+%#x)' % (t, k, ext))
+    hits = []
+    for s, il in ranges:
+        for ins in il:
+            for kind, field, value, tail, m in ss.fields(ins, md):
+                v = value & 0xFFFFFFFF
+                if v in folded and field not in known and kind in ('imm', 'disp'):
+                    hits.append((ins, field, v, folded[v]))
+    print('\nconstants of the range equal to a table distance to HASH (plain or folded by 2, 4, 8, 16) that no row classifies: %d' % len(hits))
+    for ins, field, v, why in hits:
+        print('  %X  %-28s %#x  %s' % (ins.address, ins.mnemonic + ' ' + ins.op_str, v, why))
+        problems.append('unclassified distance constant at %X' % ins.address)
+    # the same instructions elsewhere in the image: not in any function that names the table
+    c = sqlite3.connect('file:' + index_path().replace('\\', '/') + '?mode=ro', uri=True)
+    idx_masks = [(a, f) for a, f in c.execute("select at,func from insn where kind='imm' and value=16383 and text like 'and %'").fetchall() if not VM_CALLS[0] <= a < VM_CALLS[1]]
+    idx_shl = [(a, f) for a, f in c.execute("select at,func from insn where kind='imm' and value=14 and text like 'shl %'").fetchall() if not VM_CALLS[0] <= a < VM_CALLS[1]]
+    related_outside = {f for f in {r['func'] for r in rows.values()} if not VM_CALLS[0] <= f < VM_CALLS[1]}
+    print('\n`and r,0x3FFF` outside the variable system: %d, `shl r,0xE`: %d; those in a function that names HASH (none expected): %d' % (
+        len(idx_masks), len(idx_shl), len([1 for a, f in idx_masks + idx_shl if f in related_outside])))
+    if any(f in related_outside for a, f in idx_masks + idx_shl):
+        problems.append('a mask or shift outside the variable system sits in a function that names the table')
+    # windows (code replaced by a jump) that cover a field
+    caves = open(os.path.join(here, '..', '..', 'src', 'native', 'script_variables_caves.inc'), encoding='utf-8').read()
+    windows = []
+    for m in re.finditer(r'\{0x([0-9a-f]+)ull, \{([^}]*)\}', caves):
+        windows.append((int(m.group(1), 16), len([x for x in m.group(2).split(',') if x.strip()])))
+    entries = [0x140C04650, 0x140C04910, 0x140C05C50, 0x140C08E70, 0x140C09200, 0x140C08C30, 0x140C043A0, 0x140C04580, 0x140C05100]
+    windows += [(a, 5) for a in entries] + [(0x140C05D70, 45)]
+    fields_all = ([(f, 4, 'ref') for f in real] + [(f, 4, 'half') for f in halves] + [(m['field'], 4, 'mask') for m in mask_rows]
+                  + [(m['field'], 1, 'shl') for m in shl_rows] + [(c['field'], 4, 'clear') for c in clear_rows])
+    over = [(f, w, what) for f, n, what in fields_all for w, ln in windows if f < w + ln and f + n > w]
+    print('\nfields inside a window that is replaced by a jump (a cave, an entry stub): %d' % len(over))
+    for f, w, what in over:
+        print('  %s field %X in the window at %X' % (what, f, w))
+        problems.append('%s field %X lies in a replaced window at %X' % (what, f, w))
+    print('\nsummary: %d masks, %d shifts, %d references (%d new), %d hash_half, %d clear; problems: %d' % (
+        len(masks), len(shls), len(real), len([f for f in real if f not in stage1_refs]), len(halves), len(clear_rows), len(problems)))
+    for p in problems:
+        print('  PROBLEM:', p)
+    if args.o and not problems:
+        data = dict(schema='iw7.variable-buckets/1', stock_bits=BUCKET_STOCK_BITS, stock_hash=[hex(HASH_BASE), hex(HASH_BYTES)], masks=mask_rows, shls=shl_rows, clear=clear_rows,
+                    refs=[dict(at=r['at'], field=f, op='ref', form=r['form'], base=r['base'], target=r['target'], tail=r['tail'], text=r['text'], bytes=r['bytes'], func=r['func'],
+                               stage1=f in stage1_refs) for f, r in sorted(real.items())],
+                    hash_half=[dict(at=r['at'], field=f) for f, r in sorted(halves.items())],
+                    rejected=[dict(at=r['at'], text=r['text'], target=r['target']) for r in junk.values()])
+        json.dump(data, open(args.o, 'w'), indent=1)
+        print('wrote', args.o)
+    return 1 if problems else 0
+
+
+def emit_buckets(args):
+    data = json.load(open(args.file))
+    lines = ['// Generated by ops/engine/variable_sites.py emit-buckets from variable-buckets.json; do not edit.',
+             '// BUCKET_REFS: the references to the hash table that stage 1 did not list ({field, form (0 disp, 1 rip), base, target, tail}); the six `[P8 + 0xA5000]` rows are in script_variables_sites.inc',
+             '// BUCKET_MASKS: imm32 of `and r,0x3FFF` -> (1 << bits) - 1; BUCKET_SHLS: imm8 of `shl r,0xE` -> bits; BUCKET_CLEAR: imm32 of the table memset -> 8 << bits']
+    refs = ['{0x%Xull, %d, 0x%Xull, 0x%Xull, %d},' % (r['field'], 1 if r['form'] == 'rip' else 0, r['base'], r['target'], r['tail']) for r in data['refs'] if not r['stage1']]
+    masks = ['{0x%Xull},' % m['field'] for m in sorted(data['masks'], key=lambda m: m['field'])]
+    shls = ['{0x%Xull},' % m['field'] for m in sorted(data['shls'], key=lambda m: m['field'])]
+    clear = ['{0x%Xull},' % m['field'] for m in data['clear']]
+    with open(args.o, 'w', newline='\n') as out:
+        out.write('\n'.join(lines) + '\n')
+        for name, body in (('REFS', refs), ('MASKS', masks), ('SHLS', shls), ('CLEAR', clear)):
+            out.write('#ifdef SCRIPT_VARIABLES_BUCKET_%s\n' % name + '\n'.join(body) + '\n#endif\n')
+    print('wrote', len(refs), 'refs', len(masks), 'masks', len(shls), 'shifts', len(clear), 'clear to', args.o)
+
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -686,6 +1006,8 @@ def main():
     p = sub.add_parser('check'); p.add_argument('file'); p.set_defaults(fn=check)
     p = sub.add_parser('emit'); p.add_argument('file'); p.add_argument('-o', required=True); p.set_defaults(fn=emit)
     p = sub.add_parser('parents'); p.add_argument('-o', default=None); p.set_defaults(fn=parents)
+    p = sub.add_parser('buckets'); p.add_argument('-o', default=None); p.set_defaults(fn=buckets)
+    p = sub.add_parser('emit-buckets'); p.add_argument('file'); p.add_argument('-o', required=True); p.set_defaults(fn=emit_buckets)
     args = ap.parse_args()
     sys.exit(args.fn(args) or 0)
 

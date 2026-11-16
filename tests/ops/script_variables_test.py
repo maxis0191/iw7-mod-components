@@ -235,5 +235,98 @@ class Code(unittest.TestCase):
         self.assertEqual(sorted(hex(x) for x in found - known), [], 'a new 16-bit sentinel candidate in the variable system')
 
 
+BUCKET_INC = os.path.join(ROOT, 'src', 'native', 'script_variables_buckets.inc')
+BUCKET_JSON = os.path.join(ROOT, 'ops', 'engine', 'variable-buckets.json')
+
+
+class Buckets(unittest.TestCase):
+    """The hash table (a62): the site list found by `variable_sites.py buckets`, its generated .inc, and the values every bit count gives."""
+
+    @classmethod
+    def setUpClass(cls):
+        text = open(BUCKET_INC, encoding='utf-8').read()
+        cls.sec = {}
+        for name in ('REFS', 'MASKS', 'SHLS', 'CLEAR'):
+            body = re.search(r'#ifdef SCRIPT_VARIABLES_BUCKET_%s\n(.*?)#endif' % name, text, re.S).group(1)
+            cls.sec[name] = [re.findall(r'0x[0-9A-Fa-f]+|-?\d+', line) for line in body.strip().split('\n') if line.strip()]
+        cls.data = json.load(open(BUCKET_JSON, encoding='utf-8'))
+        cls.cpp = open(CPP, encoding='utf-8').read()
+        cls.stage1 = json.load(open(JSON_ROWS, encoding='utf-8'))
+
+    def test_the_site_list_is_stable(self):
+        d = self.data
+        self.assertEqual((len(d['masks']), len(d['shls']), len(d['clear']), len(d['hash_half'])), (16, 15, 1, 2))
+        self.assertEqual(len(d['refs']), 18)
+        self.assertEqual(len([r for r in d['refs'] if r['stage1']]), 6)
+        self.assertEqual({len(v) for k, v in self.sec.items()}, {12, 16, 15, 1})
+        self.assertEqual(sorted(int(r[0], 16) for r in self.sec['MASKS']), sorted(m['field'] for m in d['masks']))
+        self.assertEqual(sorted(int(r[0], 16) for r in self.sec['SHLS']), sorted(m['field'] for m in d['shls']))
+
+    def test_no_field_is_listed_twice_with_stage_1(self):
+        stage1 = {r['field'] for r in self.stage1['refs']} | {r['field'] for r in self.stage1['imms']}
+        new = {int(r[0], 16) for r in self.sec['REFS']}
+        self.assertFalse(stage1 & new)
+        self.assertFalse(stage1 & {int(r[0], 16) for r in self.sec['MASKS']})
+        self.assertFalse(stage1 & {int(r[0], 16) for r in self.sec['CLEAR']})
+        # the six stage 1 hash rows are the ones the new list does not repeat, and every one of them targets the table
+        six = [r for r in self.stage1['refs'] if r['region'] == 'HASH']
+        self.assertEqual(len(six), 6)
+        self.assertEqual({r['field'] for r in six}, {r['field'] for r in self.data['refs'] if r['stage1']})
+
+    def test_every_bit_count_edits_consistently(self):
+        for bits in (14, 16, 17):
+            mask, shift, clear = (1 << bits) - 1, bits, 8 << bits
+            self.assertEqual(clear, 4 * 2 * (1 << bits))
+            self.assertLess(mask, 0x80000000)
+            self.assertLess(shift, 32)
+            if bits == 14:
+                self.assertEqual((mask, shift, clear), (0x3FFF, 0xE, 0x20000))
+            # a bucket of the largest parent and name stays inside the table
+            top = ((0x3FFFF * 0x65 + 0x7FFFFF) & mask) + (3 << bits)
+            self.assertLess(top, 4 << bits)
+            # the P8 -> HASH distance in units of 2 bytes is exact for tables 16 bytes apart (the component aligns them)
+            p8, hash_at = NEW['P8'], NEW['CH'] + ((NEW_BYTES['CH'] + 32 + 4095) & ~4095)
+            self.assertEqual((hash_at - p8) % 2, 0)
+            self.assertLess((hash_at - p8) // 2, 0x7FFFFFFF)
+
+    def test_new_references_re_encode_to_the_new_table(self):
+        hash_at = 0x151000010
+        for r in self.sec['REFS']:
+            field, rip, base, target, tail = int(r[0], 16), int(r[1]), int(r[2], 16), int(r[3], 16), int(r[4])
+            self.assertEqual(target, 0x146736180)
+            if rip:
+                after = (hash_at - (field + 4 + tail)) & 0xFFFFFFFF
+                self.assertEqual((field + 4 + tail + struct.unpack('<i', struct.pack('<I', after))[0]) & 0xFFFFFFFFFFFFFFFF, hash_at)
+            else:
+                self.assertEqual(base, 0x140000000)
+                self.assertEqual(base + (hash_at - base), hash_at)
+
+    def test_the_component_applies_every_list(self):
+        for token in ('bucket_ref_sites', 'bucket_mask_sites', 'bucket_shl_sites', 'bucket_clear_sites', 'regions[5]', 'hash_bytes(bits_in_use)',
+                      '-script-variables-buckets', 'IW7_SCRIPT_VARIABLES_BUCKETS'):
+            self.assertIn(token, self.cpp)
+        # the default is one of the measured sizes
+        hpp = open(HPP, encoding='utf-8').read()
+        self.assertRegex(hpp, r'default_hash_bits = (14|16|17)')
+
+    def test_every_field_is_the_shipped_instruction(self):
+        image_file = os.path.join(os.environ.get('IW7_RE_LAB', os.path.join(os.path.expanduser('~'), 'Documents', 'IW7-RE-Lab')), 'engine', 'image', 'iw7_ship_live.exe')
+        if not os.path.exists(image_file):
+            self.skipTest('no analysed image')
+        import state_sites as ss
+        img = ss.Image(image_file)
+        for r in self.sec['MASKS']:
+            self.assertEqual(struct.unpack('<I', img.read(int(r[0], 16), 4))[0], 0x3FFF)
+        for r in self.sec['SHLS']:
+            self.assertEqual(img.read(int(r[0], 16), 1)[0], 0xE)
+        for r in self.sec['CLEAR']:
+            self.assertEqual(struct.unpack('<I', img.read(int(r[0], 16), 4))[0], 0x20000)
+        for r in self.sec['REFS']:
+            field, rip, base, target, tail = int(r[0], 16), int(r[1]), int(r[2], 16), int(r[3], 16), int(r[4])
+            got = struct.unpack('<I', img.read(field, 4))[0]
+            want = (target - (field + 4 + tail)) & 0xFFFFFFFF if rip else (target - base) & 0xFFFFFFFF
+            self.assertEqual(got, want)
+
+
 if __name__ == '__main__':
     unittest.main()
