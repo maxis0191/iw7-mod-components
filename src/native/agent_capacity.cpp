@@ -1558,6 +1558,7 @@ public:
             console::info("[agent capacity] character proxy list: %u entries (stock 140), %zu fields, block %p\n", proxy_list_entries, sound_rows, reinterpret_cast<void*>(proxy_list.data));
             console::info("[agent capacity] snapshot entities: cap %u (stock 768), lists %u, server ring %u records a frame + %u a client, client ring %u a frame, %zu fields, cgame entity array at +0x%X\n",
                 snapshot_entities, snapshot_entities, ring_frame_term, snapshot_entities, client_ring_per_frame, snapshot_rows, L.snap_entity_offset());
+            console::info("[agent capacity] render parameter list (1,024 records): a full list skips the model (2 overflow branches)\n");
             console::info("[agent capacity] fast-fail sites patched to ud2: %zu\n", fastfail_sites);
             for (const auto& set : frame_sets)
                 console::info("[agent capacity] frame grow of %s: extra %u bytes, %zu fields, probe caves %zu\n", set.name, set.extra,
