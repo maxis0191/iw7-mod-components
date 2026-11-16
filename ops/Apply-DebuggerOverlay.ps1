@@ -2,6 +2,7 @@
 param([Parameter(Mandatory)][string]$NativeRoot,[Parameter(Mandatory)][string]$Commit,[switch]$Enabled)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot/FrameCuts.Core.ps1"
 if (!$Enabled -and !(Test-Path -LiteralPath (Join-Path $NativeRoot 'src/client/component/paris_debugger.cpp'))) {
     # Legacy non-debugger forks predate frame_capture. An ordinary build must
     # not require any diagnostic marker or touch its source files.
@@ -21,6 +22,8 @@ function Set-DebugOverlay([string]$Relative,[hashtable]$Replacements,[string]$In
         $failedOverlay=$failedOverlay.Replace($marker,$Replacements[$marker])
     }
     $current=[IO.File]::ReadAllText($path).Replace("`r`n","`n").TrimEnd()+"`n"
+    # The frame cuts (Apply-FrameCutsOverlay.ps1) are text edits on top of this rebuild; they are taken out before the comparison and put back after it.
+    $current=Remove-IW7FrameCutText $Relative $current $Commit
     if ($current -ne $base -and $current -ne $overlay -and $current -ne $failedOverlay) { throw "Unowned profiler source edit: $Relative. Preserve it." }
     [IO.File]::WriteAllText($path,$(if ($Enabled) { $overlay } else { $base }),[Text.UTF8Encoding]::new($false))
 }
