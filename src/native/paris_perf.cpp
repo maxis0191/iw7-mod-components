@@ -23,7 +23,7 @@ namespace agent_capacity { inline std::uint32_t render_skipped(unsigned) noexcep
 
 // Performance recorder for isolated lab clients (-paris-perf with -paris-isolated-lab).
 //
-//   paris_perf_begin <name>   start a measurement window
+//   paris_perf_begin <name> [light]   start a measurement window (light: no sampler thread; frame times, counters and thread CPU times only)
 //   paris_perf_end            stop it and write iw7-mod/paris-perf/<name>.json
 //
 // A window holds every frame interval (one timestamp per pass of the renderer pipeline), a sampling profile of the
@@ -374,7 +374,8 @@ namespace paris_perf
         {
             return !name.empty() && name.size() <= 32 && name.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_") == std::string::npos;
         }
-        void begin(const std::string& name)
+        std::atomic<bool> light_window{false};
+        void begin(const std::string& name, const bool light)
         {
             std::lock_guard<std::mutex> lock(window_mutex);
             if (window_open.load()) { console::error("[Paris perf] a window is already open: %s\n", window_name.c_str()); return; }
@@ -419,14 +420,16 @@ namespace paris_perf
             frame_qpc.clear();
             frame_qpc.reserve(1u << 16);
             sampler_stop = false;
+            light_window = light;
             begin_qpc = now();
             window_open = true;
-            sampler = std::thread([]
+            // light: frame times, counters and the per-thread CPU times, no sampler thread (the sampler costs about a quarter of a core while it runs).
+            if (!light) sampler = std::thread([]
             {
                 // The sampler never samples itself: it was created after the snapshot.
                 sampler_loop();
             });
-            console::info("[Paris perf] begin name=%s threads=%zu unwind=%d\n", name.c_str(), threads.size(), static_cast<int>(unwind_ready));
+            console::info("[Paris perf] begin name=%s threads=%zu unwind=%d mode=%s\n", name.c_str(), threads.size(), static_cast<int>(unwind_ready), light ? "light" : "sampled");
         }
         void hex(std::string& out, const std::uint64_t value)
         {
@@ -501,8 +504,8 @@ namespace paris_perf
                     static_cast<unsigned long long>(thread.samples), static_cast<unsigned long long>(thread.failures));
                 out += line;
             }
-            _snprintf_s(line, sizeof(line), _TRUNCATE, "],\n\"sampler\":{\"ticks\":%llu,\"hz\":%.1f,\"samples\":%llu,\"dropped\":%llu,\"others_per_tick\":%zu},\n\"stacks\":[",
-                static_cast<unsigned long long>(ticks), seconds > 0 ? static_cast<double>(ticks) / seconds : 0.0,
+            _snprintf_s(line, sizeof(line), _TRUNCATE, "],\n\"sampler\":{\"mode\":\"%s\",\"ticks\":%llu,\"hz\":%.1f,\"samples\":%llu,\"dropped\":%llu,\"others_per_tick\":%zu},\n\"stacks\":[",
+                light_window.load() ? "light" : "sampled", static_cast<unsigned long long>(ticks), seconds > 0 ? static_cast<double>(ticks) / seconds : 0.0,
                 static_cast<unsigned long long>(samples), static_cast<unsigned long long>(dropped), others_per_tick);
             out += line;
             bool first = true;
@@ -588,7 +591,7 @@ namespace paris_perf
             }, scheduler::main);
             command::add("paris_perf_begin", [](const command::params& params)
             {
-                begin(params.size() > 1 ? params.get(1) : "");
+                begin(params.size() > 1 ? params.get(1) : "", params.size() > 2 && std::string(params.get(2)) == "light");
             });
             command::add("paris_perf_end", [] { end(); });
             console::info("[Paris perf] ready unwind=%d functions=%zu\n", static_cast<int>(unwind_ready), function_count);
