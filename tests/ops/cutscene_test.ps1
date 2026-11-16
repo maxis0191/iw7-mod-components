@@ -22,6 +22,11 @@ Copy-Item -LiteralPath "$repo/src/native/cutscene.cpp" -Destination $target -For
 Remove-IW7CutsceneOverlay $scratch
 foreach($name in $source.Keys){Check ([IO.File]::ReadAllText((Join-Path $scratch ('src/client/component/'+$name))) -ceq $source[$name]) 'Original source bytes changed.'}
 Refuses {ConvertTo-IW7CutsceneSource 'gsc/script_loading.cpp' '#include <std_include.hpp>'}
+# With the frame cuts in the file (the opcode stub tests a one byte filter first) a redirect is marked in that filter; without them the text is as before.
+$plain=ConvertTo-IW7CutsceneSource 'gsc/script_extension.cpp' $source['gsc/script_extension.cpp']
+Check ($plain.Contains('{ vm_execute_hooks[from]=to; }') -and !$plain.Contains('paris_vm_filter')) 'Redirect text changed without the frame cuts.'
+$cut=ConvertTo-IW7CutsceneSource 'gsc/script_extension.cpp' ($source['gsc/script_extension.cpp'].Replace('#include <std_include.hpp>',"#include <std_include.hpp>`n#include `"component/paris_vm_filter.hpp`""))
+Check ($cut.Contains('vm_execute_hooks[from]=to; paris_vm_filter::mark(from); }')) 'Redirect is not marked in the opcode filter.'
 if($Compile){
  . "$repo/ops/Resource-Scheduler.Core.ps1"
  Invoke-IW7QueuedResourceJob -Scope $repo -Owner 'Cutscene policy tests' -WaitForSlotSeconds $WaitForSlotSeconds -ShortSeconds 120 -PhysicalBytes 256MB -CommitBytes 512MB -Body {

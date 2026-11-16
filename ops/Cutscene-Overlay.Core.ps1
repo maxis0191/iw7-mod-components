@@ -10,7 +10,9 @@ function ConvertTo-IW7CutsceneSource([string]$Path,[string]$Source) {
             $marker="`tnamespace function`n`t{"
             $Source=$Source.Replace("`r`n","`n")
             if($Source.Split([string[]]@($marker),[StringSplitOptions]::None).Count -ne 2){throw 'Pinned VM redirect namespace changed.'}
-            return $Source.Replace($marker,"`tvoid redirect_code(const char* from,const char* to) { vm_execute_hooks[from]=to; }`n`n"+$marker)
+            # With the frame cuts (src/native/paris_vm_filter.hpp) the opcode stub looks at a one byte filter first: a redirect has to be marked in it.
+            $mark=if($Source.Contains('paris_vm_filter.hpp')){' paris_vm_filter::mark(from);'}else{''}
+            return $Source.Replace($marker,"`tvoid redirect_code(const char* from,const char* to) { vm_execute_hooks[from]=to;$mark }`n`n"+$marker)
         }
         'gsc/script_loading.cpp' {
             $marker='return game::DB_FindXAssetHeader(type, name, allow_create_default).scriptfile;'
