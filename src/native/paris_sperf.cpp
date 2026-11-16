@@ -7,6 +7,7 @@
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
+#include "paris_log_stream.hpp"
 #include <psapi.h>
 #include <intrin.h>
 #include <algorithm>
@@ -164,6 +165,15 @@ namespace paris_sperf
             return (filetime_ticks(kernel) + filetime_ticks(user)) / 1.0e7;
         }
         double window_cpu_begin{};
+
+        // A flight-recorder line. console::info costs about 0.16 ms for every byte on the lab server (measured 16 Nov 2026, 200 alive: a 1,300 byte line added
+        // 215 ms to the frame), so the line goes to the game log through the buffered handle G_LogPrintf uses (paris_log_stream: one write a server frame), where the
+        // script recorder's lines are too; console::info only when that file cannot be written.
+        void flight_line(const char* text)
+        {
+            if (paris_log_stream::instance().append("iw7-mod/logs/games_mp.log", text)) return;
+            console::info("%s", text);
+        }
 
         std::int64_t now()
         {
@@ -389,7 +399,7 @@ namespace paris_sperf
                 level_time, static_cast<double>(end - start) * 1000.0 / static_cast<double>(qpc_hz), static_cast<unsigned long long>(serial),
                 static_cast<unsigned long long>(script_n + engine_n), static_cast<unsigned long long>(script_n), static_cast<unsigned long long>(engine_n),
                 join(leaves).c_str(), join(roots).c_str());
-            console::info("%s", text);
+            flight_line(text);
         }
 
         // ---- weapon gives with the script function that asked ------------------------------------------------------------------
@@ -428,7 +438,7 @@ namespace paris_sperf
                 char text[700]{};
                 _snprintf_s(text, sizeof(text), _TRUNCATE, "[FR] t=%d give player=%u weapon=%s depth=%zu caller=%s\n",
                     frame_level_time.load(std::memory_order_relaxed), entref & 0xFFFFu, weapon, sample.depth, chain.c_str());
-                console::info("%s", text);
+                flight_line(text);
             }
             give_hook.invoke<void>(entref);
         }
