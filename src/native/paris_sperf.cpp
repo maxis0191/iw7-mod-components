@@ -155,6 +155,16 @@ namespace paris_sperf
             console::info("[Paris sperf] snapshot counters installed=%d of 2\n", installed);
         }
 
+        // CPU time of the whole process (user + kernel), in seconds: a window's cost is the difference between its two ends.
+        double process_cpu_seconds()
+        {
+            FILETIME created{}, exited{}, kernel{}, user{};
+            if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) return 0.0;
+            const auto ticks = [](const FILETIME& t) { return static_cast<double>((static_cast<std::uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime); };
+            return (ticks(kernel) + ticks(user)) / 1.0e7;
+        }
+        double window_cpu_begin{};
+
         std::int64_t now()
         {
             LARGE_INTEGER value{};
@@ -470,6 +480,7 @@ namespace paris_sperf
             window_name = name;
             sampler_stop = false;
             light_window = light;
+            window_cpu_begin = process_cpu_seconds();
             begin_qpc = now();
             window_open = true;
             if (!light) sampler = std::thread(sampler_loop);
@@ -501,6 +512,7 @@ namespace paris_sperf
             if (!window_open.load()) { console::error("[Paris sperf] no window is open\n"); return; }
             window_open = false;
             end_qpc = now();
+            const double window_cpu = process_cpu_seconds() - window_cpu_begin;
             sampler_stop = true;
             if (sampler.joinable()) sampler.join();
             CloseHandle(sampled);
@@ -576,13 +588,13 @@ namespace paris_sperf
             PROCESS_MEMORY_COUNTERS_EX memory{};
             memory.cb = sizeof(memory);
             GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory));
-            _snprintf_s(line, sizeof(line), _TRUNCATE, "],\n\"memory\":{\"working_set\":%llu,\"private\":%llu}}\n",
-                static_cast<unsigned long long>(memory.WorkingSetSize), static_cast<unsigned long long>(memory.PrivateUsage));
+            _snprintf_s(line, sizeof(line), _TRUNCATE, "],\n\"cpu_seconds\":%.4f,\n\"memory\":{\"working_set\":%llu,\"private\":%llu}}\n",
+                window_cpu, static_cast<unsigned long long>(memory.WorkingSetSize), static_cast<unsigned long long>(memory.PrivateUsage));
             out += line;
             const std::string path = "iw7-mod/paris-sperf/" + window_name + ".json";
             const bool written = utils::io::write_file(path, out);
-            console::info("[Paris sperf] end name=%s seconds=%.3f frames=%zu ticks=%llu script=%llu stacks=%zu written=%d\n",
-                window_name.c_str(), seconds, taken.size(), static_cast<unsigned long long>(ticks),
+            console::info("[Paris sperf] end name=%s mode=%s seconds=%.3f cpu_seconds=%.3f frames=%zu ticks=%llu script=%llu stacks=%zu written=%d\n",
+                window_name.c_str(), light_window.load() ? "light" : "sampled", seconds, window_cpu, taken.size(), static_cast<unsigned long long>(ticks),
                 static_cast<unsigned long long>(script), stacks.size(), static_cast<int>(written));
             stacks.clear();
         }
