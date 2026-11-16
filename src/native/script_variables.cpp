@@ -740,8 +740,7 @@ public:
         scheduler::once([initialised, poisoned, dropped_refs, dropped_imms, dropped_pairs] {
             console::info("[script variables] parent ids: %zu key and parent field caves, %zu stub, %zu call sites and %zu functions redirected; rows of the previous stage inside them dropped: %zu fields, %zu constants, %zu pairs; general ids take the %s pool first\n",
                 caves_planned, stubs_planned, calls_planned, functions_planned, dropped_refs, dropped_imms, dropped_pairs, pools.low_first() ? "low" : "high");
-            console::info("[script variables] hash buckets: %u bits a segment (%u buckets a segment, stock %u), %llu bytes at %p; %zu masks, %zu segment shifts, %zu clear, %zu new references
-",
+            console::info("[script variables] hash buckets: %u bits a segment (%u buckets a segment, stock %u), %llu bytes at %p; %zu masks, %zu segment shifts, %zu clear, %zu new references\n",
                 bits_in_use, 1u << bits_in_use, 1u << stock_hash_bits, static_cast<unsigned long long>(hash_bytes(bits_in_use)), reinterpret_cast<void*>(regions[5].storage.data),
                 std::size(bucket_mask_sites), std::size(bucket_shl_sites), std::size(bucket_clear_sites), std::size(bucket_ref_sites));
             console::info("[script variables] children %u entries x %u segments (stock %u), parent ids %u (stock %u): %zu fields, %zu constants, %zu segment base pairs, patches %zu, tables A %p P8 %p P4 %p CH %p%s\n",
