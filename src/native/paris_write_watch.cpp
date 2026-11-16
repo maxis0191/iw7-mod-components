@@ -260,12 +260,12 @@ namespace paris_write_watch
             history[i].store(address, std::memory_order_relaxed);
             history_count.store(i + 1, std::memory_order_release);
         }
-        bool slot_enabled(const std::uint64_t dr7, const int slot) noexcept { return (dr7 >> (2 * slot)) & 3; }
+        bool slot_enabled(const std::uint64_t ctl7, const int slot) noexcept { return (ctl7 >> (2 * slot)) & 3; }
         unsigned len_bits(const unsigned len) noexcept { return len == 1 ? 0u : len == 2 ? 1u : len == 4 ? 3u : 2u; }
-        bool slot_matches(const std::uint64_t dr7, const std::uint64_t reg, const int slot, const std::uint64_t address, const unsigned len) noexcept
+        bool slot_matches(const std::uint64_t ctl7, const std::uint64_t reg, const int slot, const std::uint64_t address, const unsigned len) noexcept
         {
-            if (!(dr7 & (1ull << (2 * slot))) || reg != address) return false;
-            return ((dr7 >> (16 + 4 * slot)) & 3) == 1 && ((dr7 >> (18 + 4 * slot)) & 3) == len_bits(len);
+            if (!(ctl7 & (1ull << (2 * slot))) || reg != address) return false;
+            return ((ctl7 >> (16 + 4 * slot)) & 3) == 1 && ((ctl7 >> (18 + 4 * slot)) & 3) == len_bits(len);
         }
         enum class arm_result { ok, rearmed, lost, refused, failed };
 
@@ -286,36 +286,36 @@ namespace paris_write_watch
                 if (GetThreadContext(handle, &c))
                 {
                     std::uint64_t* dr[4] = { &c.Dr0, &c.Dr1, &c.Dr2, &c.Dr3 };
-                    std::uint64_t dr7 = c.Dr7;
+                    std::uint64_t ctl7 = c.Dr7;
                     bool changed = false, any_missing = false;
                     refused_here = 0;
                     for (int s = 0; s < 4; ++s) // free the slots that hold an address of ours that is not a target any more
                     {
-                        if (!slot_enabled(dr7, s) || !in_history(*dr[s])) continue;
+                        if (!slot_enabled(ctl7, s) || !in_history(*dr[s])) continue;
                         bool current = false;
                         for (int i = 0; i < target_count; ++i) if (want_addr[i] == *dr[s]) current = true;
                         if (current) continue;
-                        dr7 &= ~((3ull << (2 * s)) | (0xFull << (16 + 4 * s))); *dr[s] = 0; changed = true; any_missing = true;
+                        ctl7 &= ~((3ull << (2 * s)) | (0xFull << (16 + 4 * s))); *dr[s] = 0; changed = true; any_missing = true;
                     }
                     bool claimed[4]{};
                     for (int i = 0; i < target_count; ++i)
                     {
                         if (!want_addr[i]) continue;
                         int slot = -1;
-                        for (int s = 0; s < 4 && slot < 0; ++s) if (!claimed[s] && slot_matches(dr7, *dr[s], s, want_addr[i], want_len[i])) slot = s;
+                        for (int s = 0; s < 4 && slot < 0; ++s) if (!claimed[s] && slot_matches(ctl7, *dr[s], s, want_addr[i], want_len[i])) slot = s;
                         if (slot >= 0) { claimed[slot] = true; continue; }
                         any_missing = true;
-                        for (int s = 0; s < 4 && slot < 0; ++s) if (!claimed[s] && !slot_enabled(dr7, s)) slot = s;
+                        for (int s = 0; s < 4 && slot < 0; ++s) if (!claimed[s] && !slot_enabled(ctl7, s)) slot = s;
                         if (slot < 0) { ++refused_here; continue; } // every slot is in use by someone else
                         claimed[slot] = true;
                         *dr[slot] = want_addr[i];
-                        dr7 &= ~((3ull << (2 * slot)) | (0xFull << (16 + 4 * slot)));
-                        dr7 |= (1ull << (2 * slot)) | (1ull << (16 + 4 * slot)) | (static_cast<std::uint64_t>(len_bits(want_len[i])) << (18 + 4 * slot));
+                        ctl7 &= ~((3ull << (2 * slot)) | (0xFull << (16 + 4 * slot)));
+                        ctl7 |= (1ull << (2 * slot)) | (1ull << (16 + 4 * slot)) | (static_cast<std::uint64_t>(len_bits(want_len[i])) << (18 + 4 * slot));
                         changed = true;
                     }
                     if (changed)
                     {
-                        c.Dr7 = dr7; c.Dr6 = 0; c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+                        c.Dr7 = ctl7; c.Dr6 = 0; c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
                         result = SetThreadContext(handle, &c) ? (any_missing && verify ? arm_result::lost : arm_result::rearmed) : arm_result::failed;
                     }
                     else result = arm_result::ok;
@@ -368,13 +368,13 @@ namespace paris_write_watch
                 || (b[5] == 0xFF && (b[6] & 0xF8) == 0x50)                     // call [reg+disp8]
                 || (b[6] == 0xFF && (b[7] & 0xF8) == 0xD0);                    // call reg
         }
-        __declspec(noinline) unsigned scan_stack(const std::uint64_t rsp, std::uint64_t* out, const unsigned max) noexcept
+        __declspec(noinline) unsigned scan_stack(const std::uint64_t stack_pointer, std::uint64_t* out, const unsigned max) noexcept
         {
             unsigned n = 0;
             for (unsigned i = 0; i < scan_qwords && n < max; ++i)
             {
                 std::uint64_t value{};
-                if (!read_bytes(rsp + 8ull * i, &value, 8)) break;
+                if (!read_bytes(stack_pointer + 8ull * i, &value, 8)) break;
                 if (value > game_base + 16 && value < game_base + image_size && after_call(value)) out[n++] = value;
             }
             return n;
