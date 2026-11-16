@@ -556,3 +556,26 @@ The child pool (4 segments x 65,535) was the next wall of the mission mix (a64: 
 At 4 segments no row of this section is applied: the plan of patches is the one of components main (1,265 patches in the log line; 1,403 at 8 segments = 1,265 + 118 masks + 4 loop bounds + 10 counter references + the 6 bytes of the counter reset hook).
 
 Measured (headless and joined, client from this component at a457f188c6, runs `a67-*`; the figures and the tables are in iw7-paris-server `docs/SCRIPT-VARIABLES.md`, "Segments"): `capacity-agents-headless` n = 100 PASS 23/23, 11/11 at 8 and at 16 segments with the stock table pages inaccessible; the soak at 280 alive PASS 168/168, 30/30 at 8 segments (fullest segment 28,179 of 65,535, 43 %; 4 segments 55,227, 84 %) and at 4; clown 20 to 40 PASS; the lab fill (240,000 distinct elements, 337,320 children in all, read back with 0 bad) PASS 17/17 at 8 segments and ends the server at 4; `netlab-capacity-soak` 320 / 280 with a joined client PASS 149/149, 43/43. Every meter line: `checked_bad` 0 and `stale_counters` 0. The next wall is the low pool (ids below 0x10000: 41 k of 65,528 at 280 plain alive). The A/B 4 against 8 segments ran on a machine at 72 to 75 % CPU (frame 50.1 against 42.0 ms mean, FindVariable 5.27 against 4.76 ms): not slower, no quiet machine measurement.
+
+## Client character tables (a76, 17 Nov 2026)
+
+The client object `cg` (stock 0xFDEA8 bytes, `FUN_140240A00`) was censused for the character record (0x2CA0 bytes, grown) and the flag bytes (moved to the tail), and nothing else: client tables were never read for a stock count of 42. The a73 write watch found one:
+`FUN_140945FD0(local, n)` returns `cg + 0x70950 + n * 0xC0`; `FUN_140949810` (called per snapshot character from `FUN_140864450`, from `FUN_140873870`) writes 16 bytes at row + 0x24 (`[+0x24] = a; [+0x28] = b;` and `[+0x2C] = old [+0x24]`) for every character except the local one.
+The stock table has 42 rows and ends at **cg + 0x728D0** (42 x 0xC0 = 0x1F80), where another member of `cg` starts; the older notes (0x72AD0, 0x73350) were arithmetic slips. No caller bounds `n`. With C = n + 18 characters, rows 42..C - 1 wrote over the members behind it, up to `0x70950 + (C - 1) * 0xC0 + 0x34`:
+
+| agents | characters | last byte written | members of `cg` with a code-used offset in the written windows |
+|---|---|---|---|
+| 56 | 74 | 0x74044 | row 42: the stride 0x14 array at 0x728D0 (0x728F4..0x72904) |
+| 264 | 282 | 0x7DC44 | the same, and the vtable qword of hit result 0 at 0x74278 (row 76: the owner's crash of 16 Nov), 0x795B4/0x795B8, the per-entity qword table at 0x7A580 |
+| 320 | 338 | 0x80644 | those and 0x7F978 |
+
+It is wrong from 28 agents on (46 characters); the watched vtable is reached from row 76 (56 agents stop at row 73, which is why a73's run d1 at 56 saw nothing).
+**Fix:** the table moves to the tail of `cg`, after the flags (`client_char_table()` = `(client_flags() + C + 15) & ~15`; `client_size()` adds C x 0xC0). One instruction field names it: `add rdx, 0x70950` at 0x140946FD0 (field 0x140946FD3; the index of the image holds no other disp or imm of 0x70950..0x728CF in code that loads `cg`, and no bulk clear or copy names the range); it is patched to the layout's offset. The rows start zero (the object is zeroed at allocation) and are freed with it,
+which is what the stock table did inside the object; at 24 agents the rows are the stock 42 and the object is 0x38 bytes larger (the flags).
+Why the tail and not a separate allocation: the lifetime and the zero fill of the table must follow `cg` (one object for each local client, built and destroyed at map changes); the tail of `cg` does by construction.
+
+**Tool:** `python -I -B ops/engine/client_tables.py scan -o <file>` decodes every function that loads `cg` and the client ranges (17,816 functions, 3,239 stride-indexed member accesses; accesses through the image base, the obfuscated accessors' jump tables, are dropped), `report <file>` groups them into 66 clusters (stride, offset, the end of 42 rows, the next member inside it),
+`find` / `check` list and verify the instruction fields of the moved tables (`client-tables.json`). Test: `tests/ops/client_tables_test.py` (layout for every count, the field, no other instruction names the stock rows).
+
+**What the census shows and does not show.** Read to their index sources: the 0x2CA0 record and the flags (character numbers, handled), the entity number tables at 0x78580 / 0x7A580 / 0x7E580 / 0x4376 x 0x20 (2048 rows), the per-hand tables (0x654 x 0x34, 0x492C8), rings and small enumerations (0x784B8 x 8 with 25 rows, 0x4F5C8, 0x597D4, 0x6EE18, 0x86C74, 0x2928), the weapon slot arrays (0x1F6C...), the per local client objects (stride 0x79950).
+Of the other 156 client static candidates of `static_tables.py` six were read (material handle tables, vehicle effect handles, a serialized block): none is indexed by a character number. **Not shown: that no other member of `cg` or client global is written with a character number at 264.** That needs a record of the writes into the whole object (a whole-object write trace, or the memory watch of the object read for changed fields at a fixed stride); the write watch names a writer of up to four cells.

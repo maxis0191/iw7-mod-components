@@ -327,7 +327,7 @@ static_assert(ring_frame_term == 6464 && 16 * ring_frame_term + 16 * snapshot_en
 // The shipped layout gives back the shipped numbers (the patch plan is the identity at 24).
 static_assert(make(64, 0x800).client_char_table() == ((0xFDEA8 + 40 * 0x2CA0 + 82 + 15) & ~15u));
 static_assert(make(64, 0x800).client_size() == ((make(64, 0x800).client_char_table() + 82 * 0xC0 + 15) & ~15u));
-static_assert(make(24, 0x800).client_char_table() - 0xFDEA8 < 0x30 && make(24, 0x800).client_size() - make(24, 0x800).client_char_table() == 42 * 0xC0);
+static_assert(make(24, 0x800).client_char_table() - 0xFDEA8 == 0x38 && make(24, 0x800).client_size() - make(24, 0x800).client_char_table() == 42 * 0xC0);
 static_assert(make(64, 0x800).archive_size() == 0x2279D8);
 static_assert(make(64, 0x800).query_stack_growth() == 0x210 && make(64, 0x800).query_position_growth() == 0x1E0);
 static_assert(make(24, 0x800).archive_size() == 0x2077F0 && make(24, 0x800).frame_size() == 0xC7A8);
