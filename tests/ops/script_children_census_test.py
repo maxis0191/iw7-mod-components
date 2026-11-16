@@ -42,6 +42,24 @@ class Census(unittest.TestCase):
                     kinds[kind] = kinds.get(kind, 0) + 1
         self.assertEqual(kinds, {'pair': 88, 'head': 4, 'hash': 1})
 
+    def test_every_pair_takes_its_segment_from_and_3_or_a_loop_counter(self):
+        import json
+        sites = json.load(open(os.path.join(ROOT, 'ops', 'engine', 'variable-sites.json')))
+        pairs = [p for p in sites['pairs'] if p['op'] == 'seg_lea']
+        self.assertEqual(len(pairs), 119)
+        pieces = [(il[0].address, il[-1].address, il) for _, il in self.ranges if il]
+        origins = {}
+        for p in pairs:
+            if not (vs.VM_CALLS[0] <= p['func'] < vs.VM_CALLS[1]):
+                continue
+            il = next(l for lo, hi, l in pieces if lo <= p['at'] <= hi)
+            k = next(i for i, x in enumerate(il) if x.address == p['at'])
+            o, at = vs.segment_origin(il, k, vs.FULL[il[k].reg_name(il[k].operands[1].mem.base)])
+            origins[o] = origins.get(o, 0) + 1
+            if o != 'and3':
+                self.assertIn(p['func'], (0x140C08C30, 0x140C09280), 'a segment that is not `and r,3` nor a loop counter of the initialisers')
+        self.assertEqual(origins, {'and3': 88, 'xor': 2})
+
     def test_the_counters_and_what_sits_behind_them(self):
         refs = vs.counter_refs(self.img, self.md, self.db)
         counters = {k: v for k, v in refs.items() if 0x34 <= k[1] < 0x44}

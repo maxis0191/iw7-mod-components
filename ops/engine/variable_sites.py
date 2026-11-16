@@ -1009,7 +1009,16 @@ def emit_buckets(args):
 #   links     Option D: wider child links (the u16 local child index of the fields +8 hash next, +0x10 / +0x12 siblings, the free list, first / last child, the bucket
 #             heads), so that one segment can exceed 65,535 entries; and the holders of a child index outside the variable system.
 SEGMENT_INIT_FUNCS = (0x140C08C30, 0x140C09200, 0x140C09280)    # list rebuild, parent list initialiser, child list initialiser: loops over 4 segments
-CHILD_API = {0x140C04FE0: 'FindVariable family', 0x140C05070: 'FindVariable family', 0x140C05090: 'FindVariable family', 0x140C050B0: 'FindVariable family',
+HOLDER_CALLEES = {      # what the callees with a 16-bit use of their result return (read from their code, a64)
+    0x140C0ACD0: 'Scr_ExecThread: thread id (a56 list)', 0x140C068B0: 'Scr_AllocArray: client array id (a56 list, +0x9F352)',
+    0x140C09050: 'Scr_GetEntityIdRef: entity number and class read from P8 +2 / +4, not a variable id',
+    0x140C0B710: 'script parameter getter of an entity number (type checked)',
+    0x140C0B060: 'script parameter getter of an asset handle (u16 asset index in bits 16..31; the callers keep it in u16 fields of the player struct +0x1B38..)',
+    0x140C0B950: 'Scr_GetInt: an integer parameter',
+    0x140BFE7B0: 'class struct getter: u16 table of struct ids, allocates through FUN_140C04550 (the low pool site 0x140C04559), stored in client+0x9F352',
+    0x140C0A750: 'false positive: a tail jump of GScr_getmissileowner, the bytes after the call belong to another function',
+}
+CHILD_API = {0x140C05080: 'first child of a parent (P4 +0, u16)', 0x140C050E0: 'child field read (u16)', 0x140C04FE0: 'FindVariable family', 0x140C05070: 'FindVariable family', 0x140C05090: 'FindVariable family', 0x140C050B0: 'FindVariable family',
              0x140C05100: 'FindVariable', 0x140C05A70: 'GetVariable family', 0x140C05B80: 'GetVariable family', 0x140C05660: 'GetNewVariable'}
 
 
@@ -1129,23 +1138,32 @@ def segments(args):
     bounds = dict(func_bounds(db_file))
     pairs = [p for p in sites['pairs'] if p['op'] == 'seg_lea']
     outside = [p for p in pairs if not (VM_CALLS[0] <= p['func'] < VM_CALLS[1])]
-    origins, out_and = collections.Counter(), {}
-    for f in sorted({p['func'] for p in outside}):
-        il = list(md.disasm(img.read(f, bounds.get(f, f + 0x800) - f), f))
-        for p in [q for q in outside if q['func'] == f]:
-            k = next((i for i, x in enumerate(il) if x.address == p['at']), None)
-            if k is None:
-                origins['pair not found'] += 1
-                continue
-            src = FULL[il[k].reg_name(il[k].operands[1].mem.base)]
-            o, at = segment_origin(il, k, src)
-            origins[o] += 1
-            if o == 'and3':
-                ins = next(x for x in il if x.address == at)
-                out_and[at] = dict(at=at, field=at + ins.encoding.imm_offset, func=f)
+    origins, out_and, in_origins, odd = collections.Counter(), {}, collections.Counter(), []
+    pieces = [(l[0].address, l[-1].address, l) for _, l in ranges if l]
+    for p in pairs:
+        if VM_CALLS[0] <= p['func'] < VM_CALLS[1]:
+            il = next((l for lo_, hi_, l in pieces if lo_ <= p['at'] <= hi_), None)
+        else:
+            f = p['func']
+            il = list(md.disasm(img.read(f, bounds.get(f, f + 0x800) - f), f))
+        k = next((i for i, x in enumerate(il or []) if x.address == p['at']), None)
+        inside = VM_CALLS[0] <= p['func'] < VM_CALLS[1]
+        if k is None:
+            (in_origins if inside else origins)['pair not found'] += 1
+            continue
+        src = FULL[il[k].reg_name(il[k].operands[1].mem.base)]
+        o, at = segment_origin(il, k, src)
+        (in_origins if inside else origins)[o] += 1
+        if o == 'and3' and not inside:
+            ins = next(x for x in il if x.address == at)
+            out_and[at] = dict(at=at, field=at + ins.encoding.imm_offset, func=p['func'])
+        elif o != 'and3':
+            odd.append((p['at'], p['func'], o, at, il[k].op_str))
     print('\nsegment base pairs `lea r,[s+s*4]; shl r,0x10` (stage 1 rows, no byte change for more segments): %d in %d functions; outside the variable system %d in %d functions'
           % (len(pairs), len({p['func'] for p in pairs}), len(outside), len({p['func'] for p in outside})))
-    print('  origin of the segment of the %d outside pairs: %s; distinct `and r,3` outside: %d' % (len(outside), dict(origins), len(out_and)))
+    print('  origin of the segment of the %d pairs inside: %s; of the %d outside: %s; distinct `and r,3` outside: %d' % (len(pairs) - len(outside), dict(in_origins), len(outside), dict(origins), len(out_and)))
+    for a, f, o, at, t in odd:
+        print('  pair %X (function %X) takes its segment from `%s` at %X: %s (a loop counter over the 4 segments)' % (a, f, o, at, t))
     init_loops = []
     for f in SEGMENT_INIT_FUNCS:
         end = bounds.get(f, f + 0x400)
@@ -1179,7 +1197,7 @@ def segments(args):
     for rel, hits in cxx.items():
         print('  %-40s %d lines  %s' % (rel, len(hits), ','.join(map(str, hits[:40]))))
     out = dict(and3_in_vm=in_vm, and3_outside=sorted(out_and.values(), key=lambda r: r['at']), and3_kinds=dict(kinds), pairs=len(pairs), pairs_outside=len(outside),
-               origins=dict(origins), init_loops=[dict(at=a, func=f, text=t) for a, f, t in init_loops], counters=len(cn), counters_functions=len({v[1] for v in cn.values()}),
+               origins=dict(origins), in_origins=dict(in_origins), init_loops=[dict(at=a, func=f, text=t) for a, f, t in init_loops], counters=len(cn), counters_functions=len({v[1] for v in cn.values()}),
                scalars_behind=len(behind), key_builders=len(builders), parent_reads=len(reads), imms=dict(inc), refs=dict(reg), cxx={k: len(v) for k, v in cxx.items()})
     if args.o:
         json.dump(out, open(args.o, 'w'), indent=1)
@@ -1296,8 +1314,8 @@ def links(args):
     print('\nexternal call sites into the variable system: %d in %d callees; with a 16-bit store or truncation of the result in the next 16 instructions: %d in %d callees' %
           (sum(len(v) for v in ext.values()), len(ext), sum(len(v) for v in holders.values()), len(holders)))
     for dst in sorted(holders):
-        print('  callee %X: %d sites%s' % (dst, len(holders[dst]), '   [%s]' % CHILD_API[dst] if dst in CHILD_API else ''))
-    print('callees that return a child index (the FindVariable / GetVariable families): %d sites outside, %d with a 16-bit use' %
+        print('  callee %X: %d sites   [%s]' % (dst, len(holders[dst]), HOLDER_CALLEES.get(dst, CHILD_API.get(dst, 'not identified'))))
+    print('callees that return a child index (FindVariable / GetVariable families, first child 0x140C05080, child field 0x140C050E0): %d sites outside, %d with a 16-bit store or truncation in a 16 instruction straight-line window' %
           (sum(len(ext.get(d, [])) for d in CHILD_API), sum(len(holders.get(d, [])) for d in CHILD_API)))
     outside = [r for r in sites['refs'] if not (VM_CALLS[0] <= r['func'] < VM_CALLS[1])]
     print('functions outside the variable system that name a table: %s' % ', '.join('%X (%s)' % (r['func'], r['region']) for r in outside))
