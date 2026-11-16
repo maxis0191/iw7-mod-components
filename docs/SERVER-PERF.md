@@ -116,9 +116,10 @@ The three commands below are in `src/native/paris_sperf.cpp`; the flight recorde
   for one read of the script VM's call stack, as the window sampler does, up to 12 times in that frame. At the end of such a frame the server thread prints one line:
   `[FR] t=<level time> native_slow_frame ms=<the frame> serial=<frame count> samples=<n> script=<n in script> engine=<n outside the script VM> leaf=<innermost functions, counted> thread=<outermost functions, counted>`.
   The frame is sampled while it runs, so the line names what made THIS frame slow (a script function by file and name), and `engine=` counts the samples that found no script running (the frame was in engine code). The first <ms> of the frame are not sampled.
-- `paris_fr_give <0|1>`: while 1, every call of `G_GivePlayerWeapon` (0x140B69400, named in `symbols.hpp`; callers `sub_140B1D3A0` twice, `sub_140B06130`, `sub_140B09080`; prologue checked before the hook is made) prints
-  `[FR] t=<level time> give state=<player state pointer> weapon_index=<the weapon's index> flags=<r8d>,<r9d> depth=<VM depth> caller=<innermost script function<its caller<...>>`. The hook runs on the server thread inside the script's builtin, so the VM stack is the
-  one of the script that asked. The weapon index is joined to a name by the script recorder's `weapon_added` line of the same player and level time.
+- `paris_fr_give <0|1>`: while 1, every call of the script builtin `giveweapon` (`sub_140B06130`, 593 bytes; the entity reference arrives in `ecx`, parameter 0 is the weapon name; code bytes checked before the hook is made) prints
+  `[FR] t=<level time> give player=<entity number> weapon=<name> depth=<VM depth> caller=<innermost script function<its caller<...>>`, before the builtin runs. The stock `scripts\cp\utility::_giveweapon`, the loadouts, the box and the wheel end
+  in this builtin, so the chain starts at `utility::_giveweapon` and the next name is who asked. The hook runs on the server thread, inside the script's call, so the VM stack is the caller's.
+  (A first version hooked `G_GivePlayerWeapon`, 0x140B69400: a script `giveweapon` of the proof run did not pass through it, `gives_seen` stayed 0; the builtin itself was found from the callers of `G_GetWeaponForName` that also call it.)
 
 Cost: see the measured runs in the server repository's `docs/ZOMBIE-CAPACITY.md` 6e.
 
