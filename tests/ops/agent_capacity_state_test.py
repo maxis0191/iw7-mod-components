@@ -244,8 +244,7 @@ class StateRows(unittest.TestCase):
                      'for (const auto& c : guard_cave_table) cave('):
             self.assertIn(text, self.cpp)
         self.assertIn('state_a, state_c, state_client, state_x', self.cpp.split('void check_guards()')[1].split('class component')[0])
-        self.assertLess(self.cpp.index('plan_parts();\n        plan_state();') if 'plan_parts();\n        plan_state();' in self.cpp else
-                        self.cpp.index('plan_state();\r\n'), len(self.cpp))
+        self.assertLess(self.cpp.index('        plan_parts();'), self.cpp.index('        plan_state();'))   # planned after the parts (the anim info heap and the bone buffer sit between)
         # every ref op the table uses has a case in plan_state
         used = {r['op'] for r in self.inc}
         body = self.cpp.split('void plan_state()')[1].split('// ---- 3d.')[0]
