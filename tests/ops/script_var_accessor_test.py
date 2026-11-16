@@ -107,8 +107,7 @@ class Wiring(unittest.TestCase):
 
     def test_refusal_text_is_one_line(self):
         # a string literal broken by a raw newline stops the compile (a48 build 1)
-        for line in read(CPP).split('
-'):
+        for line in read(CPP).splitlines():
             if 'accessor refused' in line:
                 self.assertTrue(line.rstrip().endswith('};'), line)
 
