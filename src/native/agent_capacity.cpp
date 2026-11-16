@@ -31,7 +31,7 @@ std::string contract = "24";
 
 struct buffer { std::uintptr_t data{}; std::size_t bytes{}; };
 buffer reserve_code(std::size_t bytes);
-buffer agent_pool, sentient_pool, sentient_refs, table8, table20, parts_pool, entity_queue, anim_info_heap;
+buffer agent_pool, sentient_pool, sentient_refs, table8, table20, parts_pool, entity_queue, anim_info_heap, bone_buffer;
 buffer state_a, state_c, state_client, state_x;   // replicated scriptable state (section 4b)
 buffer pool_server[stream_pool_classes], pool_client[stream_pool_classes];   // scriptable stream buffer pools (section 4d)
 buffer proxy_list;   // the client's character proxy list tables (section 4e)
@@ -456,6 +456,16 @@ void plan_anim_info() {
     rip(0x140D83EDC, 0x147995408, base + 0x28);
     rip(0x140D83EE3, 0x147995410, base + 0x30);
     rip(0x140D83EEA, 0x147995418, base + 0x38);
+}
+
+// ---- 4a3. the per-frame animated bone buffers (a57, see bone_shift in the hpp) ---------------------------------------------------------------------
+// FUN_140342790: `lea r8,[0x141FE5F23]` (rip), `shl rax, 0x14` (the half size 0x100000); the two allocators compare the running end with `cmp eax, 0xFFFF0` (imm32).
+void plan_bone_buffer() {
+    rip(0x1403427B3, bone_stock_base, bone_buffer.data);
+    static_assert(bone_stock_shift == 0x14 && bone_shift == 0x16);
+    block(0x1403427B7, std::array<std::uint8_t, 4>{0x48, 0xc1, 0xe0, 0x14}, std::array<std::uint8_t, 4>{0x48, 0xc1, 0xe0, 0x16});
+    add(0x1403464E4, bone_stock_cap, bone_cap);
+    add(0x14034657D, bone_stock_cap, bone_cap);
 }
 
 // ---- 4b. replicated scriptable state: the 1,016 dword budget (a39) ------------------------------------------------------------
@@ -1574,6 +1584,7 @@ public:
         parts_pool = reserve(L.parts * 4);
         entity_queue = reserve(L.queue_bytes());
         anim_info_heap = reserve(anim_info_heap_bytes);
+        bone_buffer = reserve(2u << bone_shift);
         state_a = reserve(L.state_bytes());
         state_c = reserve(L.state_list_bytes());
         state_client = reserve(2 * (L.state_bytes() + 8));   // the two static client blocks with their 8 byte trailers (stock stride 0x17F0)
@@ -1584,6 +1595,7 @@ public:
         plan_client();
         plan_parts();
         plan_anim_info();
+        plan_bone_buffer();
         plan_state();
         plan_pools();
         plan_proxy_list();

@@ -326,6 +326,24 @@ class AnimCache(unittest.TestCase):
                      'add(0x140D83EC5, anim_info_stock_bytes, anim_info_heap_bytes);', 'plan_anim_info();'):
             self.assertIn(line, cpp)
 
+    def test_the_bone_buffer_fields_are_the_stock_ones(self):
+        """FUN_140342790 / FUN_140346520 / FUN_1403464D0: the per-frame animated bone buffers (two halves of 0x100000 bytes, cap 0xFFFF0)."""
+        cs = cp._cs()
+        ins = {i.address: i for i in cs.disasm(self.image.read(0x140342790, 0x40), 0x140342790)}
+        lea = ins[0x1403427B0]
+        self.assertEqual(lea.address + lea.size + lea.operands[1].mem.disp, 0x141FE5F23)           # lea r8, [base + 3]
+        self.assertEqual((ins[0x1403427B7].mnemonic, ins[0x1403427B7].operands[1].imm), ('shl', 0x14))   # the half size 1 << 20
+        self.assertEqual(ins[0x1403427C8].op_str, 'rax, 0xfffffffffffffff0')                       # aligned down to 16
+        for a in (0x1403464E3, 0x14034657C):
+            i = next(cs.disasm(self.image.read(a, 5), a))
+            self.assertEqual((i.mnemonic, i.operands[0].reg, i.operands[1].imm, i.size), ('cmp', i.operands[0].reg, 0xFFFF0, 5))
+            self.assertEqual(int.from_bytes(self.image.read(a + 1, 4), 'little'), 0xFFFF0)
+        hpp, cpp = open(HPP, encoding='utf-8').read(), open(CPP, encoding='utf-8').read()
+        self.assertIn('bone_stock_shift = 20, bone_shift = 22, bone_stock_cap = 0xFFFF0, bone_cap = (1u << bone_shift) - 0x10;', hpp)
+        for line in ('rip(0x1403427B3, bone_stock_base, bone_buffer.data);', 'add(0x1403464E4, bone_stock_cap, bone_cap);', 'add(0x14034657D, bone_stock_cap, bone_cap);',
+                     'plan_bone_buffer();', 'bone_buffer = reserve(2u << bone_shift);'):
+            self.assertIn(line, cpp)
+
     def test_the_hpp_and_the_component_extend_the_list_to_every_key(self):
         hpp, cpp = open(HPP, encoding='utf-8').read(), open(CPP, encoding='utf-8').read()
         self.assertIn('constexpr std::uintptr_t anim_cache_head = 0x147994890ull;', hpp)

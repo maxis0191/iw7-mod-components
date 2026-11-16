@@ -262,6 +262,15 @@ constexpr std::uint32_t anim_info_stock_bytes = 0x40000, anim_info_heap_bytes = 
 static_assert(anim_info_stock_heap - anim_info_stock_base == anim_info_header && anim_info_heap_bytes / 16 <= 0x10000 && anim_info_heap_bytes % 16 == 0 &&
               anim_info_stock_bytes - anim_info_header == 0x3FFC0);
 
+// The per-frame animated bone buffers (a57): every animated skeleton of a frame (a client animates every character of its snapshot; the server animates what it traces) takes its bones
+// from ONE bump buffer chosen by the frame's parity: two static halves of 0x100000 bytes at 0x141FE5F20 (FUN_140342790 picks `parity << 20 + base`), the allocators
+// FUN_140346520 (client) and FUN_1403464D0 (server side) hand out 16 byte multiples and refuse past 0xFFFF0 with the fatal message box "TOO MANY ANIMATED BONES"
+// (a joined client at 238 agents and more, about 4.4 KB a skeleton: runs a57-hB, hB2, n320, n320b, the message read from the frozen client's stack). Each half becomes 4 MB (shift 22,
+// cap 0x3FFFF0) in a new block of 8 MB; the skeleton pointers are 64-bit, nothing else addresses the buffer (only the allocators and a null test of the base variable).
+constexpr std::uint32_t bone_stock_shift = 20, bone_shift = 22, bone_stock_cap = 0xFFFF0, bone_cap = (1u << bone_shift) - 0x10;
+constexpr std::uintptr_t bone_stock_base = 0x141FE5F23ull;
+static_assert(bone_cap == 0x3FFFF0 && (1u << bone_stock_shift) - 0x10 == bone_stock_cap);
+
 constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
     layout l{};
     l.agents = agents; l.characters = players + agents;

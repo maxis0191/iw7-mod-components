@@ -36,7 +36,8 @@ cp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cp)
 
 SYMBOLS = {'stock_agents': 24, 'stock_characters': 42, 'players': 18, 'stock_parts': 0x800, 'ai_stock': 71,
-           'anim_info_stock_heap': 0x147995420, 'anim_info_stock_base': 0x1479953E0, 'anim_info_stock_bytes': 0x40000, 'anim_info_header': 0x40}
+           'anim_info_stock_heap': 0x147995420, 'anim_info_stock_base': 0x1479953E0, 'anim_info_stock_bytes': 0x40000, 'anim_info_header': 0x40,
+           'bone_stock_base': 0x141FE5F23, 'bone_stock_cap': 0xFFFF0}
 HEX = r'0x[0-9A-Fa-f]+(?:ull)?'
 
 
