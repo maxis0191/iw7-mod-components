@@ -71,12 +71,24 @@ namespace paris_write_watch
             unsigned char code[16]{};
         };
         struct event_line { std::uint64_t tick{}; char text[event_len]{}; };
+        // One entry per distinct writer: (rip, old value, new value, target). A site that repeats (a store done every frame) is logged once and counted: the first run
+        // (16 Nov 2026) logged 509 records in a minute from two instructions of the engine that store into the watched qword every frame.
+        constexpr unsigned site_capacity = 64;
+        struct site
+        {
+            std::atomic<std::uint64_t> rip{0};
+            std::uint64_t old_value{}, new_value{}, first_tick{};
+            unsigned target_index{}, first_tid{};
+            std::atomic<std::uint64_t> count{0};
+        };
 
         target targets[max_targets];
         int target_count{};
         bool enabled{}, use_hw{true}, use_guard{true}, main_only{}, log_all{};
         unsigned sweep_ms{2000};
         record ring[ring_size];
+        site sites[site_capacity];
+        std::atomic<unsigned> site_total{0}, sites_lost{0};
         std::atomic<unsigned> ring_head{0}, ring_dropped{0};
         unsigned printed{};              // main thread only: records printed to the console
         unsigned written{};              // helper thread only: records written to the file
@@ -103,7 +115,7 @@ namespace paris_write_watch
         // helper statistics
         std::atomic<std::uint64_t> sweeps{0}, scans{0}, armed_threads{0}, lost_total{0}, rearm_total{0}, refused_total{0}, suspend_failed{0}, known_threads{0};
         // main thread statistics
-        std::uint64_t frames{}, guard_ns{}, guard_max_ns{}, first_tick{}, last_stats_tick{};
+        std::uint64_t frames{}, guard_ns{}, guard_max_ns{}, print_max_ns{}, first_tick{}, last_stats_tick{};
 
         std::int64_t qpc()
         {
@@ -305,6 +317,38 @@ namespace paris_write_watch
         }
         enum class arm_result { ok, rearmed, lost, refused, failed };
 
+        // The ids of the threads of this process except the caller's: NtGetNextThread walks only this process (Toolhelp copies every thread of the machine).
+        unsigned list_thread_ids(DWORD* out, const unsigned max)
+        {
+            using next_thread = LONG(NTAPI*)(HANDLE, HANDLE, ACCESS_MASK, ULONG, ULONG, PHANDLE);
+            static const auto next = reinterpret_cast<next_thread>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtGetNextThread"));
+            unsigned n = 0;
+            const DWORD self = GetCurrentThreadId();
+            if (next)
+            {
+                HANDLE current = nullptr;
+                for (;;)
+                {
+                    HANDLE following = nullptr;
+                    const auto status = next(GetCurrentProcess(), current, THREAD_QUERY_LIMITED_INFORMATION, 0, 0, &following);
+                    if (current) CloseHandle(current);
+                    if (status < 0 || !following) break;
+                    current = following;
+                    const DWORD tid = GetThreadId(current);
+                    if (tid && tid != self && n < max && (!main_only || tid == main_tid.load())) out[n++] = tid;
+                }
+                return n;
+            }
+            const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            if (snapshot == INVALID_HANDLE_VALUE) return 0;
+            THREADENTRY32 e{}; e.dwSize = sizeof(e);
+            const DWORD pid = GetCurrentProcessId();
+            for (BOOL ok = Thread32First(snapshot, &e); ok; ok = Thread32Next(snapshot, &e))
+                if (e.th32OwnerProcessID == pid && e.th32ThreadID != self && n < max && (!main_only || e.th32ThreadID == main_tid.load())) out[n++] = e.th32ThreadID;
+            CloseHandle(snapshot);
+            return n;
+        }
+
         // Suspend, read the registers, write them when they differ, resume. Nothing is allocated or locked between SuspendThread and ResumeThread.
         // `verify`: a thread that was armed before and now differs is reported as lost.
         arm_result apply_thread(const DWORD tid, const bool verify, unsigned& refused_here)
@@ -453,7 +497,27 @@ namespace paris_write_watch
                 const auto old_value = t.shadow.exchange(value);
                 t.traps.fetch_add(1); traps_total.fetch_add(1);
                 note_writer(GetCurrentThreadId());
-                if (!log_all && !t.any && value == t.expect) continue;
+                // is this writer new? (rip, old, new, target) is the key; a repeat is only counted
+                bool fresh = true;
+                const auto known_sites = site_total.load(std::memory_order_acquire);
+                for (unsigned k = 0; k < known_sites && k < site_capacity; ++k)
+                {
+                    auto& x = sites[k];
+                    if (x.rip.load(std::memory_order_acquire) == c.Rip && x.old_value == old_value && x.new_value == value && x.target_index == static_cast<unsigned>(index)) { x.count.fetch_add(1); fresh = false; break; }
+                }
+                if (fresh)
+                {
+                    const auto claimed = site_total.fetch_add(1);
+                    if (claimed < site_capacity)
+                    {
+                        auto& x = sites[claimed];
+                        x.old_value = old_value; x.new_value = value; x.target_index = static_cast<unsigned>(index); x.first_tick = GetTickCount64(); x.first_tid = GetCurrentThreadId();
+                        x.count.store(1);
+                        x.rip.store(c.Rip, std::memory_order_release);
+                    }
+                    else sites_lost.fetch_add(1);
+                }
+                if (!fresh || (!log_all && !t.any && value == t.expect)) continue;
                 const auto slot = ring_head.fetch_add(1);
                 if (slot >= ring_size) { ring_dropped.fetch_add(1); continue; }
                 auto& r = ring[slot];
@@ -628,16 +692,7 @@ namespace paris_write_watch
                 {
                     last_scan = now;
                     scans.fetch_add(1);
-                    DWORD seen[512]; unsigned seen_count = 0;
-                    const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-                    if (snapshot != INVALID_HANDLE_VALUE)
-                    {
-                        THREADENTRY32 e{}; e.dwSize = sizeof(e);
-                        const DWORD pid = GetCurrentProcessId(), self = GetCurrentThreadId();
-                        for (BOOL ok = Thread32First(snapshot, &e); ok; ok = Thread32Next(snapshot, &e))
-                            if (e.th32OwnerProcessID == pid && e.th32ThreadID != self && seen_count < 512 && (!main_only || e.th32ThreadID == main_tid.load())) seen[seen_count++] = e.th32ThreadID;
-                        CloseHandle(snapshot);
-                    }
+                    DWORD seen[512]; unsigned seen_count = list_thread_ids(seen, 512);
                     // drop the threads that ended
                     for (unsigned i = 0; i < thread_count;)
                     {
@@ -679,14 +734,9 @@ namespace paris_write_watch
             }
             // disarm every thread before the handler could go away: targets off, one more pass
             for (int i = 0; i < target_count; ++i) targets[i].addr.store(0);
-            const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-            if (snapshot != INVALID_HANDLE_VALUE)
             {
-                THREADENTRY32 e{}; e.dwSize = sizeof(e);
-                const DWORD pid = GetCurrentProcessId(), self = GetCurrentThreadId();
-                for (BOOL ok = Thread32First(snapshot, &e); ok; ok = Thread32Next(snapshot, &e))
-                    if (e.th32OwnerProcessID == pid && e.th32ThreadID != self) { unsigned r = 0; apply_thread(e.th32ThreadID, false, r); }
-                CloseHandle(snapshot);
+                DWORD ids[512]; const auto count = list_thread_ids(ids, 512);
+                for (unsigned i = 0; i < count; ++i) { unsigned r = 0; apply_thread(ids[i], false, r); }
             }
             drain_to_file();
         }
@@ -766,10 +816,14 @@ namespace paris_write_watch
                     if (selftest_next >= selftest_modes.size()) console::info("[WW-TEST] self test finished\n");
                 }
             }
-            // records of the handler, printed here (the console belongs to the main thread)
+            const auto dt = to_ns(qpc() - t0); // the guard itself; printing is measured apart (print_us_max)
+            guard_ns += dt;
+            if (dt > guard_max_ns) guard_max_ns = dt;
+            // records of the handler, printed here (the console belongs to the main thread), at most 4 a frame
             const auto head = ring_head.load();
             const unsigned limit = head < ring_size ? head : ring_size;
-            while (printed < limit && ring[printed].ready.load(std::memory_order_acquire))
+            const auto print_start = qpc();
+            for (unsigned shown = 0; printed < limit && shown < 4 && ring[printed].ready.load(std::memory_order_acquire); ++shown)
             {
                 std::string text;
                 format_record(ring[printed], text);
@@ -777,9 +831,8 @@ namespace paris_write_watch
                 print_console(text);
                 ++printed;
             }
-            const auto dt = to_ns(qpc() - t0);
-            guard_ns += dt;
-            if (dt > guard_max_ns) guard_max_ns = dt;
+            const auto print_dt = to_ns(qpc() - print_start);
+            if (print_dt > print_max_ns) print_max_ns = print_dt;
             const auto now = GetTickCount64();
             if (now - last_stats_tick >= 60000)
             {
@@ -790,12 +843,12 @@ namespace paris_write_watch
                     cpu_ms = ((static_cast<std::uint64_t>(kernel.dwHighDateTime) << 32 | kernel.dwLowDateTime) + (static_cast<std::uint64_t>(user.dwHighDateTime) << 32 | user.dwLowDateTime)) / 10000;
                 char line[512]{};
                 std::snprintf(line, sizeof(line),
-                    "[WW] stats secs=%llu frames=%llu guard_us_mean=%.2f guard_us_max=%.1f helper_cpu_ms=%llu threads=%llu scans=%llu sweeps=%llu rearm_passes=%llu lost=%llu refused=%llu suspend_failed=%llu traps=%llu logged=%u dropped=%u handler_us_mean=%.2f handler_us_max=%.1f\n",
+                    "[WW] stats secs=%llu frames=%llu guard_us_mean=%.2f guard_us_max=%.1f helper_cpu_ms=%llu threads=%llu scans=%llu sweeps=%llu rearm_passes=%llu lost=%llu refused=%llu suspend_failed=%llu traps=%llu sites=%u logged=%u dropped=%u handler_us_mean=%.2f handler_us_max=%.1f print_us_max=%.1f\n",
                     static_cast<unsigned long long>((now - first_tick) / 1000), static_cast<unsigned long long>(frames), frames ? guard_ns / 1000.0 / static_cast<double>(frames) : 0.0, guard_max_ns / 1000.0,
                     static_cast<unsigned long long>(cpu_ms), static_cast<unsigned long long>(known_threads.load()), static_cast<unsigned long long>(scans.load()), static_cast<unsigned long long>(sweeps.load()),
                     static_cast<unsigned long long>(rearm_total.load()), static_cast<unsigned long long>(lost_total.load()), static_cast<unsigned long long>(refused_total.load()),
-                    static_cast<unsigned long long>(suspend_failed.load()), static_cast<unsigned long long>(traps_total.load()), (head < ring_size ? head : ring_size), ring_dropped.load(),
-                    traps_total.load() ? handler_ns.load() / 1000.0 / static_cast<double>(traps_total.load()) : 0.0, handler_max_ns.load() / 1000.0);
+                    static_cast<unsigned long long>(suspend_failed.load()), static_cast<unsigned long long>(traps_total.load()), site_total.load(), (head < ring_size ? head : ring_size), ring_dropped.load(),
+                    traps_total.load() ? handler_ns.load() / 1000.0 / static_cast<double>(traps_total.load()) : 0.0, handler_max_ns.load() / 1000.0, print_max_ns / 1000.0);
                 std::string text = line;
                 for (int i = 0; i < target_count; ++i)
                 {
@@ -803,6 +856,24 @@ namespace paris_write_watch
                     std::snprintf(t, sizeof(t), "[WW] stats target %s addr=0x%llX value=0x%llX traps=%llu logged=%llu\n", targets[i].name, static_cast<unsigned long long>(targets[i].addr.load()),
                         static_cast<unsigned long long>(targets[i].shadow.load()), static_cast<unsigned long long>(targets[i].traps.load()), static_cast<unsigned long long>(targets[i].logged.load()));
                     text += t;
+                }
+                {
+                    const auto count = site_total.load() < site_capacity ? site_total.load() : site_capacity;
+                    unsigned order[site_capacity]{};
+                    for (unsigned i = 0; i < count; ++i) order[i] = i;
+                    for (unsigned i = 0; i < count; ++i)
+                        for (unsigned j = i + 1; j < count; ++j)
+                            if (sites[order[j]].count.load() > sites[order[i]].count.load()) { const auto swap = order[i]; order[i] = order[j]; order[j] = swap; }
+                    for (unsigned i = 0; i < count && i < 8; ++i)
+                    {
+                        const auto& x = sites[order[i]];
+                        char place[96]{}, t[320]{};
+                        locate(x.rip.load(), place, sizeof(place));
+                        std::snprintf(t, sizeof(t), "[WW] stats site rip=%s target=%s old=0x%llX new=0x%llX count=%llu first_tid=%u first_ms=%llu\n", place, targets[x.target_index].name,
+                            static_cast<unsigned long long>(x.old_value), static_cast<unsigned long long>(x.new_value), static_cast<unsigned long long>(x.count.load()), x.first_tid,
+                            static_cast<unsigned long long>(x.first_tick - first_tick));
+                        text += t;
+                    }
                 }
                 for (unsigned i = 0; i < writer_slots; ++i)
                     if (writers[i].tid.load())
@@ -820,10 +891,26 @@ namespace paris_write_watch
         // ---- test commands (lab only) --------------------------------------------------------------------------------------------------------------
         __declspec(noinline) void test_store(volatile std::uint64_t* address, const std::uint64_t value) { *address = value; }
         __declspec(noinline) void test_block(volatile void* address) { static void* (*volatile fill)(void*, int, std::size_t) = std::memset; fill(const_cast<void*>(address), 0, 64); }
+        // Taking a function's address can give an incremental-link thunk (jmp rel32): follow it; the size comes from the unwind data, or 0x30 for a leaf.
+        const char* resolve_code(const void* function)
+        {
+            auto p = static_cast<const unsigned char*>(function);
+            for (int i = 0; i < 4 && p[0] == 0xE9; ++i) { int rel{}; std::memcpy(&rel, p + 1, 4); p = p + 5 + rel; }
+            return reinterpret_cast<const char*>(p);
+        }
+        const char* code_end(const char* begin)
+        {
+            DWORD64 image{};
+            const auto* entry = RtlLookupFunctionEntry(reinterpret_cast<DWORD64>(begin), &image, nullptr);
+            if (entry && image + entry->BeginAddress == reinterpret_cast<DWORD64>(begin)) return begin + (entry->EndAddress - entry->BeginAddress);
+            return begin + 0x30;
+        }
         bool within(const std::uint64_t address, const void* begin, const void* end) { return address >= reinterpret_cast<std::uint64_t>(begin) && address < reinterpret_cast<std::uint64_t>(end); }
         // The newest logged record must name the test function: its RIP inside [begin, end) (a store), or a return address of the stack inside it (a block write: the RIP is in memset).
         bool judge(const char* what, const void* begin, const void* end, const unsigned before, const bool block, const bool other_thread)
         {
+            begin = resolve_code(begin);
+            end = code_end(static_cast<const char*>(begin));
             const auto head = ring_head.load();
             const unsigned limit = head < ring_size ? head : ring_size;
             if (limit <= before) { console::error("[WW-TEST] FAIL %s: no hit was recorded (traps=%llu)\n", what, static_cast<unsigned long long>(traps_total.load())); return false; }
