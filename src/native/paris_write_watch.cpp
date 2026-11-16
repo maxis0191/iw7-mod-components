@@ -38,7 +38,9 @@ namespace paris_write_watch
 {
     namespace
     {
-        constexpr std::uint64_t cg_array = 0x141FA6C88;   // cg[local client] (FUN_140240a00 and FUN_1402b5000 write it)
+        // cg[local client] at 0x141FA6C88 holds scrambled pointers (a 16 Nov 2026 run read 0x4C48E77C436D0228 from it). The two allocations are plain:
+        // FUN_140240A00 (Zombies / CP client) stores the base of its 0xFDEA8 byte objects in 0x141FDBEF0, FUN_1402B5000 (MP client) the base of its 0xD64C0 byte objects in 0x141FDCF50.
+        constexpr std::uint64_t cg_cp_array = 0x141FDBEF0, cg_cp_stride = 0xFDEA8, cg_mp_array = 0x141FDCF50, cg_mp_stride = 0xD64C0;
         constexpr std::uint64_t game_base = 0x140000000;
         constexpr std::uint64_t hit_vtable = 0x141440EE0; // vtable the constructor FUN_140161D80 writes into each hit result
         constexpr std::uint64_t hit_offset = 0x74278;     // the hit-result array of cg
@@ -46,7 +48,7 @@ namespace paris_write_watch
         constexpr int max_targets = 4, max_terms = 6;
         constexpr unsigned ring_size = 512, stack_depth = 16, scan_depth = 12, scan_qwords = 192, event_count = 32, event_len = 148, history_size = 64, writer_slots = 32;
 
-        struct term { char kind; int sign; std::uint64_t value; }; // kind: n number, c cg[value], g game base, d qword at the number, s scratch cell
+        struct term { char kind; int sign; std::uint64_t value; }; // kind: n number, c cg object of local client `value`, g game base, d qword at the number, s scratch cell
         struct target
         {
             char name[96]{};
@@ -123,6 +125,36 @@ namespace paris_write_watch
             return read_bytes(address, &value, len);
         }
 
+        std::atomic<int> cg_kind{0}; // 1: the CP array was used, 2: the MP array
+        std::uint64_t image_end() noexcept { return game_base + (image_size ? image_size : 0x2000000); }
+        // The object of local client `index`: the array base is plain, and the object's own vtable (the first qword) must be an address of the game image: the
+        // object is zero before its constructor ran, so this also keeps the watch from arming while the block is being zero-filled and constructed.
+        std::uint64_t cg_object(const std::uint64_t index) noexcept
+        {
+            static const struct { std::uint64_t array, stride; int kind; } arrays[2] = { { cg_cp_array, cg_cp_stride, 1 }, { cg_mp_array, cg_mp_stride, 2 } };
+            for (const auto& a : arrays)
+            {
+                std::uint64_t base{}, vtable{};
+                if (!read_bytes(a.array, &base, 8) || base < 0x10000 || base > 0x7FFFFFFEFFFFull) continue;
+                const auto object = base + index * a.stride;
+                if (!read_bytes(object, &vtable, 8) || vtable < game_base || vtable >= image_end()) continue;
+                cg_kind.store(a.kind);
+                return object;
+            }
+            return 0;
+        }
+        // The address must be committed, writable memory of the process (a wrong expression gives a garbage address, and a debug register refuses or truncates those).
+        bool plausible_address(const std::uint64_t address, const unsigned len) noexcept
+        {
+            if (address < 0x10000 || address > 0x7FFFFFFEFFFFull) return false;
+            MEMORY_BASIC_INFORMATION m{};
+            if (!VirtualQuery(reinterpret_cast<const void*>(address), &m, sizeof(m)) || m.State != MEM_COMMIT || (m.Protect & (PAGE_GUARD | PAGE_NOACCESS))) return false;
+            const auto p = m.Protect & 0xFF;
+            if (p != PAGE_READWRITE && p != PAGE_WRITECOPY && p != PAGE_EXECUTE_READWRITE && p != PAGE_EXECUTE_WRITECOPY) return false;
+            const auto base = reinterpret_cast<std::uint64_t>(m.BaseAddress);
+            return address >= base && address + len <= base + m.RegionSize;
+        }
+
         // ---- the address expression: terms of + and -: 0x74278, 1234, cg, cg1, game, [0x141FA6C88], scratch ------------------------------------------
         bool parse_number(const char* text, std::uint64_t& out)
         {
@@ -179,7 +211,7 @@ namespace paris_write_watch
                 case 'n': v = x.value; break;
                 case 'g': v = game_base; break;
                 case 's': v = reinterpret_cast<std::uint64_t>(&scratch_cell[0]); break;
-                case 'c': if (!read_bytes(cg_array + 8 * x.value, &v, 8) || v < 0x10000) return 0; break;
+                case 'c': v = cg_object(x.value); if (!v) return 0; break;
                 case 'd': if (!read_bytes(x.value, &v, 8) || v < 0x10000) return 0; break;
                 default: return 0;
                 }
@@ -295,7 +327,7 @@ namespace paris_write_watch
                     refused_here = 0;
                     for (int s = 0; s < 4; ++s) // free the slots that hold an address of ours that is not a target any more
                     {
-                        if (!slot_enabled(ctl7, s) || !in_history(*dr[s])) continue;
+                        if (!slot_enabled(ctl7, s) || (*dr[s] && !in_history(*dr[s]))) continue; // a slot of someone else is never touched; an enabled slot at address 0 is junk
                         bool current = false;
                         for (int i = 0; i < target_count; ++i) if (want_addr[i] == *dr[s]) current = true;
                         if (current) continue;
@@ -557,19 +589,25 @@ namespace paris_write_watch
             struct known { DWORD tid; std::uint64_t generation; std::uint64_t retry_at; };
             static known threads[512];
             unsigned thread_count = 0;
-            std::uint64_t generation = 1, last_addr[max_targets]{}, last_scan = 0, last_sweep = GetTickCount64();
+            std::uint64_t generation = 1, last_addr[max_targets]{}, last_invalid[max_targets]{}, last_scan = 0, last_sweep = GetTickCount64();
             while (!stop.load())
             {
                 Sleep(50);
                 bool moved = false;
                 for (int i = 0; i < target_count; ++i)
                 {
-                    const auto now_addr = evaluate(targets[i]);
-                    if (now_addr && (now_addr & (targets[i].len - 1)))
+                    auto now_addr = evaluate(targets[i]);
+                    if (now_addr && (!plausible_address(now_addr, targets[i].len) || (now_addr & (targets[i].len - 1))))
                     {
-                        console::error("[WW] target %s resolved to unaligned 0x%llX: refused\n", targets[i].name, static_cast<unsigned long long>(now_addr));
-                        refused_total.fetch_add(1);
-                        continue;
+                        if (now_addr != last_invalid[i])
+                        {
+                            last_invalid[i] = now_addr;
+                            char line[220]{};
+                            std::snprintf(line, sizeof(line), "[WW] target %s evaluates to 0x%llX: not committed writable memory or not aligned, not armed\n", targets[i].name, static_cast<unsigned long long>(now_addr));
+                            write_file(line);
+                            refused_total.fetch_add(1);
+                        }
+                        now_addr = 0;
                     }
                     if (now_addr == last_addr[i]) continue;
                     if (now_addr) { remember(now_addr); std::uint64_t v{}; read_value(now_addr, targets[i].len, v); targets[i].shadow.store(v); }
@@ -577,7 +615,7 @@ namespace paris_write_watch
                     last_addr[i] = now_addr;
                     moved = true;
                     char line[200]{};
-                    std::snprintf(line, sizeof(line), "[WW] target %s now at 0x%llX (value 0x%llX)\n", targets[i].name, static_cast<unsigned long long>(now_addr), static_cast<unsigned long long>(targets[i].shadow.load()));
+                    std::snprintf(line, sizeof(line), "[WW] target %s now at 0x%llX (value 0x%llX, cg array %s)\n", targets[i].name, static_cast<unsigned long long>(now_addr), static_cast<unsigned long long>(targets[i].shadow.load()), cg_kind.load() == 1 ? "CP" : cg_kind.load() == 2 ? "MP" : "none");
                     write_file(line);
                 }
                 if (moved) { ++generation; rearm_total.fetch_add(1); }
@@ -690,7 +728,8 @@ namespace paris_write_watch
                 for (int i = 0; i < target_count; ++i)
                 {
                     auto& t = targets[i];
-                    const auto address = evaluate(t);
+                    auto address = evaluate(t);
+                    if (address && !plausible_address(address, t.len)) address = 0;
                     if (address != t.guard_addr) { t.guard_addr = address; t.guard_seen = false; }
                     if (!address) continue;
                     std::uint64_t value{};
@@ -780,9 +819,7 @@ namespace paris_write_watch
 
         // ---- test commands (lab only) --------------------------------------------------------------------------------------------------------------
         __declspec(noinline) void test_store(volatile std::uint64_t* address, const std::uint64_t value) { *address = value; }
-        __declspec(noinline) void test_store_end() { }
         __declspec(noinline) void test_block(volatile void* address) { static void* (*volatile fill)(void*, int, std::size_t) = std::memset; fill(const_cast<void*>(address), 0, 64); }
-        __declspec(noinline) void test_block_end() { }
         bool within(const std::uint64_t address, const void* begin, const void* end) { return address >= reinterpret_cast<std::uint64_t>(begin) && address < reinterpret_cast<std::uint64_t>(end); }
         // The newest logged record must name the test function: its RIP inside [begin, end) (a store), or a return address of the stack inside it (a block write: the RIP is in memset).
         bool judge(const char* what, const void* begin, const void* end, const unsigned before, const bool block, const bool other_thread)
@@ -831,20 +868,20 @@ namespace paris_write_watch
             {
                 test_block(cell);
                 test_store(cell, expect);
-                judge("scratch_memset", reinterpret_cast<const void*>(&test_block), reinterpret_cast<const void*>(&test_block_end), before, true, false);
+                judge("scratch_memset", reinterpret_cast<const void*>(&test_block), reinterpret_cast<const char*>(&test_block) + 0x80, before, true, false);
             }
             else if (mode == "scratch_thread")
             {
                 std::thread worker([cell] { Sleep(600); test_store(cell, 0); });
                 worker.join();
                 test_store(cell, expect);
-                judge("scratch_thread", reinterpret_cast<const void*>(&test_store), reinterpret_cast<const void*>(&test_store_end), before, false, true);
+                judge("scratch_thread", reinterpret_cast<const void*>(&test_store), reinterpret_cast<const char*>(&test_store) + 0x30, before, false, true);
             }
             else // scratch, real: the (real) qword is zero for the time of one instruction, then restored
             {
                 test_store(cell, 0);
                 test_store(cell, expect);
-                judge(mode.c_str(), reinterpret_cast<const void*>(&test_store), reinterpret_cast<const void*>(&test_store_end), before, false, false);
+                judge(mode.c_str(), reinterpret_cast<const void*>(&test_store), reinterpret_cast<const char*>(&test_store) + 0x30, before, false, false);
             }
         }
     }
