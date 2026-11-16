@@ -10,6 +10,7 @@
 #include <utils/hook.hpp>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -396,6 +397,172 @@ void replace_function(std::uintptr_t entry, std::initializer_list<std::uint8_t> 
     ++functions_planned;
 }
 
+// ---- lab meter: how long the hash chains of FindVariable are (a60) -------------------------------------------------------------------------------
+// Off unless the process starts with -script-variables-meter (or IW7_SCRIPT_VARIABLES_METER=1; the headless runner passes no flags of its own). FindVariable
+// (0x140C05100: parent id in ecx, name in edx) walks the chain of bucket ((parent * 0x65 + name) & 0x3FFF) + (parent & 3) * 0x4000 of the u16 bucket table
+// (0x146736180, never moved) through the u16 `next` at child entry +8 until the key (local parent index << 16 | name >> 8) at +0xC matches. A stub in front of it
+// counts every call (one `sub [counter], 1`; 1 call in 64 runs the sampler first); the sampler walks the same chain read only and records how many
+// entries were compared (hit: the position of the key; miss: the whole chain). The stub clobbers no register: the shipped callers rely on all of them.
+// Every 10 s one `[var meter] {...}` line goes to the console; each report also re-hashes the entries of 1,024 buckets to prove that this reading of the
+// bucket function and the key is the engine's (checked_bad must stay 0).
+constexpr std::uintptr_t find_variable = 0x140C05100ull;
+constexpr std::uint32_t meter_period = 64, meter_hist = 66;       // steps 0 .. 64, 65 = more
+struct meter_state {
+    std::uint32_t countdown;                    // the stub's counter (first member: its address is handed to the stub)
+    std::uint32_t pad;
+    std::uint64_t sampled, hit, miss, steps_hit, steps_miss, seg[4];
+    std::uint64_t hist_hit[meter_hist], hist_miss[meter_hist];
+    std::uint64_t sample_ticks;
+};
+meter_state* meter{};
+meter_state meter_last{};
+std::uint64_t meter_calls_last{}, meter_tick_last{};
+std::size_t meter_cursor{};
+std::uint64_t meter_checked{}, meter_bad{};
+const volatile std::uint16_t* const meter_buckets = reinterpret_cast<const volatile std::uint16_t*>(stock_hash);
+constexpr std::uint32_t buckets_per_segment = 0x4000;
+
+inline std::uint32_t bucket_of(std::uint32_t parent, std::uint32_t name) noexcept { return ((parent * 0x65u + name) & 0x3FFFu) + ((parent & 3u) << 14); }
+struct child_view { std::uint16_t next; std::uint32_t key; std::uint8_t low; std::uint16_t parent_local; };
+inline bool child_at(std::uint32_t segment, std::uint32_t index, child_view& out) noexcept {
+    // index 0 is the list head, never in a chain; a chain index beyond the table is refused (the table is only read here)
+    if (!index || index >= child_entries) return false;
+    const auto* e = reinterpret_cast<const std::uint8_t*>(regions[4].storage.data + (static_cast<std::uintptr_t>(segment) * child_entries + index) * child_bytes_each);
+    std::memcpy(&out.next, e + 8, 2);
+    out.low = e[0xB];
+    std::memcpy(&out.key, e + 0xC, 4);
+    std::memcpy(&out.parent_local, e + 0xE, 2);
+    return true;
+}
+void meter_sample(std::uint64_t parent_arg, std::uint64_t name_arg) {
+    LARGE_INTEGER t0, t1;
+    QueryPerformanceCounter(&t0);
+    auto& m = *meter;
+    const auto parent = static_cast<std::uint32_t>(parent_arg), name = static_cast<std::uint32_t>(name_arg);
+    const auto segment = parent & 3u;
+    const auto key = ((parent >> 2) << 16) | (name >> 8);
+    std::uint32_t steps = 0;
+    bool found = false;
+    auto index = static_cast<std::uint32_t>(meter_buckets[bucket_of(parent, name)]);
+    while (index && steps < 4096) {
+        child_view v;
+        if (!child_at(segment, index, v)) break;
+        ++steps;
+        if (v.key == key) { found = true; break; }
+        index = v.next;
+    }
+    ++m.sampled;
+    ++m.seg[segment];
+    const auto bin = steps < meter_hist - 1 ? steps : meter_hist - 1;
+    if (found) { ++m.hit; m.steps_hit += steps; ++m.hist_hit[bin]; }
+    else { ++m.miss; m.steps_miss += steps; ++m.hist_miss[bin]; }
+    m.countdown = meter_period;
+    QueryPerformanceCounter(&t1);
+    m.sample_ticks += static_cast<std::uint64_t>(t1.QuadPart - t0.QuadPart);
+}
+void meter_stub() {
+    // sub dword [rip + counter], 1 ; jz slow ; back: <stock first instruction> ; jmp FindVariable + 5 ; slow: save, call meter_sample, restore, jmp back
+    static const std::uint8_t first[] = {0x48, 0x89, 0x5C, 0x24, 0x08};
+    readable(find_variable, 5);
+    meter = reinterpret_cast<meter_state*>(code_alloc(sizeof(meter_state)));
+    std::memset(meter, 0, sizeof(meter_state));
+    meter->countdown = meter_period;
+    auto* at = code_alloc(sizeof(save_all) + sizeof(restore_all) + 80);
+    auto* out = at;
+    *out++ = 0x83; *out++ = 0x2D;
+    std::int32_t rel{};
+    if (!rel32(reinterpret_cast<std::uintptr_t>(&meter->countdown), reinterpret_cast<std::uintptr_t>(out) + 5, rel)) throw std::runtime_error("script variables: meter counter too far");
+    std::memcpy(out, &rel, 4); out += 4;
+    *out++ = 0x01;
+    *out++ = 0x74;
+    auto* jz_at = out++;
+    auto* back = out;
+    std::memcpy(out, first, 5); out += 5;
+    *out++ = 0xE9;
+    if (!rel32(find_variable + 5, reinterpret_cast<std::uintptr_t>(out) + 4, rel)) throw std::runtime_error("script variables: meter stub too far");
+    std::memcpy(out, &rel, 4); out += 4;
+    *jz_at = static_cast<std::uint8_t>(out - (jz_at + 1));
+    std::memcpy(out, save_all, sizeof(save_all)); out += sizeof(save_all);
+    *out++ = 0x48; *out++ = 0xB8;
+    const auto function = reinterpret_cast<std::uintptr_t>(&meter_sample);
+    std::memcpy(out, &function, 8); out += 8;
+    *out++ = 0xFF; *out++ = 0xD0;
+    std::memcpy(out, restore_all, sizeof(restore_all)); out += sizeof(restore_all);
+    *out++ = 0xE9;
+    if (!rel32(reinterpret_cast<std::uintptr_t>(back), reinterpret_cast<std::uintptr_t>(out) + 4, rel)) throw std::runtime_error("script variables: meter stub back jump");
+    std::memcpy(out, &rel, 4); out += 4;
+    if (static_cast<std::size_t>(out - at) > sizeof(save_all) + sizeof(restore_all) + 80) throw std::runtime_error("script variables: meter stub overflow");
+    jump_window(find_variable, std::vector<std::uint8_t>(first, first + 5), reinterpret_cast<std::uintptr_t>(at));
+    ++functions_planned;
+}
+// re-hash the entries of 1,024 buckets (a rotating window over the 65,536): every entry in a chain must belong to that bucket and hold the key its own fields give
+void meter_check() {
+    for (unsigned n = 0; n < 1024; ++n) {
+        const auto bucket = static_cast<std::uint32_t>(meter_cursor++ & 0xFFFF);
+        const auto segment = bucket >> 14;
+        auto index = static_cast<std::uint32_t>(meter_buckets[bucket]);
+        unsigned guard = 0;
+        while (index && guard++ < 4096) {
+            child_view v;
+            if (!child_at(segment, index, v)) { ++meter_bad; break; }
+            const auto parent = (static_cast<std::uint32_t>(v.parent_local) << 2) | segment;
+            const auto name = ((v.key & 0xFFFFu) << 8) | v.low;
+            ++meter_checked;
+            if (bucket_of(parent, name) != bucket || (v.key >> 16) != v.parent_local) ++meter_bad;
+            index = v.next;
+        }
+        if (guard >= 4096) ++meter_bad;
+    }
+}
+std::uint32_t hist_percentile(const std::uint64_t* a, const std::uint64_t* b, double p) {
+    std::uint64_t total{};
+    for (std::uint32_t i = 0; i < meter_hist; ++i) total += a[i] + b[i];
+    if (!total) return 0;
+    const auto want = static_cast<std::uint64_t>(std::ceil(p * static_cast<double>(total)));
+    std::uint64_t seen{};
+    for (std::uint32_t i = 0; i < meter_hist; ++i) { seen += a[i] + b[i]; if (seen >= want) return i; }
+    return meter_hist - 1;
+}
+void meter_report() {
+    meter_check();
+    const auto now = GetTickCount64();
+    const meter_state cur = *meter;          // racy read of counters another thread may be writing: a report is a statistic, not a ledger
+    LARGE_INTEGER freq{};
+    QueryPerformanceFrequency(&freq);
+    const std::uint64_t calls = cur.sampled * meter_period + (meter_period - cur.countdown);
+    const auto d_calls = calls - meter_calls_last;
+    const auto d_sampled = cur.sampled - meter_last.sampled, d_hit = cur.hit - meter_last.hit, d_miss = cur.miss - meter_last.miss;
+    const auto d_sh = cur.steps_hit - meter_last.steps_hit, d_sm = cur.steps_miss - meter_last.steps_miss;
+    std::uint64_t hh[meter_hist], hm[meter_hist];
+    std::uint32_t top = 0;
+    for (std::uint32_t i = 0; i < meter_hist; ++i) { hh[i] = cur.hist_hit[i] - meter_last.hist_hit[i]; hm[i] = cur.hist_miss[i] - meter_last.hist_miss[i]; if (hh[i] || hm[i]) top = i; }
+    const double seconds = meter_tick_last ? static_cast<double>(now - meter_tick_last) / 1000.0 : 0.0;
+    const double ns_sample = d_sampled ? static_cast<double>(cur.sample_ticks - meter_last.sample_ticks) * 1e9 / static_cast<double>(freq.QuadPart) / static_cast<double>(d_sampled) : 0.0;
+    std::uint64_t used[4]{};
+    for (unsigned i = 0; i < 4; ++i) used[i] = *reinterpret_cast<const volatile std::uint32_t*>(0x14665A134ull + 4 * i);
+    const auto mean = [](std::uint64_t sum, std::uint64_t n) { return n ? static_cast<double>(sum) / static_cast<double>(n) : 0.0; };
+    std::string line = "{\"tick_ms\":" + std::to_string(now) + ",\"seconds\":" + std::to_string(seconds) + ",\"calls\":" + std::to_string(d_calls) +
+                       ",\"sampled\":" + std::to_string(d_sampled) + ",\"period\":" + std::to_string(meter_period) + ",\"hit\":" + std::to_string(d_hit) +
+                       ",\"miss\":" + std::to_string(d_miss) + ",\"steps_mean\":" + std::to_string(mean(d_sh + d_sm, d_hit + d_miss)) +
+                       ",\"steps_hit_mean\":" + std::to_string(mean(d_sh, d_hit)) + ",\"steps_miss_mean\":" + std::to_string(mean(d_sm, d_miss)) +
+                       ",\"steps_p50\":" + std::to_string(hist_percentile(hh, hm, 0.50)) + ",\"steps_p90\":" + std::to_string(hist_percentile(hh, hm, 0.90)) +
+                       ",\"steps_p99\":" + std::to_string(hist_percentile(hh, hm, 0.99)) + ",\"steps_top_bin\":" + std::to_string(top) +
+                       ",\"seg_sampled\":[";
+    for (unsigned i = 0; i < 4; ++i) line += (i ? "," : "") + std::to_string(cur.seg[i] - meter_last.seg[i]);
+    line += "],\"children_used\":[";
+    for (unsigned i = 0; i < 4; ++i) line += (i ? "," : "") + std::to_string(used[i]);
+    line += "],\"buckets\":" + std::to_string(buckets_per_segment * 4) + ",\"sample_ns\":" + std::to_string(ns_sample) + ",\"checked\":" + std::to_string(meter_checked) +
+            ",\"checked_bad\":" + std::to_string(meter_bad) + ",\"hist_hit\":[";
+    for (std::uint32_t i = 0; i < meter_hist; ++i) line += (i ? "," : "") + std::to_string(hh[i]);
+    line += "],\"hist_miss\":[";
+    for (std::uint32_t i = 0; i < meter_hist; ++i) line += (i ? "," : "") + std::to_string(hm[i]);
+    line += "]}";
+    console::info("[var meter] %s\n", line.c_str());
+    meter_last = cur;
+    meter_calls_last = calls;
+    meter_tick_last = now;
+}
+
 class component final : public component_interface {
 public:
     void post_unpack() override {
@@ -431,6 +598,10 @@ public:
         replace_function(0x140C08C30ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&rebuild_refused));
         entry_hook(0x140C043A0ull, {0x48, 0x89, 0x5C, 0x24, 0x10}, &thread_guard_check);
         entry_hook(0x140C04580ull, {0x40, 0x53, 0x48, 0x83, 0xEC, 0x20}, &thread_guard_check);
+        char meter_env[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_METER", meter_env, sizeof(meter_env));
+        const bool with_meter = utils::flags::has_flag("script-variables-meter") || meter_env[0] == '1';
+        if (with_meter) meter_stub();
         std::size_t dropped_refs{}, dropped_imms{}, dropped_pairs{};
         for (const auto& s : ref_sites) {
             if (in_window(s.field, 4)) { ++dropped_refs; continue; }
@@ -499,6 +670,7 @@ public:
             if (poisoned) console::info("[script variables] poison: %zu bytes of the stock tables are inaccessible\n", poisoned);
         }, scheduler::main);
         scheduler::loop(check_guards, scheduler::main, 500ms);
+        if (with_meter) scheduler::loop(meter_report, scheduler::main, 10s);
     }
 };
 }
