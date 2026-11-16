@@ -8,6 +8,7 @@
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
 #include "game/game.hpp"
+#include "agent_capacity.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -106,6 +107,42 @@ namespace paris_perf
                 }
             }
             return result;
+        }
+
+        // The renderer's four per-frame lists (a52): FUN_140E328E0 runs once a scene, after every draw command of the frame has taken its records, and copies the
+        // model parameter list to the frame data. The wrapper reads the four counters (0x149FF3E18 parameter records of 32 bytes, 0x149FFBE1C lights, 0x14A0B6634
+        // draw records, 0x14A002E20 draw records of the other pass: stock capacities 1,024 / 1,024 / 1,024 / 512) and, from the capacity component, how many
+        // models the full-list branches skipped (agent_capacity::render_skipped). Counted in a window: calls, peak and mean use of each list, skips in all and the most in one scene.
+        constexpr std::uintptr_t scene_copy_function = 0x140E328E0;
+        constexpr std::uintptr_t list_counter[4] = {0x149FF3E18, 0x149FFBE1C, 0x14A0B6634, 0x14A002E20};
+        constexpr std::uint32_t list_capacity[4] = {1024, 1024, 1024, 512};
+        constexpr unsigned list_skip_id[4] = {0x9A, 5, 1, 2};
+        constexpr const char* list_name[4] = {"params", "lights", "draws", "draws_other"};
+        utils::hook::detour scene_copy_hook;
+        std::atomic<std::uint64_t> list_calls{}, list_sum[4]{}, list_peak[4]{}, skip_base[4]{}, skip_frame_max{}, skip_last{};
+        std::uint64_t skip_total_now()
+        {
+            std::uint64_t n = 0;
+            for (const auto id : list_skip_id) n += agent_capacity::render_skipped(id);
+            return n;
+        }
+        void scene_copy_stub()
+        {
+            scene_copy_hook.invoke<void>();
+            if (!window_open.load(std::memory_order_acquire)) return;
+            ++list_calls;
+            for (int i = 0; i < 4; ++i)
+            {
+                const std::uint64_t v = *reinterpret_cast<const volatile std::uint32_t*>(list_counter[i]);
+                list_sum[i] += v;
+                auto seen = list_peak[i].load(std::memory_order_relaxed);
+                while (v > seen && !list_peak[i].compare_exchange_weak(seen, v)) {}
+            }
+            const auto total = skip_total_now();
+            const auto before = skip_last.exchange(total);
+            const auto frame = total >= before ? total - before : 0;
+            auto seen = skip_frame_max.load(std::memory_order_relaxed);
+            while (frame > seen && !skip_frame_max.compare_exchange_weak(seen, frame)) {}
         }
 
         std::int64_t now()
@@ -342,6 +379,9 @@ namespace paris_perf
             stacks.clear();
             ticks = dropped = 0;
             snapshot_calls = 0; snapshot_sum = 0; snapshot_max = 0;
+            list_calls = 0; skip_frame_max = 0;
+            for (int i = 0; i < 4; ++i) { list_sum[i] = 0; list_peak[i] = 0; skip_base[i] = agent_capacity::render_skipped(list_skip_id[i]); }
+            skip_last = skip_total_now();
             {
                 std::lock_guard<std::mutex> motion_lock(motion_mutex);
                 motion_reset();
@@ -422,6 +462,25 @@ namespace paris_perf
                     static_cast<unsigned long long>(n), static_cast<unsigned long long>(snapshot_max.load()),
                     n ? static_cast<double>(snapshot_sum.load()) / static_cast<double>(n) : 0.0);
                 out += line;
+                {
+                    const auto frames = list_calls.load();
+                    std::uint64_t skipped_total = 0;
+                    out += "\"render_lists\":{";
+                    _snprintf_s(line, sizeof(line), _TRUNCATE, "\"scenes\":%llu,\"lists\":{", static_cast<unsigned long long>(frames));
+                    out += line;
+                    for (int i = 0; i < 4; ++i)
+                    {
+                        const std::uint64_t skipped = agent_capacity::render_skipped(list_skip_id[i]) - skip_base[i].load();
+                        skipped_total += skipped;
+                        _snprintf_s(line, sizeof(line), _TRUNCATE, "%s\"%s\":{\"peak\":%llu,\"mean\":%.2f,\"cap\":%u,\"skipped\":%llu}", i ? "," : "", list_name[i],
+                            static_cast<unsigned long long>(list_peak[i].load()), frames ? static_cast<double>(list_sum[i].load()) / static_cast<double>(frames) : 0.0,
+                            list_capacity[i], static_cast<unsigned long long>(skipped));
+                        out += line;
+                    }
+                    _snprintf_s(line, sizeof(line), _TRUNCATE, "},\"skipped\":{\"total\":%llu,\"max_scene\":%llu}},\n", static_cast<unsigned long long>(skipped_total),
+                        static_cast<unsigned long long>(skip_frame_max.load()));
+                    out += line;
+                }
                 append_motion(out);
                 out += "\"threads\":[";
             }
@@ -506,6 +565,11 @@ namespace paris_perf
                 snapshot_parse_hook.create(snapshot_parse_function, snapshot_parse_stub);
             else console::error("[Paris perf] snapshot parser at 0x%llX: code differs from the expected bytes, its counter is left out\n",
                 static_cast<unsigned long long>(snapshot_parse_function));
+            static const unsigned char copy_code[] = {0x48, 0x83, 0xEC, 0x28, 0x8B, 0x05};
+            if (std::memcmp(reinterpret_cast<const void*>(scene_copy_function), copy_code, sizeof(copy_code)) == 0)
+                scene_copy_hook.create(scene_copy_function, scene_copy_stub);
+            else console::error("[Paris perf] scene copy at 0x%llX: code differs from the expected bytes, the render list meter is left out\n",
+                static_cast<unsigned long long>(scene_copy_function));
             install_motion_hook();
             scheduler::loop([]
             {

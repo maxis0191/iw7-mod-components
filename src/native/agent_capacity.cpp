@@ -30,6 +30,7 @@ std::atomic_bool active{};
 std::string contract = "24";
 
 struct buffer { std::uintptr_t data{}; std::size_t bytes{}; };
+buffer reserve_code(std::size_t bytes);
 buffer agent_pool, sentient_pool, sentient_refs, table8, table20, parts_pool, entity_queue;
 buffer state_a, state_c, state_client, state_x;   // replicated scriptable state (section 4b)
 buffer pool_server[stream_pool_classes], pool_client[stream_pool_classes];   // scriptable stream buffer pools (section 4d)
@@ -626,6 +627,57 @@ void plan_snapshot() {
         case snapshot_op::entity_offset: add(s.field, s.stock, l.snap_entity_offset(), s.width); break;
         }
     }
+}
+
+// ---- 3c. the renderer's per-model parameter list: a full list skips the draw (a52) -------------------------------------------------
+// Every dynamic model the scene draws (FUN_140E2D9D0 and FUN_140E2FF80, one call a drawn DObj) takes 1 or 2 records of 32 bytes (the model's
+// material / UV parameters, FUN_140E366C0) from a list of 1,024 at 0x149FF3E1C that the engine copies to the GPU every frame (FUN_140E328E0 copies
+// count x 32 bytes into the frame data, FUN_1400C13B0 into the mapped buffer). The reservation is `lock xadd` on the count 0x149FF3E18; when it
+// passes 0x400 the stock code calls the renderer warning 0x9A and goes on with a NULL buffer: FUN_140E366C0 then writes through null (the lab client
+// crash of a49, about 1,170 records = 650 flooded models), and the count stays past 0x400, so the copy of the frame would also run past its 0x8000
+// bytes. Both overflow branches are rewritten in place (31 and 30 bytes): the reservation is given back (`lock sub`), the warning is still raised,
+// and the function returns the way its other full-list branch does (the jump to the `jmp` of the lights overflow: a short jump that ends at the
+// function's own epilogue; the second function first stores r12 in the slot its epilogue reloads). The model is not drawn: the list is a hard
+// limit of the renderer (the next lists, 1,024 draw records, 512 draw records and 1,024 lights, are skipped the same way by the stock code, and the
+// draw record's sort key holds the light index in 10 bits: docs/AGENT-CAPACITY-ENGINE.md "Renderer lists"); what this patch changes is that a
+// full list now costs only the models over it, not the client.
+// Counting (a52): the renderer warning FUN_140E4B0B0 is called with the list's id in ecx by every full-list branch (0x9A the parameter list, 5 the lights,
+// 1 the draw records, 2 the other pass's draw records); its seven call sites (the two rewritten ones included) call a stub instead that counts the id in
+// `render_skip_table` and jumps to the warning (mov rax, table; lock inc [rax+rcx*4]; mov rax, warning; jmp rax: 26 bytes, rax is a scratch register at a
+// call). The client meter (paris_perf.cpp) reads the counts with render_skipped(id).
+std::atomic<std::uint32_t> render_skip_table[0xA0]{};
+void plan_render_list() {
+    constexpr std::uintptr_t warning = 0x140E4B0B0;
+    auto stub_memory = reserve_code(64);
+    auto* stub = reinterpret_cast<std::uint8_t*>(stub_memory.data);
+    std::size_t at = 0;
+    const auto table = reinterpret_cast<std::uint64_t>(&render_skip_table[0]);
+    stub[at++] = 0x48; stub[at++] = 0xB8; std::memcpy(stub + at, &table, 8); at += 8;                       // mov rax, table
+    stub[at++] = 0xF0; stub[at++] = 0xFF; stub[at++] = 0x04; stub[at++] = 0x88;                              // lock inc dword [rax + rcx*4]
+    stub[at++] = 0x48; stub[at++] = 0xB8; std::memcpy(stub + at, &warning, 8); at += 8;                      // mov rax, warning
+    stub[at++] = 0xFF; stub[at++] = 0xE0;                                                                    // jmp rax
+    const auto stub_address = stub_memory.data;
+    const auto retarget = [&](std::uintptr_t call) {
+        std::int32_t old_rel{}, new_rel{};
+        if (!relative32(warning, call + 5, old_rel) || !relative32(stub_address, call + 5, new_rel)) throw std::runtime_error("agent capacity: render stub out of range");
+        add(call + 1, static_cast<std::uint32_t>(old_rel), static_cast<std::uint32_t>(new_rel));
+    };
+    retarget(0x140E2DB04ull); retarget(0x140E2DCF0ull); retarget(0x140E300B9ull); retarget(0x140E3012Eull); retarget(0x140E30C8Full);
+    std::array<std::uint8_t, 31> after_a{0xF0, 0x29, 0x0D, 0x71, 0x63, 0x1C, 0x09, 0x89, 0xCA, 0xC1, 0xE2, 0x05, 0x41, 0xB8, 0x00, 0x04, 0x00, 0x00,
+                                         0xB9, 0x9A, 0x00, 0x00, 0x00, 0xE8, 0xF4, 0xD5, 0x01, 0x00, 0xEB, 0x4B, 0x90};
+    std::array<std::uint8_t, 30> after_b{0xF0, 0x29, 0x0D, 0xCB, 0x3D, 0x1C, 0x09, 0x4C, 0x89, 0x64, 0x24, 0x78, 0x41, 0xB8, 0x00, 0x04, 0x00, 0x00,
+                                         0xB9, 0x9A, 0x00, 0x00, 0x00, 0xE8, 0x4E, 0xB0, 0x01, 0x00, 0xEB, 0x5A};
+    const auto aim = [&](std::uint8_t* bytes, std::uintptr_t call) {
+        std::int32_t rel{};
+        if (!relative32(stub_address, call + 5, rel)) throw std::runtime_error("agent capacity: render stub out of range");
+        std::memcpy(bytes + 24, &rel, 4);
+    };
+    aim(after_a.data(), 0x140E2DAA0ull + 23);
+    aim(after_b.data(), 0x140E30046ull + 23);
+    block(0x140E2DAA0, std::array<std::uint8_t, 31>{0x48, 0x8B, 0xD1, 0x41, 0xB8, 0x00, 0x04, 0x00, 0x00, 0x48, 0xC1, 0xE2, 0x05, 0xB9, 0x9A, 0x00,
+                                                    0x00, 0x00, 0x44, 0x8B, 0xF5, 0x4C, 0x8B, 0xFD, 0xE8, 0xF3, 0xD5, 0x01, 0x00, 0xEB, 0x06}, after_a);
+    block(0x140E30046, std::array<std::uint8_t, 30>{0x48, 0x8B, 0xD1, 0x41, 0xB8, 0x00, 0x04, 0x00, 0x00, 0x48, 0xC1, 0xE2, 0x05, 0xB9, 0x9A, 0x00,
+                                                    0x00, 0x00, 0x8B, 0xF3, 0x48, 0x8B, 0xEB, 0xE8, 0x4E, 0xB0, 0x01, 0x00, 0xEB, 0x05}, after_b);
 }
 
 // ---- 3d. the two per-sentient tables of an SV agent record (map A1) ---------------------------------------------------
@@ -1490,6 +1542,7 @@ public:
         plan_pools();
         plan_proxy_list();
         plan_snapshot();
+        plan_render_list();
         plan_ai_pool();
         plan_tables();
         plan_entity_queue();
@@ -1534,6 +1587,7 @@ public:
             console::info("[agent capacity] character proxy list: %u entries (stock 140), %zu fields, block %p\n", proxy_list_entries, sound_rows, reinterpret_cast<void*>(proxy_list.data));
             console::info("[agent capacity] snapshot entities: cap %u (stock 768), lists %u, server ring %u records a frame + %u a client, client ring %u a frame, %zu fields, cgame entity array at +0x%X\n",
                 snapshot_entities, snapshot_entities, ring_frame_term, snapshot_entities, client_ring_per_frame, snapshot_rows, L.snap_entity_offset());
+            console::info("[agent capacity] render parameter list (1,024 records): a full list skips the model (2 overflow branches)\n");
             console::info("[agent capacity] fast-fail sites patched to ud2: %zu\n", fastfail_sites);
             for (const auto& set : frame_sets)
                 console::info("[agent capacity] frame grow of %s: extra %u bytes, %zu fields, probe caves %zu\n", set.name, set.extra,
@@ -1548,6 +1602,7 @@ public:
 }
 
 bool installed() noexcept { return active; }
+std::uint32_t render_skipped(unsigned id) noexcept { return id < 0xA0 ? render_skip_table[id].load(std::memory_order_relaxed) : 0; }
 std::uint32_t agents() noexcept { return active ? L.agents : stock_agents; }
 const char* wire_contract() noexcept { return contract.c_str(); }
 }
