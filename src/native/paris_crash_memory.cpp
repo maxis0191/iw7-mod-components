@@ -5,7 +5,6 @@
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <DbgHelp.h>
-#include <thread>
 
 // Crash dumps with the memory the crashing threads point to (lab clients and servers started with -paris-crash-memory; compiled with -Perf).
 //
@@ -41,9 +40,9 @@ namespace paris_crash_memory
             const auto function = module ? reinterpret_cast<void*>(GetProcAddress(module, "MiniDumpWriteDump")) : nullptr;
             if (!function) { console::error("[Paris crash memory] MiniDumpWriteDump not found: dumps keep the game's type\n"); return; }
             write_dump_hook.create(function, write_dump_stub);
-            // lab test: a write through a null pointer on a new thread (the command runner catches faults on the thread that calls it), to read the dump this component asks for (only in an isolated lab)
+            // lab test: a write through a null pointer on the main thread, to read the dump this component asks for (only in an isolated lab)
             if (utils::flags::has_flag("paris-isolated-lab"))
-                command::add("paris_crash_test", [] { std::thread([] { *reinterpret_cast<volatile int*>(0x10) = 1; }).detach(); });
+                command::add("paris_crash_test", [] { *reinterpret_cast<volatile int*>(0x10) = 1; });
             console::info("[Paris crash memory] ready: dumps add indirectly referenced memory and module data\n");
         }
     };
