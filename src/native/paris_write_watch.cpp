@@ -317,6 +317,19 @@ namespace paris_write_watch
             return ((ctl7 >> (16 + 4 * slot)) & 3) == 1 && ((ctl7 >> (18 + 4 * slot)) & 3) == len_bits(len);
         }
         enum class arm_result { ok, rearmed, lost, refused, failed };
+        // a thread that cannot be opened or suspended is named once (a thread that ended is not an error)
+        void write_file(const std::string& text);
+        DWORD arm_failed_tids[64]; std::atomic<unsigned> arm_failed_count{0};
+        void note_arm_failure(const DWORD tid, const char* what, const DWORD error)
+        {
+            const auto n = arm_failed_count.load();
+            for (unsigned i = 0; i < n && i < 64; ++i) if (arm_failed_tids[i] == tid) return;
+            if (n >= 64) return;
+            arm_failed_tids[arm_failed_count.fetch_add(1)] = tid;
+            char line[200]{};
+            std::snprintf(line, sizeof(line), "[WW] thread %lu cannot be armed: %s failed (error %lu)\n", tid, what, error);
+            write_file(line);
+        }
 
         // The ids of the threads of this process except the caller's: NtGetNextThread walks only this process (Toolhelp copies every thread of the machine).
         unsigned list_thread_ids(DWORD* out, const unsigned max)
@@ -355,7 +368,7 @@ namespace paris_write_watch
         arm_result apply_thread(const DWORD tid, const bool verify, unsigned& refused_here)
         {
             const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_QUERY_LIMITED_INFORMATION, FALSE, tid);
-            if (!handle) return arm_result::failed;
+            if (!handle) { note_arm_failure(tid, "OpenThread", GetLastError()); return arm_result::failed; }
             alignas(16) CONTEXT c{};
             c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
             arm_result result = arm_result::failed;
@@ -404,7 +417,7 @@ namespace paris_write_watch
                 }
                 ResumeThread(handle);
             }
-            else suspend_failed.fetch_add(1);
+            else { suspend_failed.fetch_add(1); note_arm_failure(tid, "SuspendThread", GetLastError()); }
             CloseHandle(handle);
             return result;
         }
@@ -801,22 +814,6 @@ namespace paris_write_watch
                     print_console(text);
                 }
             }
-            if (!selftest_modes.empty() && selftest_next < selftest_modes.size())
-            {
-                const auto now_ms = GetTickCount64();
-                if (!selftest_due) selftest_due = now_ms + 15000; // the helper needs a moment to arm every thread
-                else if (now_ms >= selftest_due)
-                {
-                    auto end = selftest_modes.find(',', selftest_next);
-                    if (end == std::string::npos) end = selftest_modes.size();
-                    const auto mode = selftest_modes.substr(selftest_next, end - selftest_next);
-                    bool ready_to_run = true;
-                    if (mode == "real") { ready_to_run = false; for (int i = 0; i < target_count; ++i) if (targets[i].terms[0].kind == 'c' && targets[i].addr.load()) ready_to_run = true; }
-                    if (ready_to_run) { run_test(mode); selftest_next = end + 1; selftest_due = now_ms + 3000; }
-                    else selftest_due = now_ms + 1000;
-                    if (selftest_next >= selftest_modes.size()) console::info("[WW-TEST] self test finished\n");
-                }
-            }
             const auto dt = to_ns(qpc() - t0); // the guard itself; printing is measured apart (print_us_max)
             guard_ns += dt;
             if (dt > guard_max_ns) guard_max_ns = dt;
@@ -834,6 +831,22 @@ namespace paris_write_watch
             }
             const auto print_dt = to_ns(qpc() - print_start);
             if (print_dt > print_max_ns) print_max_ns = print_dt;
+            if (!selftest_modes.empty() && selftest_next < selftest_modes.size())
+            {
+                const auto now_ms = GetTickCount64();
+                if (!selftest_due) selftest_due = now_ms + 15000; // the helper needs a moment to arm every thread
+                else if (now_ms >= selftest_due)
+                {
+                    auto end = selftest_modes.find(',', selftest_next);
+                    if (end == std::string::npos) end = selftest_modes.size();
+                    const auto mode = selftest_modes.substr(selftest_next, end - selftest_next);
+                    bool ready_to_run = true;
+                    if (mode == "real") { ready_to_run = false; for (int i = 0; i < target_count; ++i) if (targets[i].terms[0].kind == 'c' && targets[i].addr.load()) ready_to_run = true; }
+                    if (ready_to_run) { run_test(mode); selftest_next = end + 1; selftest_due = now_ms + 3000; }
+                    else selftest_due = now_ms + 1000;
+                    if (selftest_next >= selftest_modes.size()) console::info("[WW-TEST] self test finished\n");
+                }
+            }
             const auto now = GetTickCount64();
             if (now - last_stats_tick >= 60000)
             {
