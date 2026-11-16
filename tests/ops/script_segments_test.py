@@ -252,6 +252,44 @@ class Values(unittest.TestCase):
             self.assertEqual(((base + 0xFFFF) * 0x80000000 >> 32) >> 15, s - 1)  # the counter index: hi32(x * 0x80000000) >> 15 = x >> 16
 
 
+class Sweep(unittest.TestCase):
+    """The offline sweep (a67): every segment count x every bucket bit count places the tables the way the component does and every value the patches carry fits."""
+
+    @staticmethod
+    def place(s, bits):
+        # reserve(): VirtualAlloc at 0x150000000 + attempt * 0x10000 until the range is free; the data starts 16 bytes in (guard bytes), the commit is rounded to 4096
+        sizes = [('A', 2 * s * 0x10000), ('B', 2 * s * 0x10000), ('P8', 8 * s * 0x10000), ('P4', 4 * s * 0x10000), ('CH', s * 0x10000 * 0x18), ('HASH', (s * 2) << bits), ('CNT', 4 * s)]
+        at, out = 0x150000000, {}
+        for name, size in sizes:
+            committed = (size + 32 + 4095) & ~4095
+            out[name] = at + 16
+            at = (at + committed + 0xFFFF) & ~0xFFFF           # the next attempt that does not overlap, on a 64 KB step
+        return out, at
+
+    def test_every_value_fits(self):
+        for s in SEGMENTS:
+            for bits in (14, 16, 17):
+                t, end = self.place(s, bits)
+                self.assertLess(end, 0x150000000 + 0x20000000, 'the tables end within 512 MB of their start')
+                self.assertLess(end - 0x140000000, 0x7FFFFFFF)                                  # every displacement from the image base is a positive int32
+                self.assertEqual((t['CH'] - t['P8']) % 16, 0)
+                self.assertLess((t['CH'] - t['P8']) // 16, 0x7FFFFFFF)                           # idiom16
+                self.assertEqual((t['HASH'] - t['P8']) % 2, 0)
+                self.assertLess((t['HASH'] - t['P8']) // 2, 0x7FFFFFFF)                          # hash_half
+                for key in ('A', 'B', 'P8', 'P4', 'CH', 'HASH', 'CNT'):
+                    self.assertLess(t[key] - 0x140000000, 0x7FFFFFFF)
+                ids = s * 0x10000
+                self.assertEqual(ids * 4, 0x100000 * s // 4)                                    # p4_bytes
+                self.assertLess(ids * 8, 1 << 31)                                               # the P8 byte count and the clear fit an imm32
+                self.assertEqual((s * 2) << bits, 8 << bits if s == 4 else (s * 2) << bits)     # the clear (stock 0x20000 = 8 << 14)
+                mask = (1 << bits) - 1
+                self.assertEqual(mask & (mask + 1), 0)
+
+    def test_the_counters_fit_a_page_of_their_own(self):
+        for s in SEGMENTS:
+            self.assertLessEqual(4 * s + 32, 4096)
+
+
 class Caves(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
