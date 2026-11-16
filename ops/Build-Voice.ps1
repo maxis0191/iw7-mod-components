@@ -137,6 +137,10 @@ if errorlevel 1 exit /b 1
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\dvar_metadata_test.cpp" /Fe:"$runtime\dvar-metadata-test.exe" /Fo:"$runtime\dvar-metadata-test.obj"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\script_var_layout_test.cpp" /Fe:"$runtime\script-var-layout-test.exe" /Fo:"$runtime\script-var-layout-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\script-var-layout-test.exe"
+if errorlevel 1 exit /b 1
 "$runtime\dvar-metadata-test.exe"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib mmdevapi.lib
@@ -194,7 +198,7 @@ if (Test-Path -LiteralPath $labComponent) {
 }
 $nativeSources = @('paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp','dvar_metadata.hpp','agent_scenario.hpp',
     'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp','paris_afk.cpp','paris_afk.hpp','afk_inactivity.hpp',
-    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp')
+    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp')
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
 else {
     # The experiment pin does not expose the ServerModules CP WeaponDef.
@@ -233,6 +237,8 @@ Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 $incidentOverlay = & "$PSScriptRoot/Apply-IncidentOverlay.ps1" -NativeRoot $root -Commit $commit
 $testPrivacyOverlay = & "$PSScriptRoot/Apply-TestPrivacyOverlay.ps1" -NativeRoot $root -Commit $commit
+# The script variable accessors read the tables through script_var_layout.hpp (stock or relocated), never a fixed address.
+$scriptVarAccessorOverlay = & "$PSScriptRoot/Apply-ScriptVarAccessorOverlay.ps1" -NativeRoot $root -Commit $commit
 $downloadCacheOverlay = $null
 if ($ServerModules -or $commit -eq '77e6d4d24e918ee363b3feee3735c3b889dff7d7') {
     $downloadCacheOverlay = & "$PSScriptRoot/Apply-DownloadCacheOverlay.ps1" -NativeRoot $root -Commit $commit
@@ -526,6 +532,7 @@ $manifest.NativeSourceHashes = @(Get-ChildItem -LiteralPath (Join-Path $root 'sr
 $manifest.ProjectCommit = $sourceIdentity.Commit
 $manifest.SourceIdentity = $sourceIdentity
 $manifest.DownloadCacheOverlay = $downloadCacheOverlay
+$manifest.ScriptVarAccessorOverlay = $scriptVarAccessorOverlay
 $manifest.ProjectDirty = $sourceIdentity.Dirty
 # Retain matching symbols before the next rebuild replaces them. These local
 # files enable reliable crash stacks and must never be added to Git.
