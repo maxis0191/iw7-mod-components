@@ -18,6 +18,21 @@ constexpr std::uint32_t stock_parts = 0x800;
 // (measured: runs d2, d2b; docs/AGENT-CAPACITY-ENGINE.md "Replicated state budget").
 constexpr std::uint32_t stock_state_dwords = 0x3F8, state_dwords_per_agent = 8;
 
+// The entities one client snapshot can carry (a49). The server's snapshot writer ends the entity list with the number 0x7FF in 11 bits (FUN_140C67230),
+// so an entity number is 0..0x7FE and a snapshot never holds more than 2,047 records: the cap of 2,048 (the 11 bit number space) cannot drop an entity.
+// Stock: 768 (sv_maxSnapshotEntities, DAT_146B3985C; the client copy DAT_1421EDA6C), 1,024 for each of the two lists (DAT_146B39858 / 146B39860 on the
+// server, DAT_1421EDA68 on the client), the server's entity-state ring frames x 0xA40 + clients x 1,024 records of 0x110 bytes, the client's parsed-entity
+// ring frames x 0x258 records. See docs/AGENT-CAPACITY-ENGINE.md "Snapshot entities".
+constexpr std::uint32_t stock_snapshot_entities = 0x300, stock_snapshot_list = 0x400, entity_record_bytes = 0x110;
+constexpr std::uint32_t snapshot_entities = 2048, snapshot_entities_shift = 11;
+static_assert((1u << snapshot_entities_shift) == snapshot_entities && snapshot_entities <= 0x7FF + 1);
+// The server ring holds, for every frame, 0xA40 records (3.4 stock snapshots) plus 1,024 for each client: grown by three more snapshots a frame and
+// by the new per client room, so the ring still holds 16 frames of four full snapshots (16 x 4 x 2,048 = 131,072 of the 136,192 records at 16 clients).
+constexpr std::uint32_t stock_ring_frame_term = 0xA40;
+constexpr std::uint32_t ring_frame_term = stock_ring_frame_term + 3 * (snapshot_entities - stock_snapshot_entities);
+// The client's parsed-entity ring holds frames x this many records (stock 0x258 = 600, below what a 746 entity snapshot needs): a full snapshot a frame.
+constexpr std::uint32_t stock_client_ring_per_frame = 0x258, client_ring_per_frame = snapshot_entities;
+
 // What a 32-bit field of the wide caves holds (agent_capacity.cpp `wide_sites`): the value the shipped one-byte instruction had, as a function of the count.
 enum class wide_field { characters, characters_less_one, player_corpses, agent_corpses, minus_agent_corpses, agents, agents_less_players };
 
@@ -65,9 +80,11 @@ struct layout {
     constexpr std::uint32_t state_copies() const { return 47 + state_extra() / 32; }
     // The server hunk size adds the one block that SV_AllocSnapshotBuffers allocates besides its two rings as a constant (0x17E8 rounded to 0x80 = 0x1800).
     constexpr std::uint32_t state_hunk_growth() const { return ((state_bytes() + 0x7F) & ~0x7Fu) - 0x1800; }
-    // The client snapshot: the block member moves behind the appended agent states (its stock slot at 0x3AF38 stays, unused).
+    // The client snapshot: the block member moves behind the appended agent states (its stock slot at 0x3AF38 stays, unused); the entity array
+    // (stock: 768 records of 0x110 bytes at +0x4AB8) moves behind the block with snapshot_entities records (a49).
     constexpr std::uint32_t snap_state_offset() const { return 0x3DC78 + agents * 0xC0; }
-    constexpr std::uint32_t snap_size() const { return snap_state_offset() + state_bytes(); }
+    constexpr std::uint32_t snap_entity_offset() const { return snap_state_offset() + state_bytes(); }
+    constexpr std::uint32_t snap_size() const { return snap_entity_offset() + snapshot_entities * entity_record_bytes; }
     // lag-compensation archive (CP): per-character controllers and saved animation trees inside each history frame
     constexpr std::uint32_t controller_records() const { return characters * 2; }
     constexpr std::uint32_t controller_size() const { return characters * (2 + 0x48); }
@@ -264,7 +281,9 @@ static_assert(make(24, 0x800).state_dwords() == 1016 && make(24, 0x800).state_by
               make(24, 0x800).state_copies() == 47 && make(24, 0x800).state_extra() == 0 && make(24, 0x800).state_hunk_growth() == 0);
 static_assert(make(100, 0x800).state_dwords() == 1624 && make(164, 0x800).state_dwords() == 2136 && make(232, 0x800).state_dwords() == 2680);
 static_assert(make(164, 0x800).state_bytes() == 10600 && make(232, 0x800).state_bytes() == 12776 && make(164, 0x800).state_copies() == 82);
-static_assert(make(100, 0x800).snap_size() == 0x3DC78 + 100 * 0xC0 + 8552);
+static_assert(make(100, 0x800).snap_entity_offset() == 0x3DC78 + 100 * 0xC0 + 8552 &&
+              make(100, 0x800).snap_size() == 0x3DC78 + 100 * 0xC0 + 8552 + 2048 * 0x110);
+static_assert(ring_frame_term == 6464 && 16 * ring_frame_term + 16 * snapshot_entities == 136192 && 16 * 4 * snapshot_entities <= 136192);
 
 // The shipped layout gives back the shipped numbers (the patch plan is the identity at 24).
 static_assert(make(64, 0x800).client_size() == ((0xFDEA8 + 40 * 0x2CA0 + 82 + 15) & ~15u));

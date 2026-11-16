@@ -82,7 +82,7 @@ class StateRows(unittest.TestCase):
                      'constexpr std::uint32_t state_copies() const { return 47 + state_extra() / 32; }',
                      'constexpr std::uint32_t state_hunk_growth() const { return ((state_bytes() + 0x7F) & ~0x7Fu) - 0x1800; }',
                      'constexpr std::uint32_t snap_state_offset() const { return 0x3DC78 + agents * 0xC0; }',
-                     'constexpr std::uint32_t snap_size() const { return snap_state_offset() + state_bytes(); }'):
+                     'constexpr std::uint32_t snap_entity_offset() const { return snap_state_offset() + state_bytes(); }'):
             self.assertIn(text, self.hpp)
         self.assertEqual((layout(24)['S'], layout(24)['T'], layout(24)['C'], layout(24)['copies']), (1016, 0x17E8, 0x5F4E, 47))
         self.assertEqual([layout(n)['S'] for n in (100, 164, 232)], [1624, 2136, 2680])
