@@ -6,11 +6,30 @@ The server repository's play launcher passes it to the client of every session (
 ## Why
 
 An owner crash of 16 Nov 2026 (`iw7_ship.exe+0x8CA8E2`, [CRASH](CRASH.md)) read the vtable qword of element 0 of the hit-result array of the client's `cg` object
-and found 0. The constructor writes `0x141440EE0` there (`FUN_140161D80`, 20 elements of 0x350 bytes at `cg + 0x74278`); no stock path stores 0. A dump without the
+and found 0. The constructor writes `0x141440EE0` there (`FUN_140161D80`, 20 elements of 0x350 bytes at `cg + 0x74278`). A dump without the
 heap cannot say who wrote the 0, so the next owner session carries a watch that names the writer when it happens.
 
-`cg` is the pointer array `cg[local client]` at `0x141FA6C88` (the crash note of that day pointed at `DAT_141FDCF50`, the Multiplayer array of 0xD64C0 objects; the
-Zombies client allocates its 0xFDEA8 objects in `FUN_140240A00` and stores them in `cg[i]`, `FUN_140984180` reads `(&cg)[local client]`).
+`cg` is the pointer array `cg[local client]` at `0x141FA6C88`, but its entries are scrambled (a run read `0x4C48E77C436D0228` from it). The two allocations are plain: the Zombies (CP) client
+allocates its 0xFDEA8 byte objects in `FUN_140240A00` and stores the base in `0x141FDBEF0`; the Multiplayer client does the same in `FUN_1402B5000` (0xD64C0 bytes, base in `0x141FDCF50`).
+The watch uses `base + local client * stride` and arms only when the object's first qword (its vtable) is an address of the game image (the object is zero until its constructor ran).
+The crash note of that day (`cg` from `DAT_141FDCF50`) used the Multiplayer array; a Zombies client uses the other.
+
+## What it found in its first live session (16 Nov 2026, a73, five lab sessions, `-agent-capacity 264`)
+
+Element 0's vtable qword is written by the engine itself, every frame, from the client's snapshot code, and it is 0 for most of the session:
+
+| Measured | |
+|---|---|
+| writer | two stores at `game+0x94A837` and `game+0x94A842` (inside `FUN_140949810`, called from `FUN_140864450`, the per-character client info update), main thread, 11,369 times in 600 s in the longest session; the first store changes `0x141440EE0` to `0x41440EE0`, the second to `0` |
+| register at the store | `rax = cg + 0x74250`; `FUN_140949810` reaches `rax` through `FUN_140945FD0`, which returns `cg + 0x70950 + n * 0xC0` (decompiled), so `n = (0x74250 - 0x70950) / 0xC0 = 76` |
+| what the code does | `*(u64*)(e+0x2C) = *(u64*)(e+0x24); *(u32*)(e+0x24) = a; *(u32*)(e+0x28) = b;` with `e` that entry: 16 bytes at `e+0x24` (to `e+0x34`), of which the dword at `e+0x28` is the low half of element 0's vtable |
+| not the constructor | the constructor store (`game+0x6709A`, value `0x14143D6D0`, a base vtable) and the destructor store (`game+0x16202D`) run only when `cg` is built or torn down (4 to 6 times in a session) |
+| other watched elements | elements 1 to 3 (`hitresult4`) are not hit by this writer |
+
+Inferred (not yet proven by a change): the table at `cg + 0x70950` (entry 0xC0 bytes, indexed by a character number) holds the stock 42 characters (18 players + 24 agents,
+`stock_characters` of `agent_capacity.hpp`); with `-agent-capacity 264` it is indexed up to 263, and entries from 42 on lie past its end, entry 76 on element 0 of the hit results.
+`grep` of `src/native` and `ops/engine` for `0x70950`: no hit, so the capacity component does not grow this table. The other entries (42 to 263) write 16 bytes each into whatever lies at
+`cg + 0x73350 ...`, which this watch does not name. Not shown: that this zero is what the owner's shot met (it is consistent with `rax = 0` at `FUN_1408CA530+0x3B2`, element 0).
 
 ## What it does
 

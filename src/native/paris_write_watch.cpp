@@ -322,6 +322,7 @@ namespace paris_write_watch
         DWORD arm_failed_tids[64]; std::atomic<unsigned> arm_failed_count{0};
         void note_arm_failure(const DWORD tid, const char* what, const DWORD error)
         {
+            if (error == ERROR_INVALID_PARAMETER) return; // the thread ended between the scan and the open
             const auto n = arm_failed_count.load();
             for (unsigned i = 0; i < n && i < 64; ++i) if (arm_failed_tids[i] == tid) return;
             if (n >= 64) return;
