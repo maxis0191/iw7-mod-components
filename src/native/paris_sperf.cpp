@@ -425,7 +425,7 @@ namespace paris_sperf
         {
             if (on && !give_installed)
             {
-                static const unsigned char prologue[] = {0x55, 0x53, 0x56, 0x57, 0x41, 0x55, 0x48, 0x8B, 0xEC};
+                static const unsigned char prologue[] = {0x40, 0x55, 0x53, 0x56, 0x57, 0x41, 0x55, 0x48, 0x8B, 0xEC};
                 if (!code_is(give_function, "G_GivePlayerWeapon", prologue, sizeof(prologue))) return;
                 give_hook.create(give_function, give_stub);
                 give_installed = true;
