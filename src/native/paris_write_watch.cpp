@@ -60,7 +60,7 @@ namespace paris_write_watch
             std::atomic<std::uint64_t> addr{0};      // resolved address, 0 while cg is not allocated
             std::atomic<std::uint64_t> shadow{0};    // the last value the trap saw
             std::atomic<std::uint64_t> traps{0}, logged{0};
-            std::uint64_t guard_addr{}, guard_last{}; unsigned guard_logs{}; bool guard_seen{}; // main thread only
+            std::uint64_t guard_addr{}, guard_last{}; unsigned guard_logs{}; bool guard_seen{}, guard_valid{}; // main thread only
         };
         struct record
         {
@@ -664,7 +664,7 @@ namespace paris_write_watch
         }
         void helper_main()
         {
-            struct known { DWORD tid; std::uint64_t generation; std::uint64_t retry_at; };
+            struct known { DWORD tid; std::uint64_t generation; std::uint64_t retry_at; unsigned failures; };
             static known threads[512];
             unsigned thread_count = 0;
             std::uint64_t generation = 1, last_addr[max_targets]{}, last_invalid[max_targets]{}, last_scan = 0, last_sweep = GetTickCount64();
@@ -721,14 +721,14 @@ namespace paris_write_watch
                         known* k = nullptr;
                         for (unsigned i = 0; i < thread_count; ++i) if (threads[i].tid == seen[j]) k = &threads[i];
                         const bool is_new = !k;
-                        if (is_new && thread_count < 512) { threads[thread_count] = { seen[j], 0, 0 }; k = &threads[thread_count++]; }
+                        if (is_new && thread_count < 512) { threads[thread_count] = { seen[j], 0, 0, 0 }; k = &threads[thread_count++]; }
                         if (!k) continue;
                         if (!is_new && k->generation == generation && !sweep) continue;
                         if (now < k->retry_at) continue;
                         unsigned refused_here = 0;
                         const bool was_armed = k->generation != 0;
                         const auto result = apply_thread(k->tid, sweep && was_armed && k->generation == generation, refused_here);
-                        if (result == arm_result::failed) { k->retry_at = now + 2000; continue; } // exited or protected: tried again in 2 s
+                        if (result == arm_result::failed) { k->retry_at = now + (++k->failures >= 3 ? 60000 : 2000); continue; } // exited or protected: tried again in 2 s
                         k->generation = generation;
                         if (result == arm_result::lost)
                         {
@@ -792,10 +792,10 @@ namespace paris_write_watch
                 for (int i = 0; i < target_count; ++i)
                 {
                     auto& t = targets[i];
-                    auto address = evaluate(t);
-                    if (address && !plausible_address(address, t.len)) address = 0;
-                    if (address != t.guard_addr) { t.guard_addr = address; t.guard_seen = false; }
-                    if (!address) continue;
+                    const auto address = evaluate(t);
+                    // VirtualQuery of the engine's 47 GB pool is slow (100 us and more): the address is checked when it changes, not every frame
+                    if (address != t.guard_addr) { t.guard_addr = address; t.guard_seen = false; t.guard_valid = address && plausible_address(address, t.len); }
+                    if (!address || !t.guard_valid) continue;
                     std::uint64_t value{};
                     if (!read_value(address, t.len, value)) continue;
                     if (!t.guard_seen) { t.guard_seen = true; t.guard_last = value; continue; }
