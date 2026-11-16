@@ -82,6 +82,22 @@ class SperfTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 iw7_sperf.load(bad)
 
+    def test_a_light_window_has_frame_times_and_no_script_cost(self):
+        # paris_sperf_begin <name> light: no sampler thread, so no ticks and no stacks; the frame statistics are the same.
+        doc = window('light', 0)
+        doc['sampler'] = {'mode': 'light', 'ticks': 0, 'hz': 0.0, 'script': 0, 'frame_no_script': 0, 'idle': 0, 'failures': 0, 'dropped': 0}
+        doc['stacks'] = []
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'light.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(doc, f)
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = iw7_sperf.main(['report', path]) if hasattr(iw7_sperf, 'main') else 0
+        self.assertEqual(code or 0, 0)
+        self.assertIn('server frames 400', out.getvalue())
+        self.assertIn('median 0.500', out.getvalue())
+
 
 if __name__ == '__main__':
     unittest.main()
