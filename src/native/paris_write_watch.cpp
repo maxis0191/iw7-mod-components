@@ -929,7 +929,7 @@ namespace paris_write_watch
             const auto head = ring_head.load();
             const unsigned limit = head < ring_size ? head : ring_size;
             if (limit <= before) { console::error("[WW-TEST] FAIL %s: no hit was recorded (traps=%llu)\n", what, static_cast<unsigned long long>(traps_total.load())); return false; }
-            const auto& r = ring[limit - 1];
+            const auto& r = ring[before]; // the first record of the test: the write of 0 (the restore that follows is captured too)
             const bool rip_in = within(r.rip, begin, end);
             bool stack_in = false;
             for (unsigned i = 0; i < r.unwind_count; ++i) stack_in = stack_in || within(r.unwind[i], begin, end);
