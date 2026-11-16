@@ -34,5 +34,14 @@ constexpr std::uint32_t child_usable() { return child_entries - 1; }
 constexpr std::uint32_t parent_usable() { return parent_ids / 4 - 1; }
 constexpr std::uint32_t parent_low_usable() { return parent_low_locals - 1; }
 
+// The child hash table (a62): 4 segments x 2^bits u16 bucket heads. bucket = ((parent * 0x65 + name) & (2^bits - 1)) + (parent & 3) * 2^bits. Stock 14 (16,384 a
+// segment, 0x20000 bytes); `-script-variables-buckets <bits>` (or IW7_SCRIPT_VARIABLES_BUCKETS) takes 14 to 17; the default is the one the measurements chose.
+constexpr std::uint32_t stock_hash_bits = 14, default_hash_bits = 16, min_hash_bits = 14, max_hash_bits = 17;
+constexpr std::uint64_t stock_hash_bytes = 0x20000;
+constexpr std::uint64_t hash_bytes(std::uint32_t bits) { return static_cast<std::uint64_t>(segments) * 2ull << bits; }
+static_assert(hash_bytes(stock_hash_bits) == stock_hash_bytes);
+
 bool installed() noexcept;
+// the bits in use (stock_hash_bits until the component has started)
+std::uint32_t hash_bits() noexcept;
 }

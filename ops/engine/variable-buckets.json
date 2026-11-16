@@ -1,0 +1,647 @@
+{
+ "schema": "iw7.variable-buckets/1",
+ "stock_bits": 14,
+ "stock_hash": [
+  "0x146736180",
+  "0x20000"
+ ],
+ "masks": [
+  {
+   "at": 5381312069,
+   "field": 5381312070,
+   "func": 5381311872,
+   "text": "and eax, 0x3fff",
+   "bytes": "25ff3f0000",
+   "imul": [
+    5381311930
+   ],
+   "consumer": 5381312096,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381312803,
+   "field": 5381312806,
+   "func": 5381312768,
+   "text": "and r8d, 0x3fff",
+   "bytes": "4181e0ff3f0000",
+   "imul": [
+    5381312788
+   ],
+   "consumer": 5381312813,
+   "consumer_text": "lea rbx, [rdi + r8*2]"
+  },
+  {
+   "at": 5381313337,
+   "field": 5381313338,
+   "func": 5381313152,
+   "text": "and eax, 0x3fff",
+   "bytes": "25ff3f0000",
+   "imul": [
+    5381313319
+   ],
+   "consumer": 5381313344,
+   "consumer_text": "lea rcx, [rdx + rax*2]"
+  },
+  {
+   "at": 5381313805,
+   "field": 5381313808,
+   "func": 5381313760,
+   "text": "and r8d, 0x3fff",
+   "bytes": "4181e0ff3f0000",
+   "imul": [
+    5381313764
+   ],
+   "consumer": 5381313833,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381313901,
+   "field": 5381313904,
+   "func": 5381313856,
+   "text": "and r8d, 0x3fff",
+   "bytes": "4181e0ff3f0000",
+   "imul": [
+    5381313860
+   ],
+   "consumer": 5381313929,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381313997,
+   "field": 5381314000,
+   "func": 5381313952,
+   "text": "and r8d, 0x3fff",
+   "bytes": "4181e0ff3f0000",
+   "imul": [
+    5381313962
+   ],
+   "consumer": 5381314019,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381314093,
+   "field": 5381314096,
+   "func": 5381314048,
+   "text": "and r8d, 0x3fff",
+   "bytes": "4181e0ff3f0000",
+   "imul": [
+    5381314058
+   ],
+   "consumer": 5381314115,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381314188,
+   "field": 5381314191,
+   "func": 5381314144,
+   "text": "and r8d, 0x3fff",
+   "bytes": "4181e0ff3f0000",
+   "imul": [
+    5381314148
+   ],
+   "consumer": 5381314205,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381315263,
+   "field": 5381315264,
+   "func": 5381315216,
+   "text": "and eax, 0x3fff",
+   "bytes": "25ff3f0000",
+   "imul": [
+    5381315236
+   ],
+   "consumer": 5381315285,
+   "consumer_text": "lea rbp, [rcx + rax*2]"
+  },
+  {
+   "at": 5381316870,
+   "field": 5381316871,
+   "func": 5381316496,
+   "text": "and eax, 0x3fff",
+   "bytes": "25ff3f0000",
+   "imul": [
+    5381316613
+   ],
+   "consumer": 5381316890,
+   "consumer_text": "lea r9, [r10 + rax*2]"
+  },
+  {
+   "at": 5381317228,
+   "field": 5381317229,
+   "func": 5381317104,
+   "text": "and eax, 0x3fff",
+   "bytes": "25ff3f0000",
+   "imul": [
+    5381317192
+   ],
+   "consumer": 5381317236,
+   "consumer_text": "lea r9, [r9 + rax*2]"
+  },
+  {
+   "at": 5381317289,
+   "field": 5381317290,
+   "func": 5381317104,
+   "text": "and eax, 0x3fff",
+   "bytes": "25ff3f0000",
+   "imul": [
+    5381317192
+   ],
+   "consumer": 5381317311,
+   "consumer_text": "lea r9, [r9 + rax*2]"
+  },
+  {
+   "at": 5381322087,
+   "field": 5381322090,
+   "func": 5381321808,
+   "text": "and r8d, 0x3fff",
+   "bytes": "4181e0ff3f0000",
+   "imul": [
+    5381322058
+   ],
+   "consumer": 5381322114,
+   "consumer_text": "lea r9, [r9 + r8*2]"
+  },
+  {
+   "at": 5381331135,
+   "field": 5381331136,
+   "func": 5381331072,
+   "text": "and eax, 0x3fff",
+   "bytes": "25ff3f0000",
+   "imul": [
+    5381331102
+   ],
+   "consumer": 5381331160,
+   "consumer_text": "lea r14, [r12 + rax*2]"
+  },
+  {
+   "at": 5381331519,
+   "field": 5381331520,
+   "func": 5381331328,
+   "text": "and eax, 0x3fff",
+   "bytes": "25ff3f0000",
+   "imul": [
+    5381331495
+   ],
+   "consumer": 5381331529,
+   "consumer_text": "lea r9, [r9 + rax*2]"
+  },
+  {
+   "at": 5381331791,
+   "field": 5381331792,
+   "func": 5381331600,
+   "text": "and eax, 0x3fff",
+   "bytes": "25ff3f0000",
+   "imul": [
+    5381331767
+   ],
+   "consumer": 5381331801,
+   "consumer_text": "lea r9, [r9 + rax*2]"
+  }
+ ],
+ "shls": [
+  {
+   "at": 5381311975,
+   "field": 5381311978,
+   "func": 5381311872,
+   "text": "shl r9d, 0xe",
+   "bytes": "41c1e10e",
+   "segment": [
+    5381311926
+   ],
+   "consumer": 5381312096,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381312797,
+   "field": 5381312799,
+   "func": 5381312768,
+   "text": "shl eax, 0xe",
+   "bytes": "c1e00e",
+   "segment": [
+    5381312792
+   ],
+   "consumer": 5381312813,
+   "consumer_text": "lea rbx, [rdi + r8*2]"
+  },
+  {
+   "at": 5381313325,
+   "field": 5381313327,
+   "func": 5381313152,
+   "text": "shl ecx, 0xe",
+   "bytes": "c1e10e",
+   "segment": [
+    5381313322
+   ],
+   "consumer": 5381313344,
+   "consumer_text": "lea rcx, [rdx + rax*2]"
+  },
+  {
+   "at": 5381313820,
+   "field": 5381313822,
+   "func": 5381313760,
+   "text": "shl eax, 0xe",
+   "bytes": "c1e00e",
+   "segment": [
+    5381313788
+   ],
+   "consumer": 5381313833,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381313916,
+   "field": 5381313918,
+   "func": 5381313856,
+   "text": "shl eax, 0xe",
+   "bytes": "c1e00e",
+   "segment": [
+    5381313884
+   ],
+   "consumer": 5381313929,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381313994,
+   "field": 5381313996,
+   "func": 5381313952,
+   "text": "shl eax, 0xe",
+   "bytes": "c1e00e",
+   "segment": [
+    5381313977
+   ],
+   "consumer": 5381314019,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381314090,
+   "field": 5381314092,
+   "func": 5381314048,
+   "text": "shl eax, 0xe",
+   "bytes": "c1e00e",
+   "segment": [
+    5381314073
+   ],
+   "consumer": 5381314115,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381314185,
+   "field": 5381314187,
+   "func": 5381314144,
+   "text": "shl eax, 0xe",
+   "bytes": "c1e00e",
+   "segment": [
+    5381314170
+   ],
+   "consumer": 5381314205,
+   "consumer_text": "lea r9, [r8 + rax*2]"
+  },
+  {
+   "at": 5381315268,
+   "field": 5381315271,
+   "func": 5381315216,
+   "text": "shl r8d, 0xe",
+   "bytes": "41c1e00e",
+   "segment": [
+    5381315242
+   ],
+   "consumer": 5381315285,
+   "consumer_text": "lea rbp, [rcx + rax*2]"
+  },
+  {
+   "at": 5381316620,
+   "field": 5381316623,
+   "func": 5381316496,
+   "text": "shl r8d, 0xe",
+   "bytes": "41c1e00e",
+   "segment": [
+    5381316602
+   ],
+   "consumer": 5381316890,
+   "consumer_text": "lea r9, [r10 + rax*2]"
+  },
+  {
+   "at": 5381317212,
+   "field": 5381317215,
+   "func": 5381317104,
+   "text": "shl r14d, 0xe",
+   "bytes": "41c1e60e",
+   "segment": [
+    5381317188
+   ],
+   "consumer": 5381317236,
+   "consumer_text": "lea r9, [r9 + rax*2]"
+  },
+  {
+   "at": 5381322103,
+   "field": 5381322105,
+   "func": 5381321808,
+   "text": "shl eax, 0xe",
+   "bytes": "c1e00e",
+   "segment": [
+    5381322068
+   ],
+   "consumer": 5381322114,
+   "consumer_text": "lea r9, [r9 + r8*2]"
+  },
+  {
+   "at": 5381331148,
+   "field": 5381331151,
+   "func": 5381331072,
+   "text": "shl r10d, 0xe",
+   "bytes": "41c1e20e",
+   "segment": [
+    5381331118
+   ],
+   "consumer": 5381331160,
+   "consumer_text": "lea r14, [r12 + rax*2]"
+  },
+  {
+   "at": 5381331507,
+   "field": 5381331509,
+   "func": 5381331328,
+   "text": "shl edx, 0xe",
+   "bytes": "c1e20e",
+   "segment": [
+    5381331492
+   ],
+   "consumer": 5381331529,
+   "consumer_text": "lea r9, [r9 + rax*2]"
+  },
+  {
+   "at": 5381331779,
+   "field": 5381331781,
+   "func": 5381331600,
+   "text": "shl edx, 0xe",
+   "bytes": "c1e20e",
+   "segment": [
+    5381331764
+   ],
+   "consumer": 5381331801,
+   "consumer_text": "lea r9, [r9 + rax*2]"
+  }
+ ],
+ "clear": [
+  {
+   "at": 5381329681,
+   "field": 5381329683,
+   "func": 5381329536,
+   "text": "mov r8d, 0x20000",
+   "bytes": "41b800000200",
+   "lea": 5381329674
+  }
+ ],
+ "refs": [
+  {
+   "at": 5381312817,
+   "field": 5381312821,
+   "op": "ref",
+   "form": "disp",
+   "base": 5476258176,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "movzx r8d, word ptr [rbx + 0xa5000]",
+   "bytes": "440fb78300500a00",
+   "func": 5381312768,
+   "stage1": true
+  },
+  {
+   "at": 5381312972,
+   "field": 5381312975,
+   "op": "ref",
+   "form": "disp",
+   "base": 5476258176,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "mov word ptr [rbx + 0xa5000], ax",
+   "bytes": "66898300500a00",
+   "func": 5381312768,
+   "stage1": true
+  },
+  {
+   "at": 5381313348,
+   "field": 5381313351,
+   "op": "ref",
+   "form": "disp",
+   "base": 5476258176,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "movzx eax, word ptr [rcx + 0xa5000]",
+   "bytes": "0fb78100500a00",
+   "func": 5381313152,
+   "stage1": true
+  },
+  {
+   "at": 5381313422,
+   "field": 5381313425,
+   "op": "ref",
+   "form": "disp",
+   "base": 5476258176,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "mov word ptr [rcx + 0xa5000], ax",
+   "bytes": "66898100500a00",
+   "func": 5381313152,
+   "stage1": true
+  },
+  {
+   "at": 5381313826,
+   "field": 5381313829,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r8, [rip + 0x5b30c57]",
+   "bytes": "4c8d05570cb305",
+   "func": 5381313760,
+   "stage1": false
+  },
+  {
+   "at": 5381313922,
+   "field": 5381313925,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r8, [rip + 0x5b30bf7]",
+   "bytes": "4c8d05f70bb305",
+   "func": 5381313856,
+   "stage1": false
+  },
+  {
+   "at": 5381314012,
+   "field": 5381314015,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r8, [rip + 0x5b30b9d]",
+   "bytes": "4c8d059d0bb305",
+   "func": 5381313952,
+   "stage1": false
+  },
+  {
+   "at": 5381314108,
+   "field": 5381314111,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r8, [rip + 0x5b30b3d]",
+   "bytes": "4c8d053d0bb305",
+   "func": 5381314048,
+   "stage1": false
+  },
+  {
+   "at": 5381314198,
+   "field": 5381314201,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r8, [rip + 0x5b30ae3]",
+   "bytes": "4c8d05e30ab305",
+   "func": 5381314144,
+   "stage1": false
+  },
+  {
+   "at": 5381315248,
+   "field": 5381315251,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea rcx, [rip + 0x5b306c9]",
+   "bytes": "488d0dc906b305",
+   "func": 5381315216,
+   "stage1": false
+  },
+  {
+   "at": 5381317151,
+   "field": 5381317154,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r9, [r13 + 0x6736180]",
+   "bytes": "4d8d8d80617306",
+   "func": 5381317104,
+   "stage1": false
+  },
+  {
+   "at": 5381317247,
+   "field": 5381317250,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r9, [r13 + 0x6736180]",
+   "bytes": "4d8d8d80617306",
+   "func": 5381317104,
+   "stage1": false
+  },
+  {
+   "at": 5381322040,
+   "field": 5381322043,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r9, [r14 + 0x6736180]",
+   "bytes": "4d8d8e80617306",
+   "func": 5381321808,
+   "stage1": false
+  },
+  {
+   "at": 5381329674,
+   "field": 5381329677,
+   "op": "ref",
+   "form": "rip",
+   "base": 0,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea rcx, [rip + 0x5b2ce6f]",
+   "bytes": "488d0d6fceb205",
+   "func": 5381329536,
+   "stage1": false
+  },
+  {
+   "at": 5381331169,
+   "field": 5381331172,
+   "op": "ref",
+   "form": "disp",
+   "base": 5476258176,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea rdx, [r14 + 0xa5000]",
+   "bytes": "498d9600500a00",
+   "func": 5381331072,
+   "stage1": true
+  },
+  {
+   "at": 5381331193,
+   "field": 5381331196,
+   "op": "ref",
+   "form": "disp",
+   "base": 5476258176,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r9, [r14 + 0xa5000]",
+   "bytes": "4d8d8e00500a00",
+   "func": 5381331072,
+   "stage1": true
+  },
+  {
+   "at": 5381331472,
+   "field": 5381331476,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r9, [r12 + 0x6736180]",
+   "bytes": "4d8d8c2480617306",
+   "func": 5381331328,
+   "stage1": false
+  },
+  {
+   "at": 5381331744,
+   "field": 5381331748,
+   "op": "ref",
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476934016,
+   "tail": 0,
+   "text": "lea r9, [r12 + 0x6736180]",
+   "bytes": "4d8d8c2480617306",
+   "func": 5381331600,
+   "stage1": false
+  }
+ ],
+ "hash_half": [
+  {
+   "at": 5381312083,
+   "field": 5381312085
+  },
+  {
+   "at": 5381316884,
+   "field": 5381316886
+  }
+ ],
+ "rejected": [
+  {
+   "at": 5563530405,
+   "text": "cmp ebx, dword ptr [rdx + 0x674bd0f]",
+   "target": 5477022991
+  }
+ ]
+}
