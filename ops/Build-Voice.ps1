@@ -143,6 +143,14 @@ if errorlevel 1 exit /b 1
 if errorlevel 1 exit /b 1
 "$runtime\dvar-metadata-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\vm_filter_test.cpp" /Fe:"$runtime\vm-filter-test.exe" /Fo:"$runtime\vm-filter-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\vm-filter-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\log_stream_test.cpp" /Fe:"$runtime\log-stream-test.exe" /Fo:"$runtime\log-stream-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\log-stream-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib mmdevapi.lib
 if errorlevel 1 exit /b 1
 "$runtime\audio-output-probe.exe" --self-test
@@ -198,7 +206,7 @@ if (Test-Path -LiteralPath $labComponent) {
 }
 $nativeSources = @('paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp','dvar_metadata.hpp','agent_scenario.hpp',
     'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp','paris_afk.cpp','paris_afk.hpp','afk_inactivity.hpp',
-    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp')
+    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp')
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
 else {
     # The experiment pin does not expose the ServerModules CP WeaponDef.
@@ -252,6 +260,8 @@ $capacityCheckpointEnabled=[bool]($IsolatedLab -and $Debugger)
 $null = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -NativeRoot $root -Commit $commit -Phase BeforeDebugger -Enabled:$capacityCheckpointEnabled
 & "$PSScriptRoot/Apply-DebuggerOverlay.ps1" -NativeRoot $root -Commit $commit -Enabled:$Debugger
 $capacityCheckpointBuild = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpointOverlay.ps1" -NativeRoot $root -Commit $commit -Phase AfterDebugger -Enabled:$capacityCheckpointEnabled
+# Frame cuts: the opcode filter and the kept log handle. After the debugger overlay, which rebuilds script_extension.cpp from the pinned blob.
+$frameCutsOverlay = & "$PSScriptRoot/Apply-FrameCutsOverlay.ps1" -NativeRoot $root -Commit $commit
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
 # The performance recorder, the network update recorder and the server meter are compiled only when asked: a kept native tree must not carry them into another build.
 foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp', 'paris_sperf.cpp')) {
@@ -533,6 +543,7 @@ $manifest.ProjectCommit = $sourceIdentity.Commit
 $manifest.SourceIdentity = $sourceIdentity
 $manifest.DownloadCacheOverlay = $downloadCacheOverlay
 $manifest.ScriptVarAccessorOverlay = $scriptVarAccessorOverlay
+$manifest.FrameCutsOverlay = $frameCutsOverlay
 $manifest.ProjectDirty = $sourceIdentity.Dirty
 # Retain matching symbols before the next rebuild replaces them. These local
 # files enable reliable crash stacks and must never be added to Git.

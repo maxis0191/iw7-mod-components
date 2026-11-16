@@ -1,0 +1,47 @@
+{
+ "schema": "iw7.frame-cut-edits/1",
+ "pin": "cfca45b11ee14641945b9a264a95638387f48a4a",
+ "files": [
+  {
+   "path": "src/client/component/gsc/script_extension.cpp",
+   "edits": [
+    {
+     "old": "#include \"script_loading.hpp\"\n",
+     "new": "#include \"script_loading.hpp\"\n#include \"component/paris_vm_filter.hpp\"\n",
+     "count": 1
+    },
+    {
+     "old": "\t\t\tconst auto end = a.newLabel();\n\n\t\t\ta.pushad64();\n",
+     "new": "\t\t\tconst auto end = a.newLabel();\n\n\t\t\t// Almost no opcode sits at a replaced position: test one byte of the filter table first, with no register save and no call.\n\t\t\t// r15 is rewritten by the instruction at `end`, and pop does not change the flags of the cmp.\n\t\t\ta.push(rax);\n\t\t\ta.mov(rax, reinterpret_cast<std::uint64_t>(paris_vm_filter::table));\n\t\t\ta.movzx(r15d, si);\n\t\t\ta.cmp(byte_ptr(rax, r15), 0);\n\t\t\ta.pop(rax);\n\t\t\ta.je(end);\n\n\t\t\ta.pushad64();\n",
+     "count": 1
+    },
+    {
+     "old": "\t\t\t\tvm_execute_hooks[what.u.codePosValue] = with.u.codePosValue;\n",
+     "new": "\t\t\t\tvm_execute_hooks[what.u.codePosValue] = with.u.codePosValue;\n\t\t\t\tparis_vm_filter::mark(what.u.codePosValue);\n",
+     "count": 1
+    },
+    {
+     "old": "\t\t\t\t\tvm_execute_hooks.clear();\n",
+     "new": "\t\t\t\t\tvm_execute_hooks.clear();\n\t\t\t\t\tparis_vm_filter::clear();\n",
+     "count": 1
+    }
+   ]
+  },
+  {
+   "path": "src/client/game/game.cpp",
+   "exclusive": true,
+   "edits": [
+    {
+     "old": "#include <utils/io.hpp>\n",
+     "new": "#include <utils/io.hpp>\n\n#include \"component/paris_log_stream.hpp\"\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tutils::io::write_file(file, utils::string::va(\"%3i:%i%i %s\",\n\t\t\ttime / 60,\n\t\t\ttime % 60 / 10,\n\t\t\ttime % 60 % 10,\n\t\t\tva_buffer\n\t\t), true);\n",
+     "new": "\t\tconst std::string line = utils::string::va(\"%3i:%i%i %s\",\n\t\t\ttime / 60,\n\t\t\ttime % 60 / 10,\n\t\t\ttime % 60 % 10,\n\t\t\tva_buffer\n\t\t);\n\n\t\tif (!paris_log_stream::instance().append(file, line))\n\t\t{\n\t\t\tutils::io::write_file(file, line, true);\n\t\t}\n",
+     "count": 1
+    }
+   ]
+  }
+ ]
+}

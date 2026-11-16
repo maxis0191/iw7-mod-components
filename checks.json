@@ -14,7 +14,14 @@
     },
     {
       "id": "build_voice_foreign_sources",
-      "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "tests/ops/build_voice_foreign_sources_test.ps1"]
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/build_voice_foreign_sources_test.ps1"
+      ]
     },
     {
       "id": "cutscene_test",
@@ -437,6 +444,25 @@
         "python",
         "-B",
         "tests/ops/script_variables_test.py"
+      ]
+    },
+    {
+      "id": "frame_cuts_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/frame_cuts_test.py"
+      ]
+    },
+    {
+      "id": "frame_cuts_overlay_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/frame_cuts_overlay_test.ps1"
       ]
     },
     {
