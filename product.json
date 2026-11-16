@@ -316,6 +316,7 @@
     "src/native/script_var_layout.hpp",
     "src/native/script_variables.cpp",
     "src/native/script_variables.hpp",
+    "src/native/script_variables_buckets.inc",
     "src/native/script_variables_caves.inc",
     "src/native/script_variables_sites.inc",
     "src/native/voice_test.cpp",
