@@ -280,7 +280,7 @@ foreach ($capFile in @('agent_capacity.cpp', 'agent_capacity.hpp', 'agent_capaci
     elseif (Test-Path -LiteralPath $capTarget) { Remove-Item -LiteralPath $capTarget -Force }
 }
 # GSC variable pools (script_variables.cpp): inert unless the game starts with -agent-capacity; compiled with the agent capacity.
-foreach ($varFile in @('script_variables.cpp', 'script_variables.hpp', 'script_variables_sites.inc', 'script_variables_buckets.inc', 'script_variables_caves.inc', 'script_parent_pools.hpp')) {
+foreach ($varFile in @('script_variables.cpp', 'script_variables.hpp', 'script_variables_sites.inc', 'script_variables_buckets.inc', 'script_variables_segments.inc', 'script_variables_caves.inc', 'script_parent_pools.hpp')) {
     $varTarget = Join-Path $root "src/client/component/$varFile"
     if ($AgentCapacity) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$varFile") -Destination $varTarget -Force; $nativeSources += @($varFile) }
     elseif (Test-Path -LiteralPath $varTarget) { Remove-Item -LiteralPath $varTarget -Force }

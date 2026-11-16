@@ -1099,16 +1099,17 @@ def counter_refs(img, md, db_file):
         b0 = REGIONS['BLOCK0'][0]
         rows = c.execute("select at from insn where kind='addr' and value>=? and value<?", (b0, b0 + 0x80)).fetchall()
         rows += c.execute("select at from insn where kind='disp' and value>=? and value<?", (b0 - BASE, b0 + 0x80 - BASE)).fetchall()
-        funcs = {func_of(a) for (a,) in rows} | {(s, e) for s, e in bounds if VM_CALLS[0] <= s < VM_CALLS[1]}
+        # a67: the variable system's range is decoded byte by byte (complete_ranges: the database's functions swallow code and leave gaps; a45's count of the
+        # counters and the scalars behind them missed 0x140C0A1C0 because it followed the database's bounds); only the functions outside the range come from the database
+        funcs = {func_of(a) for (a,) in rows if not VM_CALLS[0] <= a < VM_CALLS[1]}
         w = Walker(img, md)
         found = {}
-        for s, e in sorted(funcs):
-            il = w.decode_range(s, e)
-            if not il:
-                continue
+        pieces = [(s, il) for s, il in complete_ranges(img, md, db_file) if il] + [(s, il) for s, e in sorted(funcs) for il in [w.decode_range(s, e)] if il]
+        for s, il in pieces:
             for r in w.walk(il, '')['rows']:
                 if r['region'] == 'BLOCK0':
-                    found[(r['field'], r['target'] - b0)] = (r['at'], s, r['text'])
+                    found[(r['field'], r['target'] - b0)] = dict(at=r['at'], func=s, text=r['text'], form=r['form'], base=r['base'], target=r['target'], tail=r['tail'],
+                                                                 bytes=r['bytes'])
     finally:
         MOVED = keep
     return found
@@ -1177,9 +1178,9 @@ def segments(args):
     cn = {k: v for k, v in refs.items() if 0x34 <= k[1] < 0x44}
     behind = {k: v for k, v in refs.items() if 0x44 <= k[1] < 0x54}
     print('\ncounters (children in use a segment, BLOCK0 + 0x34..0x43): %d instructions in %d functions; scalars behind them (BLOCK0 + 0x44..0x53), %d instructions: eight counters do not fit in place' %
-          (len(cn), len({v[1] for v in cn.values()}), len(behind)))
-    for k, v in sorted(cn.items(), key=lambda x: x[1][0]):
-        print('  %X  f%X  +0x%X  %s' % (v[0], v[1], k[1], v[2]))
+          (len(cn), len({v['func'] for v in cn.values()}), len(behind)))
+    for k, v in sorted(cn.items(), key=lambda x: x[1]['at']):
+        print('  %X  f%X  +0x%X  %s' % (v['at'], v['func'], k[1], v['text']))
     builders, reads, holders, scanned = parent_sites(img, md, db_file)
     print('\nid <-> (segment, local): key builders `shr r,2` before `shl r,0x10`: %d (caves, the shift count 2 -> 3); the read back of a parent id `4 x local + segment`: %d (cave, scale 4 -> 8)' % (len(builders), len(reads)))
     inc = collections.Counter(r['op'] for r in sites['imms'])
@@ -1197,12 +1198,101 @@ def segments(args):
     for rel, hits in cxx.items():
         print('  %-40s %d lines  %s' % (rel, len(hits), ','.join(map(str, hits[:40]))))
     out = dict(and3_in_vm=in_vm, and3_outside=sorted(out_and.values(), key=lambda r: r['at']), and3_kinds=dict(kinds), pairs=len(pairs), pairs_outside=len(outside),
-               origins=dict(origins), in_origins=dict(in_origins), init_loops=[dict(at=a, func=f, text=t) for a, f, t in init_loops], counters=len(cn), counters_functions=len({v[1] for v in cn.values()}),
+               origins=dict(origins), in_origins=dict(in_origins), init_loops=[dict(at=a, func=f, text=t) for a, f, t in init_loops], counters=len(cn), counters_functions=len({v['func'] for v in cn.values()}),
                scalars_behind=len(behind), key_builders=len(builders), parent_reads=len(reads), imms=dict(inc), refs=dict(reg), cxx={k: len(v) for k, v in cxx.items()})
     if args.o:
         json.dump(out, open(args.o, 'w'), indent=1)
         print('wrote', args.o)
     return 0
+
+
+# ------------------------------------------------------------------------------------------------ more than 4 child segments (a67)
+# The rows of the segment count (S = 4, 8 or 16 chosen at run time, docs/SCRIPT-VARIABLES.md "Segments"): every `and r,3` that selects a segment
+# (imm -> S - 1), the loops over the segments (`cmp r,4` -> S) and the counters of the children in use (moved to a table of S ints of the component).
+# `segment-rows` writes variable-segments.json from the census above (it fails when the census does not add up); `emit-segments` writes the .inc.
+SEGMENT_MASK_FUNCS_DEAD = ()    # `and r,3` that index the four list heads sit in code the component replaces (AllocVariable's free list functions): not patched
+
+
+def segment_rows(img, md, db_file):
+    from capstone import x86_const as X
+    sites = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'variable-sites.json')))
+    ranges = complete_ranges(img, md, db_file)
+    masks, heads, problems = {}, [], []
+    for s, il in ranges:
+        for k, ins in enumerate(il):
+            if ins.mnemonic == 'and' and len(ins.operands) == 2 and ins.operands[1].type == X.X86_OP_IMM and ins.operands[1].imm == 3 and ins.operands[0].type == X.X86_OP_REG:
+                u = segment_uses(il, k)
+                kind = 'pair' if 'segbase5' in u else 'hash' if any(x.startswith('shl') for x in u) else 'head' if any(x.startswith('index') for x in u) else 'other'
+                if kind == 'other':
+                    problems.append('and r,3 at %X is no segment: %s' % (ins.address, ' '.join(u)))
+                row = dict(at=ins.address, field=ins.address + ins.encoding.imm_offset, width=ins.encoding.imm_size, func=s, kind=kind, outside=False, bytes=ins.bytes.hex())
+                if kind == 'head':
+                    heads.append(row)
+                else:
+                    masks[row['field']] = row
+    bounds = dict(func_bounds(db_file))
+    pairs = [p for p in sites['pairs'] if p['op'] == 'seg_lea']
+    pieces = [(l[0].address, l[-1].address, l) for _, l in ranges if l]
+    for p in pairs:
+        if VM_CALLS[0] <= p['func'] < VM_CALLS[1]:
+            continue
+        f = p['func']
+        il = list(md.disasm(img.read(f, bounds.get(f, f + 0x800) - f), f))
+        k = next((i for i, x in enumerate(il) if x.address == p['at']), None)
+        if k is None:
+            problems.append('pair %X not found in its function' % p['at'])
+            continue
+        o, at = segment_origin(il, k, FULL[il[k].reg_name(il[k].operands[1].mem.base)])
+        if o != 'and3':
+            problems.append('pair %X outside the system takes its segment from %s' % (p['at'], o))
+            continue
+        ins = next(x for x in il if x.address == at)
+        field = at + ins.encoding.imm_offset
+        masks[field] = dict(at=at, field=field, width=ins.encoding.imm_size, func=f, kind='outside', outside=True, bytes=ins.bytes.hex())
+    loops = []
+    for f in SEGMENT_INIT_FUNCS:
+        for ins in md.disasm(img.read(f, bounds.get(f, f + 0x400) - f), f):
+            if ins.mnemonic == 'cmp' and len(ins.operands) == 2 and ins.operands[1].type == X.X86_OP_IMM and ins.operands[1].imm == 4 and ins.operands[0].type == X.X86_OP_REG:
+                loops.append(dict(at=ins.address, field=ins.address + ins.encoding.imm_offset, width=ins.encoding.imm_size, func=f, bytes=ins.bytes.hex()))
+    refs = counter_refs(img, md, db_file)
+    counters = [dict(at=v['at'], field=r_field, form=v['form'], base=v['base'], target=v['target'], tail=v['tail'], func=v['func'], offset=k[1], text=v['text'])
+                for k, v in sorted(refs.items(), key=lambda x: x[1]['at']) for r_field in [k[0]] if 0x34 <= k[1] < 0x44]
+    for m in masks.values():
+        raw = bytes.fromhex(m['bytes'])
+        if m['width'] != 1 or raw[m['field'] - m['at']] != 3:
+            problems.append('and r,3 at %X: immediate is not an imm8 of 3 (%s)' % (m['at'], m['bytes']))
+    return dict(masks=sorted(masks.values(), key=lambda r: r['field']), heads=heads, loops=loops, counters=counters, problems=problems)
+
+
+def segment_rows_cmd(args):
+    image_file, db_file = ss.image_path()
+    img, md = ss.Image(image_file), ss.cs()
+    md.detail = True
+    d = segment_rows(img, md, db_file)
+    kinds = collections.Counter(m['kind'] for m in d['masks'])
+    print('and r,3 patched: %d %s (list head indexes in replaced code, not patched: %d); loops cmp r,4: %d; counter instructions: %d in %d functions' %
+          (len(d['masks']), dict(kinds), len(d['heads']), len(d['loops']), len(d['counters']), len({c['func'] for c in d['counters']})))
+    for p in d['problems']:
+        print('  PROBLEM:', p)
+    if args.o and not d['problems']:
+        json.dump(dict(schema='iw7.variable-segments/1', **d), open(args.o, 'w'), indent=1)
+        print('wrote', args.o)
+    return 1 if d['problems'] else 0
+
+
+def emit_segments(args):
+    d = json.load(open(args.file))
+    lines = ['// Generated by ops/engine/variable_sites.py emit-segments from variable-segments.json; do not edit.',
+             '// SEG_MASKS: imm8 of `and r,3` (a segment of a parent id) -> segments - 1; SEG_LOOPS: imm8 of `cmp r,4` (loop over the segments) -> segments;',
+             '// SEG_COUNTERS: the instructions that name the counters of the children in use ({field, form (0 disp, 1 rip), base, target, tail}) -> the counter table of the component']
+    masks = ['{0x%Xull},' % m['field'] for m in d['masks']]
+    loops = ['{0x%Xull},' % m['field'] for m in d['loops']]
+    ctr = ['{0x%Xull, %d, 0x%Xull, 0x%Xull, %d},' % (c['field'], 1 if c['form'] == 'rip' else 0, c['base'], c['target'], c['tail']) for c in d['counters']]
+    with open(args.o, 'w', newline='\n') as out:
+        out.write('\n'.join(lines) + '\n')
+        for name, body in (('MASKS', masks), ('LOOPS', loops), ('COUNTERS', ctr)):
+            out.write('#ifdef SCRIPT_VARIABLES_SEG_%s\n' % name + '\n'.join(body) + '\n#endif\n')
+    print('wrote', len(masks), 'masks', len(loops), 'loops', len(ctr), 'counter references to', args.o)
 
 
 def links(args):
@@ -1339,6 +1429,8 @@ def main():
     p = sub.add_parser('emit-buckets'); p.add_argument('file'); p.add_argument('-o', required=True); p.set_defaults(fn=emit_buckets)
     p = sub.add_parser('segments'); p.add_argument('-o', default=None); p.set_defaults(fn=segments)
     p = sub.add_parser('links'); p.add_argument('-o', default=None); p.set_defaults(fn=links)
+    p = sub.add_parser('segment-rows'); p.add_argument('-o', default=None); p.set_defaults(fn=segment_rows_cmd)
+    p = sub.add_parser('emit-segments'); p.add_argument('file'); p.add_argument('-o', required=True); p.set_defaults(fn=emit_segments)
     args = ap.parse_args()
     sys.exit(args.fn(args) or 0)
 

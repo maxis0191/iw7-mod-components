@@ -8,16 +8,17 @@
 // script variables component has installed them. An id or index outside its table is refused (null), never read.
 //
 // Tables (docs/SCRIPT-VARIABLES.md): objects = parent entries of 8 bytes (ObjectVariableValue), object_children = 4 bytes an id
-// (ObjectVariableChildren), children = 4 segments of child_entries entries of 0x18 bytes, a child of the parent P lives in segment (P & 3).
+// (ObjectVariableChildren), children = `segments` (4, 8 or 16: a67) segments of child_entries entries of 0x18 bytes, a child of the parent P lives in segment (P & (segments - 1)).
 namespace script_var_layout {
 
 struct tables {
     std::uintptr_t objects, object_children, children;
     std::uint32_t parent_ids, child_entries;
     bool relocated;
+    std::uint32_t segments = 4;
 };
 
-inline constexpr std::uint32_t child_bytes = 0x18, object_bytes = 8, object_children_bytes = 4, segments = 4;
+inline constexpr std::uint32_t child_bytes = 0x18, object_bytes = 8, object_children_bytes = 4, stock_segments = 4;
 // The shipped tables (read from the engine's own initialiser, ops/gamelab/iw7_budgets.py script_var_layout): 0xDC00 parent ids, 0xA000 children a segment.
 inline constexpr tables stock{0x146691180ull, 0x1466FF180ull, 0x146756180ull, 0xDC00, 0xA000, false};
 
@@ -56,7 +57,7 @@ inline std::uintptr_t object_children_address(std::uint32_t id) noexcept {
 inline std::uintptr_t child_address(std::uint32_t parent_id, std::uint32_t variable_id) noexcept {
     const auto& t = current();
     if (parent_id >= t.parent_ids || variable_id == 0 || variable_id >= t.child_entries) { refuse("script variable child index out of range"); return 0; }
-    return t.children + (static_cast<std::uintptr_t>(parent_id & (segments - 1)) * t.child_entries + variable_id) * child_bytes;
+    return t.children + (static_cast<std::uintptr_t>(parent_id & (t.segments - 1)) * t.child_entries + variable_id) * child_bytes;
 }
 
 template <typename T> T* object(std::uint32_t id) noexcept { return reinterpret_cast<T*>(object_address(id)); }

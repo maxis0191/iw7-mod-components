@@ -487,6 +487,14 @@
       ]
     },
     {
+      "id": "script_segments_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/script_segments_test.py"
+      ]
+    },
+    {
       "id": "frame_cuts_test",
       "command": [
         "python",

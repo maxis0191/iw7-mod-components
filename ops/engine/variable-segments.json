@@ -1,0 +1,1248 @@
+{
+ "schema": "iw7.variable-segments/1",
+ "masks": [
+  {
+   "at": 5372776581,
+   "field": 5372776583,
+   "width": 1,
+   "func": 5372776448,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5372776837,
+   "field": 5372776839,
+   "width": 1,
+   "func": 5372776704,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5373432288,
+   "field": 5373432290,
+   "width": 1,
+   "func": 5373432128,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5373569969,
+   "field": 5373569971,
+   "width": 1,
+   "func": 5373569728,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5374360075,
+   "field": 5374360077,
+   "width": 1,
+   "func": 5374360032,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5380189646,
+   "field": 5380189648,
+   "width": 1,
+   "func": 5380189504,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5380197147,
+   "field": 5380197149,
+   "width": 1,
+   "func": 5380196768,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5380197369,
+   "field": 5380197371,
+   "width": 1,
+   "func": 5380196768,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5380197977,
+   "field": 5380197979,
+   "width": 1,
+   "func": 5380197888,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5380197980,
+   "field": 5380197982,
+   "width": 1,
+   "func": 5380197888,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5380198486,
+   "field": 5380198488,
+   "width": 1,
+   "func": 5380198256,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5380198596,
+   "field": 5380198598,
+   "width": 1,
+   "func": 5380198256,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5380533990,
+   "field": 5380533992,
+   "width": 1,
+   "func": 5380533872,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5380534786,
+   "field": 5380534788,
+   "width": 1,
+   "func": 5380534656,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5380569216,
+   "field": 5380569218,
+   "width": 1,
+   "func": 5380569104,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5380575779,
+   "field": 5380575781,
+   "width": 1,
+   "func": 5380575696,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5380627852,
+   "field": 5380627854,
+   "width": 1,
+   "func": 5380627264,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381269139,
+   "field": 5381269141,
+   "width": 1,
+   "func": 5381269120,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381269390,
+   "field": 5381269392,
+   "width": 1,
+   "func": 5381269360,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381272209,
+   "field": 5381272211,
+   "width": 1,
+   "func": 5381272112,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381272727,
+   "field": 5381272729,
+   "width": 1,
+   "func": 5381272656,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381273135,
+   "field": 5381273137,
+   "width": 1,
+   "func": 5381273047,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381273287,
+   "field": 5381273289,
+   "width": 1,
+   "func": 5381273047,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e203"
+  },
+  {
+   "at": 5381274117,
+   "field": 5381274119,
+   "width": 1,
+   "func": 5381274080,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381279023,
+   "field": 5381279025,
+   "width": 1,
+   "func": 5381278928,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381279202,
+   "field": 5381279204,
+   "width": 1,
+   "func": 5381279184,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381285103,
+   "field": 5381285105,
+   "width": 1,
+   "func": 5381285056,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381287257,
+   "field": 5381287259,
+   "width": 1,
+   "func": 5381286800,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381291357,
+   "field": 5381291359,
+   "width": 1,
+   "func": 5381288880,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381295725,
+   "field": 5381295727,
+   "width": 1,
+   "func": 5381288880,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381300663,
+   "field": 5381300665,
+   "width": 1,
+   "func": 5381300448,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381300721,
+   "field": 5381300723,
+   "width": 1,
+   "func": 5381300448,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381300885,
+   "field": 5381300887,
+   "width": 1,
+   "func": 5381300448,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381300945,
+   "field": 5381300947,
+   "width": 1,
+   "func": 5381300448,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381301200,
+   "field": 5381301202,
+   "width": 1,
+   "func": 5381300448,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381301251,
+   "field": 5381301253,
+   "width": 1,
+   "func": 5381300448,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381301300,
+   "field": 5381301302,
+   "width": 1,
+   "func": 5381300448,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381309455,
+   "field": 5381309457,
+   "width": 1,
+   "func": 5381309344,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381309481,
+   "field": 5381309483,
+   "width": 1,
+   "func": 5381309344,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381310356,
+   "field": 5381310359,
+   "width": 1,
+   "func": 5381310240,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e603"
+  },
+  {
+   "at": 5381310911,
+   "field": 5381310913,
+   "width": 1,
+   "func": 5381310864,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381311375,
+   "field": 5381311377,
+   "width": 1,
+   "func": 5381311232,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e603"
+  },
+  {
+   "at": 5381311531,
+   "field": 5381311533,
+   "width": 1,
+   "func": 5381311488,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381311560,
+   "field": 5381311562,
+   "width": 1,
+   "func": 5381311488,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381311910,
+   "field": 5381311912,
+   "width": 1,
+   "func": 5381311872,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381311926,
+   "field": 5381311929,
+   "width": 1,
+   "func": 5381311872,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e103"
+  },
+  {
+   "at": 5381312578,
+   "field": 5381312580,
+   "width": 1,
+   "func": 5381312512,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381312688,
+   "field": 5381312690,
+   "width": 1,
+   "func": 5381312688,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381312792,
+   "field": 5381312794,
+   "width": 1,
+   "func": 5381312768,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381313322,
+   "field": 5381313324,
+   "width": 1,
+   "func": 5381313152,
+   "kind": "hash",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381313606,
+   "field": 5381313608,
+   "width": 1,
+   "func": 5381313600,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381313788,
+   "field": 5381313791,
+   "width": 1,
+   "func": 5381313760,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e303"
+  },
+  {
+   "at": 5381313884,
+   "field": 5381313887,
+   "width": 1,
+   "func": 5381313856,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e303"
+  },
+  {
+   "at": 5381313977,
+   "field": 5381313980,
+   "width": 1,
+   "func": 5381313952,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e303"
+  },
+  {
+   "at": 5381314073,
+   "field": 5381314076,
+   "width": 1,
+   "func": 5381314048,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e303"
+  },
+  {
+   "at": 5381314170,
+   "field": 5381314173,
+   "width": 1,
+   "func": 5381314144,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e303"
+  },
+  {
+   "at": 5381315242,
+   "field": 5381315245,
+   "width": 1,
+   "func": 5381315216,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e003"
+  },
+  {
+   "at": 5381315408,
+   "field": 5381315410,
+   "width": 1,
+   "func": 5381315408,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381315456,
+   "field": 5381315458,
+   "width": 1,
+   "func": 5381315456,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381316276,
+   "field": 5381316278,
+   "width": 1,
+   "func": 5381316240,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381316561,
+   "field": 5381316563,
+   "width": 1,
+   "func": 5381316496,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381316602,
+   "field": 5381316604,
+   "width": 1,
+   "func": 5381316496,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381317188,
+   "field": 5381317191,
+   "width": 1,
+   "func": 5381317104,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e603"
+  },
+  {
+   "at": 5381317786,
+   "field": 5381317788,
+   "width": 1,
+   "func": 5381317760,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381317946,
+   "field": 5381317948,
+   "width": 1,
+   "func": 5381317920,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381318161,
+   "field": 5381318163,
+   "width": 1,
+   "func": 5381318080,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e703"
+  },
+  {
+   "at": 5381318417,
+   "field": 5381318419,
+   "width": 1,
+   "func": 5381318336,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e703"
+  },
+  {
+   "at": 5381318741,
+   "field": 5381318743,
+   "width": 1,
+   "func": 5381318592,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e703"
+  },
+  {
+   "at": 5381320658,
+   "field": 5381320660,
+   "width": 1,
+   "func": 5381320592,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381320970,
+   "field": 5381320972,
+   "width": 1,
+   "func": 5381320928,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381321118,
+   "field": 5381321120,
+   "width": 1,
+   "func": 5381321072,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381321201,
+   "field": 5381321203,
+   "width": 1,
+   "func": 5381321072,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381321914,
+   "field": 5381321916,
+   "width": 1,
+   "func": 5381321808,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e703"
+  },
+  {
+   "at": 5381322055,
+   "field": 5381322057,
+   "width": 1,
+   "func": 5381321808,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381322068,
+   "field": 5381322071,
+   "width": 1,
+   "func": 5381321808,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e303"
+  },
+  {
+   "at": 5381323073,
+   "field": 5381323075,
+   "width": 1,
+   "func": 5381323040,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e203"
+  },
+  {
+   "at": 5381326628,
+   "field": 5381326630,
+   "width": 1,
+   "func": 5381326624,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e203"
+  },
+  {
+   "at": 5381326874,
+   "field": 5381326876,
+   "width": 1,
+   "func": 5381326784,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e603"
+  },
+  {
+   "at": 5381327396,
+   "field": 5381327398,
+   "width": 1,
+   "func": 5381327392,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381327721,
+   "field": 5381327723,
+   "width": 1,
+   "func": 5381327680,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e703"
+  },
+  {
+   "at": 5381328358,
+   "field": 5381328360,
+   "width": 1,
+   "func": 5381328272,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381328865,
+   "field": 5381328867,
+   "width": 1,
+   "func": 5381328800,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381329030,
+   "field": 5381329032,
+   "width": 1,
+   "func": 5381329024,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381329171,
+   "field": 5381329173,
+   "width": 1,
+   "func": 5381329120,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381329876,
+   "field": 5381329878,
+   "width": 1,
+   "func": 5381329776,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381329916,
+   "field": 5381329918,
+   "width": 1,
+   "func": 5381329776,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381330323,
+   "field": 5381330325,
+   "width": 1,
+   "func": 5381330272,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381331024,
+   "field": 5381331026,
+   "width": 1,
+   "func": 5381331024,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381331118,
+   "field": 5381331121,
+   "width": 1,
+   "func": 5381331072,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "4183e203"
+  },
+  {
+   "at": 5381331426,
+   "field": 5381331428,
+   "width": 1,
+   "func": 5381331328,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381331492,
+   "field": 5381331494,
+   "width": 1,
+   "func": 5381331328,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e203"
+  },
+  {
+   "at": 5381331698,
+   "field": 5381331700,
+   "width": 1,
+   "func": 5381331600,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381331764,
+   "field": 5381331766,
+   "width": 1,
+   "func": 5381331600,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e203"
+  },
+  {
+   "at": 5381332010,
+   "field": 5381332012,
+   "width": 1,
+   "func": 5381332000,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381334832,
+   "field": 5381334834,
+   "width": 1,
+   "func": 5381334784,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381335326,
+   "field": 5381335328,
+   "width": 1,
+   "func": 5381335200,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381336598,
+   "field": 5381336600,
+   "width": 1,
+   "func": 5381336432,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381338711,
+   "field": 5381338713,
+   "width": 1,
+   "func": 5381338672,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381339875,
+   "field": 5381339877,
+   "width": 1,
+   "func": 5381339840,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381342324,
+   "field": 5381342326,
+   "width": 1,
+   "func": 5381342288,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e703"
+  },
+  {
+   "at": 5381342420,
+   "field": 5381342422,
+   "width": 1,
+   "func": 5381342400,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e303"
+  },
+  {
+   "at": 5381347714,
+   "field": 5381347716,
+   "width": 1,
+   "func": 5381345248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381347761,
+   "field": 5381347763,
+   "width": 1,
+   "func": 5381345248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381348059,
+   "field": 5381348061,
+   "width": 1,
+   "func": 5381345248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381348576,
+   "field": 5381348578,
+   "width": 1,
+   "func": 5381345248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381348865,
+   "field": 5381348867,
+   "width": 1,
+   "func": 5381345248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381349040,
+   "field": 5381349042,
+   "width": 1,
+   "func": 5381345248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381349095,
+   "field": 5381349097,
+   "width": 1,
+   "func": 5381345248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381349251,
+   "field": 5381349253,
+   "width": 1,
+   "func": 5381345248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381349407,
+   "field": 5381349409,
+   "width": 1,
+   "func": 5381345248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381358853,
+   "field": 5381358855,
+   "width": 1,
+   "func": 5381358688,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381360234,
+   "field": 5381360236,
+   "width": 1,
+   "func": 5381360176,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381360787,
+   "field": 5381360789,
+   "width": 1,
+   "func": 5381360768,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381361568,
+   "field": 5381361570,
+   "width": 1,
+   "func": 5381361248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381361660,
+   "field": 5381361662,
+   "width": 1,
+   "func": 5381361248,
+   "kind": "pair",
+   "outside": false,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5381750969,
+   "field": 5381750971,
+   "width": 1,
+   "func": 5381750800,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381757479,
+   "field": 5381757481,
+   "width": 1,
+   "func": 5381757312,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e003"
+  },
+  {
+   "at": 5382161428,
+   "field": 5382161430,
+   "width": 1,
+   "func": 5382160624,
+   "kind": "outside",
+   "outside": true,
+   "bytes": "83e703"
+  }
+ ],
+ "heads": [
+  {
+   "at": 5381310814,
+   "field": 5381310816,
+   "width": 1,
+   "func": 5381310736,
+   "kind": "head",
+   "outside": false,
+   "bytes": "83e203"
+  },
+  {
+   "at": 5381315708,
+   "field": 5381315710,
+   "width": 1,
+   "func": 5381315664,
+   "kind": "head",
+   "outside": false,
+   "bytes": "83e203"
+  },
+  {
+   "at": 5381315954,
+   "field": 5381315956,
+   "width": 1,
+   "func": 5381315744,
+   "kind": "head",
+   "outside": false,
+   "bytes": "83e103"
+  },
+  {
+   "at": 5381328591,
+   "field": 5381328593,
+   "width": 1,
+   "func": 5381328496,
+   "kind": "head",
+   "outside": false,
+   "bytes": "83e203"
+  }
+ ],
+ "loops": [
+  {
+   "at": 5381328023,
+   "field": 5381328026,
+   "width": 1,
+   "func": 5381327920,
+   "bytes": "4183f904"
+  },
+  {
+   "at": 5381328118,
+   "field": 5381328121,
+   "width": 1,
+   "func": 5381327920,
+   "bytes": "4183f904"
+  },
+  {
+   "at": 5381329524,
+   "field": 5381329527,
+   "width": 1,
+   "func": 5381329408,
+   "bytes": "4183f904"
+  },
+  {
+   "at": 5381329666,
+   "field": 5381329669,
+   "width": 1,
+   "func": 5381329536,
+   "bytes": "4183f804"
+  }
+ ],
+ "counters": [
+  {
+   "at": 5381310009,
+   "field": 5381310012,
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476032820,
+   "tail": 0,
+   "func": 5381309872,
+   "offset": 52,
+   "text": "inc dword ptr [rbp + rdx*4 + 0x665a134]"
+  },
+  {
+   "at": 5381310047,
+   "field": 5381310049,
+   "form": "rip",
+   "base": 0,
+   "target": 5476032820,
+   "tail": 0,
+   "func": 5381310032,
+   "offset": 52,
+   "text": "mov edx, dword ptr [rip + 0x5a55acf]"
+  },
+  {
+   "at": 5381310074,
+   "field": 5381310076,
+   "form": "rip",
+   "base": 0,
+   "target": 5476032824,
+   "tail": 0,
+   "func": 5381310032,
+   "offset": 56,
+   "text": "mov ecx, dword ptr [rip + 0x5a55ab8]"
+  },
+  {
+   "at": 5381310103,
+   "field": 5381310105,
+   "form": "rip",
+   "base": 0,
+   "target": 5476032828,
+   "tail": 0,
+   "func": 5381310032,
+   "offset": 60,
+   "text": "mov ecx, dword ptr [rip + 0x5a55a9f]"
+  },
+  {
+   "at": 5381310130,
+   "field": 5381310132,
+   "form": "rip",
+   "base": 0,
+   "target": 5476032832,
+   "tail": 0,
+   "func": 5381310032,
+   "offset": 64,
+   "text": "mov ecx, dword ptr [rip + 0x5a55a88]"
+  },
+  {
+   "at": 5381310977,
+   "field": 5381310981,
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476032820,
+   "tail": 0,
+   "func": 5381310864,
+   "offset": 52,
+   "text": "lea r14, [rdx*4 + 0x665a134]"
+  },
+  {
+   "at": 5381313496,
+   "field": 5381313500,
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476032820,
+   "tail": 0,
+   "func": 5381313440,
+   "offset": 52,
+   "text": "dec dword ptr [r8 + rdx*4 + 0x665a134]"
+  },
+  {
+   "at": 5381314536,
+   "field": 5381314540,
+   "form": "disp",
+   "base": 5368709120,
+   "target": 5476032820,
+   "tail": 0,
+   "func": 5381314400,
+   "offset": 52,
+   "text": "inc dword ptr [r12 + rdx*4 + 0x665a134]"
+  },
+  {
+   "at": 5381329542,
+   "field": 5381329545,
+   "form": "rip",
+   "base": 0,
+   "target": 5476032820,
+   "tail": 0,
+   "func": 5381329536,
+   "offset": 52,
+   "text": "mov qword ptr [rip + 0x5a50ea7], rax"
+  },
+  {
+   "at": 5381329549,
+   "field": 5381329552,
+   "form": "rip",
+   "base": 0,
+   "target": 5476032828,
+   "tail": 0,
+   "func": 5381329536,
+   "offset": 60,
+   "text": "mov qword ptr [rip + 0x5a50ea8], rax"
+  }
+ ],
+ "problems": []
+}

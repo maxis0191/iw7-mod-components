@@ -100,7 +100,7 @@ class Wiring(unittest.TestCase):
 
     def test_component_installs_the_relocated_tables(self):
         text = read(CPP)
-        self.assertIn('script_var_layout::install({regions[2].storage.data, regions[3].storage.data, regions[4].storage.data, parent_ids, child_entries, true});', text)
+        self.assertIn('script_var_layout::install({regions[2].storage.data, regions[3].storage.data, regions[4].storage.data, parent_ids_now(), child_entries, true, seg_in_use});', text)
         self.assertLess(text.index('script_var_layout::install'), text.index('active = true;'))
         # after the code patches: an install before a failed write would leave the accessors on tables that were not used
         self.assertLess(text.index('write(plan[applied], false)'), text.index('script_var_layout::install'))
