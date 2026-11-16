@@ -83,7 +83,8 @@ class Rows(unittest.TestCase):
 
     def test_the_hpp_layout(self):
         self.assertIn('child_entries = 0x10000', self.hpp)
-        self.assertIn('parent_ids = 0x40000', self.hpp)
+        self.assertIn('parent_ids_for(std::uint32_t s) noexcept { return s * 0x10000u; }', self.hpp)
+        self.assertIn('parent_ids = parent_ids_for(stock_segments)', self.hpp)
         self.assertIn('stock_child_entries = 0xA000, stock_parent_ids = 0xDC00', self.hpp)
         # the u16 fields hold every index and id; the names of object keys stay below the integer key base
         self.assertLessEqual(0x40000 + PN, 0x800000)
@@ -332,7 +333,7 @@ class Buckets(unittest.TestCase):
             self.assertEqual(near, [], 'a bucket field inside the first 16 bytes of the mod hook at %X' % h)
 
     def test_the_component_applies_every_list(self):
-        for token in ('bucket_ref_sites', 'bucket_mask_sites', 'bucket_shl_sites', 'bucket_clear_sites', 'regions[5]', 'hash_bytes(bits_in_use)',
+        for token in ('bucket_ref_sites', 'bucket_mask_sites', 'bucket_shl_sites', 'bucket_clear_sites', 'regions[5]', 'hash_bytes(seg_in_use, bits_in_use)',
                       '-script-variables-buckets', 'IW7_SCRIPT_VARIABLES_BUCKETS'):
             self.assertIn(token, self.cpp)
         # the default is one of the measured sizes

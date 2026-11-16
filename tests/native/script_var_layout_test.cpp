@@ -14,7 +14,7 @@ static_assert(script_var_layout::stock.children == script_variables::stock_ch);
 static_assert(script_var_layout::stock.parent_ids == script_variables::stock_parent_ids);
 static_assert(script_var_layout::stock.child_entries == script_variables::stock_child_entries);
 static_assert(script_var_layout::child_bytes == script_variables::child_bytes_each);
-static_assert(script_var_layout::segments == script_variables::segments);
+static_assert(script_var_layout::stock_segments == script_variables::stock_segments && script_variables::segments == 4);
 
 static int failures;
 #define CHECK(c) do { if (!(c)) { std::printf("FAIL line %d: %s\n", __LINE__, #c); ++failures; } } while (0)
@@ -43,7 +43,7 @@ int main() {
     refusals() = 0;
     std::vector<unsigned char> storage(1);
     const auto base = reinterpret_cast<std::uintptr_t>(storage.data());
-    install({base + 0x1000, base + 0x400000, base + 0x800000, script_variables::parent_ids, script_variables::child_entries, true});
+    install({base + 0x1000, base + 0x400000, base + 0x800000, script_variables::parent_ids, script_variables::child_entries, true, 4});
     CHECK(current().relocated);
     CHECK(object_address(0x3FFFF) == base + 0x1000 + 0x3FFFFull * 8);
     CHECK(object_children_address(0x3FFFF) == base + 0x400000 + 0x3FFFFull * 4);
@@ -59,6 +59,18 @@ int main() {
     struct entry { std::uint8_t bytes[0x18]; };
     CHECK(child<entry>(4, 2) == reinterpret_cast<entry*>(base + 0x800000 + 2 * 0x18));
     CHECK(child<entry>(4, 0) == nullptr && object<std::uint64_t>(0x40000) == nullptr);
+
+    // 8 and 16 segments (a67): a child lives in segment (parent & (segments - 1)), ids reach 0x7FFFF / 0xFFFFF
+    install({base + 0x1000, base + 0x400000, base + 0x800000, script_variables::parent_ids_for(8), script_variables::child_entries, true, 8});
+    refusals() = 0;
+    CHECK(child_address(0x7FFFF, 0xFFFF) == base + 0x800000 + (7ull * 0x10000 + 0xFFFF) * 0x18);          // the last entry of the last segment
+    CHECK(child_address(0x1000C, 5) == base + 0x800000 + (4ull * 0x10000 + 5) * 0x18);                    // 0x1000C & 7 = 4
+    CHECK(child_address(0x1000F, 5) == base + 0x800000 + (7ull * 0x10000 + 5) * 0x18);
+    CHECK(object_address(0x7FFFF) == base + 0x1000 + 0x7FFFFull * 8 && object_address(0x80000) == 0 && refusals().load() == 1);
+    install({base + 0x1000, base + 0x400000, base + 0x800000, script_variables::parent_ids_for(16), script_variables::child_entries, true, 16});
+    CHECK(child_address(0xFFFFF, 0xFFFF) == base + 0x800000 + (15ull * 0x10000 + 0xFFFF) * 0x18);
+    CHECK(child_address(0x2000A, 1) == base + 0x800000 + (10ull * 0x10000 + 1) * 0x18);                   // 0x2000A & 15 = 10
+    CHECK(object_children_address(0xFFFFF) == base + 0x400000 + 0xFFFFFull * 4 && object_children_address(0x100000) == 0);
 
     // a stock layout installed back (the component off): the shipped formula again
     install(stock);

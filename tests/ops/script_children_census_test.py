@@ -64,8 +64,28 @@ class Census(unittest.TestCase):
         refs = vs.counter_refs(self.img, self.md, self.db)
         counters = {k: v for k, v in refs.items() if 0x34 <= k[1] < 0x44}
         behind = {k: v for k, v in refs.items() if 0x44 <= k[1] < 0x54}
-        self.assertEqual((len(counters), len({v[1] for v in counters.values()})), (10, 6))
-        self.assertGreater(len(behind), 0, 'counters 4..7 would overwrite scalars')
+        self.assertEqual((len(counters), len({v['func'] for v in counters.values()})), (10, 6))
+        # a67: 84, not 83: the walker used to decode by the engine database's function bounds and lost 0x140C0A1C0 (a `mov byte [rip + ..], 1` at BLOCK0 + 0x45 in code the database holds in no function)
+        self.assertEqual(len(behind), 84)
+
+    def test_the_census_of_the_counter_window_is_the_instruction_index(self):
+        """The 101 fields in 38 functions of the a45 text: every index row naming BLOCK0 + 0x34..0x57 is a walker instruction, and the other way round for the whole of BLOCK0."""
+        import sqlite3
+        index = vs.index_path()
+        if not os.path.exists(index):
+            self.skipTest('no instruction index')
+        c = sqlite3.connect('file:' + index.replace(chr(92), '/') + '?mode=ro', uri=True)
+        b0, base = vs.REGIONS['BLOCK0'][0], vs.BASE
+        rows = c.execute("select at,func,value,kind from insn where (kind='addr' and value>=? and value<?) or (kind='disp' and value>=? and value<?)", (b0, b0 + 0x80, b0 - base, b0 + 0x80 - base)).fetchall()
+        window = [r for r in rows if 0x34 <= (r[2] if r[3] == 'addr' else r[2] + base) - b0 < 0x58]
+        self.assertEqual((len(window), len({r[1] for r in window})), (101, 38))
+        walker = {v['at'] for v in vs.counter_refs(self.img, self.md, self.db).values()}
+        ours = {r[0] for r in rows}
+        # two instructions are indexed one byte after their address (a prefix): the same instruction
+        missing = [hex(a) for a in sorted(ours - walker) if a - 1 not in walker]
+        self.assertEqual(missing, [], 'an instruction of the index that the walker does not decode')
+        extra = [hex(a) for a in sorted(walker - ours) if a + 1 not in ours]
+        self.assertEqual(extra, [])
 
 
 if __name__ == '__main__':
