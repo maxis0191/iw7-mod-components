@@ -1245,8 +1245,7 @@ void avoidance_meter() {
     const auto calls = avoidance_stats.calls.load(), solves = avoidance_solves.load();
     if (calls == last_calls && solves == last_solves) return;
     last_calls = calls; last_solves = solves;
-    console::info("[avoidance] {\"calls\":%llu,\"solves\":%llu,\"max_vertices\":%u,\"max_input\":%u,\"over_stock\":%llu,\"solves_big\":%llu,\"truncated\":%llu,\"inconsistent\":%llu,\"unviewable\":%llu}
-",
+    console::info("[avoidance] {\"calls\":%llu,\"solves\":%llu,\"max_vertices\":%u,\"max_input\":%u,\"over_stock\":%llu,\"solves_big\":%llu,\"truncated\":%llu,\"inconsistent\":%llu,\"unviewable\":%llu}\n",
         static_cast<unsigned long long>(calls), static_cast<unsigned long long>(solves), avoidance_stats.max_vertices.load(), avoidance_stats.max_input.load(),
         static_cast<unsigned long long>(avoidance_stats.over_stock.load()), static_cast<unsigned long long>(avoidance_solves_big.load()),
         static_cast<unsigned long long>(avoidance_stats.truncated.load()), static_cast<unsigned long long>(avoidance_stats.inconsistent.load()),
@@ -1255,13 +1254,11 @@ void avoidance_meter() {
 void plan_avoidance() {
     avoidance_meter_on = env_switch("avoidance-meter", L"IW7_AVOIDANCE_METER");
     avoidance_on = !env_switch("avoidance-stock", L"IW7_AVOIDANCE_STOCK");
-    if (!avoidance_on) { console::info("[agent capacity] avoidance clip: shipped functions kept (-avoidance-stock)
-"); return; }
+    if (!avoidance_on) { console::info("[agent capacity] avoidance clip: shipped functions kept (-avoidance-stock)\n"); return; }
     if (!unwind_probe_armed) avoidance_clip_hook.create(0x1403E6B10, avoidance_clip_stub);   // an armed unwind probe already detours it and calls the dispatch
     avoidance_solve_hook.create(0x1403E51C0, avoidance_solve_stub);
     if (avoidance_meter_on) scheduler::loop(avoidance_meter, scheduler::main, 10s);
-    console::info("[agent capacity] avoidance clip: polygon workspace of %u vertices a thread (stock 32), meter %s
-", 4 * L.sentient_slots() + 64, avoidance_meter_on ? "on" : "off");
+    console::info("[agent capacity] avoidance clip: polygon workspace of %u vertices a thread (stock 32), meter %s\n", 4 * L.sentient_slots() + 64, avoidance_meter_on ? "on" : "off");
 }
 
 // ---- 5d. lab-only probe of the rewind store (FUN_140415bf0+34) ----------------------------------------------------------------
