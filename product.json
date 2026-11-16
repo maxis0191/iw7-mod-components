@@ -328,7 +328,7 @@
     "src/native/voice_test.cpp",
     "src/ui_scripts/bo3_zombies_hud/__init__.lua",
     "tests/fixtures/author_platform_contact.gsc",
-    "tests/fixtures/avoidance_clip_stock.bin",
+    "tests/fixtures/avoidance_clip_stock.b64.txt",
     "tests/fixtures/capacity_pool.gsc",
     "tests/fixtures/collision_player_contact.gsc",
     "tests/fixtures/collision_zero_client_probe.gsc",

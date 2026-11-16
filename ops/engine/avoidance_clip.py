@@ -4,7 +4,7 @@ The shipped function and its helper FUN_1403E6A10 are copied byte for byte (0x14
 executable memory of this process; the three references that leave the range (the security cookie, the cookie check, the memcpy of the result) are re-pointed at a few bytes of stubs
 in the same block. Nothing of the game runs. Windows x64 only.
 
-  python -B ops/engine/avoidance_clip.py fixture --reference-root <refs> --out tests/fixtures/avoidance_clip_stock.bin [--cases 6000] [--seed 7]
+  python -B ops/engine/avoidance_clip.py fixture --reference-root <refs> --out tests/fixtures/avoidance_clip_stock.b64.txt [--cases 6000] [--seed 7]
   python -B ops/engine/avoidance_clip.py compare --reference-root <refs> --dll <avoidance-clip-dll> [--cases 2000000] [--seed 11]
 
 `fixture` writes inputs and the shipped function's outputs for the C++ test (tests/native/avoidance_clip_test.cpp reads it; it needs no game file).
@@ -13,6 +13,7 @@ generated case, the return value, the count and the output BYTES against the shi
 Inputs are kept to what the shipped function can hold: at most 31 convex vertices (a clip adds at most one) or 16 arbitrary ones (a clip emits at most two a vertex).
 """
 import argparse
+import base64
 import ctypes
 import math
 import os
@@ -189,11 +190,14 @@ def write_fixture(refs, path, total, seed):
     stock = Stock(refs)
     rng = random.Random(seed)
     items = list(all_cases(stock, rng, total))
-    with open(path, "wb") as f:
-        f.write(b"AVC1" + struct.pack("<I", len(items)))
-        for poly, plane, r, out, n in items:
-            f.write(struct.pack("<I", len(poly)) + b"".join(struct.pack("<3f", *v) for v in poly) + struct.pack("<4f", *plane))
-            f.write(struct.pack("<II", r, n if r else 0) + (out if r else b""))
+    blob = bytearray(b"AVC1" + struct.pack("<I", len(items)))
+    for poly, plane, r, out, n in items:
+        blob += struct.pack("<I", len(poly)) + b"".join(struct.pack("<3f", *v) for v in poly) + struct.pack("<4f", *plane)
+        blob += struct.pack("<II", r, n if r else 0) + (out if r else b"")
+    text = base64.b64encode(bytes(blob)).decode("ascii")
+    with open(path, "w", newline="\n") as f:        # text: the product's source composition reads every exported file as UTF-8
+        for i in range(0, len(text), 120):
+            f.write(text[i:i + 120] + "\n")
     return len(items)
 
 

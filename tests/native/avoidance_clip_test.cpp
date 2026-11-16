@@ -9,7 +9,7 @@
 
 #include "../../src/native/avoidance_clip.hpp"
 
-// The avoidance polygon clip (a75): byte identical to the shipped function FUN_1403E6B10 for the recorded cases (tests/fixtures/avoidance_clip_stock.bin, made by
+// The avoidance polygon clip (a75): byte identical to the shipped function FUN_1403E6B10 for the recorded cases (tests/fixtures/avoidance_clip_stock.b64.txt, made by
 // ops/engine/avoidance_clip.py from the shipped code), and a polygon past 32 vertices stays whole, convex, inside every plane, with the caller's buffer written for 32 vertices only.
 static int failures;
 #define CHECK(c) do { if (!(c)) { std::printf("FAIL line %d: %s\n", __LINE__, #c); ++failures; } } while (0)
@@ -18,7 +18,7 @@ static std::string fixture_path() {
     std::string here = __FILE__;
     const auto cut = here.find_last_of("/\\");
     here = here.substr(0, cut);
-    return here + "/../fixtures/avoidance_clip_stock.bin";
+    return here + "/../fixtures/avoidance_clip_stock.b64.txt";
 }
 
 struct guarded_buffer {                     // the caller's 32 vertex buffer with canaries on both sides
@@ -33,25 +33,62 @@ struct guarded_buffer {                     // the caller's 32 vertex buffer wit
     }
 };
 
+static std::vector<unsigned char> decode_base64(const std::string& text) {
+    std::vector<unsigned char> out;
+    unsigned buffer = 0;
+    int bits = 0;
+    for (const char ch : text) {
+        int v;
+        if (ch >= 'A' && ch <= 'Z') v = ch - 'A';
+        else if (ch >= 'a' && ch <= 'z') v = ch - 'a' + 26;
+        else if (ch >= '0' && ch <= '9') v = ch - '0' + 52;
+        else if (ch == '+') v = 62;
+        else if (ch == '/') v = 63;
+        else continue;                       // '=' and line ends
+        buffer = (buffer << 6) | static_cast<unsigned>(v);
+        bits += 6;
+        if (bits >= 8) { bits -= 8; out.push_back(static_cast<unsigned char>((buffer >> bits) & 0xFF)); }
+    }
+    return out;
+}
+
+struct reader {
+    const std::vector<unsigned char>& data;
+    std::size_t at = 0;
+    bool take(void* to, std::size_t bytes) {
+        if (at + bytes > data.size()) return false;
+        std::memcpy(to, data.data() + at, bytes);
+        at += bytes;
+        return true;
+    }
+};
+
 static void recorded_cases() {
     FILE* f = std::fopen(fixture_path().c_str(), "rb");
     if (!f) { std::printf("FAIL: no fixture at %s\n", fixture_path().c_str()); ++failures; return; }
+    std::string text;
+    char chunk[4096];
+    std::size_t got;
+    while ((got = std::fread(chunk, 1, sizeof chunk, f)) > 0) text.append(chunk, got);
+    std::fclose(f);
+    const auto bytes = decode_base64(text);
+    reader rd{bytes};
     char magic[4];
     std::uint32_t total{};
-    CHECK(std::fread(magic, 1, 4, f) == 4 && std::memcmp(magic, "AVC1", 4) == 0);
-    CHECK(std::fread(&total, 4, 1, f) == 1);
+    CHECK(rd.take(magic, 4) && std::memcmp(magic, "AVC1", 4) == 0);
+    CHECK(rd.take(&total, 4));
     avoidance::workspace ws(64);
     avoidance::stats st;
     std::uint32_t nonempty = 0, mismatches = 0, read = 0;
     for (std::uint32_t k = 0; k < total; ++k) {
         std::uint32_t n{};
-        if (std::fread(&n, 4, 1, f) != 1 || n > 32) break;
+        if (!rd.take(&n, 4) || n > 32) break;
         float in[96]{}, plane[4];
-        if (std::fread(in, 12, n, f) != n || std::fread(plane, 4, 4, f) != 4) break;
+        if (!rd.take(in, 12u * n) || !rd.take(plane, 16)) break;
         std::uint32_t ret{}, outn{};
-        if (std::fread(&ret, 4, 1, f) != 1 || std::fread(&outn, 4, 1, f) != 1 || outn > 32) break;
+        if (!rd.take(&ret, 4) || !rd.take(&outn, 4) || outn > 32) break;
         float expect[96]{};
-        if (outn && std::fread(expect, 12, outn, f) != outn) break;
+        if (outn && !rd.take(expect, 12u * outn)) break;
         ++read;
         guarded_buffer buf;
         std::memcpy(buf.v, in, 12u * n);
@@ -63,7 +100,6 @@ static void recorded_cases() {
         if (ret) ++nonempty;
         if (!buf.intact()) ++mismatches;
     }
-    std::fclose(f);
     std::printf("recorded cases: %u read, %u non-empty, %u mismatches\n", read, nonempty, mismatches);
     CHECK(read == total && read > 5000);
     CHECK(mismatches == 0);
