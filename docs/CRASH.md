@@ -34,6 +34,10 @@ The zip holds `crash.dmp` and an `info.txt` with the version, the exception and 
 The other tools of this repository look in the same place (`ops/iw7_watch.py`, `ops/agent-capacity/Watch-Server.ps1`, `ops/Run-CollisionProbe.ps1`).
 `ops/iw7_debugger.py dump` reads the same zips and prints the module list and the exception.
 
+## Dumps with the memory the pointers lead to (`-paris-crash-memory`)
+
+The game's own handler writes a dump of the stacks and the module list, without the memory the pointers on the stacks refer to (an owner dump of 16 Nov 2026: 3.2 MB, a null read at `iw7_ship.exe+0x8CA8E2`, nothing to say who left the pointer null). A lab client or server started with `-paris-crash-memory` (`src/native/paris_crash_memory.cpp`, compiled with `-Perf`) adds `MiniDumpWithIndirectlyReferencedMemory` and `MiniDumpWithDataSegs` to every `MiniDumpWriteDump` call. The game keeps the whole dump in memory to zip it, so a full-memory dump is not asked for. Measured 16 Nov 2026 with the lab command `paris_crash_test` (a write through a null pointer, only in an isolated lab): dump 203 MB, zip 16.6 MB, against 3.2 MB for the unchanged handler; `iw7_crash.py report` reads it as before. The server repository's play launcher (`ops/play/Start-CapacityPlay.ps1`) passes the flag to both processes and keeps the zips in its output folder.
+
 ## How to read the output
 
 1. Exception. The code in hex and its usual name when the tool knows it:
