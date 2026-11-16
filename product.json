@@ -218,6 +218,7 @@
     "ops/engine/state_sites.py",
     "ops/engine/static_tables.py",
     "ops/engine/unwind_info.py",
+    "ops/engine/variable-buckets.json",
     "ops/engine/variable-sites.json",
     "ops/engine/variable_sites.py",
     "ops/frame-cuts/frame-cut-edits.json",

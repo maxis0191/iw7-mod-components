@@ -235,6 +235,7 @@ class Code(unittest.TestCase):
         self.assertEqual(sorted(hex(x) for x in found - known), [], 'a new 16-bit sentinel candidate in the variable system')
 
 
+CAVES_INC = os.path.join(ROOT, 'src', 'native', 'script_variables_caves.inc')
 BUCKET_INC = os.path.join(ROOT, 'src', 'native', 'script_variables_buckets.inc')
 BUCKET_JSON = os.path.join(ROOT, 'ops', 'engine', 'variable-buckets.json')
 
@@ -300,6 +301,35 @@ class Buckets(unittest.TestCase):
             else:
                 self.assertEqual(base, 0x140000000)
                 self.assertEqual(base + (hash_at - base), hash_at)
+
+    def test_no_bucket_field_touches_another_patch_a_cave_or_a_hook(self):
+        spans = [(int(r[0], 16), int(r[0], 16) + 4, 'bucket ref') for r in self.sec['REFS']]
+        spans += [(int(r[0], 16), int(r[0], 16) + 4, 'mask') for r in self.sec['MASKS']]
+        spans += [(int(r[0], 16), int(r[0], 16) + 1, 'shl') for r in self.sec['SHLS']]
+        spans += [(int(r[0], 16), int(r[0], 16) + 4, 'clear') for r in self.sec['CLEAR']]
+        others = [(r['field'], r['field'] + 4, 'stage 1 row') for k in ('refs', 'imms') for r in self.stage1[k]]
+        for r in self.stage1['pairs']:
+            others.append((r['at'], r['at'] + r['len'], 'lea') if r['op'] == 'seg_lea' else (r['field'], r['field'] + 1, 'shl'))
+        caves = open(CAVES_INC, encoding='utf-8').read()
+        for m in re.finditer(r'\{0x([0-9a-f]+)ull, \{([^}]*)\}', caves):
+            start = int(m.group(1), 16)
+            others.append((start, start + len([x for x in m.group(2).split(',') if x.strip()]), 'cave'))
+        for a in (0x140C04650, 0x140C04910, 0x140C05C50, 0x140C08E70, 0x140C09200, 0x140C08C30, 0x140C043A0, 0x140C04580, 0x140C05100):
+            others.append((a, a + 5, 'entry window'))
+        others.append((0x140C05D70, 0x140C05D70 + 45, 'free tail stub'))
+        cpp = open(os.path.join(ROOT, 'src', 'native', 'agent_capacity.cpp'), encoding='utf-8').read()
+        sites, _ = st.extract_sites(cpp)
+        for x in sites:
+            width = 4 if x['kind'] == 'rip' else (len(x['before']) if x['kind'] == 'block' else x['width'])
+            others.append((x['address'], x['address'] + width, 'agent capacity site'))
+        # the hash_half rows belong to stage 1 (their fields are in its list) and are checked there; a bucket field is never one of the stage 1 fields
+        clash = [(hex(a[0]), a[2], hex(b[0]), b[2]) for a in spans for b in others if a[0] < b[1] and b[0] < a[1]]
+        self.assertEqual(clash, [])
+        mine = sorted(spans)
+        self.assertEqual([(hex(a[0]), hex(b[0])) for a, b in zip(mine, mine[1:]) if a[1] > b[0]], [], 'bucket rows overlap')
+        for h in HOOKS:
+            near = [hex(a[0]) for a in spans if a[0] < h + 16 and h < a[1]]
+            self.assertEqual(near, [], 'a bucket field inside the first 16 bytes of the mod hook at %X' % h)
 
     def test_the_component_applies_every_list(self):
         for token in ('bucket_ref_sites', 'bucket_mask_sites', 'bucket_shl_sites', 'bucket_clear_sites', 'regions[5]', 'hash_bytes(bits_in_use)',

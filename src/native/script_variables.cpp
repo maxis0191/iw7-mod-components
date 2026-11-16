@@ -596,6 +596,9 @@ void meter_report() {
 // The bucket bits (a62): `-script-variables-buckets <bits>`, else IW7_SCRIPT_VARIABLES_BUCKETS (the headless runner passes no flags of its own), else the default.
 // A value outside min..max is an error, not a clamp: the run would measure something else than the one asked.
 std::uint32_t chosen_bits() {
+    char mode[16]{};
+    GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_MODE", mode, sizeof(mode));
+    if (!std::strcmp(mode, "move")) return stock_hash_bits;      // relocate only: the masks, shifts and the clear stay as shipped, so the table keeps the stock bucket count
     long requested = -1;
     int count{};
     if (auto args = CommandLineToArgvW(GetCommandLineW(), &count)) {
