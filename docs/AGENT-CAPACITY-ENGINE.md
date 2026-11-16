@@ -517,3 +517,21 @@ Exit 0 ok, 1 export refused, 2 compile errors printed, 3 tree not ready or a bui
 ## Hash buckets (a62, 16 Nov 2026)
 
 The child hash table (stock 4 x 16,384 u16 buckets at 0x146736180) is a table of the component with 2^bits buckets a segment: `-script-variables-buckets <14..17>` or `IW7_SCRIPT_VARIABLES_BUCKETS`, default 16 (512 KB). The sites (16 `and r,0x3FFF`, 15 `shl r,0xE`, 12 table references the stage 1 list lacked, the clear at 0x140C09311) are found and proven by `ops/engine/variable_sites.py buckets` (`variable-buckets.json`, `script_variables_buckets.inc`); the six `[P8 + 0xA5000]` rows and the two `add rax,0x52800` rows of stage 1 follow the table. Tests: `tests/ops/script_variables_test.py`, class `Buckets`. Measurements and the choice of 16: iw7-paris-server `docs/SCRIPT-VARIABLES.md`, "Hash buckets". `IW7_SCRIPT_VARIABLES_MODE=move` keeps 14 bits.
+
+## Child capacity census (a64, 16 Nov 2026)
+
+The children are the next wall of the mission mix (200 plain + 100 specials + 5 bosses: 85 to 89 % of the fullest segment of 65,535 on the stock map; iw7-paris-server `docs/SCRIPT-VARIABLES.md`). `python -I -B ops/engine/variable_sites.py segments` (option C: more than 4 child segments, segment = parent id & 7 or & 15) and `links` (option D: wider child links, one segment above 65,535 entries) count every site that a larger child capacity touches, from every byte of the variable system (20,377 instructions), the stage 1 rows and the engine database's call table; `-o file.json` keeps the lists. Nothing is edited. Test: `tests/ops/script_children_census_test.py`. The range of the tools ended at 0x140C11000, inside FUN_140C10E60 (ends 0x140C11087), and cut its last instruction: `VM_CALLS` now ends at 0x140C11090 (`parents` and `buckets` print the same sites; only the instruction count changed, 20,333 to 20,377).
+
+| | option C, segment = id & 7 (8 segments, 524,280 children and parent ids; & 15: 1,048,560) | option D, 17 or 18 bit child index (4 segments: 524,284 or 1,048,572) |
+|---|---|---|
+| `and r,3` of a segment (in place, 1 byte) | 93 in the system (88 feed a segment base pair, 1 the hash read-back at 0x140C0532A, 4 index the list heads in code the component already replaces) + 29 outside it (25 functions, all fed by `and r,3`) | not needed |
+| segment base pairs `lea r,[s+s*4]; shl r,0x10` | 119 (stage 1 rows): no byte change | 119: the `shl` count 0x10 -> 0x11 or 0x12 |
+| hash shift `shl r,bits` | 15: no change (the table is 8 x 2^bits) | 15: no change |
+| loops over the 4 segments (`cmp r,4`) | 4 (initialiser, list rebuild) | not needed |
+| counters (children in use a segment, BLOCK0 + 0x34..0x43) | 10 instructions in 6 functions; 83 instructions use the scalars behind them, so the counters move | unchanged |
+| id <-> local index | the 14 key builder caves (`shr r,2` -> 3) and the read-back cave (scale 4 -> 8) | unchanged |
+| constants and table references | the same 38 constants (new values) and 414 + 18 references | the same + P4 entry 4 -> 8 bytes, bucket u16 -> u32 |
+| u16 child index accesses | none | 90 word accesses in 33 functions (64 through a stage 1 table form, 26 through a child pointer, 10 of them in functions that handle children), 52 wider accesses of the free list and value bytes through the tables, 115 ambiguous 4 or 8 byte accesses at +8 / +0x10 (stack value tags or paired links) not counted; each needs more than an immediate (caves, or the 33 functions in C++) |
+| u16 holders of a child index outside the system | not applicable | 123 external call sites of the FindVariable / GetVariable families, none stores or truncates the result to 16 bits (of 15,030 external call sites, the 68 that do hold parent or thread ids, a56) |
+| component C++ that names 4 | `script_parent_pools.hpp` 8 lines, `script_variables.cpp` 18, `.hpp` 5, `script_var_layout.hpp` 2; server tools `iw7_budgets.py` (reads 4 counters, refuses other counts) and `iw7_var_chains.py` (`& 3`) | `script_variables.cpp` (the free list and the bucket code), the layout |
+| memory (tables) | 21.6 MB (& 15: 43 MB), stage 2 and buckets now 10.8 MB | 18.6 MB at 17 bit (the children alone 25 MB at 18 bit) |

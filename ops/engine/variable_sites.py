@@ -34,6 +34,7 @@ or `lea r,[img+disp]` gives the register a known table address; copies and `lea`
 table distances but whose base register is not known is reported as `unresolved` and the run fails.
 """
 import argparse
+import collections
 import json
 import os
 import re
@@ -45,6 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import state_sites as ss  # noqa: E402
 
 BASE = ss.BASE
+CH_RVA = 0x6756180      # image relative address of the stock child table
 # name -> (stock base, stock bytes)
 REGIONS = {
     'A': (0x14665A180, 0x1B800),
@@ -59,7 +61,7 @@ REGIONS = {
 # fields whose base register is defined on another path than the one the linear walk follows; the register was read by eye (a46)
 OVERRIDES = {0x140C051CC: 'P8'}     # FindVariable: rbx = P8 + bucket * 2 (the bucket write-back of the move-to-front)
 MOVED = ('A', 'B', 'P8', 'P4', 'CH')
-VM_CALLS = (0x140BFE000, 0x140C11000)   # the variable system API: calls in here pass a segment base or an id
+VM_CALLS = (0x140BFE000, 0x140C11090)   # the variable system API (to the end of FUN_140C10E60, 0x140C11087; a64: the range ended inside that function): calls in here pass a segment base or an id
 LO, HI = 0x14665A100, 0x146B16180
 
 # register names -> hardware number, and any width -> the 64-bit name
@@ -999,6 +1001,315 @@ def emit_buckets(args):
 
 
 
+# ------------------------------------------------------------------------------------------------ child capacity census (a64)
+# `segments` and `links` count what a larger child capacity touches in the shipped image, from every byte of the variable system's range (complete_ranges),
+# the stage 1 rows (variable-sites.json) and the engine database's call table. Nothing is edited: the output is the work estimate and the list of sites.
+#   segments  Option C: more than 4 child segments (segment = parent id & 7, ids 8 x local + segment). Every `and r,3` of a segment, the segment base pairs, the hash
+#             shift, the counters, the id <-> local index conversions, the C++ of the component that names 4.
+#   links     Option D: wider child links (the u16 local child index of the fields +8 hash next, +0x10 / +0x12 siblings, the free list, first / last child, the bucket
+#             heads), so that one segment can exceed 65,535 entries; and the holders of a child index outside the variable system.
+SEGMENT_INIT_FUNCS = (0x140C08C30, 0x140C09200, 0x140C09280)    # list rebuild, parent list initialiser, child list initialiser: loops over 4 segments
+CHILD_API = {0x140C04FE0: 'FindVariable family', 0x140C05070: 'FindVariable family', 0x140C05090: 'FindVariable family', 0x140C050B0: 'FindVariable family',
+             0x140C05100: 'FindVariable', 0x140C05A70: 'GetVariable family', 0x140C05B80: 'GetVariable family', 0x140C05660: 'GetNewVariable'}
+
+
+def segment_uses(il, k, maxn=40):
+    """What the segment value of `and r,3` at il[k] is used for (forward taint through register copies): segbase5 (`lea d,[r+r*4]`, the segment base pair),
+    shlN (the hash shift), index*S (a table indexed by the segment), other mnemonics."""
+    from capstone import x86_const as X
+    taint = {FULL[il[k].reg_name(il[k].operands[0].reg)]}
+    out = []
+    for j in range(k + 1, min(len(il), k + 1 + maxn)):
+        ins = il[j]
+        mn = ins.mnemonic
+        rd, wr = _regs_rw(ins)
+        hit = [x for x in rd if x in taint]
+        if hit:
+            mem = next((o for o in ins.operands if o.type == X.X86_OP_MEM), None)
+            if mn == 'lea' and mem is not None and mem.mem.base == mem.mem.index and mem.mem.scale == 4 and mem.mem.disp == 0:
+                out.append('segbase5')
+            elif mn == 'shl' and ins.operands[1].type == X.X86_OP_IMM:
+                out.append('shl%d' % ins.operands[1].imm)
+            elif mem is not None and mem.mem.index != 0 and FULL.get(ins.reg_name(mem.mem.index)) in taint:
+                out.append('index*%d' % mem.mem.scale)
+            elif mn == 'mov' and ins.operands[0].type == X.X86_OP_REG and ins.operands[1].type == X.X86_OP_REG:
+                taint.add(FULL[ins.reg_name(ins.operands[0].reg)])
+                continue
+            elif mn in ('movzx', 'movsxd', 'movsx'):
+                taint.add(FULL[ins.reg_name(ins.operands[0].reg)])
+                continue
+            else:
+                out.append(mn)
+        for w in wr:
+            if w in taint and not (hit and mn == 'mov'):
+                taint.discard(w)
+        if mn == 'call':
+            for r in ('rax', 'rcx', 'rdx', 'r8', 'r9', 'r10', 'r11'):
+                taint.discard(r)
+        if not taint:
+            break
+    return out
+
+
+def segment_origin(il, k, reg, depth=60):
+    """The writer of `reg` before il[k]: 'and3', or what else it is (a segment that does not come from `and r,3`)."""
+    from capstone import x86_const as X
+    r = reg
+    for j in range(k - 1, max(-1, k - depth), -1):
+        ins = il[j]
+        rd, wr = _regs_rw(ins)
+        if r in wr:
+            if ins.mnemonic == 'and' and ins.operands[-1].type == X.X86_OP_IMM:
+                return 'and%d' % ins.operands[-1].imm, ins.address
+            if ins.mnemonic in ('mov', 'movzx') and ins.operands[1].type == X.X86_OP_REG:
+                r = FULL[ins.reg_name(ins.operands[1].reg)]
+                continue
+            return ins.mnemonic, ins.address
+        if ins.mnemonic == 'call' and r in ('rax', 'rcx', 'rdx', 'r8', 'r9', 'r10', 'r11'):
+            return 'call', ins.address
+    return 'live-in', 0
+
+
+def counter_refs(img, md, db_file):
+    """Instructions that name the counters (BLOCK0 + 0x34..0x43) and the scalars behind them (BLOCK0 + 0x44..0x53, where counters 4..7 would sit), by the
+    stage 1 walker with BLOCK0 as the tracked table, over the whole variable system and every function the instruction index lists for BLOCK0."""
+    global MOVED
+    import bisect
+    keep, MOVED = MOVED, ('BLOCK0',)
+    try:
+        bounds = func_bounds(db_file)
+        starts = [b[0] for b in bounds]
+
+        def func_of(at):
+            i = bisect.bisect_right(starts, at) - 1
+            if i >= 0 and bounds[i][0] <= at < bounds[i][1]:
+                return bounds[i]
+            return (bounds[i][1] if i >= 0 else at, bounds[i + 1][0] if i + 1 < len(bounds) else at + 0x400)
+
+        c = sqlite3.connect('file:' + index_path().replace('\\', '/') + '?mode=ro', uri=True)
+        b0 = REGIONS['BLOCK0'][0]
+        rows = c.execute("select at from insn where kind='addr' and value>=? and value<?", (b0, b0 + 0x80)).fetchall()
+        rows += c.execute("select at from insn where kind='disp' and value>=? and value<?", (b0 - BASE, b0 + 0x80 - BASE)).fetchall()
+        funcs = {func_of(a) for (a,) in rows} | {(s, e) for s, e in bounds if VM_CALLS[0] <= s < VM_CALLS[1]}
+        w = Walker(img, md)
+        found = {}
+        for s, e in sorted(funcs):
+            il = w.decode_range(s, e)
+            if not il:
+                continue
+            for r in w.walk(il, '')['rows']:
+                if r['region'] == 'BLOCK0':
+                    found[(r['field'], r['target'] - b0)] = (r['at'], s, r['text'])
+    finally:
+        MOVED = keep
+    return found
+
+
+def segments(args):
+    """Option C census: every site that names the number of child segments (4) or the id <-> (segment, local) conversion."""
+    from capstone import x86_const as X
+    image_file, db_file = ss.image_path()
+    img, md = ss.Image(image_file), ss.cs()
+    here = os.path.dirname(os.path.abspath(__file__))
+    sites = json.load(open(os.path.join(here, 'variable-sites.json')))
+    ranges = complete_ranges(img, md, db_file)
+    print('variable system range %X..%X decoded byte by byte: %d instructions in %d pieces' % (VM_CALLS[0], VM_CALLS[1], sum(len(il) for _, il in ranges), len(ranges)))
+    kinds, in_vm = collections.Counter(), []
+    for s, il in ranges:
+        for k, ins in enumerate(il):
+            if ins.mnemonic == 'and' and len(ins.operands) == 2 and ins.operands[1].type == X.X86_OP_IMM and ins.operands[1].imm == 3 and ins.operands[0].type == X.X86_OP_REG:
+                u = segment_uses(il, k)
+                kind = 'segment base pair' if 'segbase5' in u else 'hash shift only' if any(x.startswith('shl') for x in u) else 'list head index' if any(x.startswith('index') for x in u) else 'other'
+                kinds[kind] += 1
+                in_vm.append(dict(at=ins.address, field=ins.address + ins.encoding.imm_offset, func=s, kind=kind, uses=u, bytes=ins.bytes.hex()))
+    print('\n`and r,3` in the variable system: %d  %s' % (len(in_vm), dict(kinds)))
+    for r in in_vm:
+        if r['kind'] != 'segment base pair':
+            print('  %X  f%X  %-18s %s' % (r['at'], r['func'], r['kind'], ' '.join(r['uses'])))
+    bounds = dict(func_bounds(db_file))
+    pairs = [p for p in sites['pairs'] if p['op'] == 'seg_lea']
+    outside = [p for p in pairs if not (VM_CALLS[0] <= p['func'] < VM_CALLS[1])]
+    origins, out_and = collections.Counter(), {}
+    for f in sorted({p['func'] for p in outside}):
+        il = list(md.disasm(img.read(f, bounds.get(f, f + 0x800) - f), f))
+        for p in [q for q in outside if q['func'] == f]:
+            k = next((i for i, x in enumerate(il) if x.address == p['at']), None)
+            if k is None:
+                origins['pair not found'] += 1
+                continue
+            src = FULL[il[k].reg_name(il[k].operands[1].mem.base)]
+            o, at = segment_origin(il, k, src)
+            origins[o] += 1
+            if o == 'and3':
+                ins = next(x for x in il if x.address == at)
+                out_and[at] = dict(at=at, field=at + ins.encoding.imm_offset, func=f)
+    print('\nsegment base pairs `lea r,[s+s*4]; shl r,0x10` (stage 1 rows, no byte change for more segments): %d in %d functions; outside the variable system %d in %d functions'
+          % (len(pairs), len({p['func'] for p in pairs}), len(outside), len({p['func'] for p in outside})))
+    print('  origin of the segment of the %d outside pairs: %s; distinct `and r,3` outside: %d' % (len(outside), dict(origins), len(out_and)))
+    init_loops = []
+    for f in SEGMENT_INIT_FUNCS:
+        end = bounds.get(f, f + 0x400)
+        for ins in md.disasm(img.read(f, end - f), f):
+            if ins.mnemonic == 'cmp' and len(ins.operands) == 2 and ins.operands[1].type == X.X86_OP_IMM and ins.operands[1].imm == 4 and ins.operands[0].type == X.X86_OP_REG:
+                init_loops.append((ins.address, f, ins.mnemonic + ' ' + ins.op_str))
+    print('\nloops over the 4 segments (`cmp r,4`) in the initialisers and the list rebuild: %d' % len(init_loops))
+    for a, f, t in init_loops:
+        print('  %X  f%X  %s' % (a, f, t))
+    refs = counter_refs(img, md, db_file)
+    cn = {k: v for k, v in refs.items() if 0x34 <= k[1] < 0x44}
+    behind = {k: v for k, v in refs.items() if 0x44 <= k[1] < 0x54}
+    print('\ncounters (children in use a segment, BLOCK0 + 0x34..0x43): %d instructions in %d functions; scalars behind them (BLOCK0 + 0x44..0x53), %d instructions: eight counters do not fit in place' %
+          (len(cn), len({v[1] for v in cn.values()}), len(behind)))
+    for k, v in sorted(cn.items(), key=lambda x: x[1][0]):
+        print('  %X  f%X  +0x%X  %s' % (v[0], v[1], k[1], v[2]))
+    builders, reads, holders, scanned = parent_sites(img, md, db_file)
+    print('\nid <-> (segment, local): key builders `shr r,2` before `shl r,0x10`: %d (caves, the shift count 2 -> 3); the read back of a parent id `4 x local + segment`: %d (cave, scale 4 -> 8)' % (len(builders), len(reads)))
+    inc = collections.Counter(r['op'] for r in sites['imms'])
+    print('constants that follow the table sizes (stage 1 rows, new values only): %s' % dict(inc))
+    reg = collections.Counter(r['region'] for r in sites['refs'])
+    print('table references that follow the new tables (stage 1 rows, same count): %d  %s' % (len(sites['refs']), dict(reg)))
+    root = os.path.abspath(os.path.join(here, '..', '..'))
+    pat = re.compile(r'&\s*3u?\b|>>\s*2\b|<<\s*2\b|\[4\]|<\s*4\b|\bsegments\b|% 4|/ 4\b')
+    cxx = {}
+    for rel in ('src/native/script_parent_pools.hpp', 'src/native/script_variables.cpp', 'src/native/script_variables.hpp', 'src/native/script_var_layout.hpp'):
+        path = os.path.join(root, rel.replace('/', os.sep))
+        if os.path.exists(path):
+            cxx[rel] = [i + 1 for i, line in enumerate(open(path, encoding='utf-8', errors='replace')) if pat.search(line) and not line.lstrip().startswith('//')]
+    print('\nthe component C++ that names 4 segments (code lines matching & 3, >> 2, << 2, [4], < 4, segments):')
+    for rel, hits in cxx.items():
+        print('  %-40s %d lines  %s' % (rel, len(hits), ','.join(map(str, hits[:40]))))
+    out = dict(and3_in_vm=in_vm, and3_outside=sorted(out_and.values(), key=lambda r: r['at']), and3_kinds=dict(kinds), pairs=len(pairs), pairs_outside=len(outside),
+               origins=dict(origins), init_loops=[dict(at=a, func=f, text=t) for a, f, t in init_loops], counters=len(cn), counters_functions=len({v[1] for v in cn.values()}),
+               scalars_behind=len(behind), key_builders=len(builders), parent_reads=len(reads), imms=dict(inc), refs=dict(reg), cxx={k: len(v) for k, v in cxx.items()})
+    if args.o:
+        json.dump(out, open(args.o, 'w'), indent=1)
+        print('wrote', args.o)
+    return 0
+
+
+def links(args):
+    """Option D census: the u16 child links of the variable system and the holders of a child index outside it."""
+    from capstone import x86_const as X
+    image_file, db_file = ss.image_path()
+    img, md = ss.Image(image_file), ss.cs()
+    here = os.path.dirname(os.path.abspath(__file__))
+    sites = json.load(open(os.path.join(here, 'variable-sites.json')))
+    ranges = complete_ranges(img, md, db_file)
+    chf = {r['func'] for r in sites['refs'] if r['region'] == 'CH'}
+    pairf = {p['func'] for p in sites['pairs']}
+    ch0 = REGIONS['CH'][0]
+    P8CH, P8P4, P8HASH = 0xC5000, 0x6E000, 0xA5000
+    FIELDS = {0: 'value/free link', 2: 'value/free link', 4: 'value', 6: 'value', 8: 'hash next', 0xA: 'type', 0xC: 'name hi', 0xE: 'parent', 0x10: 'prev sibling', 0x12: 'next sibling'}
+    LINK = {'hash next', 'prev sibling', 'next sibling'}
+    rows = []
+    for s, il in ranges:
+        evid = s in chf or s in pairf or any(i.mnemonic == 'lea' and len(i.operands) == 2 and i.operands[1].type == X.X86_OP_MEM and i.operands[1].mem.base != 0
+                                              and i.operands[1].mem.base == i.operands[1].mem.index and i.operands[1].mem.scale == 2 and i.operands[1].mem.disp == 0 for i in il)
+        for ins in il:
+            mem = next((o for o in ins.operands if o.type == X.X86_OP_MEM), None)
+            if mem is None or mem.mem.base in (X.X86_REG_RSP, X.X86_REG_RBP) or ins.mnemonic in ('lea', 'nop'):
+                continue
+            d = mem.mem.disp & 0xFFFFFFFF
+            if mem.mem.base == X.X86_REG_RIP:
+                t = (ins.address + ins.size + mem.mem.disp) & 0xFFFFFFFFFFFFFFFF
+                rg = region_of(t)
+                if rg == 'CH':
+                    rows.append((ins.address, s, 'CH', (t - ch0) % 0x18, mem.size, 'rip', ins))
+                elif rg in ('P4', 'HASH'):
+                    rows.append((ins.address, s, rg, (t - REGIONS[rg][0]) % (4 if rg == 'P4' else 2), mem.size, 'rip', ins))
+                continue
+            if CH_RVA <= d < CH_RVA + 0x20:
+                rows.append((ins.address, s, 'CH', d - CH_RVA, mem.size, 'image relative', ins))
+            elif P8CH <= d < P8CH + 0x20:
+                rows.append((ins.address, s, 'CH', d - P8CH, mem.size, 'P8 relative', ins))
+            elif P8P4 <= d < P8P4 + 4:
+                rows.append((ins.address, s, 'P4', d - P8P4, mem.size, 'P8 relative', ins))
+            elif P8HASH <= d < P8HASH + 2:
+                rows.append((ins.address, s, 'HASH', d - P8HASH, mem.size, 'P8 relative', ins))
+            elif d in (8, 0x10, 0x12) and mem.mem.base != 0 and (evid or mem.size == 2):
+                rows.append((ins.address, s, 'CH', d, mem.size, 'child pointer (function handles children)' if evid else 'child pointer? (word access at a link offset, function names no table)', ins))
+    by = collections.Counter()
+    detail = collections.defaultdict(list)
+    for at, s, rg, off, size, how, ins in rows:
+        name = FIELDS.get(off, 'off 0x%X' % off) if rg == 'CH' else {0: 'first child' if rg == 'P4' else 'bucket head', 2: 'last child'}.get(off, 'off %d' % off)
+        proven = not how.startswith('child pointer')
+        if size == 2:
+            kind = 'word'
+        elif size > 2 and proven and (name in LINK or name == 'value/free link'):
+            kind = 'wide, through a stage 1 table'
+        elif size > 2:
+            kind = 'ambiguous (4 or 8 byte access through a pointer: stack value tags, or paired links)'
+        else:
+            kind = 'byte'
+        by[(rg, name, kind)] += 1
+        detail[(rg, name, kind)].append((at, s, how, ins.mnemonic + ' ' + ins.op_str))
+    print('accesses to the child entry and the link tables in the variable system (stage 1 tables: rip, image relative, P8 relative; pointer ones only in functions that handle children):')
+    for (rg, name, kind), n in sorted(by.items()):
+        if name in ('type', 'name hi', 'parent', 'value') or name.startswith('off'):
+            continue
+        print('  %-5s %-16s %-52s %d' % (rg, name, kind, n))
+    words = [k for k in detail if k[2] == 'word' and (k[1] in LINK or k[0] in ('P4', 'HASH') or k[1] == 'value/free link')]
+    wide = [k for k in detail if k[2].startswith('wide') and k[1] in LINK | {'value/free link'}]
+    amb = [k for k in detail if k[2].startswith('ambiguous') and k[1] in LINK]
+    n_words, n_wide, n_amb = (sum(len(detail[k]) for k in g) for g in (words, wide, amb))
+    link_total = n_words + n_wide
+    print('u16 child index accesses (hash next, siblings, free list link, first / last child, bucket head): %d word accesses in %d functions; %d wider accesses of paired links through a stage 1 table; %d ambiguous (not counted)' %
+          (n_words, len({s for k in words for _, s, _, _ in detail[k]}), n_wide, n_amb))
+    for key in sorted(words):
+        how = collections.Counter(h for _, _, h, _ in detail[key])
+        print('    %-5s %-16s %d  (%s)' % (key[0], key[1], len(detail[key]), ', '.join('%s %d' % kv for kv in how.items())))
+    db = sqlite3.connect('file:' + db_file.replace('\\', '/') + '?mode=ro', uri=True)
+    num = lambda x: x if isinstance(x, int) else int(x, 16)
+    ext = collections.defaultdict(list)
+    for src, dst, at in db.execute('select src_func, dst, at from calls').fetchall():
+        try:
+            src, dst = num(src), num(dst)
+        except Exception:
+            continue
+        if at is not None and VM_CALLS[0] <= dst < VM_CALLS[1] and not (VM_CALLS[0] <= src < VM_CALLS[1]):
+            ext[dst].append((src, at))
+    holders = collections.defaultdict(list)
+    for dst, lst in ext.items():
+        for src, at in lst:
+            taint, k = {'rax'}, 0
+            for ins in md.disasm(img.read(at + 5, 120), at + 5):
+                k += 1
+                if k > 16:
+                    break
+                ops = ins.operands
+                if ins.mnemonic == 'mov' and len(ops) == 2 and ops[0].type == X.X86_OP_MEM and ops[1].type == X.X86_OP_REG and ops[0].size == 2 and FULL.get(ins.reg_name(ops[1].reg)) in taint:
+                    holders[dst].append((at, src, 'store16 ' + ins.op_str))
+                if ins.mnemonic == 'movzx' and len(ops) == 2 and ops[1].type == X.X86_OP_REG and ops[1].size == 2 and FULL.get(ins.reg_name(ops[1].reg)) in taint:
+                    holders[dst].append((at, src, 'trunc16 ' + ins.op_str))
+                if ins.mnemonic in ('ret', 'jmp', 'call') or ins.mnemonic.startswith('j'):
+                    break
+                if ins.mnemonic == 'mov' and len(ops) == 2 and ops[0].type == X.X86_OP_REG and ops[1].type == X.X86_OP_REG and ops[0].size >= 4 and FULL.get(ins.reg_name(ops[1].reg)) in taint:
+                    taint.add(FULL.get(ins.reg_name(ops[0].reg)))
+                    continue
+                try:
+                    for r in ins.regs_access()[1]:
+                        taint.discard(FULL.get(ins.reg_name(r)))
+                except Exception:
+                    pass
+                if not taint:
+                    break
+    print('\nexternal call sites into the variable system: %d in %d callees; with a 16-bit store or truncation of the result in the next 16 instructions: %d in %d callees' %
+          (sum(len(v) for v in ext.values()), len(ext), sum(len(v) for v in holders.values()), len(holders)))
+    for dst in sorted(holders):
+        print('  callee %X: %d sites%s' % (dst, len(holders[dst]), '   [%s]' % CHILD_API[dst] if dst in CHILD_API else ''))
+    print('callees that return a child index (the FindVariable / GetVariable families): %d sites outside, %d with a 16-bit use' %
+          (sum(len(ext.get(d, [])) for d in CHILD_API), sum(len(holders.get(d, [])) for d in CHILD_API)))
+    outside = [r for r in sites['refs'] if not (VM_CALLS[0] <= r['func'] < VM_CALLS[1])]
+    print('functions outside the variable system that name a table: %s' % ', '.join('%X (%s)' % (r['func'], r['region']) for r in outside))
+    out = dict(by={'%s|%s|%s' % k: v for k, v in by.items()}, link_total=link_total, external_sites=sum(len(v) for v in ext.values()), external_callees=len(ext),
+               holders={'%X' % d: len(v) for d, v in holders.items()}, child_api_sites=sum(len(ext.get(d, [])) for d in CHILD_API),
+               child_api_holders=sum(len(holders.get(d, [])) for d in CHILD_API))
+    if args.o:
+        json.dump(out, open(args.o, 'w'), indent=1)
+        print('wrote', args.o)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -1008,6 +1319,8 @@ def main():
     p = sub.add_parser('parents'); p.add_argument('-o', default=None); p.set_defaults(fn=parents)
     p = sub.add_parser('buckets'); p.add_argument('-o', default=None); p.set_defaults(fn=buckets)
     p = sub.add_parser('emit-buckets'); p.add_argument('file'); p.add_argument('-o', required=True); p.set_defaults(fn=emit_buckets)
+    p = sub.add_parser('segments'); p.add_argument('-o', default=None); p.set_defaults(fn=segments)
+    p = sub.add_parser('links'); p.add_argument('-o', default=None); p.set_defaults(fn=links)
     args = ap.parse_args()
     sys.exit(args.fn(args) or 0)
 

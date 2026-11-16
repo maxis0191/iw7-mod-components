@@ -421,6 +421,7 @@
     "tests/ops/resource_scheduler_shareable_test.ps1",
     "tests/ops/resource_scheduler_test.ps1",
     "tests/ops/rig_assets_probe_test.ps1",
+    "tests/ops/script_children_census_test.py",
     "tests/ops/script_parent_ids_test.py",
     "tests/ops/script_var_accessor_test.py",
     "tests/ops/script_variables_test.py",
