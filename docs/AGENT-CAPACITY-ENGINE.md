@@ -35,13 +35,13 @@ Every field is compared with its shipped value before anything is written; one d
 address (nothing is half-applied). Relocated tables sit within 2 GB of the image (the code reaches them by 32-bit
 displacements) with guard bytes checked every 0.5 s.
 
-**Accepted counts:** 24, 28, ..., 232 (`refuse()`, a34). The barriers, in the order `refuse()` checks them: C - 42 must be a multiple of 4 (the archive
-copy loops move by (2C - 84) / 8 and (82C + 4) / 8 quadwords); at most 232 agents (`max_analysed_agents`: G_GetMaxAgents and the GameStateInfo
-hold the count in a byte, an agent's entity number is one byte up to 238); the snapshot's character change mask (CG_SetNextSnap: a 32-byte room
-opened by its frame grow, 8 words = 256 characters, 250 at 232 agents); the page-probe caves of the three grown frames, planned for 232 agents
-(frame_extra of FUN_1403E61B0 = (2 x 279 - 71) x 32 = 15,584, frame 0xD58 + X = 19,000 bytes, 5 probes; FUN_140ADDED0 = (279 - 71) x 32 = 6,656,
-3 probes; FUN_140ADB8E0 = (279 - 71) x 16 = 3,328, frame 0x4F0 + X = 4,592 bytes, 2 probes, a cave it did not have before; 279 = n + 47 sentient
-slots). None of these functions had a stack probe call of its own (their stock frames are below a page); the planner adds the probe. The
+**Accepted counts:** 24, 28, ..., 320 (`refuse()`, a34; 232 until a57). The barriers, in the order `refuse()` checks them: C - 42 must be a multiple of 4 (the archive
+copy loops move by (2C - 84) / 8 and (82C + 4) / 8 quadwords); at most 320 agents (`max_analysed_agents`; see "320 agents (a57)": the agent number is 9 wire
+bits above 256 characters, the gamestate byte is min(n, 255)); the snapshot's character change mask (CG_SetNextSnap: a 48-byte room opened by its frame grow,
+12 words = 384 characters, 338 at 320 agents); the page-probe caves of the three grown frames, planned for 320 agents
+(frame_extra of FUN_1403E61B0 = (2 x 367 - 71) x 32 = 21,216, frame 0xD58 + X = 24,632 bytes, 7 probes; FUN_140ADDED0 = (367 - 71) x 32 = 9,472,
+3 probes; FUN_140ADB8E0 = (367 - 71) x 16 = 4,736, frame 0x4F0 + X = 6,000 bytes, 2 probes; 367 = n + 47 sentient
+slots; a34 planned 15,584 / 6,656 / 3,328 for 232). None of these functions had a stack probe call of its own (their stock frames are below a page); the planner adds the probe. The
 corpse and character bounds are not a barrier any more (a33, below). a29 had 15,456 / 3,296 / 6,592 at 230 agents; 232 adds two slots.
 
 **One-byte fields (15 Nov 2026).** The component patched 43 instructions with ONE byte, and the CPU sign-extends every one of them (12
@@ -430,6 +430,27 @@ initialisers (FUN_140C09200 for the ids, FUN_140C09280 for the children) with th
 **Client project accessors (a48).** The fork's own `scr_VarGlob` accessors (`scripting/array.cpp`, `execution.cpp`, `script_value.cpp/.hpp`) used a structure of another build (40,960 objects: children at +0x98000 where the engine has +0xC5000; stride `0xA000`), so they read wrong memory on a stock game as well, and could not follow the moved tables. They are reachable in a match (`scripting::entity` field get / set from the `give health` command and the owner cheats, `scripting::array` from the GSC builtin `listfiles` and `give allammo`, every `is<array>` type test). Every access now goes through `src/native/script_var_layout.hpp`: the stock layout by default, the relocated tables once `script_variables.cpp` installs them (after its code patches), an id or child index outside the tables refused (null, safe value, first refusal logged). The fork edits are the data `ops/script-variables/accessor-edits.json`, applied to the pinned `cfca45b` sources by `ops/Apply-ScriptVarAccessorOverlay.ps1` in every ServerModules build (an unowned edit stops the build). Tests: `tests/native/script_var_layout_test.cpp`, `tests/ops/script_var_accessor_test.py`; live: the lab probe `cap_accessor_probe` (server repository, `ops/gamelab/lib/capacity.gsc`) builds a script array with `listfiles` on the relocated tables (runs a48-j1b, 232 records, joined client: 2 files read back).
 
 **Runs (headless, private loopback, a46, client built from this component).** n = 100 `capacity-agents-headless` (stock-table pages inaccessible): PASS 22/22, 9/9, peak alive 78, children 115,578 / parents 30,901 at the peak. n = 232 `capacity-agents-soak-headless` with `alive=200` (25 windows of 30 s): PASS 168/168, 30/30, alive 197 to 200, 232 instances, **children peak 178,433 (fullest segment 45,054 of 65,535), parents peak 52,571 (fullest segment 14,964 of 16,383, 91 %)**, no engine error text. The parent ids are the next limit (the walls: about 215 alive for the parents, about 290 for the children); past it the u16 parent id of the child entry has to widen (docs/SCRIPT-VARIABLES.md in the server repository, "What the full mission target needs").
+
+## 320 agents (a57, 16 Nov 2026)
+
+`-agent-capacity` accepts 24, 28, ..., 320 (characters 338, `map_start` 354, 367 sentient slots). What stopped 232 -> 238 -> 255 -> 256 was three separate widths
+(a55): the explicit agent number of the agent-state delta (the wire width), the character change mask of CG_SetNextSnap (8 words) and the agent count in GameStateInfo's byte.
+
+| What | Change |
+|---|---|
+| agent number and clientNum, wire bits | `layout::net_id_bits()`: 7 up to 127 characters, 8 up to 256, **9 above** (5 bit counts + 24 clientNum rows are imm32 values; 240 agents is the first count with 9) |
+| every other 6..8 bit integer row of the entity and agent state field lists (table 0x141BB3B20) | **90 rows widened to 9 bits above 256 characters** (generated `agent_capacity_net_rows.inc`, `ops/engine/net_rows.py find|check|emit`; every row's offset is checked before it is written): none was proven free of character numbers, a wider field changes no value; includes the one 8 bit clientNum of the base list 32 (0x141BB7C08), which the component never patched. Player state lists (34, 36) are left alone: players only |
+| CG_SetNextSnap change mask | 12 words (48 bytes, 384 characters): frame grow `--extra 48`, the five mask caves regenerated (six qword clear) |
+| GameStateInfo +0x546, G_GetMaxAgents | the byte (and the wire byte of the gamestate message) is `min(n, 255)`; above 255 agents its three value readers (SV init FUN_140c56a90 0x140C56AF8, the client snapshot ring FUN_1409b2620 0x1409B266C, GScr_getmaxagents 0x140C1DD99) become `mov r32, imm32 n` + nops in place; the five `cmp byte [+0x546], 0` tests stay |
+| page-probe caves of the three grown frames | planned for 320: FUN_1403E61B0 X = 21,216 (frame 24,632 bytes, 7 probes), FUN_140ADDED0 9,472, FUN_140ADB8E0 4,736 |
+| **saved animation cache** (a hash map of 193 buckets at 0x147994898, DObj index -> saved animation state; nodes from ONE static pool of 84 x 0x360 bytes, free list head 0x147994890, chained by the initialiser at 0x14001AE20) | the pool grows to 2,048 nodes (one per possible key: 2,048 DObj records): the extra 1,964 blocks are appended to the free list at start (`extend_free_list`). Stock: the insert (FUN_140D815A0) pops the head with no emptiness check, so the **85th key** took the head variable itself as a node and wrote key and state over the first buckets; the chain walk (FUN_140D80D60, 0x140D80DE7) then read a garbage pointer and the server crashed. Found with ghost agents: **each stock ghost holds one node for good**, so 84 ghosts end the match, with or without this component (the pre-a57 client crashes at the same instruction, runs a57-m232 and a57-m232-base; plain zombies hold none: 250 alive plain at 232 never reached it) |
+
+Checked, nothing to change: the 25 unread `cmp 0x2A / 0x29` compares and the six 42-iteration loops (bounds against stock-sized arrays: agents from 42 on are not served, no store through an index); the
+stack arrays of the 320 scan (97 rows, the same as at 232: the 2 overruns are the grown frames; the 85 unknown rows are not indexed by an entity, character, sentient or agent number, or hold 368 entries or more);
+`G_CollectFlaggedAgents_Unbounded` still walks characters 18..41 only (its caller's 6-int array). Not settled: a store indexed by the entity space (2,048) into an array of 368..2,047 entries.
+
+Tests: `agent_capacity_sites_test.py` (every cave and site for every count 24..320, net bits 7/8/9, the 12 word mask, refuse mirror), `agent_capacity_net_rows_test.py` (the table equals the image, the
+three readers, the nonzero tests), pools test (the animation cache: 84 nodes read back from the initialiser), the records / state / snapshot / sound tests at 24..320.
 
 ## Players on another layout
 
