@@ -65,24 +65,32 @@ bool write(const edit& e, bool rollback) noexcept {
     return VirtualProtect(address, value.size(), previous, &ignored) && flushed && !std::memcmp(address, value.data(), value.size());
 }
 
+long environment_value(const char* name) {
+    char env[16]{};
+    if (!GetEnvironmentVariableA(name, env, sizeof(env)) || !env[0]) return -1;
+    char* end{};
+    const auto value = std::strtol(env, &end, 10);
+    return (!end || *end) ? 0 : value;
+}
+// `-script-canon-names n`, else IW7_SCRIPT_CANON_NAMES. A process that is not a dedicated server takes IW7_SCRIPT_CANON_NAMES_CLIENT first: a lab test switch, so that one
+// session can hold a client of the shipped table against a server of the raised one (the environment is shared by the processes a runner starts).
 long option_value() {
     long requested = -1;
+    bool dedicated = false;
     int count{};
     if (auto args = CommandLineToArgvW(GetCommandLineW(), &count)) {
-        for (int i = 0; i + 1 < count; ++i)
-            if (!std::wcscmp(args[i], L"-script-canon-names")) {
+        for (int i = 0; i < count; ++i) {
+            if (!std::wcscmp(args[i], L"-dedicated")) dedicated = true;
+            if (i + 1 < count && !std::wcscmp(args[i], L"-script-canon-names")) {
                 wchar_t* end{};
                 requested = std::wcstol(args[i + 1], &end, 10);
                 if (!end || *end) requested = 0;
             }
+        }
         LocalFree(args);
     }
-    char env[16]{};
-    if (requested < 0 && GetEnvironmentVariableA("IW7_SCRIPT_CANON_NAMES", env, sizeof(env)) && env[0]) {
-        char* end{};
-        requested = std::strtol(env, &end, 10);
-        if (!end || *end) requested = 0;
-    }
+    if (requested < 0 && !dedicated) requested = environment_value("IW7_SCRIPT_CANON_NAMES_CLIENT");
+    if (requested < 0) requested = environment_value("IW7_SCRIPT_CANON_NAMES");
     return requested;
 }
 

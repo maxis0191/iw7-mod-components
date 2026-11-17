@@ -6,7 +6,7 @@
 // byte name buffer, one block of 0x20000 bytes that FUN_140C03280 takes from a hunk of exactly that size at the start of every script load) and MAX_CANONICAL_STRING
 // ends the load when it is full: Beast (cp_final) has 66 names to spare with the production scripts. An id is 0x13FCC + slot; the variable system holds a name in 24 bits
 // and keeps 0x40000 and above for object keys, so a name may go up to 0x3FFFF (docs/SCRIPT-CANONICAL.md has every holder).
-// `-script-canon-names <n>` (or IW7_SCRIPT_CANON_NAMES) sets the number of slots: 4095 is the shipped table untouched, up to max_names; the default is default_names.
+// `-script-canon-names <n>` (or IW7_SCRIPT_CANON_NAMES; a client process also IW7_SCRIPT_CANON_NAMES_CLIENT, first) sets the number of slots: 4095 is the shipped table untouched, up to max_names; the default is default_names.
 namespace script_canonical {
 
 constexpr std::uint32_t stock_names = 4095, default_names = 16383, max_names = 65535;
