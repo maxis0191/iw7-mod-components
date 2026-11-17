@@ -854,9 +854,10 @@ public:
         self_high = reinterpret_cast<std::uint16_t*>(regions[1].storage.data);
         char preburn_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_PREBURN", preburn_env, sizeof(preburn_env));      // lab detection test (a55, a79): the low pool is burned down to what the class and client arrays need
-        preburn_keep = utils::flags::has_flag("script-variables-preburn") || preburn_env[0] == '1' ? 24u : 0u;
+        const bool preburn = utils::flags::has_flag("script-variables-preburn") || preburn_env[0] == '1' || preburn_env[0] == '2';
+        preburn_keep = preburn_env[0] == '2' ? 24u : 0u;      // 1: general allocations never take a low id (threads keep the whole low pool); 2: the low pool is burned down to 24 locals a segment
         pools.attach(parents_table, counters_now, seg_in_use, parent_ids_now(), parent_low_locals_for(seg_in_use),
-                     utils::flags::has_flag("script-variables-low-first") || low_first_env[0] == '1', preburn_keep);
+                     utils::flags::has_flag("script-variables-low-first") || low_first_env[0] == '1', preburn_keep, preburn);
         code_region = reserve_code(0x10000);
         // the VM initialisers have not run yet while the stock tables are still all zero (first child entry and first parent entry type bytes)
         const bool initialised = *reinterpret_cast<const std::uint8_t*>(stock_ch + 0xA) != 0 || *reinterpret_cast<const std::uint8_t*>(stock_p8 + 4) != 0;
@@ -871,7 +872,7 @@ public:
         // lab bisection (IW7_SCRIPT_VARIABLES_LOWCLASSES, bits: 1 threads, 2 structs, 4 entity objects): those classes take the low pool only, as in low-first mode
         char classes_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOWCLASSES", classes_env, sizeof(classes_env));
-        low_classes = pools.low_first() ? 7u : static_cast<unsigned>(std::atoi(classes_env));
+        low_classes = pools.low_first() ? 7u : (classes_env[0] ? static_cast<unsigned>(std::atoi(classes_env)) : 1u);      // default (stage 1): threads low, structs and entity objects high
         char sites_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOWTHREADSITES", sites_env, sizeof(sites_env));
         low_thread_sites = static_cast<unsigned>(std::atoi(sites_env));

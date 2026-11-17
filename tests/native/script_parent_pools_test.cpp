@@ -127,6 +127,20 @@ static void one(unsigned S) {
         }
         CHECK(high == static_cast<std::size_t>(S) * (0x10000u - low_locals - 1u) + S);        // locals low_locals..0xFFFF of every segment
     }
+    // stage 1 burn: the whole low pool stays for the low-only classes, a general allocation never falls back to it
+    {
+        parent_pools p;
+        table.assign(parent_ids_for(S), parent_entry{});
+        for (auto& c : counters) c = 0;
+        p.attach(table.data(), counters, S, parent_ids_for(S), parent_low_locals_for(S), false, 0, true);
+        p.format();
+        CHECK(p.burned());
+        std::size_t low = 0, high = 0;
+        for (;;) { const auto id = p.take(false); if (!id) break; CHECK(id >= low_ids); ++high; }
+        for (;;) { for (unsigned s = 0; s < S; ++s) counters[s] = 0; const auto id = p.take(true); if (!id) break; CHECK(id < low_ids); ++low; }
+        CHECK(low == static_cast<std::size_t>(S) * parent_low_usable(S));
+        CHECK(high == static_cast<std::size_t>(S) * (0x10000u - low_locals));
+    }
     // the id <-> local conversion of the key (`id >> shift`) and of the read back (`local << shift | segment`) is the identity for every id
     for (std::uint32_t id : {S, S + 1u, 0x1234u, 0xFFFFu, 0x10000u, ids - 1}) {
         const auto local = id >> segment_shift(S), segment = id & (S - 1);
