@@ -298,6 +298,7 @@ void rebuild_refused() {                        // 0x140C08C30 rebuilds stock fo
 // the replaced FUN_140C09340 / FUN_140C08D10 and two caves in FUN_140C09370. So threads, structs and entity objects take ids of any segment; only the client and class arrays stay low.
 std::uint16_t* self_high{};
 unsigned preburn_keep{};              // lab option (-script-variables-preburn): the low pool keeps this many locals a segment, every other low id is burned
+unsigned low_classes{};               // bit 0: threads take the low pool only, bit 1: structs, bit 2: entity objects (-script-variables-low-first: all)
 inline std::uint32_t self_of(std::uint32_t id) noexcept { return parents_table[id].link | (static_cast<std::uint32_t>(self_high[id]) << 16); }
 inline std::uint16_t first_child(std::uint32_t id) noexcept { return *reinterpret_cast<const std::uint16_t*>(regions[3].storage.data + 4ull * id); }      // P4 first child
 inline void remove_ref(std::uint32_t id) { reinterpret_cast<void (*)(std::uint32_t)>(0x140C05CA0ull)(id); }                                              // RemoveRefToObject
@@ -307,7 +308,7 @@ std::uint32_t* const dead_chain_head = reinterpret_cast<std::uint32_t*>(0x14665A
 std::uint16_t* alloc_thread(std::uint32_t* out, std::uint32_t self) {      // the three thread allocation sites (AllocThread, FUN_140C043A0, FUN_140C04510): rdx = the self
     if (self >= parent_ids_now())
         game::Com_Error(game::ERR_FATAL, "script variables: a thread was started on object %u: beyond the last parent id 0x%X (the high bits of a self are kept in table B)", self, parent_ids_now() - 1);
-    auto* entry = take_parent(out, pools.low_first());
+    auto* entry = take_parent(out, (low_classes & 1) != 0);
     self_high[*out] = static_cast<std::uint16_t>(self >> 16);
     return entry;
 }
@@ -834,9 +835,14 @@ public:
         // objects take ids of every segment; -script-variables-low-first restores the order of the previous build (all of them low only)
         for (const auto site : {0x140C096C6ull, 0x140C096EFull})
             redirect_call(site, 0x140C04650ull, reinterpret_cast<const void*>(&alloc_variable_low));
-        if (pools.low_first())
-            for (const auto site : {0x140C0900Bull, 0x140C04559ull, 0x140C059B8ull, 0x140C090B0ull})
+        // lab bisection (IW7_SCRIPT_VARIABLES_LOWCLASSES, bits: 1 threads, 2 structs, 4 entity objects): those classes take the low pool only, as in low-first mode
+        char classes_env[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOWCLASSES", classes_env, sizeof(classes_env));
+        low_classes = pools.low_first() ? 7u : static_cast<unsigned>(std::atoi(classes_env));
+        if (low_classes & 2)
+            for (const auto site : {0x140C04559ull, 0x140C059B8ull, 0x140C090B0ull})
                 redirect_call(site, 0x140C04650ull, reinterpret_cast<const void*>(&alloc_variable_low));
+        if (low_classes & 4) redirect_call(0x140C0900Bull, 0x140C04650ull, reinterpret_cast<const void*>(&alloc_variable_low));
         redirect_thread_alloc(0x140C043C5ull, false);       // FUN_140C043A0: the self is in ebx
         redirect_thread_alloc(0x140C0458Dull, false);       // AllocThread: ebx
         redirect_thread_alloc(0x140C04523ull, true);        // FUN_140C04510 (child thread): edi

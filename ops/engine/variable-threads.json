@@ -407,6 +407,15 @@
    "text": "movzx ecx, ax"
   },
   {
+   "at": 5381309550,
+   "kind": "name",
+   "why": "an object key name read back to an id with 16 bit arithmetic",
+   "length": 15,
+   "stock": "6603c80fb7d9418bcf8d9300000400",
+   "new": "01c18d990000fcff89ca418bcf9090",
+   "text": "add dx,ax ; movzx ebx,dx ; lea"
+  },
+  {
    "at": 5381328369,
    "kind": "chain",
    "why": "FUN_140C08D90 reads the head of the dead entity chain as a word",
@@ -414,6 +423,15 @@
    "stock": "0fb7053413a505",
    "new": "908b053413a505",
    "text": "movzx eax, word ptr [rip + 0x5a51334]"
+  },
+  {
+   "at": 5381330009,
+   "kind": "name",
+   "why": "an object key name read back to an id with 16 bit arithmetic",
+   "length": 12,
+   "stock": "6603d00fb7da8dbb00000400",
+   "new": "01c28d9a0000fcff89d79090",
+   "text": "add dx,ax ; movzx ebx,dx ; lea"
   },
   {
    "at": 5381336385,

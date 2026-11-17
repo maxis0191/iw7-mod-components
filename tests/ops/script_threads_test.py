@@ -33,23 +33,24 @@ class ThreadRows(unittest.TestCase):
         self.cpp = open(CPP, encoding='utf-8').read()
 
     def test_inc_matches_json(self):
-        rows = self.json['rows']
-        self.assertEqual(len(rows), len(self.inc))
-        for r, (at, length, stock, new) in zip(rows, self.inc):
-            self.assertEqual((r['at'], r['length']), (at, length))
-            self.assertEqual(int.from_bytes(bytes.fromhex(r['stock']), 'little'), stock)
-            self.assertEqual(int.from_bytes(bytes.fromhex(r['new']), 'little'), new)
+        flat = []
+        for r in self.json['rows']:
+            stock, new = bytes.fromhex(r['stock']), bytes.fromhex(r['new'])
+            self.assertEqual(len(stock), len(new))
+            for k in range(0, len(stock), 8):
+                flat.append((r['at'] + k, len(stock[k:k + 8]), int.from_bytes(stock[k:k + 8], 'little'), int.from_bytes(new[k:k + 8], 'little')))
+        self.assertEqual(flat, self.inc)
 
     def test_counts(self):
         kinds = {}
         for r in self.json['rows']:
             kinds[r['kind']] = kinds.get(r['kind'], 0) + 1
-        self.assertEqual(kinds, {'caller': 42, 'field_1C70': 4, 'chain': 1, 'return': 2, 'free': 1, 'field_1A24': 9, 'field_test': 1})
+        self.assertEqual(kinds, {'caller': 42, 'field_1C70': 4, 'name': 2, 'chain': 1, 'return': 2, 'free': 1, 'field_1A24': 9, 'field_test': 1})
         self.assertEqual(self.json['problems'], [])
 
     def test_widening_rule(self):
         import variable_sites as vs
-        for r in self.json['rows']:
+        for r in [r for r in self.json['rows'] if r['kind'] != 'name']:
             stock = bytes.fromhex(r['stock'])
             self.assertEqual(vs.widen_bytes(stock).hex(), r['new'])
             self.assertEqual(len(stock), len(bytes.fromhex(r['new'])))
@@ -57,6 +58,20 @@ class ThreadRows(unittest.TestCase):
         self.assertEqual(vs.widen_bytes(bytes.fromhex('0fb7c3')).hex(), '908bc3')                 # movzx eax,bx -> mov eax,ebx
         self.assertEqual(vs.widen_bytes(bytes.fromhex('668983701c0000')).hex(), '908983701c0000')   # mov word [rbx+0x1c70],ax -> dword
         self.assertEqual(vs.widen_bytes(bytes.fromhex('410fb74c2d02')).hex(), '90418b4c2d02')       # REX movzx -> nop ; REX mov
+
+    def test_name_decodes(self):
+        # the object key name -> id decode keeps the full name: ebx = name - 0x40000 and edi = name, the registers the next instructions use
+        try:
+            import capstone
+        except ImportError:
+            self.skipTest('no capstone')
+        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
+        rows = {r['at']: r for r in self.json['rows'] if r['kind'] == 'name'}
+        self.assertEqual(sorted(rows), [0x140C0446E, 0x140C09459])
+        text = lambda h, at: [(i.mnemonic + ' ' + i.op_str).strip() for i in md.disasm(bytes.fromhex(h), at)]
+        self.assertEqual(text(rows[0x140C09459]['new'], 0x140C09459), ['add edx, eax', 'lea ebx, [rdx - 0x40000]', 'mov edi, edx', 'nop', 'nop'])
+        self.assertEqual(text(rows[0x140C0446E]['new'], 0x140C0446E), ['add ecx, eax', 'lea ebx, [rcx - 0x40000]', 'mov edx, ecx', 'mov ecx, r15d', 'nop', 'nop'])
+        self.assertEqual(text(rows[0x140C09459]['stock'], 0x140C09459), ['add dx, ax', 'movzx ebx, dx', 'lea edi, [rbx + 0x40000]'])
 
     def test_rows_against_the_image(self):
         try:
@@ -66,6 +81,7 @@ class ThreadRows(unittest.TestCase):
             self.skipTest('no analysed image')
         for r in self.json['rows']:
             self.assertEqual(img.read(r['at'], r['length']).hex(), r['stock'], '%X' % r['at'])
+            self.assertEqual(r['length'], len(r['stock']) // 2)
 
     def test_table_b_is_only_in_the_refused_functions(self):
         stage1 = json.load(open(STAGE1))
