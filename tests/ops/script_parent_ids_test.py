@@ -33,7 +33,7 @@ STUB = (0x140C05D70, 45)
 ALLOC_LOW_CALLS = (0x140C043C5, 0x140C0458D, 0x140C096C6, 0x140C096EF, 0x140C0900B, 0x140C04559, 0x140C059B8, 0x140C090B0, 0x140C04523)      # a79: the class arrays always, the others with -script-variables-low-first (the thread sites through a thunk)
 CLIENT_ARRAY_CALLS = (0x140C4F64E, 0x140C503EF)
 REPLACED = {0x140C04650: 'alloc_variable', 0x140C04910: 'release_with_children', 0x140C05C50: 'release_reference', 0x140C08E70: 'release_unreferenced_structs',
-            0x140C09200: 'format_parents', 0x140C08C30: 'rebuild_refused', 0x140C09340: 'kill_thread_self', 0x140C097B0: 'set_thread_self', 0x140C08D10: 'flush_dead_entities'}
+            0x140C09200: 'format_parents', 0x140C08C30: 'rebuild_refused', 0x140C09340: 'kill_thread_self', 0x140C097B0: 'set_thread_self', 0x140C08D10: 'flush_dead_entities', 0x140C054A0: 'object_word'}
 
 
 def image_and_db():

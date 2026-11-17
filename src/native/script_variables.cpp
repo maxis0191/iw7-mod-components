@@ -312,6 +312,12 @@ std::uint16_t* alloc_thread(std::uint32_t* out, std::uint32_t self) {      // th
     self_high[*out] = static_cast<std::uint16_t>(self >> 16);
     return entry;
 }
+// FUN_140C054A0 (59 callers, the game code too) returns the u16 at P8 +2 of an object: the size of an array, the number of an entity, the self of a thread. For a thread it is the full self.
+std::uint32_t object_word(std::uint32_t id) {
+    const auto& entry = parents_table[id];
+    const auto type = entry.type & 0xFFu;
+    return (type == 0xF || type == 0x10 || type == 0x11 || type == 0x12 || type == 0x17) ? self_of(id) : entry.link;
+}
 void kill_thread_self(std::uint32_t id) {        // 0x140C09340: drop the held self, the thread is dead (type 0x17, the payload stays)
     auto& entry = parents_table[id];
     remove_ref(self_of(id));
@@ -854,6 +860,7 @@ public:
         replace_function(0x140C09200ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&format_parents));
         replace_function(0x140C08C30ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&rebuild_refused));
         // thread self and dead entity chain: the readers and writers of P8 +2 (see above)
+        replace_function(0x140C054A0ull, {0x8B, 0xC1, 0x48, 0x8D, 0x0D}, reinterpret_cast<const void*>(&object_word));
         replace_function(0x140C09340ull, {0x40, 0x53, 0x48, 0x83, 0xEC}, reinterpret_cast<const void*>(&kill_thread_self));
         replace_function(0x140C097B0ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&set_thread_self));
         replace_function(0x140C08D10ull, {0x40, 0x53, 0x48, 0x83, 0xEC}, reinterpret_cast<const void*>(&flush_dead_entities));
