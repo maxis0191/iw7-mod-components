@@ -360,7 +360,25 @@ constexpr b_function b_functions[] = {
     {0x140C020E0ull, {0x40, 0x53, 0x48, 0x83, 0xEC}}};
 
 // lab audit (IW7_SCRIPT_VARIABLES_AUDIT=1, every 500 ms on the main thread): every live thread must hold a self that is a live object, every child thread a parent that is a thread
+void audit_children() {            // the free list of every segment holds 65,535 - children in use entries
+    static bool reported[16]{};
+    for (unsigned seg = 0; seg < seg_in_use; ++seg) {
+        if (reported[seg]) continue;
+        const auto base = regions[4].storage.data + (static_cast<std::uintptr_t>(seg) << 16) * child_bytes_each;
+        std::uint32_t length = 0, at = *reinterpret_cast<const std::uint16_t*>(base + 2);
+        while (at && length <= 0x10000) {
+            ++length;
+            at = *reinterpret_cast<const std::uint16_t*>(base + static_cast<std::uintptr_t>(at) * child_bytes_each + 2);
+        }
+        const std::uint32_t used = counters_now[seg];
+        if (length + used != 0xFFFFu) {
+            reported[seg] = true;
+            console::error("[script variables] audit: segment %u free list %u entries, %u in use (sum %u, want 65535)\n", seg, length, used, length + used);
+        }
+    }
+}
 void audit() {
+    audit_children();
     static unsigned reported{};
     if (!active || reported >= 30) return;
     for (std::uint32_t id = 1; id < parent_ids_now() && reported < 30; ++id) {
