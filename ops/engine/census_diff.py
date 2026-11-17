@@ -29,7 +29,7 @@ def load(path, agents=0):
         if len(f) < 8 or f[0] == 'region':
             continue
         row = dict(count=int(f[2]), main=int(f[3]), distinct=int(f[4]), lo=int(f[5], 16), hi=int(f[6], 16), stride=int(f[7], 16), sample=f[8] if len(f) > 8 else '')
-        regs = regions(agents)
+        regs = regions(agents) if f[0] == 'cg' else []
         row['kind'], row['lo'] = classify(regs, row['lo'])
         row['kind_hi'], row['hi'] = classify(regs, row['hi'])
         rows[(f[0], int(f[1], 16))] = row
