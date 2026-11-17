@@ -377,6 +377,19 @@ void audit_children() {            // the free list of every segment holds 65,53
         }
     }
 }
+// lab: the entry of FUN_140C05760 (a new child: parent in ecx, name in edx, segment base in r8d) checks that the segment base is the parent's
+void write_exit_stack(const char* why);
+void check_new_child(std::uint64_t parent, std::uint64_t name, std::uint64_t base) {
+    static unsigned reported{};
+    const auto want = (static_cast<std::uint32_t>(parent) & seg_mask()) << 16;
+    if (static_cast<std::uint32_t>(base) != want && reported < 20) {
+        ++reported;
+        console::error("[script variables] audit: new child of parent %u (type 0x%X) name 0x%X in segment base 0x%X, the parent's is 0x%X\n", static_cast<std::uint32_t>(parent),
+                       static_cast<std::uint32_t>(parent) < parent_ids_now() ? parents_table[static_cast<std::uint32_t>(parent)].type & 0xFFu : 0xFFu, static_cast<std::uint32_t>(name),
+                       static_cast<std::uint32_t>(base), want);
+        write_exit_stack("new child");
+    }
+}
 void audit() {
     audit_children();
     static unsigned reported{};
@@ -969,6 +982,9 @@ public:
             put(v, {0x51, 0x52, 0x89, 0xC1, 0xC1, 0xE9, 0x10, 0x48, 0xBA}); put64(v, b_base);                      // push rcx ; push rdx ; mov ecx,eax ; shr ecx,16 ; mov rdx, B
             put(v, {0x66, 0x42, 0x89, 0x0C, 0x4A, 0x5A, 0x59});                                                    // mov word [rdx+r9*2], cx ; pop rdx ; pop rcx
         });
+        char audit_early[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_early, sizeof(audit_early));
+        if (audit_early[0] == '1') entry_hook(0x140C05760ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<void (*)(std::uint64_t)>(&check_new_child));
         if (wide) entry_hook(0x140C09280ull, {0x48, 0x83, 0xEC, 0x28, 0x33, 0xC0}, &reset_counters);      // `sub rsp,0x28 ; xor eax,eax` of the child list initialiser: all counters are zeroed, not the four it zeroes
         char meter_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_METER", meter_env, sizeof(meter_env));
