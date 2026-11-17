@@ -463,6 +463,14 @@
       ]
     },
     {
+      "id": "script_canonical_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/script_canonical_test.py"
+      ]
+    },
+    {
       "id": "script_variables_test",
       "command": [
         "python",
