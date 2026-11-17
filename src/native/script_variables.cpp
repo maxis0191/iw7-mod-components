@@ -329,11 +329,14 @@ std::uint32_t* const scr_self_global = reinterpret_cast<std::uint32_t*>(0x14665A
 std::uint32_t* const dead_chain_head = reinterpret_cast<std::uint32_t*>(0x14665A12Cull);                  // BLK0 +0x2C: first dead entity object
 
 unsigned low_thread_sites{};          // lab bisection: bit k = thread allocation site k takes the low pool only (0 FUN_140C043A0, 1 AllocThread, 2 FUN_140C04510)
+std::uint32_t recent_threads[16]{};      // lab: the last thread ids handed out (poison hits print them)
+unsigned recent_next{};
 std::uint16_t* alloc_thread(std::uint32_t* out, std::uint32_t self, std::uint32_t site) {      // the three thread allocation sites (AllocThread, FUN_140C043A0, FUN_140C04510): rdx = the self, r8 = the site
     if (self >= parent_ids_now())
         game::Com_Error(game::ERR_FATAL, "script variables: a thread was started on object %u: beyond the last parent id 0x%X (the high bits of a self are kept in table B)", self, parent_ids_now() - 1);
     auto* entry = take_parent(out, (low_classes & 1) != 0 || ((low_thread_sites >> site) & 1) != 0);
     self_high[*out] = static_cast<std::uint16_t>(self >> 16);
+    recent_threads[recent_next++ & 15] = *out;
     return entry;
 }
 // FUN_140C054A0 (59 callers, the game code too) returns the u16 at P8 +2 of an object: the size of an array, the number of an entity, the self of a thread. For a thread it is the full self.
@@ -448,6 +451,7 @@ void scan_stack(const char* why) {              // the image addresses on the st
 }
 [[noreturn]] void poison_hit(const char* where, std::uint32_t id) {
     console::error("[script variables] poison: %s resolved id %u, a burned low id: a thread id was truncated to 16 bits\n", where, id);
+    for (unsigned i = 0; i < 16; ++i) console::error("[script variables] poison: recent thread id %u (low 16 bits %u)" "\n", recent_threads[(recent_next + i) & 15], recent_threads[(recent_next + i) & 15] & 0xFFFFu);
     scan_stack(where);
     write_exit_stack(where);
     game::Com_Error(game::ERR_FATAL, "script variables: poison hit in %s on id %u", where, id);
