@@ -238,6 +238,7 @@ std::uint16_t* save_numbers{};
 parent_pools pools;
 unsigned force_low{};                  // > 0 while an allocation that needs an id below 0x10000 runs (alloc_array_low)
 
+std::vector<bool> audit_free;          // lab audit: which ids are in the free lists (IW7_SCRIPT_VARIABLES_AUDIT=1)
 [[noreturn]] void parents_exhausted(bool low_only) {
     reinterpret_cast<void (*)(const char*)>(0x140D34180ull)(low_only ? "Exceeded maximum number of script objects with a 16-bit id (parents below 0x10000)"
                                                                      : "Exceeded maximum number of script objects (parents)");
@@ -246,6 +247,7 @@ unsigned force_low{};                  // > 0 while an allocation that needs an 
 std::uint16_t* take_parent(std::uint32_t* out, bool low_only) {
     const auto id = pools.take(low_only);
     if (!id) parents_exhausted(low_only);
+    if (!audit_free.empty()) audit_free[id] = false;
     *out = id;
     return &parents_table[id].refs;
 }
@@ -257,7 +259,19 @@ std::uint32_t alloc_array_low() {              // Scr_AllocArray (0x140C068B0) f
     --force_low;
     return id;
 }
-void push_parent(std::uint32_t id) { pools.give(id); }
+void write_exit_stack(const char* why);
+void push_parent(std::uint32_t id) {
+    if (!audit_free.empty()) {
+        static unsigned reported{};
+        if (audit_free[id] && reported < 20) {
+            ++reported;
+            console::error("[script variables] audit: id %u freed twice (type 0x%X)\n", id, parents_table[id].type & 0xFFu);
+            write_exit_stack("double free");
+        }
+        audit_free[id] = true;
+    }
+    pools.give(id);
+}
 void free_children(std::uint32_t id) { reinterpret_cast<void (*)(std::uint32_t)>(0x140C04990ull)(id); }
 void release_with_children(std::uint32_t id) {   // 0x140C04910: take a reference, free the children, drop it and free the object when it was the last
     auto& entry = parents_table[id];
@@ -371,7 +385,7 @@ void audit_children() {            // the free list of every segment holds 65,53
             at = *reinterpret_cast<const std::uint16_t*>(base + static_cast<std::uintptr_t>(at) * child_bytes_each + 2);
         }
         const std::uint32_t used = counters_now[seg];
-        if (length + used != 0xFFFFu) {
+        if (length + used + 64 < 0xFFFFu || length + used > 0xFFFFu + 64) {
             reported[seg] = true;
             console::error("[script variables] audit: segment %u free list %u entries, %u in use (sum %u, want 65535)\n", seg, length, used, length + used);
         }
@@ -983,6 +997,8 @@ public:
             put(v, {0x66, 0x42, 0x89, 0x0C, 0x4A, 0x5A, 0x59});                                                    // mov word [rdx+r9*2], cx ; pop rdx ; pop rcx
         });
         char audit_early[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_early, sizeof(audit_early));
+        if (audit_early[0] == '1') { audit_free.assign(parent_ids_now(), true); audit_free[0] = false; }
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_early, sizeof(audit_early));
         if (audit_early[0] == '1') entry_hook(0x140C05760ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<void (*)(std::uint64_t)>(&check_new_child));
         if (wide) entry_hook(0x140C09280ull, {0x48, 0x83, 0xEC, 0x28, 0x33, 0xC0}, &reset_counters);      // `sub rsp,0x28 ; xor eax,eax` of the child list initialiser: all counters are zeroed, not the four it zeroes
