@@ -116,12 +116,13 @@ Not covered: about 9 threads of the 84 deny `SuspendThread` (error 5; each is na
 
 `src/native/paris_write_census.cpp` (`-Perf`, lab only: needs `-paris-isolated-lab`) answers "which instruction writes where in this object", for the whole object instead of four cells. Every page of a region is made `PAGE_READONLY`; a store faults in a vectored handler,
 which counts it per writing instruction (RIP), keeps the lowest and highest offset and the first 128 distinct offsets, makes the page writable, sets the trap flag and continues; the single step puts the protection back. Reads never fault. Nothing is allocated or locked in the handler.
-A page that faults more than `-paris-write-census-limit` times (default 200,000) is released for good and listed (`# released`): the writers of that page are then incomplete. Slow on purpose: a census run, never a play session.
+A page that faults more than `-paris-write-census-limit` times (default 20,000: the first stores of a page are seen, a table's rows still show) is released for good and listed (`# released`): the writers of that page are then incomplete. Slow on purpose: a census run, never a play session.
 
 | Option | Meaning |
 |---|---|
 | `-paris-write-census [<regions>]` | comma list: `cg` (the Zombies client object of local client 0; re-armed when it moves; its size follows `-agent-capacity`) and `abs:<hex address>:<size>` (a static block, up to 12 MB) |
-| `-paris-write-census-limit <n>` | stores a page may fault before it is released (default 200000) |
+| `-paris-write-census-limit <n>` | stores a page may fault before it is released (default 20000) |
+| `-paris-write-census-delay <s>` | arm this many seconds after the client started (the map load and the join are too slow under page protection: a netlab client armed from the start never joined) |
 
 Output: `iw7-mod/paris-write-census/census-<time>-<pid>.tsv`, rewritten every 5 s (the play launcher copies it to `OutputRoot/write-census`; `-WriteCensus cg` of `Start-CapacityPlay.ps1`).
 Columns: region, RIP (relative to the image), stores, stores on the main thread, distinct offsets (up to 128), lowest and highest offset, gcd of the sampled offsets (the stride of a table), the first sampled offsets.
