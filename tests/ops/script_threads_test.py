@@ -45,7 +45,7 @@ class ThreadRows(unittest.TestCase):
         kinds = {}
         for r in self.json['rows']:
             kinds[r['kind']] = kinds.get(r['kind'], 0) + 1
-        self.assertEqual(kinds, {'caller': 42, 'field_1C70': 4, 'name': 2, 'chain': 1, 'return': 2, 'free': 1, 'field_1A24': 9, 'field_test': 1, 'stack_localid': 9, 'stack_entries': 10, 'stack_time': 2})
+        self.assertEqual(kinds, {'caller': 46, 'field_1C70': 4, 'name': 2, 'chain': 1, 'return': 2, 'free': 1, 'field_1A24': 9, 'field_test': 1, 'stack_localid': 9, 'stack_entries': 10, 'stack_time': 2})
         self.assertEqual(self.json['problems'], [])
 
     def test_widening_rule(self):

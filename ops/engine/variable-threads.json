@@ -92,6 +92,15 @@
    "text": "movzx ecx, ax"
   },
   {
+   "at": 5372944325,
+   "kind": "caller",
+   "why": "after the call at 140409FC0",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
    "at": 5372994630,
    "kind": "caller",
    "why": "after the call at 140416441",
@@ -263,6 +272,15 @@
    "text": "movzx ecx, ax"
   },
   {
+   "at": 5380578136,
+   "kind": "caller",
+   "why": "after the call at 140B51B53",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
    "at": 5380628774,
    "kind": "caller",
    "why": "after the call at 140B5E121",
@@ -362,9 +380,27 @@
    "text": "movzx ecx, ax"
   },
   {
+   "at": 5380630834,
+   "kind": "caller",
+   "why": "after the call at 140B5E92D",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
    "at": 5380630973,
    "kind": "caller",
    "why": "after the call at 140B5E9B8",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380631306,
+   "kind": "caller",
+   "why": "after the call at 140B5EB05",
    "length": 3,
    "stock": "0fb7c8",
    "new": "908bc8",

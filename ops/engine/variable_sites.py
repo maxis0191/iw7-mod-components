@@ -1500,9 +1500,10 @@ def thread_rows(img, md, db_file):
             rows[at] = dict(at=at, kind='name', why='an object key name read back to an id with 16 bit arithmetic', length=len(raw), stock=stock, new=new, text='add dx,ax ; movzx ebx,dx ; lea')
     add(FREE_THREAD, 'free', 'Scr_FreeThread argument')
     for callee in THREAD_CALLEES:
-        for (at,) in db.execute('select at from calls where dst=?', (callee,)).fetchall():
-            if at is None:
-                continue
+        # the engine database misses calls in the packed regions (a79: four caller sites): the instruction index of the whole image is the second source
+        sites = {at for (at,) in db.execute('select at from calls where dst=?', (callee,)).fetchall() if at is not None}
+        sites |= {at for at, text in idx.execute("select at,text from insn where kind='addr' and value=?", (callee,)).fetchall() if text.startswith('call')}
+        for at in sorted(sites):
             taint = {'rax'}
             for k, ins in enumerate(md.disasm(img.read(at + 5, 120), at + 5)):
                 if k >= 20:
