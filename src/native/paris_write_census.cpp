@@ -139,13 +139,14 @@ namespace paris_write_census
             {
                 auto& r = regions[ri];
                 const auto base = r.base.load();
-                if (!base) continue;
+                if (!r.page_total) continue;
                 const auto page_index = (address >> 12) - r.first_page;
                 if (address < (r.first_page << 12) || page_index >= r.page_total) continue;
                 auto& p = r.pages[page_index];
-                if (p.state.load() != 1) continue;
+                // a page that is not (or no longer) ours: the store faulted just before the page was released or armed by the helper; the page is writable now, run the store again
+                if (p.state.load() != 1) return EXCEPTION_CONTINUE_EXECUTION;
                 faults_total.fetch_add(1);
-                if (address >= base && address < base + r.size) note(r, ri, reinterpret_cast<std::uint64_t>(ep->ExceptionRecord->ExceptionAddress), address - base);
+                if (base && address >= base && address < base + r.size) note(r, ri, reinterpret_cast<std::uint64_t>(ep->ExceptionRecord->ExceptionAddress), address - base);
                 else outside_total.fetch_add(1);
                 DWORD old{};
                 if (p.faults.fetch_add(1) + 1 > fault_limit)
@@ -179,6 +180,7 @@ namespace paris_write_census
             r.first_page = base >> 12;
             r.page_total = ((base + r.size + page_size - 1) >> 12) - r.first_page;
             if (r.page_total > max_pages) r.page_total = max_pages;
+            r.base.store(base);   // before the first page is protected: a store that faults must find its region
             unsigned armed = 0, skipped = 0;
             for (std::uint64_t i = 0; i < r.page_total; ++i)
             {
@@ -192,13 +194,11 @@ namespace paris_write_census
                 DWORD old{};
                 if (VirtualProtect(reinterpret_cast<void*>(address), page_size, PAGE_READONLY, &old)) ++armed; else { p.state.store(0); ++skipped; }
             }
-            r.base.store(base);
             console::info("[WC] armed %s base=0x%llX size=0x%llX pages=%u skipped=%u\n", r.name, static_cast<unsigned long long>(base), static_cast<unsigned long long>(r.size), armed, skipped);
         }
         void release(region& r)
         {
-            const auto base = r.base.exchange(0);
-            if (!base) return;
+            if (!r.base.load()) return;
             for (std::uint64_t i = 0; i < r.page_total; ++i)
             {
                 auto& p = r.pages[i];
@@ -210,6 +210,7 @@ namespace paris_write_census
                 if (VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) && m.State == MEM_COMMIT && (m.Protect & 0xFF) == PAGE_READONLY)
                     VirtualProtect(reinterpret_cast<void*>(address), page_size, p.original, &old);
             }
+            r.base.store(0);
         }
 
         std::uint64_t gcd(std::uint64_t a, std::uint64_t b) noexcept { while (b) { const auto t = a % b; a = b; b = t; } return a; }
