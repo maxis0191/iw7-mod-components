@@ -881,7 +881,10 @@ public:
         if (low_classes & 4) redirect_call(0x140C0900Bull, 0x140C04650ull, reinterpret_cast<const void*>(&alloc_variable_low));
         redirect_thread_alloc(0x140C043C5ull, false, 0);       // FUN_140C043A0: the self is in ebx
         redirect_thread_alloc(0x140C0458Dull, false, 1);       // AllocThread: ebx
-        redirect_thread_alloc(0x140C04523ull, true, 2);        // FUN_140C04510 (child thread): edi
+        char nothunk_env[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_NOTHUNK2", nothunk_env, sizeof(nothunk_env));
+        if (nothunk_env[0] == '1') redirect_call(0x140C04523ull, 0x140C04650ull, reinterpret_cast<const void*>(&alloc_variable));         // lab bisection: child threads without the self thunk
+        else redirect_thread_alloc(0x140C04523ull, true, 2);        // FUN_140C04510 (child thread): edi
         for (const auto site : {0x140C4F64Eull, 0x140C503EFull}) redirect_call(site, 0x140C068B0ull, reinterpret_cast<const void*>(&alloc_array_low));
         replace_function(0x140C04650ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&alloc_variable));
         replace_function(0x140C04910ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&release_with_children));
