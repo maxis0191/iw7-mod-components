@@ -1432,6 +1432,13 @@ FREE_THREAD = 0x140C0B050                            # `movzx ecx,cx ; jmp Remov
 # {start, stock bytes, new bytes}: the id is the full name minus 0x40000, the name itself is kept for the lookup
 NAME_DECODES = ((0x140C09459, '6603d00fb7da8dbb00000400', '01c28d9a0000fcff89d79090'),             # FUN_140C09370: add edx,eax ; lea ebx,[rdx-0x40000] ; mov edi,edx ; nop nop
                 (0x140C0446E, '6603c80fb7d9418bcf8d9300000400', '01c18d990000fcff89ca418bcf9090'))  # FUN_140C043A0: add ecx,eax ; lea ebx,[rcx-0x40000] ; mov edx,ecx ; mov ecx,r15d ; nop nop
+# The saved stack of a waiting thread (VariableStackBuffer, stage 2, a79): pos u64 +0, size u16 +8, bufLen u16 +0xA, localId u16 +0xC, time u8 +0xE, entries (type byte + qword) from +0xF.
+# The localId must hold a thread id of 19 bits: localId becomes a u32 at +0xC, the time moves to +0x10 and the entries start at +0x11 (the allocation size is `9 n + 0x11`). 21 instructions,
+# all in the variable system (FUN_140C0CA60 creates, FUN_140C10516 grows, FUN_140C10B50 / 10D30 / 10E60 read and write); nothing outside it names the layout (call graph and a scan of
+# `+0xF` / byte `+0xE` over 0x140BFE000..0x140C11090).
+STACK_LOCALID = (0x140C0CAB6, 0x140C0CAC4, 0x140C108E6, 0x140C108EB, 0x140C10B74, 0x140C10C26, 0x140C10D56, 0x140C10E0B, 0x140C10F08)
+STACK_ENTRIES = (0x140C0CA9B, 0x140C0CAC0, 0x140C105BA, 0x140C108A3, 0x140C108D8, 0x140C108EF, 0x140C10915, 0x140C10B83, 0x140C10D64, 0x140C10E98)
+STACK_TIME = (0x140C0CADA, 0x140C11042)
 CHAIN_HEAD_READ = 0x140C08DF1                       # `movzx eax, word [BLK0 + 0x2C]`: the head of the dead entity chain is a dword
 THREAD_FIELDS = (0x1C70, 0x1A24)                     # word fields of two game structs (client think state) that keep a thread id
 
@@ -1472,6 +1479,19 @@ def thread_rows(img, md, db_file):
     for at in THREAD_RETURNS:
         add(at, 'return', 'thread id returned by the executor')
     add(CHAIN_HEAD_READ, 'chain', 'FUN_140C08D90 reads the head of the dead entity chain as a word')
+    for at in STACK_LOCALID:
+        add(at, 'stack_localid', 'localId of a saved stack, u16 -> u32')
+    for kind, ats, old_disp, new_disp in (('stack_entries', STACK_ENTRIES, 0x0F, 0x11), ('stack_time', STACK_TIME, 0x0E, 0x10)):
+        for at in ats:
+            ins = next(md.disasm(img.read(at, 16), at))
+            raw = bytearray(ins.bytes)
+            off, size = ins.encoding.disp_offset, ins.encoding.disp_size
+            if size == 0 or int.from_bytes(raw[off:off + size], 'little') != old_disp:
+                problems.append('%X: displacement is not 0x%X (%s)' % (at, old_disp, raw.hex()))
+                continue
+            new = bytearray(raw)
+            new[off:off + size] = new_disp.to_bytes(size, 'little')
+            rows[at] = dict(at=at, kind=kind, why='saved stack buffer layout: +0x%X -> +0x%X' % (old_disp, new_disp), length=len(raw), stock=raw.hex(), new=new.hex(), text=ins.mnemonic + ' ' + ins.op_str)
     for at, stock, new in NAME_DECODES:
         raw = img.read(at, len(stock) // 2)
         if raw.hex() != stock:

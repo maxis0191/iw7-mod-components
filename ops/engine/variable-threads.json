@@ -461,6 +461,195 @@
    "text": "movzx ecx, cx"
   },
   {
+   "at": 5381343899,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 4,
+   "stock": "488d5f0f",
+   "new": "488d5f11",
+   "text": "lea rbx, [rdi + 0xf]"
+  },
+  {
+   "at": 5381343926,
+   "kind": "stack_localid",
+   "why": "localId of a saved stack, u16 -> u32",
+   "length": 3,
+   "stock": "0fb7cd",
+   "new": "908bcd",
+   "text": "movzx ecx, bp"
+  },
+  {
+   "at": 5381343936,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 4,
+   "stock": "488d5f0f",
+   "new": "488d5f11",
+   "text": "lea rbx, [rdi + 0xf]"
+  },
+  {
+   "at": 5381343940,
+   "kind": "stack_localid",
+   "why": "localId of a saved stack, u16 -> u32",
+   "length": 4,
+   "stock": "6689480c",
+   "new": "9089480c",
+   "text": "mov word ptr [rax + 0xc], cx"
+  },
+  {
+   "at": 5381343962,
+   "kind": "stack_time",
+   "why": "saved stack buffer layout: +0xE -> +0x10",
+   "length": 3,
+   "stock": "88480e",
+   "new": "884810",
+   "text": "mov byte ptr [rax + 0xe], cl"
+  },
+  {
+   "at": 5381359034,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 8,
+   "stock": "488d34cd0f000000",
+   "new": "488d34cd11000000",
+   "text": "lea rsi, [rcx*8 + 0xf]"
+  },
+  {
+   "at": 5381359779,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 8,
+   "stock": "4c8d3cc50f000000",
+   "new": "4c8d3cc511000000",
+   "text": "lea r15, [rax*8 + 0xf]"
+  },
+  {
+   "at": 5381359832,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 4,
+   "stock": "488d480f",
+   "new": "488d4811",
+   "text": "lea rcx, [rax + 0xf]"
+  },
+  {
+   "at": 5381359846,
+   "kind": "stack_localid",
+   "why": "localId of a saved stack, u16 -> u32",
+   "length": 5,
+   "stock": "410fb7570c",
+   "new": "90418b570c",
+   "text": "movzx edx, word ptr [r15 + 0xc]"
+  },
+  {
+   "at": 5381359851,
+   "kind": "stack_localid",
+   "why": "localId of a saved stack, u16 -> u32",
+   "length": 4,
+   "stock": "6689500c",
+   "new": "9089500c",
+   "text": "mov word ptr [rax + 0xc], dx"
+  },
+  {
+   "at": 5381359855,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 4,
+   "stock": "498d570f",
+   "new": "498d5711",
+   "text": "lea rdx, [r15 + 0xf]"
+  },
+  {
+   "at": 5381359893,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 4,
+   "stock": "488d590f",
+   "new": "488d5911",
+   "text": "lea rbx, [rcx + 0xf]"
+  },
+  {
+   "at": 5381360500,
+   "kind": "stack_localid",
+   "why": "localId of a saved stack, u16 -> u32",
+   "length": 5,
+   "stock": "410fb7700c",
+   "new": "90418b700c",
+   "text": "movzx esi, word ptr [r8 + 0xc]"
+  },
+  {
+   "at": 5381360515,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 4,
+   "stock": "488d7d0f",
+   "new": "488d7d11",
+   "text": "lea rdi, [rbp + 0xf]"
+  },
+  {
+   "at": 5381360678,
+   "kind": "stack_localid",
+   "why": "localId of a saved stack, u16 -> u32",
+   "length": 5,
+   "stock": "664589770c",
+   "new": "904589770c",
+   "text": "mov word ptr [r15 + 0xc], r14w"
+  },
+  {
+   "at": 5381360982,
+   "kind": "stack_localid",
+   "why": "localId of a saved stack, u16 -> u32",
+   "length": 4,
+   "stock": "0fb76a0c",
+   "new": "908b6a0c",
+   "text": "movzx ebp, word ptr [rdx + 0xc]"
+  },
+  {
+   "at": 5381360996,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 4,
+   "stock": "488d7e0f",
+   "new": "488d7e11",
+   "text": "lea rdi, [rsi + 0xf]"
+  },
+  {
+   "at": 5381361163,
+   "kind": "stack_localid",
+   "why": "localId of a saved stack, u16 -> u32",
+   "length": 5,
+   "stock": "6641896e0c",
+   "new": "9041896e0c",
+   "text": "mov word ptr [r14 + 0xc], bp"
+  },
+  {
+   "at": 5381361304,
+   "kind": "stack_entries",
+   "why": "saved stack buffer layout: +0xF -> +0x11",
+   "length": 5,
+   "stock": "4d8d44240f",
+   "new": "4d8d442411",
+   "text": "lea r8, [r12 + 0xf]"
+  },
+  {
+   "at": 5381361416,
+   "kind": "stack_localid",
+   "why": "localId of a saved stack, u16 -> u32",
+   "length": 6,
+   "stock": "410fb76c240c",
+   "new": "90418b6c240c",
+   "text": "movzx ebp, word ptr [r12 + 0xc]"
+  },
+  {
+   "at": 5381361730,
+   "kind": "stack_time",
+   "why": "saved stack buffer layout: +0xE -> +0x10",
+   "length": 6,
+   "stock": "410fb644240e",
+   "new": "410fb6442410",
+   "text": "movzx eax, byte ptr [r12 + 0xe]"
+  },
+  {
    "at": 5381665618,
    "kind": "field_1A24",
    "why": "word access of [+0x1A24]",

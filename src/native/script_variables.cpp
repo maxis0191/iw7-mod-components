@@ -872,7 +872,7 @@ public:
         // lab bisection (IW7_SCRIPT_VARIABLES_LOWCLASSES, bits: 1 threads, 2 structs, 4 entity objects): those classes take the low pool only, as in low-first mode
         char classes_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOWCLASSES", classes_env, sizeof(classes_env));
-        low_classes = pools.low_first() ? 7u : (classes_env[0] ? static_cast<unsigned>(std::atoi(classes_env)) : 1u);      // default (stage 1): threads low, structs and entity objects high
+        low_classes = pools.low_first() ? 7u : (classes_env[0] ? static_cast<unsigned>(std::atoi(classes_env)) : 0u);      // default (stage 2): every class high-first except the class and client arrays; bit 0 threads, bit 1 structs, bit 2 entity objects take the low pool only
         char sites_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOWTHREADSITES", sites_env, sizeof(sites_env));
         low_thread_sites = static_cast<unsigned>(std::atoi(sites_env));
