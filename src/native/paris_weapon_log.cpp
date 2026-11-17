@@ -252,8 +252,7 @@ namespace paris_weapon_log
             if (!bad && !(changed && (force || f - stats_frame >= 1200))) return;
             stats_recorded = recorded.load(); stats_lost = lost.load(); stats_foreign = foreign.load(); stats_frame = f;
             char text[320]{};
-            _snprintf_s(text, sizeof(text), _TRUNCATE, "[FR] t=%d weapon_log_stats recorded=%llu lost=%llu foreign=%llu written=%llu hook_ns=%lld drain_ns=%lld
-",
+            _snprintf_s(text, sizeof(text), _TRUNCATE, "[FR] t=%d weapon_log_stats recorded=%llu lost=%llu foreign=%llu written=%llu hook_ns=%lld drain_ns=%lld\n",
                 *game::gameTime, static_cast<unsigned long long>(stats_recorded), static_cast<unsigned long long>(stats_lost), static_cast<unsigned long long>(stats_foreign),
                 static_cast<unsigned long long>(written.load()), static_cast<long long>(hook_ns.load()), static_cast<long long>(drain_ns.load()));
             log_line(text);
