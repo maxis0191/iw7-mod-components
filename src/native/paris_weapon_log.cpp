@@ -42,8 +42,8 @@ namespace paris_weapon_log
     namespace
     {
         constexpr std::size_t ring_size = 4096;
-        constexpr std::size_t max_chain = 5; // the calling function and four outer ones
-        constexpr std::size_t weapon_chars = 56;
+        constexpr std::size_t max_chain = 8; // the calling function and seven outer ones
+        constexpr std::size_t weapon_chars = 128; // the longest names (a pack-a-punched weapon with its attachments and camo) are about 100
 
         struct method_slot { const char* name; unsigned short id; };
         constexpr method_slot slots[4] = {
@@ -63,7 +63,8 @@ namespace paris_weapon_log
         record ring[ring_size];
         std::size_t head{}, tail{};                 // server thread only
         std::atomic<std::uint64_t> frame{0}, recorded{0}, lost{0}, foreign{0}, written{0}, fallback{0};
-        std::atomic<std::int64_t> hook_ns{0};
+        std::atomic<std::int64_t> hook_ns{0}, drain_ns{0};
+        std::uint64_t stats_recorded{}, stats_lost{}, stats_foreign{}, stats_frame{};
         std::atomic<DWORD> server_thread{0};
         gsc::builtin_method original[4]{};
         bool measure{};
@@ -242,20 +243,39 @@ namespace paris_weapon_log
             log_line(text);
         }
 
+        // A stats row when something was lost or came from another thread (so a reader never takes a log with gaps for a complete one), and about once a minute.
+        void stats_row(const bool force = false)
+        {
+            const auto f = frame.load();
+            const bool bad = lost.load() != stats_lost || foreign.load() != stats_foreign;
+            const bool changed = recorded.load() != stats_recorded;
+            if (!bad && !(changed && (force || f - stats_frame >= 1200))) return;
+            stats_recorded = recorded.load(); stats_lost = lost.load(); stats_foreign = foreign.load(); stats_frame = f;
+            char text[320]{};
+            _snprintf_s(text, sizeof(text), _TRUNCATE, "[FR] t=%d weapon_log_stats recorded=%llu lost=%llu foreign=%llu written=%llu hook_ns=%lld drain_ns=%lld
+",
+                *game::gameTime, static_cast<unsigned long long>(stats_recorded), static_cast<unsigned long long>(stats_lost), static_cast<unsigned long long>(stats_foreign),
+                static_cast<unsigned long long>(written.load()), static_cast<long long>(hook_ns.load()), static_cast<long long>(drain_ns.load()));
+            log_line(text);
+        }
+
         void drain()
         {
             ++frame;
             take_over();
+            const auto begin = measure && head != tail ? now() : 0;
             flush_ring();
+            if (begin) drain_ns += (now() - begin) * 1000000000ll / qpc_hz;
+            stats_row();
         }
 
         void print_stats()
         {
             const auto n = recorded.load();
-            console::info("[Paris weapon log] recorded=%llu lost=%llu foreign_thread=%llu lines_written=%llu console_fallback=%llu hook_ns_total=%lld hook_ns_per_call=%.1f measure=%d\n",
+            console::info("[Paris weapon log] recorded=%llu lost=%llu foreign_thread=%llu lines_written=%llu console_fallback=%llu hook_ns_total=%lld hook_ns_per_call=%.1f drain_ns_total=%lld measure=%d\n",
                 static_cast<unsigned long long>(n), static_cast<unsigned long long>(lost.load()), static_cast<unsigned long long>(foreign.load()),
                 static_cast<unsigned long long>(written.load()), static_cast<unsigned long long>(fallback.load()),
-                static_cast<long long>(hook_ns.load()), n ? static_cast<double>(hook_ns.load()) / static_cast<double>(n) : 0.0, measure ? 1 : 0);
+                static_cast<long long>(hook_ns.load()), n ? static_cast<double>(hook_ns.load()) / static_cast<double>(n) : 0.0, static_cast<long long>(drain_ns.load()), measure ? 1 : 0);
         }
     }
 
@@ -275,6 +295,7 @@ namespace paris_weapon_log
             {
                 if (!free_scripts) return;
                 flush_ring(); // what is still in the ring is written now; positions that are not cached already are written as addresses
+                stats_row(true);
                 rows_dirty = true;
                 rows.clear();
                 names.clear();
