@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <csignal>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -377,6 +379,26 @@ void audit() {
         }
     }
 }
+
+// lab: the stack at the end of the process (IW7_SCRIPT_VARIABLES_AUDIT=1): a quiet exit(-1) leaves no dump and no message
+void write_exit_stack(const char* why) {
+    void* frames[40]{};
+    const auto n = RtlCaptureStackBackTrace(0, 40, frames, nullptr);
+    FILE* f = nullptr;
+    if (fopen_s(&f, "script_variables_exit.txt", "a") || !f) return;
+    const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));
+    std::fprintf(f, "%s: %u frames, exe base %llX\n", why, static_cast<unsigned>(n), static_cast<unsigned long long>(base));
+    for (unsigned i = 0; i < n; ++i) {
+        HMODULE module{};
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, static_cast<LPCSTR>(frames[i]), &module);
+        char name[260]{};
+        if (module) GetModuleFileNameA(module, name, sizeof(name));
+        std::fprintf(f, "  %p %s+%llX\n", frames[i], name, static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(frames[i]) - reinterpret_cast<std::uintptr_t>(module)));
+    }
+    std::fclose(f);
+}
+void exit_stack_atexit() { write_exit_stack("atexit"); }
+void abort_handler(int) { write_exit_stack("SIGABRT"); std::_Exit(3); }
 
 // ---- code memory within 2 GB of the image: caves, thunks, the stub ------------------------------------------------------------------------------
 buffer code_region;
@@ -1047,7 +1069,7 @@ public:
         }, scheduler::main);
         char audit_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_env, sizeof(audit_env));
-        if (audit_env[0] == '1') scheduler::loop(audit, scheduler::main, 500ms);
+        if (audit_env[0] == '1') { scheduler::loop(audit, scheduler::main, 500ms); std::atexit(exit_stack_atexit); std::signal(SIGABRT, abort_handler); }
         scheduler::loop(check_guards, scheduler::main, 500ms);
         if (with_meter) scheduler::loop(meter_report, scheduler::main, 10s);
     }
