@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <csignal>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -234,8 +236,11 @@ static_assert(parent_ids_for(max_segments) / max_segments == 0x10000 && parent_l
 parent_entry* parents_table{};
 std::uint16_t* save_numbers{};
 parent_pools pools;
+bool poison_low{};                    // lab (IW7_SCRIPT_VARIABLES_POISONLOW=1, with the burned low pool): every burned low id has the type byte 0x7F, which no real object has
+unsigned preburn_keep{};              // lab option (-script-variables-preburn): the low pool keeps this many locals a segment, every other low id is burned
 unsigned force_low{};                  // > 0 while an allocation that needs an id below 0x10000 runs (alloc_array_low)
 
+std::vector<bool> audit_free;          // lab audit: which ids are in the free lists (IW7_SCRIPT_VARIABLES_AUDIT=1)
 [[noreturn]] void parents_exhausted(bool low_only) {
     reinterpret_cast<void (*)(const char*)>(0x140D34180ull)(low_only ? "Exceeded maximum number of script objects with a 16-bit id (parents below 0x10000)"
                                                                      : "Exceeded maximum number of script objects (parents)");
@@ -244,6 +249,7 @@ unsigned force_low{};                  // > 0 while an allocation that needs an 
 std::uint16_t* take_parent(std::uint32_t* out, bool low_only) {
     const auto id = pools.take(low_only);
     if (!id) parents_exhausted(low_only);
+    if (!audit_free.empty()) audit_free[id] = false;
     *out = id;
     return &parents_table[id].refs;
 }
@@ -255,7 +261,22 @@ std::uint32_t alloc_array_low() {              // Scr_AllocArray (0x140C068B0) f
     --force_low;
     return id;
 }
-void push_parent(std::uint32_t id) { pools.give(id); }
+void write_exit_stack(const char* why);
+void scan_stack(const char* why);
+inline void poison_check(const char* where, std::uint64_t id);
+void audit_remove_ref(std::uint64_t id);
+void push_parent(std::uint32_t id) {
+    if (!audit_free.empty()) {
+        static unsigned reported{};
+        if (audit_free[id] && reported < 20) {
+            ++reported;
+            console::error("[script variables] audit: id %u freed twice (type 0x%X)\n", id, parents_table[id].type & 0xFFu);
+            write_exit_stack("double free");
+        }
+        audit_free[id] = true;
+    }
+    pools.give(id);
+}
 void free_children(std::uint32_t id) { reinterpret_cast<void (*)(std::uint32_t)>(0x140C04990ull)(id); }
 void release_with_children(std::uint32_t id) {   // 0x140C04910: take a reference, free the children, drop it and free the object when it was the last
     auto& entry = parents_table[id];
@@ -286,6 +307,9 @@ void release_unreferenced_structs() {           // 0x140C08E70
 void format_parents() {                          // 0x140C09200: every id is free, the four heads (ids 0..3) are not allocatable
     std::memset(reinterpret_cast<void*>(regions[3].storage.data), 0, static_cast<std::size_t>(p4_bytes(seg_in_use)));
     pools.format();
+    if (poison_low && preburn_keep)
+        for (std::uint32_t segment = 0; segment < seg_in_use; ++segment)
+            for (std::uint32_t local = preburn_keep; local < parent_low_locals_for(seg_in_use); ++local) parents_table[(local << seg_shift()) | segment].type = 0x7Fu;
 }
 void rebuild_refused() {                        // 0x140C08C30 rebuilds stock format free lists after a save game was read
     game::Com_Error(game::ERR_FATAL, "script variables: loading a saved game is not supported with -agent-capacity (wide parent ids)");
@@ -297,7 +321,6 @@ void rebuild_refused() {                        // 0x140C08C30 rebuilds stock fo
 // B[dead entity id] = next >> 16. The writers are the thread allocation sites (alloc_thread, called through a thunk that hands the self over) and the replaced FUN_140C097B0; the readers are
 // the replaced FUN_140C09340 / FUN_140C08D10 and two caves in FUN_140C09370. So threads, structs and entity objects take ids of any segment; only the client and class arrays stay low.
 std::uint16_t* self_high{};
-unsigned preburn_keep{};              // lab option (-script-variables-preburn): the low pool keeps this many locals a segment, every other low id is burned
 unsigned low_classes{};               // bit 0: threads take the low pool only, bit 1: structs, bit 2: entity objects (-script-variables-low-first: all)
 inline std::uint32_t self_of(std::uint32_t id) noexcept { return parents_table[id].link | (static_cast<std::uint32_t>(self_high[id]) << 16); }
 inline std::uint16_t first_child(std::uint32_t id) noexcept { return *reinterpret_cast<const std::uint16_t*>(regions[3].storage.data + 4ull * id); }      // P4 first child
@@ -306,15 +329,19 @@ std::uint32_t* const scr_self_global = reinterpret_cast<std::uint32_t*>(0x14665A
 std::uint32_t* const dead_chain_head = reinterpret_cast<std::uint32_t*>(0x14665A12Cull);                  // BLK0 +0x2C: first dead entity object
 
 unsigned low_thread_sites{};          // lab bisection: bit k = thread allocation site k takes the low pool only (0 FUN_140C043A0, 1 AllocThread, 2 FUN_140C04510)
+std::uint32_t recent_threads[16]{};      // lab: the last thread ids handed out (poison hits print them)
+unsigned recent_next{};
 std::uint16_t* alloc_thread(std::uint32_t* out, std::uint32_t self, std::uint32_t site) {      // the three thread allocation sites (AllocThread, FUN_140C043A0, FUN_140C04510): rdx = the self, r8 = the site
     if (self >= parent_ids_now())
         game::Com_Error(game::ERR_FATAL, "script variables: a thread was started on object %u: beyond the last parent id 0x%X (the high bits of a self are kept in table B)", self, parent_ids_now() - 1);
     auto* entry = take_parent(out, (low_classes & 1) != 0 || ((low_thread_sites >> site) & 1) != 0);
     self_high[*out] = static_cast<std::uint16_t>(self >> 16);
+    recent_threads[recent_next++ & 15] = *out;
     return entry;
 }
 // FUN_140C054A0 (59 callers, the game code too) returns the u16 at P8 +2 of an object: the size of an array, the number of an entity, the self of a thread. For a thread it is the full self.
 std::uint32_t object_word(std::uint32_t id) {
+    poison_check("FUN_140C054A0 object word", id);
     const auto& entry = parents_table[id];
     const auto type = entry.type & 0xFFu;
     return (type == 0xF || type == 0x10 || type == 0x11 || type == 0x12 || type == 0x17) ? self_of(id) : entry.link;
@@ -358,7 +385,41 @@ constexpr b_function b_functions[] = {
     {0x140C020E0ull, {0x40, 0x53, 0x48, 0x83, 0xEC}}};
 
 // lab audit (IW7_SCRIPT_VARIABLES_AUDIT=1, every 500 ms on the main thread): every live thread must hold a self that is a live object, every child thread a parent that is a thread
+void audit_children() {            // the free list of every segment holds 65,535 - children in use entries
+    static bool reported[16]{};
+    for (unsigned seg = 0; seg < seg_in_use; ++seg) {
+        if (reported[seg]) continue;
+        const auto base = regions[4].storage.data + (static_cast<std::uintptr_t>(seg) << 16) * child_bytes_each;
+        std::uint32_t length = 0, at = *reinterpret_cast<const std::uint16_t*>(base + 2);
+        while (at && length <= 0x10000) {
+            ++length;
+            at = *reinterpret_cast<const std::uint16_t*>(base + static_cast<std::uintptr_t>(at) * child_bytes_each + 2);
+        }
+        const std::uint32_t used = counters_now[seg];
+        if (length + used + 64 < 0xFFFFu || length + used > 0xFFFFu + 64) {
+            reported[seg] = true;
+            console::error("[script variables] audit: segment %u free list %u entries, %u in use (sum %u, want 65535)\n", seg, length, used, length + used);
+        }
+    }
+}
+// lab: the entry of FUN_140C05760 (a new child: parent in ecx, name in edx, segment base in r8d) checks that the segment base is the parent's
+void write_exit_stack(const char* why);
+void scan_stack(const char* why);
+void audit_remove_ref(std::uint64_t id);
+void check_new_child(std::uint64_t parent, std::uint64_t name, std::uint64_t base) {
+    poison_check("FUN_140C05760 child alloc", parent);
+    static unsigned reported{};
+    const auto want = (static_cast<std::uint32_t>(parent) & seg_mask()) << 16;
+    if (static_cast<std::uint32_t>(base) != want && reported < 20) {
+        ++reported;
+        console::error("[script variables] audit: new child of parent %u (type 0x%X) name 0x%X in segment base 0x%X, the parent's is 0x%X\n", static_cast<std::uint32_t>(parent),
+                       static_cast<std::uint32_t>(parent) < parent_ids_now() ? parents_table[static_cast<std::uint32_t>(parent)].type & 0xFFu : 0xFFu, static_cast<std::uint32_t>(name),
+                       static_cast<std::uint32_t>(base), want);
+        write_exit_stack("new child");
+    }
+}
 void audit() {
+    audit_children();
     static unsigned reported{};
     if (!active || reported >= 30) return;
     for (std::uint32_t id = 1; id < parent_ids_now() && reported < 30; ++id) {
@@ -377,6 +438,60 @@ void audit() {
         }
     }
 }
+
+// lab: the stack at the end of the process (IW7_SCRIPT_VARIABLES_AUDIT=1): a quiet exit(-1) leaves no dump and no message
+void scan_stack(const char* why) {              // the image addresses on the stack above this frame (the shipped code has no unwind data in the stubs)
+    FILE* f = nullptr;
+    if (fopen_s(&f, "script_variables_exit.txt", "a") || !f) return;
+    std::fprintf(f, "%s: stack scan" "\n", why);
+    auto* p = static_cast<std::uint64_t*>(_AddressOfReturnAddress());
+    for (unsigned i = 0; i < 160; ++i)
+        if (p[i] >= image_base && p[i] < image_end) std::fprintf(f, "  +%u %llX" "\n", i * 8, static_cast<unsigned long long>(p[i]));
+    std::fclose(f);
+}
+[[noreturn]] void poison_hit(const char* where, std::uint32_t id) {
+    console::error("[script variables] poison: %s resolved id %u, a burned low id: a thread id was truncated to 16 bits\n", where, id);
+    for (unsigned i = 0; i < 16; ++i) console::error("[script variables] poison: recent thread id %u (low 16 bits %u)" "\n", recent_threads[(recent_next + i) & 15], recent_threads[(recent_next + i) & 15] & 0xFFFFu);
+    scan_stack(where);
+    write_exit_stack(where);
+    game::Com_Error(game::ERR_FATAL, "script variables: poison hit in %s on id %u", where, id);
+    std::abort();
+}
+inline void poison_check(const char* where, std::uint64_t id) {
+    const auto object = static_cast<std::uint32_t>(id);
+    if (poison_low && object < parent_ids_now() && (parents_table[object].type & 0xFFu) == 0x7Fu) poison_hit(where, object);
+}
+void poison_10b50(std::uint64_t a, std::uint64_t b) { poison_check("FUN_140C10B50 thread", a); poison_check("FUN_140C10B50 thread 2", b); }
+void poison_10d30(std::uint64_t a) { poison_check("FUN_140C10D30 thread", a); }
+void poison_10e60(std::uint64_t a) { poison_check("FUN_140C10E60 thread", a); }
+void audit_remove_ref(std::uint64_t id) {
+    poison_check("RemoveRefToObject", id);         // entry hook of RemoveRefToObject: a release of an object that is already free
+    static unsigned reported{};
+    const auto object = static_cast<std::uint32_t>(id);
+    if (object < parent_ids_now() && (parents_table[object].type & 0xFFu) == 0x18 && object >= seg_in_use && reported < 12) {
+        ++reported;
+        console::error("[script variables] audit: RemoveRefToObject(%u) on a free object' + bs + 'n", object);
+        scan_stack("release of a free object");
+    }
+}
+void write_exit_stack(const char* why) {
+    void* frames[40]{};
+    const auto n = RtlCaptureStackBackTrace(0, 40, frames, nullptr);
+    FILE* f = nullptr;
+    if (fopen_s(&f, "script_variables_exit.txt", "a") || !f) return;
+    const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));
+    std::fprintf(f, "%s: %u frames, exe base %llX\n", why, static_cast<unsigned>(n), static_cast<unsigned long long>(base));
+    for (unsigned i = 0; i < n; ++i) {
+        HMODULE module{};
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, static_cast<LPCSTR>(frames[i]), &module);
+        char name[260]{};
+        if (module) GetModuleFileNameA(module, name, sizeof(name));
+        std::fprintf(f, "  %p %s+%llX\n", frames[i], name, static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(frames[i]) - reinterpret_cast<std::uintptr_t>(module)));
+    }
+    std::fclose(f);
+}
+void exit_stack_atexit() { write_exit_stack("atexit"); }
+void abort_handler(int) { write_exit_stack("SIGABRT"); std::_Exit(3); }
 
 // ---- code memory within 2 GB of the image: caves, thunks, the stub ------------------------------------------------------------------------------
 buffer code_region;
@@ -854,8 +969,11 @@ public:
         self_high = reinterpret_cast<std::uint16_t*>(regions[1].storage.data);
         char preburn_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_PREBURN", preburn_env, sizeof(preburn_env));      // lab detection test (a55, a79): the low pool is burned down to what the class and client arrays need
-        const bool preburn = utils::flags::has_flag("script-variables-preburn") || preburn_env[0] == '1' || preburn_env[0] == '2';
-        preburn_keep = preburn_env[0] == '2' ? 24u : 0u;      // 1: general allocations never take a low id (threads keep the whole low pool); 2: the low pool is burned down to 24 locals a segment
+        char poison_env[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_POISONLOW", poison_env, sizeof(poison_env));
+        poison_low = poison_env[0] == '1';
+        const bool preburn = poison_low || utils::flags::has_flag("script-variables-preburn") || preburn_env[0] == '1' || preburn_env[0] == '2';
+        preburn_keep = preburn_env[0] == '2' || poison_low ? 24u : 0u;      // 1: general allocations never take a low id (threads keep the whole low pool); 2: the low pool is burned down to 24 locals a segment
         pools.attach(parents_table, counters_now, seg_in_use, parent_ids_now(), parent_low_locals_for(seg_in_use),
                      utils::flags::has_flag("script-variables-low-first") || low_first_env[0] == '1', preburn_keep, preburn);
         code_region = reserve_code(0x10000);
@@ -872,7 +990,7 @@ public:
         // lab bisection (IW7_SCRIPT_VARIABLES_LOWCLASSES, bits: 1 threads, 2 structs, 4 entity objects): those classes take the low pool only, as in low-first mode
         char classes_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOWCLASSES", classes_env, sizeof(classes_env));
-        low_classes = pools.low_first() ? 7u : (classes_env[0] ? static_cast<unsigned>(std::atoi(classes_env)) : 1u);      // default (stage 1): threads low, structs and entity objects high
+        low_classes = pools.low_first() ? 7u : (classes_env[0] ? static_cast<unsigned>(std::atoi(classes_env)) : 0u);      // default (stage 2): every class high-first except the class and client arrays; bit 0 threads, bit 1 structs, bit 2 entity objects take the low pool only
         char sites_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOWTHREADSITES", sites_env, sizeof(sites_env));
         low_thread_sites = static_cast<unsigned>(std::atoi(sites_env));
@@ -929,6 +1047,19 @@ public:
             put(v, {0x51, 0x52, 0x89, 0xC1, 0xC1, 0xE9, 0x10, 0x48, 0xBA}); put64(v, b_base);                      // push rcx ; push rdx ; mov ecx,eax ; shr ecx,16 ; mov rdx, B
             put(v, {0x66, 0x42, 0x89, 0x0C, 0x4A, 0x5A, 0x59});                                                    // mov word [rdx+r9*2], cx ; pop rdx ; pop rcx
         });
+        char audit_early[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_early, sizeof(audit_early));
+        if (audit_early[0] == '1') { audit_free.assign(parent_ids_now(), true); audit_free[0] = false; }
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_early, sizeof(audit_early));
+        if (poison_low) {
+            const std::initializer_list<std::uint8_t> prologue = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10};
+            entry_hook(0x140C10B50ull, {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10}, reinterpret_cast<void (*)(std::uint64_t)>(&poison_10b50));
+            entry_hook(0x140C10D30ull, {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10}, reinterpret_cast<void (*)(std::uint64_t)>(&poison_10d30));
+            entry_hook(0x140C10E60ull, {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10}, reinterpret_cast<void (*)(std::uint64_t)>(&poison_10e60));
+            (void)prologue;
+        }
+        if (audit_early[0] == '1' || poison_low) entry_hook(0x140C05CA0ull, {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10}, reinterpret_cast<void (*)(std::uint64_t)>(&audit_remove_ref));
+        if (audit_early[0] == '1' || poison_low) entry_hook(0x140C05760ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<void (*)(std::uint64_t)>(&check_new_child));
         if (wide) entry_hook(0x140C09280ull, {0x48, 0x83, 0xEC, 0x28, 0x33, 0xC0}, &reset_counters);      // `sub rsp,0x28 ; xor eax,eax` of the child list initialiser: all counters are zeroed, not the four it zeroes
         char meter_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_METER", meter_env, sizeof(meter_env));
@@ -1047,7 +1178,7 @@ public:
         }, scheduler::main);
         char audit_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_env, sizeof(audit_env));
-        if (audit_env[0] == '1') scheduler::loop(audit, scheduler::main, 500ms);
+        if (audit_env[0] == '1') { scheduler::loop(audit, scheduler::main, 500ms); std::atexit(exit_stack_atexit); std::signal(SIGABRT, abort_handler); }
         scheduler::loop(check_guards, scheduler::main, 500ms);
         if (with_meter) scheduler::loop(meter_report, scheduler::main, 10s);
     }

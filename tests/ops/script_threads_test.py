@@ -45,12 +45,12 @@ class ThreadRows(unittest.TestCase):
         kinds = {}
         for r in self.json['rows']:
             kinds[r['kind']] = kinds.get(r['kind'], 0) + 1
-        self.assertEqual(kinds, {'caller': 42, 'field_1C70': 4, 'name': 2, 'chain': 1, 'return': 2, 'free': 1, 'field_1A24': 9, 'field_test': 1})
+        self.assertEqual(kinds, {'caller': 46, 'field_1C70': 4, 'name': 2, 'chain': 1, 'return': 2, 'free': 1, 'field_1A24': 9, 'field_test': 1, 'stack_localid': 9, 'stack_entries': 10, 'stack_time': 2})
         self.assertEqual(self.json['problems'], [])
 
     def test_widening_rule(self):
         import variable_sites as vs
-        for r in [r for r in self.json['rows'] if r['kind'] != 'name']:
+        for r in [r for r in self.json['rows'] if r['kind'] not in ('name', 'stack_entries', 'stack_time')]:
             stock = bytes.fromhex(r['stock'])
             self.assertEqual(vs.widen_bytes(stock).hex(), r['new'])
             self.assertEqual(len(stock), len(bytes.fromhex(r['new'])))
@@ -72,6 +72,19 @@ class ThreadRows(unittest.TestCase):
         self.assertEqual(text(rows[0x140C09459]['new'], 0x140C09459), ['add edx, eax', 'lea ebx, [rdx - 0x40000]', 'mov edi, edx', 'nop', 'nop'])
         self.assertEqual(text(rows[0x140C0446E]['new'], 0x140C0446E), ['add ecx, eax', 'lea ebx, [rcx - 0x40000]', 'mov edx, ecx', 'mov ecx, r15d', 'nop', 'nop'])
         self.assertEqual(text(rows[0x140C09459]['stock'], 0x140C09459), ['add dx, ax', 'movzx ebx, dx', 'lea edi, [rbx + 0x40000]'])
+
+    def test_stack_buffer_layout(self):
+        # localId u32 at +0xC, time at +0x10, entries from +0x11: the 21 instructions of the variable system; every entry offset row moves 0xF to 0x11, every time row 0xE to 0x10
+        rows = [r for r in self.json['rows'] if r['kind'].startswith('stack')]
+        self.assertEqual(len(rows), 21)
+        for r in rows:
+            stock, new = bytes.fromhex(r['stock']), bytes.fromhex(r['new'])
+            diff = [i for i in range(len(stock)) if stock[i] != new[i]]
+            if r['kind'] == 'stack_entries':
+                self.assertEqual([(stock[i], new[i]) for i in diff], [(0x0F, 0x11)], '%X' % r['at'])
+            if r['kind'] == 'stack_time':
+                self.assertEqual([(stock[i], new[i]) for i in diff], [(0x0E, 0x10)], '%X' % r['at'])
+            self.assertTrue(0x140C0CA60 <= r['at'] < 0x140C11090)
 
     def test_rows_against_the_image(self):
         try:
