@@ -260,6 +260,8 @@ std::uint32_t alloc_array_low() {              // Scr_AllocArray (0x140C068B0) f
     return id;
 }
 void write_exit_stack(const char* why);
+void scan_stack(const char* why);
+void audit_remove_ref(std::uint64_t id);
 void push_parent(std::uint32_t id) {
     if (!audit_free.empty()) {
         static unsigned reported{};
@@ -393,6 +395,8 @@ void audit_children() {            // the free list of every segment holds 65,53
 }
 // lab: the entry of FUN_140C05760 (a new child: parent in ecx, name in edx, segment base in r8d) checks that the segment base is the parent's
 void write_exit_stack(const char* why);
+void scan_stack(const char* why);
+void audit_remove_ref(std::uint64_t id);
 void check_new_child(std::uint64_t parent, std::uint64_t name, std::uint64_t base) {
     static unsigned reported{};
     const auto want = (static_cast<std::uint32_t>(parent) & seg_mask()) << 16;
@@ -426,6 +430,24 @@ void audit() {
 }
 
 // lab: the stack at the end of the process (IW7_SCRIPT_VARIABLES_AUDIT=1): a quiet exit(-1) leaves no dump and no message
+void scan_stack(const char* why) {              // the image addresses on the stack above this frame (the shipped code has no unwind data in the stubs)
+    FILE* f = nullptr;
+    if (fopen_s(&f, "script_variables_exit.txt", "a") || !f) return;
+    std::fprintf(f, "%s: stack scan" "\n", why);
+    auto* p = static_cast<std::uint64_t*>(_AddressOfReturnAddress());
+    for (unsigned i = 0; i < 160; ++i)
+        if (p[i] >= image_base && p[i] < image_end) std::fprintf(f, "  +%u %llX" "\n", i * 8, static_cast<unsigned long long>(p[i]));
+    std::fclose(f);
+}
+void audit_remove_ref(std::uint64_t id) {         // entry hook of RemoveRefToObject: a release of an object that is already free
+    static unsigned reported{};
+    const auto object = static_cast<std::uint32_t>(id);
+    if (object < parent_ids_now() && (parents_table[object].type & 0xFFu) == 0x18 && object >= seg_in_use && reported < 12) {
+        ++reported;
+        console::error("[script variables] audit: RemoveRefToObject(%u) on a free object' + bs + 'n", object);
+        scan_stack("release of a free object");
+    }
+}
 void write_exit_stack(const char* why) {
     void* frames[40]{};
     const auto n = RtlCaptureStackBackTrace(0, 40, frames, nullptr);
@@ -1000,6 +1022,7 @@ public:
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_early, sizeof(audit_early));
         if (audit_early[0] == '1') { audit_free.assign(parent_ids_now(), true); audit_free[0] = false; }
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_early, sizeof(audit_early));
+        if (audit_early[0] == '1') entry_hook(0x140C05CA0ull, {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10}, reinterpret_cast<void (*)(std::uint64_t)>(&audit_remove_ref));
         if (audit_early[0] == '1') entry_hook(0x140C05760ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<void (*)(std::uint64_t)>(&check_new_child));
         if (wide) entry_hook(0x140C09280ull, {0x48, 0x83, 0xEC, 0x28, 0x33, 0xC0}, &reset_counters);      // `sub rsp,0x28 ; xor eax,eax` of the child list initialiser: all counters are zeroed, not the four it zeroes
         char meter_env[8]{};
