@@ -17,7 +17,7 @@
 // How: every page of a region is made PAGE_READONLY (the original protection is kept). A store faults (EXCEPTION_ACCESS_VIOLATION, write) in a vectored handler (first in the chain):
 // it counts the store per site (the RIP and the region), keeps the written offset (minimum, maximum, the first 128 distinct ones), makes the page writable, sets the trap flag and
 // continues; the single step that follows puts the protection back. Reads never fault. The handler allocates nothing and takes no lock. A page that faults more than
-// -paris-write-census-limit times (default 200000: a hot page) is released for good and listed as dropped: its writers are then incomplete. Slow on purpose (a frame costs the number of
+// -paris-write-census-limit times (default 20000: a hot page; the first 20000 stores of a page are seen, so a table's rows still show) is released for good and listed as dropped: its writers are then incomplete. Slow on purpose (a frame costs the number of
 // stores into the object times about 20 us): a census run, never a play session.
 // Regions: `cg` (the Zombies client object of local client 0, found like the write watch does: the plain array base 0x141FDBEF0, a vtable of the game image in its first qword; re-armed when it
 // moves; the size from -agent-capacity: 0xFDEA8 stock, else the grown object plus the table of the capacity component) and `abs:<hex address>:<decimal size>` (a static block).
@@ -54,7 +54,8 @@ namespace paris_write_census
         std::atomic<unsigned> sites_used{0}, sites_lost{0};
         std::atomic<std::uint64_t> faults_total{0}, outside_total{0}, released_total{0};
         std::atomic<unsigned> main_tid{0};
-        unsigned fault_limit{200000}, cg_agents{0};
+        unsigned fault_limit{20000}, cg_agents{0}, delay_seconds{0};
+        std::uint64_t started_tick{};
         bool enabled{};
         PVOID veh{};
         std::thread helper;
@@ -259,6 +260,7 @@ namespace paris_write_census
             while (!stop.load())
             {
                 Sleep(50);
+                if (GetTickCount64() - started_tick < static_cast<std::uint64_t>(delay_seconds) * 1000) continue;
                 for (unsigned ri = 0; ri < region_count; ++ri)
                 {
                     auto& r = regions[ri];
@@ -300,6 +302,8 @@ namespace paris_write_census
             argument(L"-paris-write-census", value);
             if (argument(L"-agent-capacity", number) && !number.empty()) cg_agents = static_cast<unsigned>(_wtoi(number.c_str()));
             if (argument(L"-paris-write-census-limit", number) && !number.empty()) fault_limit = static_cast<unsigned>(_wtoi(number.c_str()));
+            if (argument(L"-paris-write-census-delay", number) && !number.empty()) delay_seconds = static_cast<unsigned>(_wtoi(number.c_str()));
+            started_tick = GetTickCount64();
             std::string list = value.empty() ? "cg" : std::string(value.begin(), value.end());
             std::size_t start = 0;
             while (start <= list.size() && region_count < max_regions)
