@@ -47,9 +47,30 @@ The ids of two processes differ whenever their tables differ (the slot of a name
 ## What was changed
 
 `script_canonical.cpp` (component, always compiled, active by default): 7 edits, 102 bytes of code, each checked against the shipped bytes before any is written (one mismatch: nothing is
-written, the process stops with the address). `-script-canon-names 4095` writes nothing. A table that exists already at the start of the component (the shipped one) refuses the change.
+written, the process stops with the address). `-script-canon-names 4095` writes nothing. A process that is not a dedicated server also reads `IW7_SCRIPT_CANON_NAMES_CLIENT` first (a lab switch: the processes of one runner share an environment, and a session with a client of the shipped table against a raised server needs the two to differ). A table that exists already at the start of the component (the shipped one) refuses the change.
 `tests/ops/script_canonical_test.py` checks every `before` against the shipped code, decodes every `after`, proves the slot arithmetic equal to the shipped division and the ids below the object keys.
 
-## Measured
+## Measured (17 Nov 2026)
 
-See `docs/SCRIPT-CANONICAL-RESULTS.md` of the paris server repository (BOSS-FIGHTS "Name budget" and the evidence folder names) once the proof runs are in; this page is the engine side.
+Headless gamelab sessions through the scheduler, private loopback, one engine bot, lab client built with `ServerModules,IsolatedLab,Debugger,Perf,AgentCapacity` from components `6df5cd4` (before main's a79 merge) and again from `e98a2e3`
+(this branch merged with main): a result marked `m` is from the second client. The other side of every comparison is the same client with `IW7_SCRIPT_CANON_NAMES=4095` (the shipped table).
+Evidence folders `%USERPROFILE%\Documents\IW7-Runtime\capacity\runs\a82-*` and `a82m-*`; commands and per-map numbers in `docs/BOSS-FIGHTS.md` of the server repository ("Name budget") and its changelog fragment `a82-canonical-name-table.md`.
+
+| Question | Result |
+|---|---|
+| Beast, production scripts only (`-LoadOnly -BudgetMeter`) | 4,029 names used: 66 free of 4,095 in the shipped game, **12,354 free of 16,383** (m: the same); 28 Paris init lines, 0 script error blocks |
+| Beast, production scripts and both boss fight scripts | **12,256 free of 16,383**, 28 init lines, 0 script error blocks (m: the same). With the shipped table: 0 free of 4,095, 0 init lines, exit 1, the load stops (negative control, m: the same) |
+| Names used by the production scripts on the other maps (read from the process) | cp_zmb 1,662, cp_rave 3,290, cp_disco 3,587, cp_town 3,684; free in the 16,383 table 14,721, 13,093, 12,796, 12,699 (measured) |
+| 1,000 new names called on Beast (library `canonnames`, plan `canon-names-beast-headless.json`) | PASS 5/5 steps, 2/2 expectations, 0 findings, `canonical_peak` 4,979 of 16,383 (m: the same). Shipped table: the session never reaches the map, the meter reads 4,095 of 4,095 (m: the same) |
+| A second script load in one process | `map cp_final` from a running Spaceland server: the table is cleared and refilled (1,601 names, then 3,978 for Beast and the fixture, not their sum), no error (m, `a82m-rotate`) |
+| a67 fill (`capacity-children-fill-headless`, 240,000 children) | PASS 30/30 steps, 17/17 expectations, 0 findings (a67: 30/30, 17/17); m: the same |
+| 305 field, cp_zmb (`capacity-mixed-headless`: 200 plain, 25 clowns, 25 ghosts, 25 brutes, 30 greys) | PASS 141/141 steps, 131/131 expectations, 0 findings, alive 302 to 306 in every window (24 windows, about 12 minutes); children total peak 221,653 (m: 222,366; a79 on the shipped table: 220,693); server frame mean 43.3 ms, p99 53.5 (m: 45.7 ms, p99 56.4; a79: 45.1 ms, p99 70.3); canonical used 1,851 names, the count the shipped table showed in a79's run |
+| Joined NetLab, Beast, production and boss scripts, 5 minute hold | PASS, join 58.8 s, 420.2 s, both sides the raised build. m: a **client of the shipped table** (`IW7_SCRIPT_CANON_NAMES_CLIENT=4095`; its log says `[script canonical] shipped table: 4095 names`) against the raised server (4,127 names loaded): PASS, join 60.1 s, 423.7 s, client and server alive at the end, 0 script errors in either log |
+| A/B, `capacity-agents-held24-headless`, window `a24`, 3 pairs | server frame mean 2.779 ms (shipped) against 2.768 ms (raised), median 2.711 against 2.677, p99 3.695 against 3.850 (-0.4 %); m, a second set of 3 pairs: 2.598 against 2.627 ms (+1.1 %), median 2.531 against 2.561, p99 3.682 against 3.716; `iw7_sperf.py compare`: no function above the noise in either set. The two sets disagree in sign and the pairs differ by 3 % among themselves: the table is read at a script load only, nothing in a frame, and the difference is not shown below the 5 % that three runs a side can show |
+
+## Not proven
+
+- Any value of `-script-canon-names` other than 4,095 and 16,383 (the option accepts 4,095 to 65,535; the ids stay below `0x40000` by a static assert).
+- A build without the lab switches: the component is in the unconditional source list of `ops/Build-Voice.ps1`, so the next build of any profile carries it, active by default.
+- Production: the deployed native does not have it; nothing is deployed.
+- A saved game (not done in a zombies match; the header checksum differs and nothing reads it back).
