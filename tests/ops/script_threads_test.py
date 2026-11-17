@@ -92,9 +92,9 @@ class ThreadRows(unittest.TestCase):
         self.assertEqual(sum(1 for r in stage1['refs'] if r['region'] == 'B'), 20)
 
     def test_allocation_classes(self):
-        self.assertIn('redirect_thread_alloc(0x140C043C5ull, false)', self.cpp)
-        self.assertIn('redirect_thread_alloc(0x140C0458Dull, false)', self.cpp)
-        self.assertIn('redirect_thread_alloc(0x140C04523ull, true)', self.cpp)
+        self.assertIn('redirect_thread_alloc(0x140C043C5ull, false, 0)', self.cpp)
+        self.assertIn('redirect_thread_alloc(0x140C0458Dull, false, 1)', self.cpp)
+        self.assertIn('redirect_thread_alloc(0x140C04523ull, true, 2)', self.cpp)
         self.assertIn('for (const auto site : {0x140C096C6ull, 0x140C096EFull})', self.cpp)             # class arrays stay low
         self.assertIn('alloc_array_low', self.cpp)                                                       # client arrays stay low
         self.assertNotIn('thread_guard_check', self.cpp)

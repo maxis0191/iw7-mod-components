@@ -305,10 +305,11 @@ inline void remove_ref(std::uint32_t id) { reinterpret_cast<void (*)(std::uint32
 std::uint32_t* const scr_self_global = reinterpret_cast<std::uint32_t*>(0x14665A120ull);                  // the object the next thread self change takes (FUN_140C097B0)
 std::uint32_t* const dead_chain_head = reinterpret_cast<std::uint32_t*>(0x14665A12Cull);                  // BLK0 +0x2C: first dead entity object
 
-std::uint16_t* alloc_thread(std::uint32_t* out, std::uint32_t self) {      // the three thread allocation sites (AllocThread, FUN_140C043A0, FUN_140C04510): rdx = the self
+unsigned low_thread_sites{};          // lab bisection: bit k = thread allocation site k takes the low pool only (0 FUN_140C043A0, 1 AllocThread, 2 FUN_140C04510)
+std::uint16_t* alloc_thread(std::uint32_t* out, std::uint32_t self, std::uint32_t site) {      // the three thread allocation sites (AllocThread, FUN_140C043A0, FUN_140C04510): rdx = the self, r8 = the site
     if (self >= parent_ids_now())
         game::Com_Error(game::ERR_FATAL, "script variables: a thread was started on object %u: beyond the last parent id 0x%X (the high bits of a self are kept in table B)", self, parent_ids_now() - 1);
-    auto* entry = take_parent(out, (low_classes & 1) != 0);
+    auto* entry = take_parent(out, (low_classes & 1) != 0 || ((low_thread_sites >> site) & 1) != 0);
     self_high[*out] = static_cast<std::uint16_t>(self >> 16);
     return entry;
 }
@@ -534,15 +535,20 @@ void redirect_call_to(std::uintptr_t site, std::uintptr_t expected_target, std::
 void redirect_call(std::uintptr_t site, std::uintptr_t expected_target, const void* function) { redirect_call_to(site, expected_target, wrapper_for(function)); }
 // A thread allocation site (`call AllocVariable` in AllocThread, FUN_140C043A0, FUN_140C04510): the self object of the new thread sits in rbx or rdi (callee saved, so the C++ side cannot
 // read it): a thunk hands it over in rdx: push rdx ; mov rdx, <self register> ; call alloc_thread (through the register saving wrapper) ; pop rdx ; ret
-void redirect_thread_alloc(std::uintptr_t site, bool self_in_rdi) {
-    auto* at = code_alloc(32);
+void redirect_thread_alloc(std::uintptr_t site, bool self_in_rdi, std::uint32_t index) {
+    auto* at = code_alloc(48);
     auto* out = at;
     *out++ = 0x52;                                                                                         // push rdx
+    *out++ = 0x41; *out++ = 0x50;                                                                          // push r8
+    *out++ = 0x48; *out++ = 0x83; *out++ = 0xEC; *out++ = 0x08;                                            // sub rsp, 8 (the alignment the wrapper expects)
     *out++ = 0x48; *out++ = 0x89; *out++ = self_in_rdi ? 0xFA : 0xDA;                                      // mov rdx, rdi | rbx
+    *out++ = 0x41; *out++ = 0xB8; std::memcpy(out, &index, 4); out += 4;                                   // mov r8d, index
     std::int32_t rel{};
     if (!rel32(wrapper_for(reinterpret_cast<const void*>(&alloc_thread)), reinterpret_cast<std::uintptr_t>(out) + 5, rel)) throw std::runtime_error("script variables: thunk too far");
     *out++ = 0xE8;
     std::memcpy(out, &rel, 4); out += 4;
+    *out++ = 0x48; *out++ = 0x83; *out++ = 0xC4; *out++ = 0x08;                                            // add rsp, 8
+    *out++ = 0x41; *out++ = 0x58;                                                                          // pop r8
     *out++ = 0x5A;                                                                                         // pop rdx
     *out++ = 0xC3;                                                                                         // ret
     redirect_call_to(site, 0x140C04650ull, reinterpret_cast<std::uintptr_t>(at));
@@ -845,13 +851,16 @@ public:
         char classes_env[8]{};
         GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOWCLASSES", classes_env, sizeof(classes_env));
         low_classes = pools.low_first() ? 7u : static_cast<unsigned>(std::atoi(classes_env));
+        char sites_env[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_LOWTHREADSITES", sites_env, sizeof(sites_env));
+        low_thread_sites = static_cast<unsigned>(std::atoi(sites_env));
         if (low_classes & 2)
             for (const auto site : {0x140C04559ull, 0x140C059B8ull, 0x140C090B0ull})
                 redirect_call(site, 0x140C04650ull, reinterpret_cast<const void*>(&alloc_variable_low));
         if (low_classes & 4) redirect_call(0x140C0900Bull, 0x140C04650ull, reinterpret_cast<const void*>(&alloc_variable_low));
-        redirect_thread_alloc(0x140C043C5ull, false);       // FUN_140C043A0: the self is in ebx
-        redirect_thread_alloc(0x140C0458Dull, false);       // AllocThread: ebx
-        redirect_thread_alloc(0x140C04523ull, true);        // FUN_140C04510 (child thread): edi
+        redirect_thread_alloc(0x140C043C5ull, false, 0);       // FUN_140C043A0: the self is in ebx
+        redirect_thread_alloc(0x140C0458Dull, false, 1);       // AllocThread: ebx
+        redirect_thread_alloc(0x140C04523ull, true, 2);        // FUN_140C04510 (child thread): edi
         for (const auto site : {0x140C4F64Eull, 0x140C503EFull}) redirect_call(site, 0x140C068B0ull, reinterpret_cast<const void*>(&alloc_array_low));
         replace_function(0x140C04650ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&alloc_variable));
         replace_function(0x140C04910ull, {0x48, 0x89, 0x5C, 0x24, 0x08}, reinterpret_cast<const void*>(&release_with_children));

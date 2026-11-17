@@ -163,7 +163,7 @@ class ParentIds(unittest.TestCase):
             self.assertEqual(ins.operands[0].imm, 0x140C04650 if site in ALLOC_LOW_CALLS else 0x140C068B0, hex(site))
         for site in ALLOC_LOW_CALLS:
             self.assertIn('0x%Xull' % site, self.cpp)
-        self.assertIn('redirect_thread_alloc(0x140C043C5ull, false)', self.cpp)
+        self.assertIn('redirect_thread_alloc(0x140C043C5ull, false, 0)', self.cpp)
         # the stock functions the replacements call, and the one that raises the error
         self.assertIn('0x140C04990ull', self.cpp)
         self.assertIn('0x140D34180ull', self.cpp)
