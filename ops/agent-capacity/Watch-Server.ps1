@@ -216,6 +216,7 @@ set sv_mapRotationCurrent ""
     if($CatalogRoot){
         if(!('IW7DoomDiagnostics' -as [type])){Add-Type -Path (Join-Path $CatalogRoot 'ops/native/DoomDiagnostics.cs')}
         $pool=[IW7DoomDiagnostics]::Canonical($identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc())
+        if(@($pool).Count -lt 3){throw 'The catalog DoomDiagnostics.cs returns no table size (it predates a82): the canonical floor needs the reader that takes the slots from the process.'}
         $canonical=@([pscustomobject]@{Map=$Map;Phase='Cold';Used=$pool[0];Free=($pool[2]-$pool[0]);NameBytes=$pool[1]})
         if($canonical[0].Free -lt 64){throw 'Cold canonical floor failed.'}
     }
@@ -264,6 +265,7 @@ set sv_mapRotationCurrent ""
         }
         if($CatalogRoot){
             $pool=[IW7DoomDiagnostics]::Canonical($identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc())
+            if(@($pool).Count -lt 3){throw 'The catalog DoomDiagnostics.cs returns no table size (it predates a82): the canonical floor needs the reader that takes the slots from the process.'}
             $canonical+=@([pscustomobject]@{Map=$Map;Phase='Occupied';Used=$pool[0];Free=($pool[2]-$pool[0]);NameBytes=$pool[1]})
             if($canonical[-1].Free -lt 64){throw 'Occupied canonical floor failed.'}
         }
@@ -287,6 +289,7 @@ set sv_mapRotationCurrent ""
             if(!$arrived){throw 'Fresh protected occupied Beast arrival not witnessed.'}
             $session.Plan.Map='cp_final'
             $pool=[IW7DoomDiagnostics]::Canonical($identity.PID,$identity.Image,([datetimeoffset]$identity.CreatedUtc).UtcDateTime.ToFileTimeUtc())
+            if(@($pool).Count -lt 3){throw 'The catalog DoomDiagnostics.cs returns no table size (it predates a82): the canonical floor needs the reader that takes the slots from the process.'}
             $canonical+=@([pscustomobject]@{Map='cp_final';Phase='OccupiedRotation';Used=$pool[0];Free=($pool[2]-$pool[0]);NameBytes=$pool[1]})
             if($canonical[-1].Free -lt 64){throw 'Occupied Beast canonical floor failed.'}
             $result|Add-Member NoteProperty OccupiedBeastRotation $true
