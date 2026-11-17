@@ -357,6 +357,27 @@ constexpr b_function b_functions[] = {
     {0x140BFF0C0ull, {0x40, 0x53, 0x48, 0x83, 0xEC}}, {0x140BFF110ull, {0x48, 0x89, 0x5C, 0x24, 0x18}}, {0x140BFF3B0ull, {0x89, 0x54, 0x24, 0x10, 0x48}},
     {0x140C020E0ull, {0x40, 0x53, 0x48, 0x83, 0xEC}}};
 
+// lab audit (IW7_SCRIPT_VARIABLES_AUDIT=1, every 500 ms on the main thread): every live thread must hold a self that is a live object, every child thread a parent that is a thread
+void audit() {
+    static unsigned reported{};
+    if (!active || reported >= 30) return;
+    for (std::uint32_t id = 1; id < parent_ids_now() && reported < 30; ++id) {
+        const auto& e = parents_table[id];
+        const auto type = e.type & 0xFFu;
+        if (type < 0xF || type > 0x12) continue;
+        const auto self = self_of(id);
+        const auto self_type = self < parent_ids_now() ? (parents_table[self].type & 0xFFu) : 0xFFu;
+        const auto parent = type == 0x12 ? (e.type >> 8) : 0u;
+        const auto parent_type = parent && parent < parent_ids_now() ? (parents_table[parent].type & 0xFFu) : 0u;
+        const bool bad_self = self && (self_type == 0x18 || self_type > 0x16);
+        const bool bad_parent = type == 0x12 && parent && (parent_type < 0xF || parent_type > 0x17);
+        if (bad_self || bad_parent) {
+            ++reported;
+            console::error("[script variables] audit: thread %u type 0x%X refs %u self %u (hi %u, type 0x%X) parent %u (type 0x%X)\n", id, type, e.refs, self, self_high[id], self_type, parent, parent_type);
+        }
+    }
+}
+
 // ---- code memory within 2 GB of the image: caves, thunks, the stub ------------------------------------------------------------------------------
 buffer code_region;
 std::size_t code_used{};
@@ -1020,6 +1041,9 @@ public:
                 seg_in_use == stock_segments ? std::size_t{} : std::size(seg_counter_sites), seg_in_use == stock_segments ? " (the stock counters and the stock code of the segment: the previous build)" : "");
             if (poisoned) console::info("[script variables] poison: %zu bytes of the stock tables are inaccessible\n", poisoned);
         }, scheduler::main);
+        char audit_env[8]{};
+        GetEnvironmentVariableA("IW7_SCRIPT_VARIABLES_AUDIT", audit_env, sizeof(audit_env));
+        if (audit_env[0] == '1') scheduler::loop(audit, scheduler::main, 500ms);
         scheduler::loop(check_guards, scheduler::main, 500ms);
         if (with_meter) scheduler::loop(meter_report, scheduler::main, 10s);
     }
