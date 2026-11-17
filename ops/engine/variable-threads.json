@@ -1,0 +1,564 @@
+{
+ "schema": "iw7.variable-threads/1",
+ "rows": [
+  {
+   "at": 5369439540,
+   "kind": "caller",
+   "why": "after the call at 1400B252F",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5369440170,
+   "kind": "caller",
+   "why": "after the call at 1400B27A5",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5372749254,
+   "kind": "caller",
+   "why": "after the call at 1403DA5C1",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5372749426,
+   "kind": "caller",
+   "why": "after the call at 1403DA66D",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5372749520,
+   "kind": "caller",
+   "why": "after the call at 1403DA6CB",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5372749574,
+   "kind": "caller",
+   "why": "after the call at 1403DA701",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5372758453,
+   "kind": "caller",
+   "why": "after the call at 1403DC9B0",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5372758535,
+   "kind": "caller",
+   "why": "after the call at 1403DCA02",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5372758621,
+   "kind": "caller",
+   "why": "after the call at 1403DCA58",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5372759071,
+   "kind": "caller",
+   "why": "after the call at 1403DCC1A",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5372994630,
+   "kind": "caller",
+   "why": "after the call at 140416441",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373191795,
+   "kind": "caller",
+   "why": "after the call at 14044666E",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373216864,
+   "kind": "caller",
+   "why": "after the call at 14044C85B",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373241699,
+   "kind": "caller",
+   "why": "after the call at 14045295E",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373241869,
+   "kind": "caller",
+   "why": "after the call at 140452A08",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373241898,
+   "kind": "caller",
+   "why": "after the call at 140452A25",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373242010,
+   "kind": "caller",
+   "why": "after the call at 140452A95",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373242039,
+   "kind": "caller",
+   "why": "after the call at 140452AB2",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373242214,
+   "kind": "caller",
+   "why": "after the call at 140452B61",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373242277,
+   "kind": "caller",
+   "why": "after the call at 140452BA0",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373248681,
+   "kind": "caller",
+   "why": "after the call at 1404544A4",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373260076,
+   "kind": "caller",
+   "why": "after the call at 140457127",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373285520,
+   "kind": "field_1C70",
+   "why": "word access of [+0x1C70]",
+   "length": 7,
+   "stock": "6639b9701c0000",
+   "new": "9039b9701c0000",
+   "text": "cmp word ptr [rcx + 0x1c70], di"
+  },
+  {
+   "at": 5373285546,
+   "kind": "field_1C70",
+   "why": "word access of [+0x1C70]",
+   "length": 7,
+   "stock": "0fb78b701c0000",
+   "new": "908b8b701c0000",
+   "text": "movzx ecx, word ptr [rbx + 0x1c70]"
+  },
+  {
+   "at": 5373285558,
+   "kind": "field_1C70",
+   "why": "word access of [+0x1C70]",
+   "length": 7,
+   "stock": "6689bb701c0000",
+   "new": "9089bb701c0000",
+   "text": "mov word ptr [rbx + 0x1c70], di"
+  },
+  {
+   "at": 5373285853,
+   "kind": "caller",
+   "why": "after the call at 14045D5D8",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5373285960,
+   "kind": "field_1C70",
+   "why": "word access of [+0x1C70]",
+   "length": 7,
+   "stock": "668983701c0000",
+   "new": "908983701c0000",
+   "text": "mov word ptr [rbx + 0x1c70], ax"
+  },
+  {
+   "at": 5373515739,
+   "kind": "caller",
+   "why": "after the call at 1404957D6",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380400169,
+   "kind": "caller",
+   "why": "after the call at 140B26424",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380628774,
+   "kind": "caller",
+   "why": "after the call at 140B5E121",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380629154,
+   "kind": "caller",
+   "why": "after the call at 140B5E29D",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380629225,
+   "kind": "caller",
+   "why": "after the call at 140B5E2E4",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380629546,
+   "kind": "caller",
+   "why": "after the call at 140B5E425",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380629621,
+   "kind": "caller",
+   "why": "after the call at 140B5E470",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380629673,
+   "kind": "caller",
+   "why": "after the call at 140B5E4A4",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380629717,
+   "kind": "caller",
+   "why": "after the call at 140B5E4D0",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380630248,
+   "kind": "caller",
+   "why": "after the call at 140B5E6E3",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380630349,
+   "kind": "caller",
+   "why": "after the call at 140B5E748",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380630415,
+   "kind": "caller",
+   "why": "after the call at 140B5E78A",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380630454,
+   "kind": "caller",
+   "why": "after the call at 140B5E7B1",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380630973,
+   "kind": "caller",
+   "why": "after the call at 140B5E9B8",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380631641,
+   "kind": "caller",
+   "why": "after the call at 140B5EC54",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380631721,
+   "kind": "caller",
+   "why": "after the call at 140B5ECA4",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5380631765,
+   "kind": "caller",
+   "why": "after the call at 140B5ECD0",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5381257503,
+   "kind": "caller",
+   "why": "after the call at 140BF791A",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5381309550,
+   "kind": "name",
+   "why": "an object key name read back to an id with 16 bit arithmetic",
+   "length": 15,
+   "stock": "6603c80fb7d9418bcf8d9300000400",
+   "new": "01c18d990000fcff89ca418bcf9090",
+   "text": "add dx,ax ; movzx ebx,dx ; lea"
+  },
+  {
+   "at": 5381328369,
+   "kind": "chain",
+   "why": "FUN_140C08D90 reads the head of the dead entity chain as a word",
+   "length": 7,
+   "stock": "0fb7053413a505",
+   "new": "908b053413a505",
+   "text": "movzx eax, word ptr [rip + 0x5a51334]"
+  },
+  {
+   "at": 5381330009,
+   "kind": "name",
+   "why": "an object key name read back to an id with 16 bit arithmetic",
+   "length": 12,
+   "stock": "6603d00fb7da8dbb00000400",
+   "new": "01c28d9a0000fcff89d79090",
+   "text": "add dx,ax ; movzx ebx,dx ; lea"
+  },
+  {
+   "at": 5381336385,
+   "kind": "return",
+   "why": "thread id returned by the executor",
+   "length": 3,
+   "stock": "0fb7c3",
+   "new": "908bc3",
+   "text": "movzx eax, bx"
+  },
+  {
+   "at": 5381337111,
+   "kind": "return",
+   "why": "thread id returned by the executor",
+   "length": 3,
+   "stock": "0fb7c7",
+   "new": "908bc7",
+   "text": "movzx eax, di"
+  },
+  {
+   "at": 5381337168,
+   "kind": "free",
+   "why": "Scr_FreeThread argument",
+   "length": 3,
+   "stock": "0fb7c9",
+   "new": "908bc9",
+   "text": "movzx ecx, cx"
+  },
+  {
+   "at": 5381665618,
+   "kind": "field_1A24",
+   "why": "word access of [+0x1A24]",
+   "length": 7,
+   "stock": "0fb78b241a0000",
+   "new": "908b8b241a0000",
+   "text": "movzx ecx, word ptr [rbx + 0x1a24]"
+  },
+  {
+   "at": 5381665880,
+   "kind": "field_1A24",
+   "why": "word access of [+0x1A24]",
+   "length": 7,
+   "stock": "0fb78b241a0000",
+   "new": "908b8b241a0000",
+   "text": "movzx ecx, word ptr [rbx + 0x1a24]"
+  },
+  {
+   "at": 5381675555,
+   "kind": "field_1A24",
+   "why": "word access of [+0x1A24]",
+   "length": 7,
+   "stock": "6639ab241a0000",
+   "new": "9039ab241a0000",
+   "text": "cmp word ptr [rbx + 0x1a24], bp"
+  },
+  {
+   "at": 5381675589,
+   "kind": "caller",
+   "why": "after the call at 140C5DA40",
+   "length": 3,
+   "stock": "0fb7c8",
+   "new": "908bc8",
+   "text": "movzx ecx, ax"
+  },
+  {
+   "at": 5381675597,
+   "kind": "field_1A24",
+   "why": "word access of [+0x1A24]",
+   "length": 7,
+   "stock": "0fb78b241a0000",
+   "new": "908b8b241a0000",
+   "text": "movzx ecx, word ptr [rbx + 0x1a24]"
+  },
+  {
+   "at": 5381675609,
+   "kind": "field_1A24",
+   "why": "word access of [+0x1A24]",
+   "length": 7,
+   "stock": "6689ab241a0000",
+   "new": "9089ab241a0000",
+   "text": "mov word ptr [rbx + 0x1a24], bp"
+  },
+  {
+   "at": 5381676895,
+   "kind": "field_1A24",
+   "why": "word access of [+0x1A24]",
+   "length": 7,
+   "stock": "668983241a0000",
+   "new": "908983241a0000",
+   "text": "mov word ptr [rbx + 0x1a24], ax"
+  },
+  {
+   "at": 5381676963,
+   "kind": "field_1A24",
+   "why": "word access of [+0x1A24]",
+   "length": 7,
+   "stock": "0fb788241a0000",
+   "new": "908b88241a0000",
+   "text": "movzx ecx, word ptr [rax + 0x1a24]"
+  },
+  {
+   "at": 5381676970,
+   "kind": "field_test",
+   "why": "a 16-bit test of the id loaded at 140C5DFA3",
+   "length": 3,
+   "stock": "6685c9",
+   "new": "9085c9",
+   "text": "test cx, cx"
+  },
+  {
+   "at": 5381676980,
+   "kind": "field_1A24",
+   "why": "word access of [+0x1A24]",
+   "length": 7,
+   "stock": "6689ab241a0000",
+   "new": "9089ab241a0000",
+   "text": "mov word ptr [rbx + 0x1a24], bp"
+  },
+  {
+   "at": 5381684297,
+   "kind": "field_1A24",
+   "why": "word access of [+0x1A24]",
+   "length": 7,
+   "stock": "6689af241a0000",
+   "new": "9089af241a0000",
+   "text": "mov word ptr [rdi + 0x1a24], bp"
+  }
+ ],
+ "problems": []
+}

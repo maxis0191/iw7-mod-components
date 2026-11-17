@@ -1418,6 +1418,143 @@ def links(args):
     return 0
 
 
+# ------------------------------------------------------------------------------------------------ thread ids and the thread self beyond u16 (a79)
+# A thread id is returned by the Scr_ExecThread family as a u16 (`movzx eax,bx`), narrowed again by 42 callers and by Scr_FreeThread (`movzx ecx,cx`) and stored in two game structs
+# as a word. With ids of 19 bits (8 segments) all of these must hold 32 bits: `thread-rows` finds them (the callers by a taint scan of the value returned in eax over the next
+# 20 straight-line instructions, the two struct fields by every word access of their displacement), `emit-threads` writes the rows of script_variables_threads.inc:
+# {address, length, stock bytes, new bytes} (little endian in a uint64). The widening is one byte for one byte: `0F B7 /r` (movzx r32, r/m16) -> `90 8B /r` (nop ; mov r32, r/m32),
+# `66 [REX] 39|89 /r` (cmp / mov word) -> `90 [REX] 39|89 /r`. The thread self (P8 +2) and the dead entity chain are not rows: caves and replacements in script_variables.cpp.
+THREAD_CALLEES = (0x140B516C0, 0x140B516F0, 0x140B51730, 0x140C0AC80, 0x140C0ACD0, 0x140C0AF90)       # return a thread id in eax (wrappers of Scr_ExecThread / Scr_ExecEntThread)
+THREAD_RETURNS = (0x140C0AD41, 0x140C0B017)          # `movzx eax,bx` / `movzx eax,di` of the two executors
+FREE_THREAD = 0x140C0B050                            # `movzx ecx,cx ; jmp RemoveRefToObject`
+# The name of a child of an object key (name = 0x40000 + id) is read back to the id with 16 bit arithmetic (`add dx,ax ; movzx ebx,dx ; lea edi,[rbx+0x40000]`) where a thread kills the threads
+# registered under it: an id of 17 bits or more lost its top bits there (a79: the first run with threads on high ids crashed in RemoveVariableValue). The same decode sits in FUN_140C043A0.
+# {start, stock bytes, new bytes}: the id is the full name minus 0x40000, the name itself is kept for the lookup
+NAME_DECODES = ((0x140C09459, '6603d00fb7da8dbb00000400', '01c28d9a0000fcff89d79090'),             # FUN_140C09370: add edx,eax ; lea ebx,[rdx-0x40000] ; mov edi,edx ; nop nop
+                (0x140C0446E, '6603c80fb7d9418bcf8d9300000400', '01c18d990000fcff89ca418bcf9090'))  # FUN_140C043A0: add ecx,eax ; lea ebx,[rcx-0x40000] ; mov edx,ecx ; mov ecx,r15d ; nop nop
+CHAIN_HEAD_READ = 0x140C08DF1                       # `movzx eax, word [BLK0 + 0x2C]`: the head of the dead entity chain is a dword
+THREAD_FIELDS = (0x1C70, 0x1A24)                     # word fields of two game structs (client think state) that keep a thread id
+
+
+def widen_bytes(raw):
+    """The one for one widening of a 16-bit instruction: returns the new bytes (same length) or raises."""
+    b = bytearray(raw)
+    if b[0] == 0x66:                                         # 66 [REX] op /r (cmp / mov word)
+        i = 1 + (1 if 0x40 <= b[1] <= 0x4F else 0)
+        if b[i] not in (0x39, 0x89, 0x3B, 0x8B, 0x85):
+            raise ValueError('not a word cmp/mov: %s' % raw.hex())
+        b[0] = 0x90
+        return bytes(b)
+    if 0x40 <= b[0] <= 0x4F:                                 # [REX] 0F B7 /r
+        if b[1:3] != b'\x0f\xb7':
+            raise ValueError('not a movzx word: %s' % raw.hex())
+        return bytes([0x90, b[0], 0x8B]) + bytes(b[3:])
+    if b[0:2] != b'\x0f\xb7':
+        raise ValueError('not a movzx word: %s' % raw.hex())
+    return bytes([0x90, 0x8B]) + bytes(b[2:])
+
+
+def thread_rows(img, md, db_file):
+    from capstone import x86_const as X
+    db = sqlite3.connect('file:' + db_file.replace('\\', '/') + '?mode=ro', uri=True)
+    idx = sqlite3.connect('file:' + index_path().replace('\\', '/') + '?mode=ro', uri=True)
+    rows, problems = {}, []
+
+    def add(at, kind, why):
+        ins = next(md.disasm(img.read(at, 16), at))
+        raw = bytes(ins.bytes)
+        try:
+            new = widen_bytes(raw)
+        except ValueError as e:
+            problems.append('%X: %s' % (at, e))
+            return
+        rows[at] = dict(at=at, kind=kind, why=why, length=len(raw), stock=raw.hex(), new=new.hex(), text=ins.mnemonic + ' ' + ins.op_str)
+    for at in THREAD_RETURNS:
+        add(at, 'return', 'thread id returned by the executor')
+    add(CHAIN_HEAD_READ, 'chain', 'FUN_140C08D90 reads the head of the dead entity chain as a word')
+    for at, stock, new in NAME_DECODES:
+        raw = img.read(at, len(stock) // 2)
+        if raw.hex() != stock:
+            problems.append('%X: the name decode is not the expected one (%s)' % (at, raw.hex()))
+        else:
+            rows[at] = dict(at=at, kind='name', why='an object key name read back to an id with 16 bit arithmetic', length=len(raw), stock=stock, new=new, text='add dx,ax ; movzx ebx,dx ; lea')
+    add(FREE_THREAD, 'free', 'Scr_FreeThread argument')
+    for callee in THREAD_CALLEES:
+        for (at,) in db.execute('select at from calls where dst=?', (callee,)).fetchall():
+            if at is None:
+                continue
+            taint = {'rax'}
+            for k, ins in enumerate(md.disasm(img.read(at + 5, 120), at + 5)):
+                if k >= 20:
+                    break
+                mn, ops = ins.mnemonic, ins.operands
+                hit = None
+                if mn == 'mov' and len(ops) == 2 and ops[0].type == X.X86_OP_MEM and ops[1].type == X.X86_OP_REG and ops[0].size == 2 and FULL.get(ins.reg_name(ops[1].reg)) in taint:
+                    hit = 'store'
+                elif mn == 'movzx' and len(ops) == 2 and ops[1].type == X.X86_OP_REG and ops[1].size == 2 and FULL.get(ins.reg_name(ops[1].reg)) in taint:
+                    hit = 'caller'
+                elif mn in ('cmp', 'test') and len(ops) == 2 and ops[0].type == X.X86_OP_REG and ops[0].size == 2 and FULL.get(ins.reg_name(ops[0].reg)) in taint:
+                    hit = 'cmp'
+                if hit:
+                    add(ins.address, hit, 'after the call at %X' % at)
+                if mn in ('ret', 'jmp', 'call') or mn.startswith('j'):
+                    break
+                if mn == 'mov' and len(ops) == 2 and ops[0].type == X.X86_OP_REG and ops[1].type == X.X86_OP_REG and ops[0].size >= 4 and FULL.get(ins.reg_name(ops[1].reg)) in taint:
+                    taint.add(FULL.get(ins.reg_name(ops[0].reg)))
+                    continue
+                try:
+                    for r in ins.regs_access()[1]:
+                        taint.discard(FULL.get(ins.reg_name(r)))
+                except Exception:
+                    pass
+                if not taint:
+                    break
+    for field in THREAD_FIELDS:
+        for at, text in idx.execute("select at,text from insn where kind='disp' and value=?", (field,)).fetchall():
+            if ' word ptr' in text and 'dword' not in text and 'qword' not in text and 'xmmword' not in text:
+                add(at, 'field_%X' % field, 'word access of [+0x%X]' % field)
+                ins = next(md.disasm(img.read(at, 16), at))
+                if ins.mnemonic == 'movzx' and ins.operands[0].type == X.X86_OP_REG:       # the loaded id must not be narrowed again by a 16-bit test or compare (`test cx,cx`)
+                    reg = FULL.get(ins.reg_name(ins.operands[0].reg))
+                    for k, nxt in enumerate(md.disasm(img.read(at + ins.size, 40), at + ins.size)):
+                        if k >= 4 or nxt.mnemonic in ('call', 'ret', 'jmp') or nxt.mnemonic.startswith('j'):
+                            break
+                        o = nxt.operands
+                        if nxt.mnemonic in ('test', 'cmp') and len(o) == 2 and o[0].type == X.X86_OP_REG and o[0].size == 2 and FULL.get(nxt.reg_name(o[0].reg)) == reg:
+                            add(nxt.address, 'field_test', 'a 16-bit test of the id loaded at %X' % at)
+    return dict(rows=sorted(rows.values(), key=lambda r: r['at']), problems=problems)
+
+
+def thread_rows_cmd(args):
+    image_file, db_file = ss.image_path()
+    img, md = ss.Image(image_file), ss.cs()
+    md.detail = True
+    d = thread_rows(img, md, db_file)
+    kinds = collections.Counter(r['kind'] for r in d['rows'])
+    print('thread id widening rows: %d %s' % (len(d['rows']), dict(kinds)))
+    for p in d['problems']:
+        print('  PROBLEM:', p)
+    if args.o and not d['problems']:
+        json.dump(dict(schema='iw7.variable-threads/1', **d), open(args.o, 'w', newline='\n'), indent=1)
+        print('wrote', args.o)
+    return 1 if d['problems'] else 0
+
+
+def emit_threads(args):
+    d = json.load(open(args.file))
+    lines = ['// Generated by ops/engine/variable_sites.py emit-threads from variable-threads.json; do not edit.',
+             '// {address, length, stock bytes, new bytes} (little endian): a 16-bit holder of a thread id widened to 32 bits, one byte for one byte (`movzx` -> `nop ; mov`, the `66` prefix -> `nop`)']
+    body = []
+    for r in d['rows']:
+        stock, new = bytes.fromhex(r['stock']), bytes.fromhex(r['new'])
+        for k in range(0, len(stock), 8):           # a row is eight bytes at most
+            body.append('{0x%Xull, %d, 0x%Xull, 0x%Xull},' % (r['at'] + k, len(stock[k:k + 8]), int.from_bytes(stock[k:k + 8], 'little'), int.from_bytes(new[k:k + 8], 'little')))
+    with open(args.o, 'w', newline='\n') as out:
+        out.write('\n'.join(lines) + '\n')
+        out.write('\n'.join(body) + '\n')
+    print('wrote', len(body), 'thread id rows to', args.o)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -1431,6 +1568,8 @@ def main():
     p = sub.add_parser('links'); p.add_argument('-o', default=None); p.set_defaults(fn=links)
     p = sub.add_parser('segment-rows'); p.add_argument('-o', default=None); p.set_defaults(fn=segment_rows_cmd)
     p = sub.add_parser('emit-segments'); p.add_argument('file'); p.add_argument('-o', required=True); p.set_defaults(fn=emit_segments)
+    p = sub.add_parser('thread-rows'); p.add_argument('-o', default=None); p.set_defaults(fn=thread_rows_cmd)
+    p = sub.add_parser('emit-threads'); p.add_argument('file'); p.add_argument('-o', required=True); p.set_defaults(fn=emit_threads)
     args = ap.parse_args()
     sys.exit(args.fn(args) or 0)
 
