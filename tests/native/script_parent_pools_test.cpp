@@ -101,6 +101,32 @@ static void one(unsigned S) {
         for (std::size_t i = 0; i < static_cast<std::size_t>(S) * parent_low_usable(S) - 2; ++i) CHECK(p.take(false) < low_ids);
         CHECK(p.take(false) >= low_ids);
     }
+    // burned low pool (the detection test of a55, a79): the low pool keeps `keep` locals a segment, a general allocation never falls back to it
+    {
+        parent_pools p;
+        table.assign(parent_ids_for(S), parent_entry{});
+        for (auto& c : counters) c = 0;
+        p.attach(table.data(), counters, S, parent_ids_for(S), parent_low_locals_for(S), false, 24);
+        p.format();
+        CHECK(p.burned());
+        std::size_t low = 0;
+        for (;;) {
+            for (unsigned s = 0; s < S; ++s) counters[s] = 0;
+            const auto id = p.take(true);
+            if (!id) break;
+            CHECK(id >= S && id < low_ids);
+            ++low;
+        }
+        CHECK(low == static_cast<std::size_t>(S) * 23);              // locals 1..23 of every segment
+        std::size_t high = 0;
+        for (;;) {
+            const auto id = p.take(false);
+            if (!id) break;
+            CHECK(id >= low_ids);                                   // never a low id, even when the high pool ends
+            ++high;
+        }
+        CHECK(high == static_cast<std::size_t>(S) * (0x10000u - low_locals - 1u) + S);        // locals low_locals..0xFFFF of every segment
+    }
     // the id <-> local conversion of the key (`id >> shift`) and of the read back (`local << shift | segment`) is the identity for every id
     for (std::uint32_t id : {S, S + 1u, 0x1234u, 0xFFFFu, 0x10000u, ids - 1}) {
         const auto local = id >> segment_shift(S), segment = id & (S - 1);
