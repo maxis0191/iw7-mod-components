@@ -17,7 +17,7 @@
 // How: every page of a region is made PAGE_READONLY (the original protection is kept). A store faults (EXCEPTION_ACCESS_VIOLATION, write) in a vectored handler (first in the chain):
 // it counts the store per site (the RIP and the region), keeps the written offset (minimum, maximum, the first 128 distinct ones), makes the page writable, sets the trap flag and
 // continues; the single step that follows puts the protection back. Reads never fault. The handler allocates nothing and takes no lock. A page that faults more than
-// -paris-write-census-limit times (default 20000: a hot page; the first 20000 stores of a page are seen, so a table's rows still show) is released for good and listed as dropped: its writers are then incomplete. Slow on purpose (a frame costs the number of
+// -paris-write-census-limit times (default 20000: a hot page; the first 20000 stores of a page are seen, so a table's rows still show) is released and armed again 3 s later with a new budget (the dump lists the pages released at that moment): a writer that starts after the budget is seen in a later window. Slow on purpose (a frame costs the number of
 // stores into the object times about 20 us): a census run, never a play session.
 // Regions: `cg` (the Zombies client object of local client 0, found like the write watch does: the plain array base 0x141FDBEF0, a vtable of the game image in its first qword; re-armed when it
 // moves; the size from -agent-capacity: 0xFDEA8 stock, else the grown object plus the table of the capacity component) and `abs:<hex address>:<decimal size>` (a static block).
@@ -269,6 +269,18 @@ namespace paris_write_census
                     const auto object = cg_object();
                     if (object != r.base.load()) { release(r); if (object) { Sleep(200); if (cg_object() == object) protect(r, object); } }
                 }
+                // a released (hot) page is armed again every 3 s with a fresh fault budget: a writer that only starts after the first 20000 stores of its page is seen in a later window
+                if (ticks % 60 == 59)
+                    for (unsigned ri = 0; ri < region_count; ++ri)
+                        for (std::uint64_t i = 0; i < regions[ri].page_total; ++i)
+                        {
+                            auto& p = regions[ri].pages[i];
+                            if (p.state.load() != 2 || !regions[ri].base.load()) continue;
+                            p.faults.store(0);
+                            p.state.store(1);
+                            DWORD old{};
+                            VirtualProtect(reinterpret_cast<void*>((regions[ri].first_page + i) << 12), page_size, PAGE_READONLY, &old);
+                        }
                 if (++ticks % 100 == 0) dump();
             }
             for (unsigned ri = 0; ri < region_count; ++ri) release(regions[ri]);

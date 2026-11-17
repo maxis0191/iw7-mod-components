@@ -10,7 +10,7 @@ the lowest and highest offset and the gcd of the differences of the sampled offs
   same       the same offset range
   only_small the writer appears only in the small census (the scene differs)
 
-A `reaches` or `only_big` writer with a stride >= 4 and 20 or more distinct offsets is a table indexed by a number that grew with the count (a character number is the usual one).
+A `reaches` or `only_big` writer with a stride >= 4 and 20 or more distinct offsets is a table indexed by a number that grew with the count (a character number is the usual one). Offsets are compared after the shift of the grown client object (records at 0x884F8, the tail after them, the flags, the moved table); writers of the records, the flags and the moved table are `known_table`.
 """
 import argparse
 import os
@@ -18,7 +18,7 @@ import sqlite3
 import sys
 
 
-def load(path):
+def load(path, agents=0):
     rows, head = {}, []
     for line in open(path, encoding='utf-8'):
         line = line.rstrip('\n')
@@ -28,8 +28,31 @@ def load(path):
         f = line.split('\t')
         if len(f) < 8 or f[0] == 'region':
             continue
-        rows[(f[0], int(f[1], 16))] = dict(count=int(f[2]), main=int(f[3]), distinct=int(f[4]), lo=int(f[5], 16), hi=int(f[6], 16), stride=int(f[7], 16), sample=f[8] if len(f) > 8 else '')
+        row = dict(count=int(f[2]), main=int(f[3]), distinct=int(f[4]), lo=int(f[5], 16), hi=int(f[6], 16), stride=int(f[7], 16), sample=f[8] if len(f) > 8 else '')
+        regs = regions(agents)
+        row['kind'], row['lo'] = classify(regs, row['lo'])
+        row['kind_hi'], row['hi'] = classify(regs, row['hi'])
+        rows[(f[0], int(f[1], 16))] = row
     return rows, head
+
+
+def regions(agents):
+    """The layout of the client object for -agent-capacity <agents> (agent_capacity.hpp): (name, lo, hi, shift) ranges; offsets are compared after the shift."""
+    if not agents:
+        return []
+    c = 18 + agents
+    growth = (c - 42) * 0x2CA0
+    flags = 0xFDEA8 + growth
+    table = (flags + c + 15) & ~15
+    return [('record', 0x884F8, 0xFD7F8 + growth, 0), ('tail', 0xFD7F8 + growth, flags, growth), ('flags', flags, flags + c, growth + 0xFDEA8 - 0xFDEA8),
+            ('char_c0', table, table + c * 0xC0, table)]
+
+
+def classify(regs, offset):
+    for name, lo, hi, shift in regs:
+        if lo <= offset < hi:
+            return name, offset - shift if name in ('tail', 'flags') else offset - (shift if name == 'char_c0' else 0)
+    return 'cg', offset
 
 
 def function_of(db, rip):
@@ -46,8 +69,13 @@ def main():
     ap.add_argument('--db', default=os.path.join(os.path.expanduser('~'), 'Documents', 'IW7-RE-Lab', 'engine', 'iw7-engine.sqlite'))
     ap.add_argument('--min-rows', type=int, default=20, help='distinct offsets that make a writer a table candidate (default 20)')
     a = ap.parse_args()
-    small, small_head = load(a.small)
-    big, big_head = load(a.big)
+    def agents_of(path):
+        for line in open(path, encoding='utf-8'):
+            if line.startswith('# census agents='):
+                return int(line.split('agents=')[1].split()[0])
+        return 0
+    small, small_head = load(a.small, agents_of(a.small))
+    big, big_head = load(a.big, agents_of(a.big))
     db = sqlite3.connect('file:%s?mode=ro' % a.db, uri=True) if os.path.exists(a.db) else None
     for name, head in (('small', small_head), ('big', big_head)):
         print('# %s: %s' % (name, ' | '.join(h for h in head if h.startswith('# census') or h.startswith('# region'))))
@@ -61,18 +89,20 @@ def main():
             cls = 'only_small'
         elif b and not s:
             cls = 'only_big'
+        elif b['kind'] in ('record', 'char_c0', 'flags') or b['kind_hi'] in ('record', 'char_c0', 'flags'):
+            cls = 'known_table'      # the character records (grown) and the moved table: written for every character, the point of the census is the others
         elif b['hi'] > s['hi'] or b['distinct'] > s['distinct']:
             cls = 'reaches'
         else:
             cls = 'same'
         out.append((cls, key, s, b))
-    order = {'only_big': 0, 'reaches': 1, 'only_small': 2, 'same': 3}
+    order = {'only_big': 0, 'reaches': 1, 'only_small': 2, 'known_table': 3, 'same': 4}
     out.sort(key=lambda x: (order[x[0]], x[1]))
     print('class\tregion\trip\tfunction\tsmall: count/distinct/lo-hi/stride\tbig: count/distinct/lo-hi/stride\tcandidate')
     n = {}
     for cls, (region, rip), s, b in out:
         n[cls] = n.get(cls, 0) + 1
-        if cls == 'same' and not False:
+        if cls in ('same', 'known_table'):
             continue
         fmt = lambda r: '-' if not r else '%d/%d/0x%X-0x%X/0x%X' % (r['count'], r['distinct'], r['lo'], r['hi'], r['stride'])
         cand = ''

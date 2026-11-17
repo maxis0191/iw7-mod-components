@@ -116,7 +116,7 @@ Not covered: about 9 threads of the 84 deny `SuspendThread` (error 5; each is na
 
 `src/native/paris_write_census.cpp` (`-Perf`, lab only: needs `-paris-isolated-lab`) answers "which instruction writes where in this object", for the whole object instead of four cells. Every page of a region is made `PAGE_READONLY`; a store faults in a vectored handler,
 which counts it per writing instruction (RIP), keeps the lowest and highest offset and the first 128 distinct offsets, makes the page writable, sets the trap flag and continues; the single step puts the protection back. Reads never fault. Nothing is allocated or locked in the handler.
-A page that faults more than `-paris-write-census-limit` times (default 20,000: the first stores of a page are seen, a table's rows still show) is released for good and listed (`# released`): the writers of that page are then incomplete. Slow on purpose: a census run, never a play session.
+A page that faults more than `-paris-write-census-limit` times (default 20,000: the first stores of a page are seen, a table's rows still show) is released and armed again 3 s later with a fresh budget (`# released` lists the pages released when the file was written): a writer that only starts after the first 20,000 stores of its page is seen in a later window. Slow on purpose: a census run, never a play session.
 
 | Option | Meaning |
 |---|---|
