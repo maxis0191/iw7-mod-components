@@ -299,7 +299,11 @@ namespace paris_weapon_log
                 rows.clear();
                 names.clear();
             });
-            command::add("paris_weapon_log_stats", [](const command::params&) { print_stats(); });
+            // The console runs on another thread than the server's: the ring is flushed and a stats row written by the server thread (the next frame), then the counters are printed.
+            command::add("paris_weapon_log_stats", [](const command::params&)
+            {
+                scheduler::once([] { flush_ring(); stats_row(true); print_stats(); }, scheduler::server);
+            });
             console::info("[Paris weapon log] ready: giveweapon, takeweapon, switchtoweapon and switchtoweaponimmediate go to the [FR] lines of the game log%s\n", measure ? " (cost measurement on)" : "");
         }
 
