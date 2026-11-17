@@ -315,6 +315,7 @@
     "src/native/paris_vm_filter.hpp",
     "src/native/paris_watch.cpp",
     "src/native/paris_watch.hpp",
+    "src/native/paris_weapon_log.cpp",
     "src/native/paris_word_provenance.cpp",
     "src/native/paris_word_provenance.hpp",
     "src/native/paris_world.cpp",
