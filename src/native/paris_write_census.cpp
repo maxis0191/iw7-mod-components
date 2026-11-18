@@ -188,7 +188,7 @@ namespace paris_write_census
                 MEMORY_BASIC_INFORMATION m{};
                 auto& p = r.pages[i];
                 p.faults.store(0);
-                if (!VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) || m.State != MEM_COMMIT || ((m.Protect & 0xFF) != PAGE_READWRITE && (m.Protect & 0xFF) != PAGE_WRITECOPY)) { p.state.store(0); ++skipped; continue; }   // the data sections of the image are copy-on-write until first written
+                if (!VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) || m.State != MEM_COMMIT || (m.Protect & 0xFF) != PAGE_READWRITE) { p.state.store(0); ++skipped; continue; }
                 p.original = m.Protect;
                 p.state.store(1);
                 DWORD old{};
