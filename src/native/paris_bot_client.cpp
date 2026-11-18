@@ -9,6 +9,7 @@
 #include "paris_no_gpu.hpp"
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
+#include <cstdint>
 #include <thread>
 #include <atomic>
 #include <mutex>
@@ -42,9 +43,9 @@ namespace paris_bot_client
 			if (!unwind_entry)
 			{
 				// a leaf function has no unwind data: its return address is the word at the stack pointer
-				auto* sp = reinterpret_cast<unsigned long long*>(info->ContextRecord->Rsp);
-				if (!sp) return EXCEPTION_CONTINUE_SEARCH;
-				info->ContextRecord->Rip = *sp;
+				const auto stack_word = reinterpret_cast<const unsigned long long*>(static_cast<std::uintptr_t>(info->ContextRecord->Rsp));
+				if (!stack_word) return EXCEPTION_CONTINUE_SEARCH;
+				info->ContextRecord->Rip = *stack_word;
 				info->ContextRecord->Rsp += 8;
 				info->ContextRecord->Rax = 0;
 				unwinds++;
