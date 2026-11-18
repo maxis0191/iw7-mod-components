@@ -40,7 +40,7 @@ STOCK_BLOCKS = (128, 128, 64, 32, 32)
 
 
 def records(n):
-    return max(200, 24 + n + 32)
+    return 200 if n <= 24 else max(200, min(512, n + 192))
 
 
 def blocks(n):
