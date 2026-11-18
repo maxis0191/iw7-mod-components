@@ -74,8 +74,8 @@ class PoolRows(unittest.TestCase):
                      'constexpr std::uint32_t stream_pool_class_bytes[stream_pool_classes] = {16, 64, 256, 512, 3072};',
                      'constexpr std::uint32_t stock_stream_pool_blocks[stream_pool_classes] = {128, 128, 64, 32, 32};',
                      'return records > stream_pool_min_blocks ? records : stream_pool_min_blocks;',
-                     'stream_pool_blocks(agents) * stream_pool_class_bytes[cls]',
-                     'stream_pool_array_bytes(agents, cls) + 8;'):
+                     'stream_pool_blocks(records) * stream_pool_class_bytes[cls]',
+                     'stream_pool_array_bytes(records, cls) + 8;'):
             self.assertIn(text, self.hpp)
         self.assertEqual(ps.CLASS_BYTES, CLASS_BYTES)
         self.assertEqual(ps.STOCK_COUNT, STOCK_BLOCKS)
@@ -122,13 +122,13 @@ class PoolRows(unittest.TestCase):
             self.assertIn(0x14001A3D0 + 0x40 * c, starts, f'server initialiser of class {c} (lea rax, head)')
 
     def test_the_cpp_applies_the_table(self):
-        for text in ('plan_pools();', '#include "agent_capacity_pools.inc"', 'pool_server[c] = reserve(stream_pool_array_bytes(agents, c) + 8);',
-                     'pool_client[c] = reserve(static_cast<std::size_t>(stream_pool_slots) * stream_pool_stride(agents, c));',
+        for text in ('plan_pools();', '#include "agent_capacity_pools.inc"', 'pool_server[c] = reserve(stream_pool_array_bytes(records, c) + 8);',
+                     'pool_client[c] = reserve(static_cast<std::size_t>(stream_pool_slots) * stream_pool_stride(records, c));',
                      'pool_op::ref_server_head: rip(s.field, static_cast<std::uintptr_t>(s.stock), pool_server[s.cls].data + array, s.tail)',
                      'pool_op::ref_client_head: rip(s.field, static_cast<std::uintptr_t>(s.stock), pool_client[s.cls].data + array, s.tail)',
-                     'pool_op::pool_stride: add(s.field, before, stream_pool_stride(agents, s.cls))',
-                     'chain_pool(pool_server[c].data, stream_pool_blocks(agents), stream_pool_class_bytes[c]);',
-                     'chain_pool(pool_client[c].data + static_cast<std::uintptr_t>(slot) * stream_pool_stride(agents, c)',
+                     'pool_op::pool_stride: add(s.field, before, stream_pool_stride(records, s.cls))',
+                     'chain_pool(pool_server[c].data, stream_pool_blocks(records), stream_pool_class_bytes[c]);',
+                     'chain_pool(pool_client[c].data + static_cast<std::uintptr_t>(slot) * stream_pool_stride(records, c)',
                      'exceed the %u blocks of each stream buffer class'):
             self.assertIn(text, self.cpp)
         body = self.cpp.split('void plan_pools()')[1].split('// ---- 3d.')[0]
