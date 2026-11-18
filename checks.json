@@ -1932,6 +1932,28 @@
         "ops/build/*",
         "tests/ops/*"
       ]
+    },
+    {
+      "id": "resource_scheduler_measured_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_measured_test.ps1"
+      ],
+      "inputs": [
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_scheduler_measured_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
+      ]
     }
   ],
   "retained_checks": [

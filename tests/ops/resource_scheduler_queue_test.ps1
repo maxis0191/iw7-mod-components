@@ -127,8 +127,12 @@ Case 'an old shareable ticket stops newer sessions after the aging time' {
     Ask big Runtime 14GB | Out-Null
     Ask big2 Runtime 12GB | Out-Null
     foreach ($i in 1..10) { Advance 60; Ask big2 Runtime 12GB | Out-Null }   # 600 s, still asking every minute
+    # 18 Nov 2026: big2 does not fit even now (big holds the memory), so a request that fits now is passed, not held back.
+    Assert ((Ask passer Runtime 2GB) -eq 'granted') 'At 600 s an older ticket that cannot fit now does not hold back a request that fits now.'
+    Release passer
+    foreach ($i in 1..20) { Advance 60; Ask big2 Runtime 12GB | Out-Null }   # 1800 s: the starvation guard
     $m=Ask small Runtime 2GB
-    Assert ($m -like "Resource busy: waiting in turn: 1 earlier request(s) go first: 'big2' (Runtime shareable, waiting 10m00s)*") "After 600 s the waiting session goes first: $m"
+    Assert ($m -like "Resource busy: waiting in turn: 1 earlier request(s) go first: 'big2' (Runtime shareable, waiting 30m00s)*") "After 1800 s the waiting session goes first: $m"
     Release big
     Assert ((Ask big2 Runtime 12GB) -eq 'granted') 'It gets the memory.'
 }
@@ -286,7 +290,7 @@ Case 'an aged ticket that could fit by waiting still holds back later sessions; 
     Ask s6 Runtime 6GB | Out-Null                    # running, declares 6 GB, nothing taken yet: 3 GB free
     $m=Ask c Runtime 8GB
     Assert ($m -like 'Resource busy: not enough measured free memory*Queue: place 1 of 1*') "8 GB can come free when s6 ends (3 + 6 = 9 GB): queued: $m"
-    foreach ($i in 1..10) { Advance 60; Ask c Runtime 8GB | Out-Null }
+    foreach ($i in 1..30) { Advance 60; Ask c Runtime 8GB | Out-Null }   # 1800 s: the starvation guard (a ticket that does not fit now is passed before)
     $m=Ask small Runtime 1.5GB
     Assert ($m -like "Resource busy: waiting in turn: 1 earlier request(s) go first: 'c'*") "Aged and satisfiable: later sessions wait: $m"
     $script:avail=[long](7.5*1GB)                    # memory taken outside the scheduler: 1.5 GB free + 6 GB held = 7.5 GB
