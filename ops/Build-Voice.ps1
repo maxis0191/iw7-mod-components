@@ -116,6 +116,20 @@ $slotWaited = ((Get-Date) - $slotAsked).TotalSeconds
 Write-Output ('Waited {0:n0} s for the Build reservation.' -f $slotWaited)
 $script:lapAt = Get-Date
 $null = Resolve-IW7VoiceBuildNativeRoot $root
+# The shared native tree serves every branch, and each branch applies its own overlays. Every build therefore starts from the pinned
+# state: tracked files back to the pin, files an overlay added under src removed (a87's Apply-SharedGpuHooksOverlay edit of dedicated.cpp
+# made a76's build fail with "Unowned dedicated edits", 18 Nov 2026). Overlay scripts see a clean tree and need not know of each other.
+# File times are not lost: Restore-IW7SourceTimes gives every file whose bytes equal the last build's its old time back, so only the
+# files that really differ between two branches compile.
+if (!$TestsOnly -and (Test-Path -LiteralPath (Join-Path $root '.git'))) {
+    & git -C $root checkout -q -- .
+    if ($LASTEXITCODE) { throw 'Could not reset the native tree to its pin.' }
+    & git -C $root clean -fdq -- src
+    if ($LASTEXITCODE) { throw 'Could not remove overlay files from the native tree.' }
+    # The overlays keep receipts of what they changed (*.local.json at the tree root); with the files back at the pin they would only refuse.
+    Get-ChildItem -LiteralPath $root -File -Filter '*.local.json' -ErrorAction SilentlyContinue | Remove-Item -Force
+    Write-Output 'Native tree reset to its pin before the overlays.'
+}
 # The opt-in voice overlays are added last, so they are removed first.
 Remove-IW7VoiceCertifyOverlay $root
 Remove-IW7VoiceRelayOverlay $root
@@ -607,9 +621,13 @@ try {
     $mp = if ($Serial) { @("/m:$BuildJobs", '/p:MultiProcessorCompilation=false') } else { @("/m:$([Math]::Max(2,[Math]::Min(4,$threads)))", '/p:MultiProcessorCompilation=true', "/p:CL_MPCount=$threads") }
     $msbStart = Get-Date
     & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln @mp /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
-    if ($LASTEXITCODE) { throw 'Voice build failed.' }
-    Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
+    $msbuildCode = $LASTEXITCODE
+    # The record of the sources goes down after a failed build too (a compile error in one branch made the next build, of another branch,
+    # recompile all 415 files): it describes the sources this build saw. A file that failed to compile has an older object than its source,
+    # and a file that changes back to an earlier text no longer equals the record, so it keeps its new time and compiles.
     Save-IW7SourceTimes -NativeRoot $root
+    if ($msbuildCode) { throw 'Voice build failed.' }
+    Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
     Set-Content -LiteralPath $profileMark -Value $linkProfile
     $script:lapAt = Get-Date
 } finally { Pop-Location }
