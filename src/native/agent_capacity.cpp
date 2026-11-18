@@ -792,7 +792,7 @@ void grow_rings() {
         if (std::strcmp(reinterpret_cast<const char*>(name_pointer), "trace_to_entity") != 0) continue;
         auto* record = reinterpret_cast<std::uint8_t*>(ring_records + 0x80ull * k);
         auto* entry = reinterpret_cast<volatile std::int32_t*>(record + 0x14);
-        auto** buffer = reinterpret_cast<void* volatile*>(record + 0x18);
+        auto* buffer = reinterpret_cast<void* volatile*>(record + 0x18);
         auto* bytes = reinterpret_cast<volatile std::int32_t*>(record + 0x20);
         auto* slots = reinterpret_cast<volatile std::int32_t*>(record + 0x24);
         if (*entry <= 0 || *bytes <= 0 || *slots <= 0 || *buffer == nullptr || *bytes % *entry != 0 || rings_grown.load()) return;
