@@ -817,7 +817,7 @@ void plan_entity_queue() {
 }
 
 // ---- 3e. hooks for the grown record: zero the new table area, and the bot client's death reset ------------------------
-utils::hook::detour init_record_hook, death_reset_hook;
+utils::hook::detour init_record_hook, death_reset_hook, release_nav_hook;
 
 // SV_InitAgentRecord (sub_140C2A080, rcx = record, rdx = entity): the stock function clears record[0, 0x3798) (both old
 // tables) and then writes the first field of every table row. The new tables lie past that memset: clear them first. The
@@ -853,6 +853,25 @@ std::uintptr_t init_record_stub(std::uint8_t* record, void* entity) {
 // Here: [1] record, [2] the same call, [3] and [4] one copy each of E rows (E x 0x3C and E x 0x40 bytes at their new places)
 // into one heap block, [5] to [8] the same calls with the same arguments (the disassembly passes record[1] to FUN_140AF09D0 in
 // rcx, which the decompile omits; it tail-jumps to FUN_140AF0900(rcx, 0)), [9] the two copies back.
+// ---- 4g. the navigator release of an agent that is already destroyed (a89) -----------------------------------------------------------
+// FUN_1403E3930 (called from the state exits and the death handler of the agent's state machine: FUN_140461310, FUN_14046A430, FUN_140463630, FUN_140477D40,
+// FUN_140C5B260) releases the agent's navigator: `if (byte [agent + 0x1328]) FUN_1405E85C0([agent + 0x1320])`, a virtual call through the pointer (`mov rax,
+// [rcx]; jmp [rax + 0x160]`). The agent's destroy (FUN_140452E10) releases the navigator and writes 0 to the pointer, but leaves the byte at +0x1328 set. A script
+// builtin method that reaches a state exit on an agent destroyed earlier in the same frame (a field of 200 plain zombies killed and refilled on cp_town, one
+// protected player) finds the byte set and the pointer null: read access violation at 0x1405E85C0, three times at game time 375 to 400 s (runs tl1, tl2, tl3,
+// crash zips: rcx 0, the stack names vm_call_builtin_method_internal above it). The 24 agents of the stock game never meet it. The stub clears the stale byte
+// (the navigator is gone: there is nothing to release) and goes on; the first five are logged.
+std::atomic<std::uint32_t> stale_navigators{};
+void release_nav_stub(std::uint8_t* agent) {
+    if (agent && agent[0x1328] && !*reinterpret_cast<void**>(agent + 0x1320)) {
+        if (stale_navigators.fetch_add(1) < 5)
+            console::info("[agent capacity] navigator release on a destroyed agent %p (state %u, caller %p): the stale flag is cleared, nothing to release\n", static_cast<void*>(agent),
+                *reinterpret_cast<std::uint32_t*>(agent + 0x1A28 + 4 * static_cast<std::size_t>(*reinterpret_cast<std::uint32_t*>(agent + 0x1A40))), _ReturnAddress());
+        agent[0x1328] = 0;
+    }
+    release_nav_hook.invoke<void>(agent);
+}
+
 void death_reset_stub(std::uint8_t* client) {
     auto* record = client + 0x4C4;
     const auto fn_sentient_flag = reinterpret_cast<void (*)(void*, int)>(0x140AC61B0);
@@ -1729,6 +1748,7 @@ public:
             }
         init_record_hook.create(0x140C2A080, init_record_stub);   // queued: main applies every queued hook after post_unpack
         death_reset_hook.create(0x140C3BDD0, death_reset_stub);
+        release_nav_hook.create(0x1403E3930, release_nav_stub);
         link_mapents_hook.create(0x1403B8610, link_mapents_stub);
         plan_unwind_probe();
         plan_avoidance();

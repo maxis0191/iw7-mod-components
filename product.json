@@ -370,6 +370,7 @@
     "tests/native/script_var_layout_test.cpp",
     "tests/native/vm_filter_test.cpp",
     "tests/native/word_provenance_test.cpp",
+    "tests/ops/agent_capacity_nav_test.py",
     "tests/ops/agent_capacity_net_rows_test.py",
     "tests/ops/agent_capacity_pools_test.py",
     "tests/ops/agent_capacity_records_test.py",
