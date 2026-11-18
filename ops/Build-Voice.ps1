@@ -621,9 +621,13 @@ try {
     $mp = if ($Serial) { @("/m:$BuildJobs", '/p:MultiProcessorCompilation=false') } else { @("/m:$([Math]::Max(2,[Math]::Min(4,$threads)))", '/p:MultiProcessorCompilation=true', "/p:CL_MPCount=$threads") }
     $msbStart = Get-Date
     & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln @mp /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
-    if ($LASTEXITCODE) { throw 'Voice build failed.' }
-    Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
+    $msbuildCode = $LASTEXITCODE
+    # The record of the sources goes down after a failed build too (a compile error in one branch made the next build, of another branch,
+    # recompile all 415 files): it describes the sources this build saw. A file that failed to compile has an older object than its source,
+    # and a file that changes back to an earlier text no longer equals the record, so it keeps its new time and compiles.
     Save-IW7SourceTimes -NativeRoot $root
+    if ($msbuildCode) { throw 'Voice build failed.' }
+    Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
     Set-Content -LiteralPath $profileMark -Value $linkProfile
     $script:lapAt = Get-Date
 } finally { Pop-Location }
