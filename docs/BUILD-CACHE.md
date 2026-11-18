@@ -104,3 +104,32 @@ Hard links into the cache are safe to delete. It also trims the package cache to
   `ui_scripts/maxis/__init__.lua` changed: full 656 s, one script changed 260 s (both wall time with queueing), the same
   inputs again **3 s** (the mod zone restored from the stage cache). DJ songs have their own per-song cache (not run).
 - Scheduler: measured budgets and passing a ticket that cannot fit: `docs/RESOURCE-WORKFLOW.md`.
+
+## Build integrity: a package is stored only if its binary was built from its sources (18 Nov 2026, night)
+
+**The fault.** a89's fixed client built in 15 s without its new code. The shared tree held an object (16:06) newer than the changed
+source (16:02): the workspace file carried the time of its checkout (Copy-Item keeps the source's time), MSBuild decides by file times,
+skipped the compile, and the stale binary was stored under the key of the new sources and returned again. Reproduced here with two
+commits that differ in one string literal (`.mk3` and `.mk2` in `paris_hang.cpp`), the second workspace prepared before the first build:
+with the code of that morning the second exe carried `.mk3` (the first commit's text) and no `.mk2`.
+
+**The fix, two layers (both chosen, both needed).**
+1. *Times, at the root.* A source whose bytes differ from what the tree last built gets the time of now, whatever time its file carries
+   (`Restore-IW7SourceTimes`): it is newer than every object that exists. Only bytes equal to the last record get the recorded old time
+   back. This rule cannot be defeated by a failed or interrupted build: the record is of the sources, not of the objects. Chosen over
+   "delete the objects of changed sources after a failure" because that needs the failure to be seen (a killed build, a crash, a
+   machine restart leave no trace), and over a time-only rule because layer 2 catches what no time rule can (a clock change, an object
+   written by another tool).
+2. *Proof, before a package is stored* (`ops/build/Build-Integrity.Core.ps1`). Every translation unit whose bytes differ from the last
+   good build must be named in the MSBuild output of this build, or of a failed build since that good one (remembered with the hash of
+   the source it was compiled from). A unit without that proof has its object deleted and MSBuild runs once more; if the proof is
+   still missing the build fails and nothing is stored. A tree with no record of a good build compiles every unit once (207 objects).
+   Objects are matched by file name, the only thing MSBuild's minimal log prints.
+
+**Proof.** (after) the same two commits: `.mk3` exe, then `.mk2` exe, no stale `.mk3`. A third commit built with the object's time set
+to 2027 (MSBuild skips it): "1 changed source(s) were not compiled (paris_hang.cpp); 1 stale object dropped, compiling again", exe has
+`.mk4`. Test: `tests/ops/build_integrity_test.ps1`.
+
+**Purge.** 38 packages in the cache were removed (every one built by the shared tree before the fix; 20 of the 36 present at the scan
+followed a failed shared-tree build by the run logs, the others could not be shown clean). The standard client has its own tree and
+keeps the older rule; it is not covered here.
