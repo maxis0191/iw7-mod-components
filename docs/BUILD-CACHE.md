@@ -50,7 +50,13 @@ reservation (the waits were 2 to 17 minutes and are not the build's doing).
 |---|---|---|
 | (a) fresh worktree, a commit nobody built, tree and cache empty / warm | 674 s wall, about 570 s of work: prepare 29, clone of iw7-mod and 17 submodules about 190, unit tests about 118, overlays and premake about 42, MSBuild 125 | 58 s of work: prepare 16, unit tests 38 (the first run with the per-test cache), overlays, MSBuild 3.5 (nothing to compile), package |
 | (b) the same commit again, in another worktree | the same 570 s of work | **18 s**: prepare 16.6, restore 0.3 (hard links; no tree, no compiler, no reservation) |
-| (c) one line in one component | see below | see below |
+| (c) one line in one component (`paris_hang.cpp`), warm tree | 71 s at best (p10 of the 96 builds), 117 s median, up to 531 s with waits; plus 13 s prepare | 72 s of work (unit tests 0 of 16 run, MSBuild 59: compile one file 3 s, link about 45 s) plus 17 s prepare: about 90 s |
+| (d) the same, link with `/LTCG:INCREMENTAL` (second run) | | MSBuild 39.5 s against 51 to 59 s; not adopted: one pair of runs on a loaded machine, and it changes the link of the lab client |
+| (e) the same, `/cgthreads:8` on the link | | 50.9 s against 51.7 s with 4 threads: no effect, not adopted |
+
+One finding: for a one-line change in a warm tree the new flow is not faster than the best of the old one; the link
+(`/GL` + `/LTCG`, serial, about 45 s) is the floor in both. The gains are in the fresh worktree (570 s to 58 s), the commit
+built before (570 s to 18 s) and the machine's memory and reservation (a restored client takes none).
 
 The median of the 96 builds of the last five days was 117 s from `Invoke-EngineLab` (p10 71 s); most of that was
 queue time and the serial test compile.
@@ -75,3 +81,11 @@ Hard links into the cache are safe to delete. It also trims the package cache to
   serial step; it is the floor of every build that changes any native source.
 - Builds still wait for the machine's build reservation (`Resource-Scheduler.ps1`); the waiting time is reported
   as `slot_wait` by `Invoke-EngineLab.ps1`, apart from the work.
+
+## Waiting and inputs (18 Nov 2026)
+
+- `Build-Voice.ps1 -WaitForSlotSeconds <n>` (and `Build-StandardClient.ps1`) queues in the scheduler's waiting order
+  (`Invoke-IW7QueuedResourceJob`) instead of refusing at once; `Invoke-EngineLab.ps1` passes it. No retry loop anywhere.
+- `ops/build/Test-BuildInputs.py <workspace>` (also run first by `Build-Voice.ps1`, and the judge check
+  `build_inputs_test`) fails in seconds when a script the build reads is not in the prepared workspace, so an export
+  missing from `product.json` is found before the build, not by eight builds.
