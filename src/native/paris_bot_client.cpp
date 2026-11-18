@@ -69,6 +69,7 @@ namespace paris_bot_client
 		{
 			if (!utils::flags::has_flag("paris-bot-client") || !utils::flags::has_flag("paris-isolated-lab")) return;
 			console::info("[Paris bot client] no renderer, no UI, no texture streaming.\n");
+			paris_no_gpu::zero_state_blocks = true;
 			paris_no_gpu::apply();
 			// the renderer's own registration still runs (as init_dedicated_server in the dedicated profile)
 			utils::hook::set<uint8_t>(0x140E26490, 0xC3);   // R_BeginFrame
@@ -76,6 +77,7 @@ namespace paris_bot_client
 			utils::hook::set<uint8_t>(0x140E56790, 0xC3);   // renderer call of the client frame (sub_1403471E0)
 			// the first run (botonly1) booted and then idled at 0% CPU with no join: the client frame waits on the render thread that the shared set removed.
 			// botonly2 crashed here: sub_140E255F0+0xE reads the render command buffer ([148F730A0], null without a renderer); read from the crash dump (iw7_crash.py), callers R_EndFrame, 1403221D0, 1403B3C90, 1409BB520
+			// botonly6 (joined at 16.8 s, map loading, 1.36 GB working set) crashed in sub_140DD1B70+0x10 on the same renderer state pointer: now a zero block (paris_no_gpu::give_zero_state)
 			utils::hook::set(0x140E255F0, 0xC3C033);  // render command buffer alignment
 			utils::hook::set<uint8_t>(0x140E267B0, 0xC3);  // R_EndFrame
 			// botonly3 joined (18.9 s, 1.36 GB working set) and crashed in the map load: sub_140DE2930+0x3A reads [148B2D7E0]+0x78, a renderer/image state that is null without a renderer; callers sub_140AA6480, sub_140AA6570, sub_140E350E0

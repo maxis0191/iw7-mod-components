@@ -10,6 +10,18 @@
 // <sites>
 namespace paris_no_gpu
 {
+	// A client with no renderer reads renderer state through pointers the renderer never fills (botonly3: [148B2D7E0]+0x78, botonly6: [148B2D7E0]+0x34). The bot client gives every such
+	// pointer a zero-filled block, so a read finds a zero (a count of nothing) instead of a null dereference. The dedicated server does not set it: it never reaches these reads.
+	inline bool zero_state_blocks = false;
+	inline void give_zero_state()
+	{
+		for (const size_t slot : { size_t(0x148B2D7E0) })
+		{
+			auto** p = reinterpret_cast<void**>(slot);
+			if (!*p) *p = VirtualAlloc(nullptr, 1u << 20, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		}
+	}
+
 	inline void init_renderer_stub()
 	{
 		utils::hook::invoke<void>(0x140DF62C0);  // R_RegisterDvars
@@ -19,6 +31,7 @@ namespace paris_no_gpu
 		if (initialized) return;
 		initialized = true;
 		utils::hook::invoke<void>(0x140E06220);  // R_LoadGraphicsAssets
+		if (zero_state_blocks) give_zero_state();
 	}
 
 	inline void apply()
