@@ -903,7 +903,7 @@ static std::string paris_script_chain_text() { try { return paris_weapon_log::sc
 void release_nav_stub(std::uint8_t* agent) {
     if (agent && agent[0x1328] && !*reinterpret_cast<void**>(agent + 0x1320)) {
         if (stale_navigators.fetch_add(1) < 5)
-            console::info("[agent capacity] navigator release on a destroyed agent %p (state %u, caller %p): the stale flag is cleared, nothing to release\n", static_cast<void*>(agent),
+            console::info("[agent capacity] navigator release on a destroyed agent %p (state %u, caller %p, script %s): the stale flag is cleared, nothing to release\n", static_cast<void*>(agent),
                 *reinterpret_cast<std::uint32_t*>(agent + 0x1A28 + 4 * static_cast<std::size_t>(*reinterpret_cast<std::uint32_t*>(agent + 0x1A40))), _ReturnAddress(), paris_script_chain_text().c_str());
         agent[0x1328] = 0;
     }
