@@ -976,6 +976,14 @@
         "-File",
         "tests/ops/native_unit_tests.ps1"
       ]
+    },
+    {
+      "id": "build_inputs_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/build_inputs_test.py"
+      ]
     }
   ],
   "retained_checks": [

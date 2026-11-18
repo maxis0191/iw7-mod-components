@@ -1,4 +1,4 @@
-param([switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
+param([ValidateRange(0,86400)][int]$WaitForSlotSeconds = 0, [switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = 'auto')   # 'auto': a pooled tree of the machine build cache (ops/build/Build-Cache.Core.ps1); or the absolute path of your own tree
@@ -42,6 +42,12 @@ if (!$TestsOnly -and !$ServerModules -and !$RhinoExperiment -and !$EnemyExperime
 }
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot/build/Build-Cache.Core.ps1"
+# Seconds, no game: every file this build reads must be in the prepared workspace (a file product.json does not export used
+# to be found by a build that failed halfway; the production native needed 8 attempts).
+if (Test-Path -LiteralPath (Join-Path $repo 'source-workspace.json')) {
+    $inputsCheck = & python -B (Join-Path $PSScriptRoot 'build/Test-BuildInputs.py') $repo
+    if ($LASTEXITCODE -eq 1) { $inputsCheck | ForEach-Object { Write-Output $_ }; throw 'The prepared workspace lacks files this build needs (export them in product.json).' }
+}
 $buildStart = Get-Date
 $lapAt = Get-Date
 function Write-IW7Lap([string]$Name) { Write-Output ('Step {0}: {1:n1} s' -f $Name, ((Get-Date) - $script:lapAt).TotalSeconds); $script:lapAt = Get-Date }
@@ -85,7 +91,10 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 # Reserve the complete operation before compiling tests, sanitizer binaries or
 # native sources. TestsOnly uses the same admission and final release path.
-Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
+# -WaitForSlotSeconds: wait in the scheduler's waiting order (Invoke-IW7QueuedResourceJob) instead of refusing at once; no retry loop outside.
+$jobCommand = if ($WaitForSlotSeconds -gt 0) { 'Invoke-IW7QueuedResourceJob' } else { 'Invoke-IW7ResourceJob' }
+$jobExtra = if ($WaitForSlotSeconds -gt 0) { @{ WaitForSlotSeconds = $WaitForSlotSeconds } } else { @{} }
+& $jobCommand @jobExtra -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 # The opt-in voice overlays are added last, so they are removed first.
 Remove-IW7VoiceCertifyOverlay $root

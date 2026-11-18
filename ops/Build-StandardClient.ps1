@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$Serial,[switch]$OwnerCheats,[switch]$Capacity64)
+param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$Serial,[switch]$OwnerCheats,[switch]$Capacity64,[ValidateRange(0,86400)][int]$WaitForSlotSeconds=0)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw | ConvertFrom-Json).Standard
@@ -16,7 +16,9 @@ while($cursor){
     $parent=Split-Path $cursor -Parent;if($parent -eq $cursor){break};$cursor=$parent
 }
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
-Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
+$jobCommand=if($WaitForSlotSeconds -gt 0){'Invoke-IW7QueuedResourceJob'}else{'Invoke-IW7ResourceJob'}
+$jobExtra=if($WaitForSlotSeconds -gt 0){@{WaitForSlotSeconds=$WaitForSlotSeconds}}else{@{}}
+& $jobCommand @jobExtra -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
     Remove-IW7VoiceCertifyOverlay $root
     Remove-IW7VoiceRelayOverlay $root
     Remove-IW7CapacityPeerOverlay $root
