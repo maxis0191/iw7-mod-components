@@ -304,10 +304,11 @@ else {
 $capacityWatchBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]($Capacity64 -or ($IsolatedLab -and $Debugger))) -PortOnly:([bool]($Capacity64 -and !$Debugger))
 if ($capacityWatchBuild.Compiled) { $nativeSources += $capacityWatchBuild.Files }
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
-$sharedGpuHooks = & "$PSScriptRoot/Apply-SharedGpuHooksOverlay.ps1" -NativeRoot $root -Commit $commit   # the dedicated profile calls the shared GPU hook list (paris_no_gpu.hpp)
+& "$PSScriptRoot/Apply-SharedGpuHooksOverlay.ps1" -NativeRoot $root -Commit $commit -Mode Restore | Out-Null   # dedicated.cpp back to the pinned blob before the privacy overlay reads it
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 $incidentOverlay = & "$PSScriptRoot/Apply-IncidentOverlay.ps1" -NativeRoot $root -Commit $commit
 $testPrivacyOverlay = & "$PSScriptRoot/Apply-TestPrivacyOverlay.ps1" -NativeRoot $root -Commit $commit
+$sharedGpuHooks = & "$PSScriptRoot/Apply-SharedGpuHooksOverlay.ps1" -NativeRoot $root -Commit $commit   # the dedicated profile calls the shared GPU hook list (paris_no_gpu.hpp), on top of the privacy overlay
 # The script variable accessors read the tables through script_var_layout.hpp (stock or relocated), never a fixed address.
 $scriptVarAccessorOverlay = & "$PSScriptRoot/Apply-ScriptVarAccessorOverlay.ps1" -NativeRoot $root -Commit $commit
 $downloadCacheOverlay = $null

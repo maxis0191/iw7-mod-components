@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$NativeRoot,[string]$Commit='')
+param([Parameter(Mandatory)][string]$NativeRoot,[string]$Commit='',[ValidateSet('Apply','Restore')][string]$Mode='Apply')
 $ErrorActionPreference='Stop'
 # One list of GPU/UI/sound-stream/texture-streaming hooks (src/native/paris_no_gpu.hpp). The dedicated profile of the engine fork (client/component/dedicated.cpp) carries its own copy of the
 # same sites; this overlay removes every one of them from that file and makes post_unpack call paris_no_gpu::apply() once instead, so the dedicated server and the no-render bot client
@@ -9,10 +9,18 @@ $sites=[regex]::Match($header,'(?s)// <sites>(.*)// </sites>').Groups[1].Value
 $addr=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach($m in [regex]::Matches($sites,'0x1[0-9A-Fa-f]{8}')){ [void]$addr.Add($m.Value.ToUpper().Replace('0X','0x')) }
 $path=Join-Path $NativeRoot 'src/client/component/dedicated.cpp'
-# always from the pinned blob when a commit is given (the native tree is shared between builds: a file left edited would break a build that does not carry the header)
-$text=if($Commit){ ((git -C $NativeRoot show ($Commit+':src/client/component/dedicated.cpp')) -join "`n") }else{ [IO.File]::ReadAllText($path) }
-$text=$text.Replace("`r`n","`n")
-if($Commit -and $LASTEXITCODE){ throw 'Pinned dedicated.cpp unavailable.' }
+# The native tree is shared between builds and the other dedicated overlay (Apply-TestPrivacyOverlay.ps1) accepts only the pinned blob or its own result: Build-Voice runs this overlay in Restore
+# mode first (the file goes back to the pinned blob when it carries this overlay), then the other overlay, then Apply on whatever that left.
+$cur=[IO.File]::ReadAllText($path).Replace("`r`n","`n")
+if($Mode -eq 'Restore'){
+    if(!$cur.Contains('paris_no_gpu::apply()')){ return [pscustomobject]@{Applied=$false;Reason='not applied'} }
+    $blob=((git -C $NativeRoot show ($Commit+':src/client/component/dedicated.cpp')) -join "`n").TrimEnd()+"`n"
+    if($LASTEXITCODE){ throw 'Pinned dedicated.cpp unavailable.' }
+    [IO.File]::WriteAllText($path,$blob,[Text.UTF8Encoding]::new($false))
+    return [pscustomobject]@{Applied=$false;Restored=$true}
+}
+$text=$cur
+if($text.Contains('paris_no_gpu::apply()')){ return [pscustomobject]@{Applied=$false;Reason='already applied'} }
 $out=[Collections.Generic.List[string]]::new(); $removed=0; $inserted=$false
 foreach($line in $text.Split("`n")){
     $t=$line.Trim()
