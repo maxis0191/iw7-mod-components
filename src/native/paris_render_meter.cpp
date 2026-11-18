@@ -402,8 +402,7 @@ namespace paris_render_meter
                 row += line;
                 first = false;
             }
-            row += "]}
-";
+            row += "]}\n";
             utils::io::write_file(output_path, row, true);
         }
 
