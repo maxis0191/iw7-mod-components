@@ -1,4 +1,4 @@
-param([string]$Output,[string]$DependencyArchive,[string]$Entry,[string[]]$Arguments=@())
+param([string]$Output,[string]$DependencyArchive,[string]$Entry,[string[]]$Arguments=@(),[string]$Donor,[string]$FastWorkspace)
 # Thin product adapter. Source composition is owned by iw7-mod-components.
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
@@ -53,7 +53,13 @@ if(Test-Path -LiteralPath $Output){
     $manifest=Get-Content -LiteralPath (Join-Path $Output 'source-workspace.json') -Raw | ConvertFrom-Json
     if($manifest.revisions.($product.id) -cne $revision){throw 'Existing source workspace belongs to another product revision.'}
 }else{
-    & python -B $recipe --project $root --revision $revision --output $Output --dependency-package $DependencyArchive
+    $fast=if($FastWorkspace){$FastWorkspace}else{Join-Path $root 'ops/quality/fast_workspace.py'}
+    if($Donor -and (Test-Path -LiteralPath (Join-Path $Donor 'source-workspace.json')) -and (Test-Path -LiteralPath $fast)){
+        # An earlier workspace of this product supplies the unchanged files (ops/quality/fast_workspace.py); the recipe still verifies everything.
+        & python -B $fast --recipe $recipe --donor $Donor -- --project $root --revision $revision --output $Output --dependency-package $DependencyArchive
+    }else{
+        & python -B $recipe --project $root --revision $revision --output $Output --dependency-package $DependencyArchive
+    }
     if($LASTEXITCODE){throw 'Product source composition failed.'}
 }
 if($Entry){
