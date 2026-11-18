@@ -569,14 +569,10 @@ try {
     # Compile in parallel: the lead used to be one cl.exe at a time (/m:1 and MultiProcessorCompilation=false).
     $threads = if ($env:IW7_BUILD_THREADS) { [int]$env:IW7_BUILD_THREADS } else { [Math]::Max(2, [Math]::Min(8, [int]([Environment]::ProcessorCount / 2))) }
     $mp = if ($Serial) { @("/m:$BuildJobs", '/p:MultiProcessorCompilation=false') } else { @("/m:$([Math]::Max(2,[Math]::Min(4,$threads)))", '/p:MultiProcessorCompilation=true', "/p:CL_MPCount=$threads") }
-    # The link is link-time code generation (/GL, /LTCG in the pinned premake5.lua): the one serial step of every build that
-    # changes a native source. Its code generation runs on 4 threads by default; the linker reads _LINK_ and appends it.
-    if (-not $Serial -and -not $env:_LINK_) { $env:_LINK_ = "/cgthreads:$([Math]::Min(8, $threads))" }
     $msbStart = Get-Date
     & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln @mp /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
     if ($LASTEXITCODE) { throw 'Voice build failed.' }
     Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
-    Remove-Item Env:_LINK_ -ErrorAction SilentlyContinue
     Save-IW7SourceTimes -NativeRoot $root
     $script:lapAt = Get-Date
 } finally { Pop-Location }
