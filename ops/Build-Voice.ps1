@@ -116,6 +116,18 @@ $slotWaited = ((Get-Date) - $slotAsked).TotalSeconds
 Write-Output ('Waited {0:n0} s for the Build reservation.' -f $slotWaited)
 $script:lapAt = Get-Date
 $null = Resolve-IW7VoiceBuildNativeRoot $root
+# The shared native tree serves every branch, and each branch applies its own overlays. Every build therefore starts from the pinned
+# state: tracked files back to the pin, files an overlay added under src removed (a87's Apply-SharedGpuHooksOverlay edit of dedicated.cpp
+# made a76's build fail with "Unowned dedicated edits", 18 Nov 2026). Overlay scripts see a clean tree and need not know of each other.
+# File times are not lost: Restore-IW7SourceTimes gives every file whose bytes equal the last build's its old time back, so only the
+# files that really differ between two branches compile.
+if (!$TestsOnly -and (Test-Path -LiteralPath (Join-Path $root '.git'))) {
+    & git -C $root checkout -q -- .
+    if ($LASTEXITCODE) { throw 'Could not reset the native tree to its pin.' }
+    & git -C $root clean -fdq -- src
+    if ($LASTEXITCODE) { throw 'Could not remove overlay files from the native tree.' }
+    Write-Output 'Native tree reset to its pin before the overlays.'
+}
 # The opt-in voice overlays are added last, so they are removed first.
 Remove-IW7VoiceCertifyOverlay $root
 Remove-IW7VoiceRelayOverlay $root
