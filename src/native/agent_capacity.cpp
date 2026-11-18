@@ -816,6 +816,20 @@ void plan_rings() {
     scheduler::once([] { grow_rings(); }, scheduler::main);
 }
 
+// ---- 3f. the skinned cache (a90) ------------------------------------------------------------------------------------------------
+// With a crowd of 183 zombies in view the render meter reads a skinned cache demand of 850,000 vertices every frame against the 563,200 of r_SkinnedCacheSize: warning 0xB "too many skinned verts -
+// not drawing surface" 434,000 times in 180 s, every frame over the size (run crowd-after4; 400,000 at 200 zombies out of view). The dvar is not the setting: FUN_140DD3820 (the pool
+// initialiser) writes r_SkinnedCacheSize itself as (1 / r_lodScale) x the float constant at 0x14153D2A0 (563,200.0), clamped by the dvar's domain (0x200000), and sizes the three frame pools
+// (32 bytes and 4 bytes a vertex) from it; `+set r_SkinnedCacheSize` is overwritten (run crowd-skin). The constant is raised to 2,000,000.0 (three frames x 36 bytes x 2,000,000 = 216 MB of video memory).
+void plan_skin_cache() {
+    auto* constant = reinterpret_cast<float*>(0x14153D2A0ull);
+    DWORD old{};
+    if (*constant != 563200.0f || !VirtualProtect(constant, sizeof(float), PAGE_READWRITE, &old)) { console::error("[agent capacity] skinned cache constant not as expected, size left at the stock\n"); return; }
+    *constant = 2000000.0f;
+    VirtualProtect(constant, sizeof(float), old, &old);
+    console::info("[agent capacity] skinned cache constant 563,200 -> 2,000,000 vertices\n");
+}
+
 // ---- 3d. the two per-sentient tables of an SV agent record (map A1) ---------------------------------------------------
 // Each SV agent record (0x3F08 bytes, one per agent) holds table 1 (64-byte rows at +0x10) and table 2 (60-byte rows at +0x23E4),
 // 66 rows each, indexed by the sentient slot; with more than 24 agents a slot passes 65 and the stock code writes past the
@@ -1806,6 +1820,7 @@ public:
         plan_snapshot();
         plan_render_list();
         plan_drawsurf_lists();
+        plan_skin_cache();
         // plan_rings(); not installed: growing the trace_to_entity ring froze the client 44 s after the join (run f200-ring, 18 Nov); the ring record is dumped by the render meter instead
         plan_ai_pool();
         plan_tables();
