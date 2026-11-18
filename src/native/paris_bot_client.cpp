@@ -127,6 +127,9 @@ namespace paris_bot_client
 			utils::hook::set<uint8_t>(0x140E267B0, 0xC3);  // R_EndFrame
 			// botonly3 joined (18.9 s, 1.36 GB working set) and crashed in the map load: sub_140DE2930+0x3A reads [148B2D7E0]+0x78, a renderer/image state that is null without a renderer; callers sub_140AA6480, sub_140AA6570, sub_140E350E0
 			utils::hook::set(0x140DE2930, 0xC3C033);  // image slot bit clear
+			// botdisc1/botdisc2 (discovery run): the first two null reads, in per-frame draw helpers that read [148B9D798] (renderer front-end state, null without a renderer): called from sub_140A86FA0; each hit was swallowed until the 400 limit, so they are hot
+			utils::hook::set<uint8_t>(0x140A84930, 0xC3);  // draw helper
+			utils::hook::set<uint8_t>(0x140A84F40, 0xC3);  // draw helper
 			// botonly4 idled; the rig's own stack capture (stacks-client.txt) read the wait: the main thread sits in DB_FindXAssetHeader (via DB_ReadRawFile) behind the db stream thread, which spins in
 			// sub_140A81570 (called from sub_140A7ADF0+0x42E) until _DAT_145A69AD0 is set by the render side (the handshake with the render thread, never signalled without one)
 			utils::hook::set<uint8_t>(0x140A81570, 0xC3);  // wait for the render side of the asset stream
