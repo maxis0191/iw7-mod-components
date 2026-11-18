@@ -310,6 +310,18 @@ owner's desktop and his own game. Set the environment variable
 `IW7_SHAREABLE_RESERVE_GB` to a number from 2 to 64 to change it (decimal point,
 for example `12.5`); anything else is ignored. It is read at each admission.
 
+The floor (18 Nov 2026, QA rig): the reserve bounds what is DECLARED, so until then nothing
+bounded what was left FREE: sessions were admitted while measured free memory covered each
+one's declaration, and the last one could take the last gigabyte. `Get-IW7ShareableFloorBytes`:
+a shareable session is admitted only if, after it, measured free memory (available minus what
+running sessions have still to take, minus the request) is at least 2 GB; below that the ask
+is `Resource busy: not enough measured free memory above the floor` and waits. What waiting
+can give (`Get-IW7ShareableReachBytes`) is counted net of the floor, so a request that could
+only fit by eating the floor is refused at once. `IW7_SHAREABLE_FLOOR_GB` (0 to 16; 0 is the
+older rule, anything else ignored) overrides it; `Get-IW7ResourceStatus` reports
+`ShareableFloorBytes`. The same-day proof, three QA runs launched together on a machine with
+13 GB held by other sessions: docs/GAME-QA.md of iw7-paris-server.
+
 What callers must declare: the measured session need, not a guess upward, for
 example 2.5 GB for a headless server session, 10 GB for a full client, 12.5 GB for
 a server plus a client. Under-declaring is caught by the measured-memory check
