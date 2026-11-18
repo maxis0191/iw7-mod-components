@@ -35,20 +35,20 @@ namespace paris_bot_client
 		{
 			auto* rec = info->ExceptionRecord;
 			if (rec->ExceptionCode != EXCEPTION_ACCESS_VIOLATION || rec->NumberParameters < 2 || rec->ExceptionInformation[0] != 0 || rec->ExceptionInformation[1] >= 0x10000) return EXCEPTION_CONTINUE_SEARCH;
-			const auto rip = info->ContextRecord->Rip;
-			if (rip < 0x140001000ull || rip >= 0x141435000ull || unwinds.load() > 400) return EXCEPTION_CONTINUE_SEARCH;
-			DWORD64 base = 0;
-			auto* entry = RtlLookupFunctionEntry(rip, &base, nullptr);
-			if (!entry) return EXCEPTION_CONTINUE_SEARCH;
-			PVOID handler_data = nullptr;
-			DWORD64 frame = 0;
-			RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, rip, entry, info->ContextRecord, &handler_data, &frame, nullptr);
+			const auto fault_ip = info->ContextRecord->Rip;
+			if (fault_ip < 0x140001000ull || fault_ip >= 0x141435000ull || unwinds.load() > 400) return EXCEPTION_CONTINUE_SEARCH;
+			DWORD64 image_base = 0;
+			auto* unwind_entry = RtlLookupFunctionEntry(fault_ip, &image_base, nullptr);
+			if (!unwind_entry) return EXCEPTION_CONTINUE_SEARCH;
+			PVOID unwind_handler_data = nullptr;
+			DWORD64 unwind_frame = 0;
+			RtlVirtualUnwind(UNW_FLAG_NHANDLER, image_base, fault_ip, unwind_entry, info->ContextRecord, &unwind_handler_data, &unwind_frame, nullptr);
 			info->ContextRecord->Rax = 0;
 			static std::set<unsigned long long> seen;
 			static std::mutex lock;
 			{
 				std::lock_guard<std::mutex> g(lock);
-				if (seen.insert(rip).second) console::info("[Paris bot client] null read of %llx at rip %llx: function returned 0 (%d)\n", static_cast<unsigned long long>(rec->ExceptionInformation[1]), static_cast<unsigned long long>(rip), unwinds.load() + 1);
+				if (seen.insert(fault_ip).second) console::info("[Paris bot client] null read of %llx at fault_ip %llx: function returned 0 (%d)\n", static_cast<unsigned long long>(rec->ExceptionInformation[1]), static_cast<unsigned long long>(fault_ip), unwinds.load() + 1);
 			}
 			unwinds++;
 			return EXCEPTION_CONTINUE_EXECUTION;
@@ -102,8 +102,7 @@ namespace paris_bot_client
 			console::info("[Paris bot client] no renderer, no UI, no texture streaming.\n");
 			// -paris-bot-discover: DISCOVERY ONLY. The handler turns a null read into 'the function returns 0' and logs the site; every logged site is then given an explicit, reviewed stub below. The bot
 			// client of the QA rig runs without it: a client that swallowed faults would hide the very bugs the rig exists to find.
-			if (utils::flags::has_flag("paris-bot-discover")) { AddVectoredExceptionHandler(1, null_read_veh); console::info("[Paris bot client] DISCOVERY MODE: null reads are swallowed and logged
-"); }
+			if (utils::flags::has_flag("paris-bot-discover")) { AddVectoredExceptionHandler(1, null_read_veh); console::info("[Paris bot client] DISCOVERY MODE: null reads are swallowed and logged\n"); }
 			paris_no_gpu::zero_state_blocks = true;
 			paris_no_gpu::apply();
 			// the renderer's own registration still runs (as init_dedicated_server in the dedicated profile)
