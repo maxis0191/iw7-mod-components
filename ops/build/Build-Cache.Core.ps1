@@ -165,7 +165,7 @@ function Select-IW7UnitTests {
             $exe = $Matches[1]
             $src = if ($line -match '"([^"]*\\tests\\native\\[^"\\]+\.cpp)"') { $Matches[1] } else { $null }
             if ($src -and (Test-Path -LiteralPath $src)) {
-                $key = 't-' + (Get-IW7InputHash @(($line -replace '"[^"]*\\runtime\\', '"runtime\'), (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash, $headerHash, $Toolchain))
+                $key = 't-' + (Get-IW7InputHash @($line.Replace($Repo, '<repo>'), (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash, $headerHash, $Toolchain))
                 $block = @($line); if ($lines[$i + 1] -like 'if errorlevel*') { $block += $lines[$i + 1]; $i++ }
                 if (Test-IW7TestsPassed $key) { $skippedExe[$exe] = $true; $skipped++ }
                 else { foreach ($b in $block) { $out.Add($b) }; $keys.Add($key); $run++ }

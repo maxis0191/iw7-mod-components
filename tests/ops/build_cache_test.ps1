@@ -57,8 +57,8 @@ try {
     foreach ($n in 'a', 'b') { Set-Content -LiteralPath (Join-Path $repoT "tests/native/${n}_test.cpp") -Value "int $n;" }
     Set-Content -LiteralPath (Join-Path $repoT 'src/native/h.hpp') -Value 'int h;'
     Set-Content -LiteralPath (Join-Path $repoT 'src/native/c.cpp') -Value 'int c;'
-    function New-TestScript {
-        $r = $repoT; $rt = Join-Path $repoT 'runtime'
+    function New-TestScript([string]$RepoPath = $repoT) {
+        $r = $RepoPath; $rt = Join-Path $RepoPath 'runtime'
         @"
 @echo off
 call "vc" >nul
@@ -79,6 +79,10 @@ if errorlevel 1 exit /b 1
     foreach ($k in $sel.Keys) { Set-IW7TestsPassed $k }
     $sel = Select-IW7UnitTests -Script (New-TestScript) -Repo $repoT -Toolchain 'tc'
     Assert ($sel.Run -eq 0 -and $sel.Skipped -eq 2) 'passed tests were not skipped'
+    # the same sources in another workspace folder (another worktree) share the results
+    $repoU = Join-Path $tmp 'repoU'; Copy-Item -LiteralPath $repoT -Destination $repoU -Recurse
+    $selU = Select-IW7UnitTests -Script (New-TestScript $repoU) -Repo $repoU -Toolchain 'tc'
+    Assert ($selU.Run -eq 0 -and $selU.Skipped -eq 2) 'a copy of the workspace at another path did not share the test results'
     Assert ($sel.Script -match 'pwsh -NoProfile -File x.ps1' -and $sel.Script -notmatch '-test\.exe') 'the other steps stayed and every test line went, run lines included'
     Set-Content -LiteralPath (Join-Path $repoT 'src/native/c.cpp') -Value 'int c2;'
     Assert ((Select-IW7UnitTests -Script (New-TestScript) -Repo $repoT -Toolchain 'tc').Run -eq 0) 'a component .cpp change re-ran the tests'
