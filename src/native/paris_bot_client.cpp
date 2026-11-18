@@ -100,7 +100,10 @@ namespace paris_bot_client
 		{
 			if (!utils::flags::has_flag("paris-bot-client") || !utils::flags::has_flag("paris-isolated-lab")) return;
 			console::info("[Paris bot client] no renderer, no UI, no texture streaming.\n");
-			AddVectoredExceptionHandler(1, null_read_veh);
+			// -paris-bot-discover: DISCOVERY ONLY. The handler turns a null read into 'the function returns 0' and logs the site; every logged site is then given an explicit, reviewed stub below. The bot
+			// client of the QA rig runs without it: a client that swallowed faults would hide the very bugs the rig exists to find.
+			if (utils::flags::has_flag("paris-bot-discover")) { AddVectoredExceptionHandler(1, null_read_veh); console::info("[Paris bot client] DISCOVERY MODE: null reads are swallowed and logged
+"); }
 			paris_no_gpu::zero_state_blocks = true;
 			paris_no_gpu::apply();
 			// the renderer's own registration still runs (as init_dedicated_server in the dedicated profile)
