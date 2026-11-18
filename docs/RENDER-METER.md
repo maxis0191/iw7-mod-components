@@ -52,7 +52,7 @@ counters: next step below.
 
 ## Measured, 24 against 200 (QA plans `flicker-24` and `flicker-200`, same camera, client at the owner's `cg_fov 120`)
 
-Camera: the player held on the Spaceland planter at (700, 3420, 70), yaw 270, pitch 35, Rush at capacity 264 / cap 200; stock: 24 records. Steady windows only (agents in the field).
+Camera: the player held on the Spaceland planter at (700, 3420, 70), yaw 270, pitch 35, Rush at capacity 264 / cap 200; stock: 24 records. Steady windows only (agents in the field): 290 s at 24 (run f24-full), 280 s at 200 before and after.
 
 See the table in the server note `a90-flicker.md` and `docs/GAME-QA.md`; the numbers of the proven fix are below.
 
@@ -61,21 +61,23 @@ See the table in the server note `a90-flicker.md` and `docs/GAME-QA.md`; the num
 | warning 0x29 draw surfaces refused, per second | 0 | 245.5 | **0** |
 | warning 0x0D scene surface buffer full, per second | 0 | 33.0 | 30.1 |
 | warning 0x56 worker ring full, per second | 0 | 17.5 | 16.8 |
-| warning 0x12 frustum grid lights, per second | 1,828 | 1,582 | 1,518 |
-| skinned cache demand peak / size 563,200 | 84,261 | 396,041 | 421,068 |
+| warning 0x12 frustum grid lights, per second (at the owner's cg_fov 120) | 1,678 | 1,582 | 1,518 |
+| skinned cache demand peak / size 563,200 | 76,293 | 396,041 | 421,068 |
 | frames over the skinned cache size | 0 | 0 | 0 |
 | lists peak (params / lights / draws / other pass) | 403 / 31 / 340 / 66 | 579 / 207 / 336 / 242 | same |
-| video memory used / budget (MB) | 7,843 / 8,369 | 7,621 / 8,673 | 7,872 / 8,374 |
-| agents drawn / processed | 23.7 / 23.7 | 199.99 / 199.99 | 200.0 / 200.0 |
+| video memory used / budget (MB) | 7,792 / 6,062 to 8,369 (other sessions share the card) | 7,621 / 8,673 | 7,872 / 8,374 |
+| agents drawn / processed per scene | 23.95 / 23.95 | 199.99 / 199.99 | 200.0 / 200.0 |
 | agent `vanish`, `hole`, `snapshot_hole` per scene | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 |
 
 Reading: the one counter that is zero at 24 and non-zero at 200 and means "a part of a model is not drawn" is 0x29 (list 1 of the draw surfaces: 256 entries for every dynamic model of the frame).
 It is gone with the grown list (`agent_capacity.cpp`, section 3c: 8,192 entries, two table values, applied behind the stock initialiser). 0x0D, 0x56 and 0x12 remain.
 
+**The lights are the field of view, not the zombies.** At the stock 24 zombies warning 0x12 fires 1,678 times a second at the owner's `cg_fov 120` and **0 times at `cg_fov 65`** (plan `flicker-24-fov65`, 110 s). FUN_1400C2730 inserts a light into the distance-sorted list of a frustum grid cell (256 entries a cell, `uint` index lists at 0x141D4A160 + 0x400 x set, built by FUN_1400C2950) and skips the farthest lights of a cell that is full: with the wide view more lights stand in the frustum than a cell holds, and which of the far lights are skipped changes as the view moves, so lights (and the surfaces they light) of the map flicker at any zombie count. 256 is the name `FRUSTUM_GRID_MAX_LIGHTS`, shared with the shaders that read the grid: not changed here.
+
 ## Not done
 
 - 0x0D: the scene surface buffer is 256 KB because the surface record keeps its offset as a u16 in 4 byte units, and 24 code sites add the buffer's base inside the frame data. Growing it means
   moving the buffer out of the frame data and widening the unit (8 byte units: allocation sizes are 28 + 24 n bytes, so they must be rounded) in the three allocators and the 14 readers.
-- 0x12 (lights): stock behaviour of the map at any zombie count (1,800 a second at 24); a grid cell keeps its 256 nearest lights.
+- 0x12 (lights): an engine limit that the owner's fov 120 reaches (see above): the cell lists are a static table with the stride 0x400 at 0x141D4A160 and the 256 is shared with the grid shaders; the change needed is a bigger table and stride in the builder, its readers and the shaders (or fewer lights in the frustum).
 - The image streamer, xmodel and material streaming, and LOD tables have no counter yet (the Brutes' missing textures).
 - Frame-diff of still frames (`ops/qa/frame_flicker.py` in the server repository) is a tool, not a result: the camera of `flicker-200` looks past the crowd.
