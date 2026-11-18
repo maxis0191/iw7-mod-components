@@ -2004,6 +2004,48 @@
       "lists": [
         "tests/*"
       ]
+    },
+    {
+      "id": "resource_scheduler_queued_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_queued_test.ps1"
+      ],
+      "inputs": [
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_scheduler_queued_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
+      ],
+      "timeout_seconds": 600
+    },
+    {
+      "id": "stop_own_processes_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/stop_own_processes_test.ps1"
+      ],
+      "inputs": [
+        "ops/Stop-OwnProcesses.ps1",
+        "tests/ops/stop_own_processes_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
+      ],
+      "timeout_seconds": 300
     }
   ],
   "retained_checks": [

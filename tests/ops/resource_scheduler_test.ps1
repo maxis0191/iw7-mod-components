@@ -543,8 +543,10 @@ Assert (@((Get-IW7ResourceStatus).Leases).Count -eq 0) 'The queued job must rele
 $rogueWait=[pscustomobject]@{PID=22223;ParentPID=0;CreatedUtc='2026-10-04T12:00:00Z';Image='C:\foreign\iw7-paris-lab.exe';Name='iw7-paris-lab.exe';Lab=$true;Heavy=$true;WorkingSet=1GB;PrivateBytes=2GB}
 $script:fakeProcesses += $rogueWait
 $script:waitSleeps=0;$message=''
-try { Invoke-IW7QueuedResourceJob -Scope $waitScope -Owner 'not waited' -WaitForSlotSeconds 600 -Body { 'ran' } } catch { $message=$_.Exception.Message }
-Assert ($message -like 'An unreserved or foreign laboratory is running*' -and $script:waitSleeps -eq 0) 'A refusal that is not a temporary holder is never waited for.'
+# 18 Nov 2026: a queued wait waits for every retryable refusal, a foreign laboratory included, and ends at its limit with that refusal
+# (it used to fail at once: a queued lab build came back SLOT_BUSY after minutes of waiting).
+try { Invoke-IW7QueuedResourceJob -Scope $waitScope -Owner 'waited for a foreign lab' -WaitForSlotSeconds 1 -Body { 'ran' } } catch { $message=$_.Exception.Message }
+Assert ($message -like 'An unreserved or foreign laboratory is running*' -and $script:waitSleeps -ge 1) 'A foreign laboratory is waited for until the limit.'
 $script:fakeProcesses=@($script:fakeProcesses | Where-Object PID -EQ $PID)
 Remove-Item Function:\Start-Sleep
 # A real cross-process race on a shared file lock, without heavyweight children.

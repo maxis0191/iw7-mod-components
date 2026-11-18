@@ -668,6 +668,10 @@ function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Sha
         # memory for minutes, the session waits for other sessions to end anyway (a87: a lab build waited 33 minutes behind four sessions).
         # An older Build or Extract ticket that is aged still holds it back (a bake must be able to drain).
         if (!$Shareable -and $Kind -in @('Build','Extract') -and $t.Shareable -and !$legacy) { continue }
+        # 18 Nov 2026: an older ticket that fits now and would not fit beside this request goes first, aged or not. It is granted at its next
+        # ask (seconds); passing it let a younger build take the reservation that an older one had asked for first (b1, b4, b3, b2 in the
+        # queued-builds test, 3 runs in 4).
+        if (!$legacy -and !(Test-IW7LongRecord $t) -and (Test-IW7FitsBeside $t $Plan 0) -and !(Test-IW7FitsBeside $t $Plan $PhysicalBytes)) { $memory+=$t; continue }
         $drainsForMe=$legacy -or (Test-IW7FitsBeside $t $Plan 0) -or ((($Context.NowMs-[long]$t.FirstMs)/1000) -ge ($policy.AgingSeconds*3))
         if ($aged -and $drainsForMe -and ($legacy -or (!(Test-IW7LongRecord $t) -and !(Test-IW7FitsBeside $t $Plan $PhysicalBytes)))) { $memory+=$t }
     }
@@ -1375,9 +1379,10 @@ function Invoke-IW7QueuedResourceJob {
             $lease=Enter-IW7ResourceLease -Scope $Scope -Kind $Kind -PhysicalBytes $PhysicalBytes -CommitBytes $CommitBytes -Owner $Owner @short
             break
         } catch {
-            $busy=$_.Exception.Message -like 'Resource busy:*' -or $_.Exception.Message -like 'Resource admission lock busy*' -or
-                $_.Exception.Message -like 'An existing compiler/extractor/Java analysis is running;*' -or
-                $_.Exception.Message -like 'Reserved process identity unavailable*'
+            # Every refusal that means "not now" is waited for, the whole list of Test-IW7RetryableRefusal. Until 18 Nov 2026 this list was shorter
+            # (no 'An unreserved or foreign laboratory is running', no 'Heavy job already reserved', no 'Existing lab has no reservation'): a queued
+            # build then failed early as SLOT_BUSY after minutes of waiting, a second submission built, and the first one was a wasted place.
+            $busy=Test-IW7RetryableRefusal $_.Exception.Message
             if (!$busy -or $waited.Elapsed.TotalSeconds -ge $WaitForSlotSeconds) { throw }
             # One line a minute while waiting, with the place in the queue.
             if ($waited.Elapsed.TotalSeconds -ge $said+60) { $said=$waited.Elapsed.TotalSeconds; Write-Host ("waiting {0:N0} s for the {1} reservation: {2}" -f $said,$Kind,$_.Exception.Message) }

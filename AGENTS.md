@@ -22,6 +22,9 @@ Start here, in the server repository (iw7-paris-server): `docs/DEVKIT.md` says w
 4. Sessions queue themselves: pass `-WaitForSlotSeconds`; never write retry loops; never stop a game process you
    did not start; never touch a game instance another application started. The scheduler admits sessions by free
    memory, several at once; builds stay exclusive.
+   Stopping processes (owner rule, 2026-11-18): never by a name pattern, never one you did not start. Stop only PIDs you recorded at
+   launch, with `ops/Stop-OwnProcesses.ps1 -Worktree <your folder> [-ProcessId <pid>] -Apply`; it refuses anything outside that folder.
+   Never force-push, throwaway branches included: push a new branch name.
 5. Need a lab client: `ops/enginelab/Get-LabClient.ps1`. Changed native code: `ops/enginelab/Invoke-EngineLab.ps1`
    (commit, build in about 70 seconds, plans, verdict).
    Builds (owner, 2026-11-18): the native build is `ops/Build-Voice.ps1` through those two commands only; it uses the
