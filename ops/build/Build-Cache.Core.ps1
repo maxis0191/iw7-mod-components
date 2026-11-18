@@ -232,14 +232,15 @@ function Save-IW7SourceTimes {
 # compiles everything again (measured: the seed copy of this change rebuilt asmjit, curl and DirectXTex).
 # -Max above 1 makes extra trees for callers that hold a build reservation of their own; each starts cold.
 function Enter-IW7NativeTree {
-    param([Parameter(Mandatory)][string]$Pin, [ValidateRange(1,8)][int]$Max = 1, [int]$WaitSeconds = 7200)
+    param([Parameter(Mandatory)][string]$Pin, [ValidateRange(1,8)][int]$Max = 1, [int]$WaitSeconds = 7200, [string]$Kind = 'lab')
     $root = Join-Path (Get-IW7BuildCacheRoot) 'native-trees'
     New-Item -ItemType Directory -Path $root -Force | Out-Null
     $deadline = [datetime]::UtcNow.AddSeconds($WaitSeconds)
     $waitStart = Get-Date
     while ($true) {
         for ($n = 1; $n -le $Max; $n++) {
-            $name = "$($Pin.Substring(0,10))-$n"
+            # Lab and production profiles link differently (premake-lab.lua), so each has its own tree and neither recompiles the other.
+            $name = if ($Kind -eq 'lab') { "$($Pin.Substring(0,10))-$n" } else { "$($Pin.Substring(0,10))-$Kind$n" }
             $lock = $null
             try { $lock = [IO.File]::Open((Join-Path $root "$name.lock"), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) } catch { continue }
             $tree = Join-Path $root $name

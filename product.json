@@ -152,6 +152,7 @@
     "ops/build/Build-Cache.Core.ps1",
     "ops/build/Invoke-BuildCleanup.ps1",
     "ops/build/Test-BuildInputs.py",
+    "ops/build/premake-lab.lua",
     "ops/check_boundaries.py",
     "ops/check_product.py",
     "ops/compile_check_exports.py",
