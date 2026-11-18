@@ -41,6 +41,20 @@ every build still works, only slower.
 uses your own tree instead of the shared one. Opt-in voice images, `-TestsOnly` and `-Sanitizers` never use the
 package cache.
 
+## Measured, 18 Nov 2026
+
+Same machine, other agents running; "work" is the build without the time spent waiting for the machine's build
+reservation (the waits were 2 to 17 minutes and are not the build's doing).
+
+| Job | Before | After |
+|---|---|---|
+| (a) fresh worktree, a commit nobody built, tree and cache empty / warm | 674 s wall, about 570 s of work: prepare 29, clone of iw7-mod and 17 submodules about 190, unit tests about 118, overlays and premake about 42, MSBuild 125 | 58 s of work: prepare 16, unit tests 38 (the first run with the per-test cache), overlays, MSBuild 3.5 (nothing to compile), package |
+| (b) the same commit again, in another worktree | the same 570 s of work | **18 s**: prepare 16.6, restore 0.3 (hard links; no tree, no compiler, no reservation) |
+| (c) one line in one component | see below | see below |
+
+The median of the 96 builds of the last five days was 117 s from `Invoke-EngineLab` (p10 71 s); most of that was
+queue time and the serial test compile.
+
 ## Cleanup
 
 ```powershell
