@@ -664,6 +664,10 @@ function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Sha
         if (!$legacy -and (Get-IW7ResourceConflict $Resources (Get-IW7HeldResources $t))) { $named+=$t; continue }
         # 18 Nov 2026: an aged older ticket that does not fit even now (it waits for running leases to end, not for this request)
         # is passed by a request that fits now; it blocks again once it fits now, or after AgingSeconds * 3 (starvation guard).
+        # 18 Nov 2026: a build or other short exclusive job that fits now is not held back by a waiting SESSION, however old: it holds its
+        # memory for minutes, the session waits for other sessions to end anyway (a87: a lab build waited 33 minutes behind four sessions).
+        # An older Build or Extract ticket that is aged still holds it back (a bake must be able to drain).
+        if (!$Shareable -and $Kind -in @('Build','Extract') -and $t.Shareable -and !$legacy) { continue }
         $drainsForMe=$legacy -or (Test-IW7FitsBeside $t $Plan 0) -or ((($Context.NowMs-[long]$t.FirstMs)/1000) -ge ($policy.AgingSeconds*3))
         if ($aged -and $drainsForMe -and ($legacy -or (!(Test-IW7LongRecord $t) -and !(Test-IW7FitsBeside $t $Plan $PhysicalBytes)))) { $memory+=$t }
     }

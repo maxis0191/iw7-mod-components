@@ -299,6 +299,15 @@ Case 'an aged ticket that could fit by waiting still holds back later sessions; 
     $s=Get-IW7ResourceStatus
     Assert ($s.Why -like "Head of queue: 'c'*needs 8.0 GB*held 7.5 GB by 2 running reservation(s)*") "Status gives need, free and held: $($s.Why)"
 }
+Case 'a build that fits is not held back by an old session ticket, even past the starvation guard' {
+    $script:avail=9GB
+    Ask s6 Runtime 6GB | Out-Null                    # running: 3 GB free
+    Ask c Runtime 8GB | Out-Null                     # waits for memory (could fit when s6 ends)
+    foreach ($i in 1..40) { Advance 60; Ask c Runtime 8GB | Out-Null }   # 2400 s: aged past 1800 s
+    $mb=Ask b Build 1GB -Res @('work:tree-b'); Assert ($mb -eq 'granted') "A build that fits goes in at once: a waiting session does not hold it (18 Nov 2026, a87): $mb"
+    $m=Ask small Runtime 1.5GB
+    Assert ($m -like "Resource busy: waiting in turn:*'c'*") "A younger SESSION is still held back by the aged session: $m"
+}
 Case 'a build is not held back by an older session ticket that cannot fit' {
     $script:avail=9GB
     Ask s6 Runtime 6GB | Out-Null

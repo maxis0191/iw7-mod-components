@@ -1,4 +1,4 @@
-param([ValidateRange(0,86400)][int]$WaitForSlotSeconds = 0, [switch]$NoLabLink, [switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
+param([ValidateRange(0,86400)][int]$WaitForSlotSeconds = 0, [switch]$OwnTree, [switch]$NoLabLink, [switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = 'auto')   # 'auto': a pooled tree of the machine build cache (ops/build/Build-Cache.Core.ps1); or the absolute path of your own tree
@@ -80,6 +80,14 @@ if ($NativeRoot -eq 'auto') {
         Write-Output ("Native tree {0} ({1}, waited {2} s)" -f $NativeRoot, $nativeTree.Source, $nativeTree.Waited)
     }
 }
+# A private native tree is refused (18 Nov 2026): worker a87 built a lab client in its own tree and compiled all 1,181 files (151 s)
+# where the shared tree, warm, compiles the files that changed. Use ops/enginelab/Get-LabClient.ps1 (it takes the shared tree).
+if (!$nativeTree -and !$TestsOnly -and !$OwnTree) {
+    $cacheTrees = [IO.Path]::GetFullPath((Join-Path (Get-IW7BuildCacheRoot) 'native-trees')).TrimEnd('\') + '\'
+    if (![IO.Path]::GetFullPath($NativeRoot).StartsWith($cacheTrees, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "NativeRoot $NativeRoot is a private native tree: every build in it starts from nothing. Build through ops/enginelab/Get-LabClient.ps1 (or Invoke-EngineLab.ps1) in the server repository, which takes the shared tree in C:\IW7-Cache. -OwnTree overrides this for a diagnostic."
+    }
+}
 $root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
 try {
 if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current ServerModules native profile.' }
@@ -94,7 +102,19 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 # -WaitForSlotSeconds: wait in the scheduler's waiting order (Invoke-IW7QueuedResourceJob) instead of refusing at once; no retry loop outside.
 $jobCommand = if ($WaitForSlotSeconds -gt 0) { 'Invoke-IW7QueuedResourceJob' } else { 'Invoke-IW7ResourceJob' }
 $jobExtra = if ($WaitForSlotSeconds -gt 0) { @{ WaitForSlotSeconds = $WaitForSlotSeconds } } else { @{} }
-& $jobCommand @jobExtra -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
+# What the build asks the scheduler for (measured 18 Nov 2026 with the lease sampler): a one-file change in a warm tree peaks at about
+# 0.5 GB (one cl.exe and an incremental link); a build from nothing (a new tree, other link flags) peaks at several GB. Declaring 4 GB for
+# both kept builds waiting behind memory they never used. A tree is warm when its last successful build had the same link profile.
+$linkProfile = if ($IsolatedLab -or $Debugger) { 'lab' } else { 'prod' }
+$profileMark = Join-Path $root '.iw7-link-profile'
+$warmTree = (Test-Path -LiteralPath $profileMark) -and ((Get-Content -LiteralPath $profileMark -Raw).Trim() -ceq $linkProfile) -and (Test-Path -LiteralPath (Join-Path $root '.iw7-source-times.json'))
+$askPhysical = if ($warmTree -and !$TestsOnly) { 1.5GB } elseif ($TestsOnly) { 1GB } else { 4GB }
+$askCommit = if ($warmTree -and !$TestsOnly) { 3GB } elseif ($TestsOnly) { 2GB } else { 6GB }
+$slotAsked = Get-Date
+& $jobCommand @jobExtra -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes ([long]($askPhysical * $BuildJobs)) -CommitBytes ([long]($askCommit * $BuildJobs)) -Body {
+$slotWaited = ((Get-Date) - $slotAsked).TotalSeconds
+Write-Output ('Waited {0:n0} s for the Build reservation.' -f $slotWaited)
+$script:lapAt = Get-Date
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 # The opt-in voice overlays are added last, so they are removed first.
 Remove-IW7VoiceCertifyOverlay $root
@@ -590,6 +610,7 @@ try {
     if ($LASTEXITCODE) { throw 'Voice build failed.' }
     Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
     Save-IW7SourceTimes -NativeRoot $root
+    Set-Content -LiteralPath $profileMark -Value $linkProfile
     $script:lapAt = Get-Date
 } finally { Pop-Location }
 $voiceState = Get-IW7VoiceOverlayState $root
@@ -716,6 +737,6 @@ if ($cacheKey -and !$voiceOptIn -and !$Sanitizers) {
     $null = Save-IW7CachedPackage -Key $cacheKey -Exe $packagedExe -Pdb "$root/build/bin/x64/Release/iw7-mod.pdb" -Manifest "$output/build-manifest.json" -ProjectCommit $sourceIdentity.Commit -Switches $switchNames
     Invoke-IW7PackageCachePrune
 }
-Write-Output ("Build total {0:n1} s" -f ((Get-Date) - $buildStart).TotalSeconds)
+Write-Output ("Build total {0:n1} s of work ({1:n0} s more waiting for the Build reservation)" -f (((Get-Date) - $buildStart).TotalSeconds - $slotWaited), $slotWaited)
 }
 } finally { if ($nativeTree) { Exit-IW7NativeTree $nativeTree } }
