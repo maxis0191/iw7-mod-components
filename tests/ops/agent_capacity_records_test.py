@@ -1,6 +1,6 @@
 """Reserved scriptable records and part links (a42): the formulas of agent_capacity.hpp, mirrored, for every allowed count 24..320.
 
-The component rebuilds the MapEnts scriptable block at load (agent_capacity.cpp section 4c): R(n) = max(200, n + 56) reserved records,
+The component rebuilds the MapEnts scriptable block at load (agent_capacity.cpp section 4c): R = default_reserved_records(n) = min(512, n + 192) reserved records (200 at the stock 24 agents), or -scriptable-records N,
 d = R - 200 copies of reserved record 0 inserted after the stock reserved ones, the fixed records shifted by d. Offline checks:
   - the text of the formulas in the hpp is pinned (a change there fails here until this mirror agrees);
   - for every allowed n the moved block is a permutation-with-copies of the old one: [0, 200) unchanged, [200, 200 + d) copies of record 0,
@@ -17,12 +17,16 @@ HPP = os.path.join(HERE, '..', '..', 'src', 'native', 'agent_capacity.hpp')
 CPP = os.path.join(HERE, '..', '..', 'src', 'native', 'agent_capacity.cpp')
 
 COUNTS = list(range(24, 321, 4))
-STOCK_RESERVED, STOCK_SERVER_END, STOCK_TOTAL, STOCK_AGENTS, MARGIN = 200, 414, 523, 24, 32
+STOCK_RESERVED, STOCK_SERVER_END, STOCK_TOTAL, STOCK_AGENTS = 200, 414, 523, 24
 ENTITY_FIELD_BITS = 10   # entity type 6, descriptor offset 0x78 (net field list 0x141BB6480): index + 1 of a fixed scriptable
 
 
-def reserved_records(n):
-    return max(STOCK_RESERVED, STOCK_AGENTS + n + MARGIN)
+def reserved_records(n, requested=0):
+    if requested:
+        return max(STOCK_RESERVED, requested)
+    if n <= STOCK_AGENTS:
+        return STOCK_RESERVED
+    return max(STOCK_RESERVED, min(512, n + 192))
 
 
 def moved_source(i, reserved, added):
@@ -41,9 +45,17 @@ def remapped_record_index(index, reserved, added):
 class Records(unittest.TestCase):
     def test_hpp_text_is_pinned(self):
         text = open(HPP, encoding='utf-8').read()
-        self.assertIn('constexpr std::uint32_t stock_reserved_records = 200, reserved_record_margin = 32, record_bytes = 0x1D0;', text)
-        self.assertIn('const auto need = stock_agents + agents + reserved_record_margin;', text)
-        self.assertIn('return need > stock_reserved_records ? need : stock_reserved_records;', text)
+        self.assertIn('constexpr std::uint32_t stock_reserved_records = 200, record_bytes = 0x1D0;', text)
+        self.assertIn('constexpr std::uint32_t default_reserved_records(std::uint32_t agents) {', text)
+        self.assertIn('constexpr std::uint32_t scriptable_record_reserve = 192, default_most_records = 512;', text)
+        self.assertIn('if (agents <= stock_agents) return stock_reserved_records;', text)
+        self.assertIn('const auto need = agents + scriptable_record_reserve;', text)
+        self.assertIn('const auto capped = need > default_most_records ? default_most_records : need;', text)
+        self.assertIn('return capped > stock_reserved_records ? capped : stock_reserved_records;', text)
+        self.assertIn('constexpr std::uint32_t reserved_records(std::uint32_t agents, std::uint32_t requested = 0) {', text)
+        self.assertIn('if (!requested) return default_reserved_records(agents);', text)
+        self.assertIn('return requested > stock_reserved_records ? requested : stock_reserved_records;', text)
+        self.assertIn('constexpr std::uint32_t most_scriptable_records = 700;', text)
         self.assertIn('return index < reserved ? index : (index < reserved + added ? 0 : index - added);', text)
         self.assertIn('const auto need = stock_parts + 32 * agents + 1024;', text)
         self.assertIn('const auto rounded = (need + 1023) / 1024 * 1024;', text)
@@ -54,20 +66,22 @@ class Records(unittest.TestCase):
         self.assertIn('link_mapents_hook.create(0x1403B8610, link_mapents_stub);', text)
         self.assertIn('scriptable_parts(agents)', text)
         for needle in ('map ents guard a', 'map ents guard c', 'map ents link: call', 'moved_record_source(i, reserved, added)',
-                       'reserved_records(L.agents)'):
+                       'const auto want = L.records;', '-scriptable-records', 'IW7_SCRIPTABLE_RECORDS', 'most_scriptable_records',
+                       '"-r" + std::to_string(L.records)'):
             self.assertIn(needle, text)
 
     def test_reserved_count_every_allowed_n(self):
         for n in COUNTS:
             r = reserved_records(n)
             self.assertGreaterEqual(r, STOCK_RESERVED)
-            self.assertGreaterEqual(r, STOCK_AGENTS + n + MARGIN)
-            if n <= 144:
-                self.assertEqual(r, STOCK_RESERVED, n)   # inert while the stock room is enough
-        self.assertEqual(reserved_records(232), 288)
-        self.assertEqual(reserved_records(320), 376)
-        self.assertEqual(reserved_records(100), 200)
-        self.assertEqual(reserved_records(148), 204)
+            self.assertLessEqual(r, 512)
+            self.assertGreaterEqual(r, min(512, n + 56) if n > STOCK_AGENTS else STOCK_RESERVED)   # never below the a42 formula
+            if n == STOCK_AGENTS:
+                self.assertEqual(r, STOCK_RESERVED, n)   # the stock count: no move
+        self.assertEqual(reserved_records(232), 424)
+        self.assertEqual(reserved_records(320), 512)
+        self.assertEqual(reserved_records(100), 292)
+        self.assertEqual(reserved_records(164), 356)
 
     def test_move_is_an_exact_rearrangement_every_allowed_n(self):
         old = list(range(STOCK_TOTAL))   # old record i is "i"
@@ -89,6 +103,32 @@ class Records(unittest.TestCase):
             self.assertLessEqual(reserved, server_end)
             self.assertLessEqual(server_end, total)
             self.assertLess(total, 1 << ENTITY_FIELD_BITS, n)
+
+    def test_requested_records_every_value(self):
+        # -scriptable-records N (a89): R = max(200, N) at any agent count; the move is the same rearrangement, the 10 bit field 0x78 holds cp_zmb up to R = 700
+        most = 700
+        self.assertEqual(STOCK_TOTAL + most - STOCK_RESERVED, (1 << ENTITY_FIELD_BITS) - 1)   # index + 1 of the last record = 1,023
+        old = list(range(STOCK_TOTAL))
+        for requested in (0, 100, 200, 201, 376, 400, 512, 513, 600, most):
+            for n in (24, 100, 232, 320):
+                r = reserved_records(n, requested)
+                self.assertGreaterEqual(r, STOCK_RESERVED)
+                if requested:
+                    self.assertEqual(r, max(STOCK_RESERVED, requested))
+                added = r - STOCK_RESERVED
+                new = [old[moved_source(i, STOCK_RESERVED, added)] for i in range(STOCK_TOTAL + added)]
+                self.assertEqual(new[STOCK_RESERVED + added:], old[STOCK_RESERVED:])
+                self.assertLessEqual(STOCK_TOTAL + added, (1 << ENTITY_FIELD_BITS) - 1)
+        self.assertEqual(reserved_records(320, 512), 512)
+        self.assertEqual(reserved_records(100, 300), 300)
+        self.assertEqual(reserved_records(320, 50), 200)
+
+    def test_stream_pool_blocks_follow_the_records(self):
+        for requested in (200, 376, 512, 513, 640, 700):
+            blocks = max(512, reserved_records(24, requested))
+            self.assertGreaterEqual(blocks, requested)
+        text = open(HPP, encoding='utf-8').read()
+        self.assertIn('constexpr std::uint32_t stream_pool_blocks(std::uint32_t records) { return records > stream_pool_min_blocks ? records : stream_pool_min_blocks; }', text)
 
     def test_remap_text_is_pinned(self):
         hpp = open(HPP, encoding='utf-8').read()
@@ -127,7 +167,7 @@ class Records(unittest.TestCase):
         # is record 60 of 290 (an inserted blank: the crash of a43-p3a, record (0x12ADB79500 - 0x12ADB72840) / 0x1D0 = 60) and 58 / 59 name blanks.
         total, reserved = 60, 58
         added = reserved_records(232) - reserved
-        self.assertEqual(added, 230)
+        self.assertEqual(added, 424 - 58)   # the a43 run was d = 230 at R = 288; R(232) is 424 since a89
         self.assertEqual((0x12ADB79500 - 0x12ADB72840) // 0x1D0, total)
         self.assertEqual((0x12ADB79500 - 0x12ADB72840) % 0x1D0, 0)
         for stored in (58, 59, 60):

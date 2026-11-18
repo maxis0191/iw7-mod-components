@@ -40,6 +40,7 @@ enum class wide_field { characters, characters_less_one, player_corpses, agent_c
 struct layout {
     std::uint32_t agents{}, characters{}, map_start{}, player_corpses{}, agent_corpses{};
     std::uint32_t parts{};
+    std::uint32_t records{};   // reserved scriptable records of the map (0 until make() sets them): default_reserved_records(agents) or `-scriptable-records`
     constexpr std::int64_t wide_value(wide_field what) const {
         switch (what) {
         case wide_field::characters: return characters;
@@ -165,13 +166,30 @@ constexpr bool state_budget_holds() {
 }
 static_assert(state_budget_holds());
 
-// Reserved scriptable RECORDS (a41, a42): the map's MapEnts block (S + 0x240: total, reserved, server end; array at +0x250, 0x1D0 bytes a
-// record) holds 200 reserved records on cp_zmb, 24 stock instances plus one for every agent alive. A zombie's scriptable needs one, so
-// the block is rebuilt at load with R(n) = max(200, n + 56) reserved records: the 24 stock instances, n agents and 32 spare.
-constexpr std::uint32_t stock_reserved_records = 200, reserved_record_margin = 32, record_bytes = 0x1D0;
-constexpr std::uint32_t reserved_records(std::uint32_t agents) {
-    const auto need = stock_agents + agents + reserved_record_margin;
-    return need > stock_reserved_records ? need : stock_reserved_records;
+// Reserved scriptable RECORDS (a41, a42, a89): the map's MapEnts block (S + 0x240: total, reserved, server end; array at +0x250, 0x1D0 bytes a
+// record) holds 200 reserved records on cp_zmb, 24 stock instances plus one for every agent alive. A zombie's scriptable needs one, and so does
+// every scriptable model the scripts spawn (the flame pools of a mammoth, a boss's props), so the block is rebuilt at load with R reserved records.
+// R is its own option since a89, `-scriptable-records N` (or IW7_SCRIPTABLE_RECORDS=N); without it R = default_reserved_records(n) (n + 192, at most 512).
+constexpr std::uint32_t stock_reserved_records = 200, record_bytes = 0x1D0;
+// The most the engine's structures hold for one R (a89): the 512 replicated instances of the state block (u16 tables of 512 behind the dwords), the 512
+// stream buffer blocks of every pool class when R is not above them (the pools follow R above), and the 10 bit entity field 0x78 (index + 1 up to 1,023:
+// total + R - reserved, checked against the real map at load, "guard c"). R is never below the stock 200.
+constexpr std::uint32_t most_scriptable_records = 700;
+// The default (a89, measured on cp_final with 320 agents, the heaviest field: 321 records of characters and corpses, 51 to 54 of the map's own scriptables, 13 flame pools
+// with the five mammoth fights at the same spots, up to 80 with distinct ones): one record for each agent plus a reserve of 192 (the 16 corpse entities, the map's 54,
+// the 80 flame pools of five mammoths, 42 spare), never above the 512 the stream pools and the replicated instance tables hold without growing, and the stock 200 at
+// the stock 24 agents (no move). 320 agents -> 512, 232 -> 424, 100 -> 292.
+constexpr std::uint32_t scriptable_record_reserve = 192, default_most_records = 512;
+constexpr std::uint32_t default_reserved_records(std::uint32_t agents) {
+    if (agents <= stock_agents) return stock_reserved_records;
+    const auto need = agents + scriptable_record_reserve;
+    const auto capped = need > default_most_records ? default_most_records : need;
+    return capped > stock_reserved_records ? capped : stock_reserved_records;
+}
+// `requested` 0 = the default of the agent count; otherwise the requested count, never below the stock 200.
+constexpr std::uint32_t reserved_records(std::uint32_t agents, std::uint32_t requested = 0) {
+    if (!requested) return default_reserved_records(agents);
+    return requested > stock_reserved_records ? requested : stock_reserved_records;
 }
 // The block after the move: [0, reserved) the old reserved records, `added` copies of reserved record 0, then the old records from
 // `reserved` on. `old_index` is the index of the old record that new record `index` is (record 0 stands for each added one), for a
@@ -196,8 +214,9 @@ constexpr std::uint32_t scriptable_parts(std::uint32_t agents) {
     const auto rounded = (need + 1023) / 1024 * 1024;
     return rounded > 8192 ? rounded : 8192;
 }
-static_assert(reserved_records(24) == 200 && reserved_records(100) == 200 && reserved_records(144) == 200 && reserved_records(148) == 204 &&
-              reserved_records(232) == 288 && reserved_records(320) == 376);
+static_assert(default_reserved_records(24) == 200 && default_reserved_records(28) == 220 && default_reserved_records(100) == 292 && default_reserved_records(164) == 356 &&
+              default_reserved_records(232) == 424 && default_reserved_records(320) == 512 && reserved_records(320) == 512 && reserved_records(320, 376) == 376 &&
+              reserved_records(320, 100) == 200 && reserved_records(100, 300) == 300 && default_reserved_records(320) <= most_scriptable_records);
 static_assert(scriptable_parts(24) == 8192 && scriptable_parts(100) == 8192 && scriptable_parts(164) == 9216 && scriptable_parts(232) == 11264 &&
               scriptable_parts(320) == 13312 && scriptable_parts(320) <= 0xFFFF);
 
@@ -206,18 +225,16 @@ static_assert(scriptable_parts(24) == 8192 && scriptable_parts(100) == 8192 && s
 // request, then the larger ones while that list is empty; "Could not allocate Stream Buffer of %i bytes" when all are). The server has one pool a
 // class, the client two slots a class. An instance holds at most one buffer and there is one reserved record for each instance, so a class that holds
 // as many blocks as there are records can never run out: 512 blocks a class (the part state tables hold at most 512 instances too), 1.97 MB a pool set,
-// never fewer than the reserved records of the map (R(n)).
+// never fewer than the reserved records of the map (R).
 constexpr std::uint32_t stream_pool_classes = 5, stream_pool_slots = 2, stream_pool_min_blocks = 512;
 constexpr std::uint32_t stream_pool_class_bytes[stream_pool_classes] = {16, 64, 256, 512, 3072};
 constexpr std::uint32_t stock_stream_pool_blocks[stream_pool_classes] = {128, 128, 64, 32, 32};
-constexpr std::uint32_t stream_pool_blocks(std::uint32_t agents) {
-    const auto records = reserved_records(agents);
-    return records > stream_pool_min_blocks ? records : stream_pool_min_blocks;
-}
-constexpr std::uint32_t stream_pool_array_bytes(std::uint32_t agents, unsigned cls) { return stream_pool_blocks(agents) * stream_pool_class_bytes[cls]; }
-constexpr std::uint32_t stream_pool_stride(std::uint32_t agents, unsigned cls) { return stream_pool_array_bytes(agents, cls) + 8; }   // array, then the 8 byte list head
-static_assert(stream_pool_blocks(24) == 512 && stream_pool_blocks(232) == 512 && stream_pool_blocks(320) == 512 && stream_pool_array_bytes(232, 4) == 512 * 3072 &&
-              stream_pool_stride(232, 0) == 512 * 16 + 8);
+constexpr std::uint32_t stream_pool_blocks(std::uint32_t records) { return records > stream_pool_min_blocks ? records : stream_pool_min_blocks; }
+constexpr std::uint32_t stream_pool_array_bytes(std::uint32_t records, unsigned cls) { return stream_pool_blocks(records) * stream_pool_class_bytes[cls]; }
+constexpr std::uint32_t stream_pool_stride(std::uint32_t records, unsigned cls) { return stream_pool_array_bytes(records, cls) + 8; }   // array, then the 8 byte list head
+static_assert(stream_pool_blocks(reserved_records(24)) == 512 && stream_pool_blocks(reserved_records(232)) == 512 && stream_pool_blocks(reserved_records(320)) == 512 &&
+              stream_pool_array_bytes(reserved_records(232), 4) == 512 * 3072 && stream_pool_stride(reserved_records(232), 0) == 512 * 16 + 8 &&
+              stream_pool_blocks(600) == 600 && stream_pool_stride(600, 4) == 600 * 3072 + 8);
 
 // The client's character proxy list (a47; the "140 entry character sound list"): one entry for every client entity (centity) of eType 1 (player), 18
 // (agent), 20 (actor) or 6 with the flag word 1, active in the snapshot (FUN_1405532D0 and FUN_140552DF0 drop the others), each with two physics
@@ -271,11 +288,12 @@ constexpr std::uint32_t bone_stock_shift = 20, bone_shift = 22, bone_stock_cap =
 constexpr std::uintptr_t bone_stock_base = 0x141FE5F23ull;
 static_assert(bone_cap == 0x3FFFF0 && (1u << bone_stock_shift) - 0x10 == bone_stock_cap);
 
-constexpr layout make(std::uint32_t agents, std::uint32_t parts) {
+constexpr layout make(std::uint32_t agents, std::uint32_t parts, std::uint32_t records = 0) {
     layout l{};
     l.agents = agents; l.characters = players + agents;
     l.player_corpses = l.characters; l.agent_corpses = l.characters + 8; l.map_start = l.characters + 16;
     l.parts = parts;
+    l.records = reserved_records(agents, records);
     return l;
 }
 

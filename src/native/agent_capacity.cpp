@@ -571,24 +571,24 @@ void chain_pool(std::uintptr_t array, std::uint32_t blocks, std::uint32_t size) 
     *reinterpret_cast<std::uintptr_t*>(head) = next;
 }
 void plan_pools() {
-    const auto agents = L.agents;
+    const auto records = L.records;   // the pool functions of the hpp take the reserved records (a89), not the agent count
     for (unsigned c = 0; c < stream_pool_classes; ++c) {
-        pool_server[c] = reserve(stream_pool_array_bytes(agents, c) + 8);
-        pool_client[c] = reserve(static_cast<std::size_t>(stream_pool_slots) * stream_pool_stride(agents, c));
-        chain_pool(pool_server[c].data, stream_pool_blocks(agents), stream_pool_class_bytes[c]);
+        pool_server[c] = reserve(stream_pool_array_bytes(records, c) + 8);
+        pool_client[c] = reserve(static_cast<std::size_t>(stream_pool_slots) * stream_pool_stride(records, c));
+        chain_pool(pool_server[c].data, stream_pool_blocks(records), stream_pool_class_bytes[c]);
         for (unsigned slot = 0; slot < stream_pool_slots; ++slot)
-            chain_pool(pool_client[c].data + static_cast<std::uintptr_t>(slot) * stream_pool_stride(agents, c), stream_pool_blocks(agents), stream_pool_class_bytes[c]);
+            chain_pool(pool_client[c].data + static_cast<std::uintptr_t>(slot) * stream_pool_stride(records, c), stream_pool_blocks(records), stream_pool_class_bytes[c]);
     }
     for (const auto& s : pool_sites) {
         ++pool_rows;
         const auto before = static_cast<std::uint32_t>(s.stock);
-        const auto array = stream_pool_array_bytes(agents, s.cls);
+        const auto array = stream_pool_array_bytes(records, s.cls);
         switch (s.op) {
         case pool_op::ref_server_base: rip(s.field, static_cast<std::uintptr_t>(s.stock), pool_server[s.cls].data, s.tail); break;
         case pool_op::ref_server_head: rip(s.field, static_cast<std::uintptr_t>(s.stock), pool_server[s.cls].data + array, s.tail); break;
         case pool_op::ref_client_base: rip(s.field, static_cast<std::uintptr_t>(s.stock), pool_client[s.cls].data, s.tail); break;
         case pool_op::ref_client_head: rip(s.field, static_cast<std::uintptr_t>(s.stock), pool_client[s.cls].data + array, s.tail); break;
-        case pool_op::pool_stride: add(s.field, before, stream_pool_stride(agents, s.cls)); break;
+        case pool_op::pool_stride: add(s.field, before, stream_pool_stride(records, s.cls)); break;
         case pool_op::pool_array: add(s.field, before, (before & 0x80000000u) ? 0u - array : array); break;   // `lea rcx,[rdx - array]` holds the negative
         }
     }
@@ -891,6 +891,18 @@ bool env_switch(const char* flag, const wchar_t* env) {
     if (utils::flags::has_flag(flag)) return true;
     wchar_t v[8]{};
     return GetEnvironmentVariableW(env, v, 8) && v[0] == L'1';
+}
+std::uint32_t parse_count(const wchar_t* flag, std::uint32_t fallback);
+// -scriptable-records N, else IW7_SCRIPTABLE_RECORDS=N (the gamelab runners pass no flags of their own): 0 = the default of the agent count.
+std::uint32_t requested_records() {
+    if (const auto flag = parse_count(L"-scriptable-records", 0)) return flag;
+    wchar_t v[16]{};
+    if (GetEnvironmentVariableW(L"IW7_SCRIPTABLE_RECORDS", v, 16) && v[0]) {
+        wchar_t* end{};
+        const auto n = std::wcstoul(v, &end, 10);
+        if (end && !*end) return static_cast<std::uint32_t>(n);
+    }
+    return 0;
 }
 std::uint32_t parse_count(const wchar_t* flag, std::uint32_t fallback) {
     int count{};
@@ -1575,7 +1587,7 @@ std::uintptr_t link_mapents_stub(void** pointer) {
     auto& array = *reinterpret_cast<std::uint8_t**>(s + 0x250);
     if (record_block && array != record_block) { _aligned_free(record_block); record_block = nullptr; record_block_owner = nullptr; }
     if (array == record_block) return result;   // already moved (the clipmap's call after the asset's, or a reload of the same S)
-    const auto want = reserved_records(L.agents);
+    const auto want = L.records;
     if (!reserved || reserved > total || server_end < reserved || server_end > total || !array) {
         console::info("[agent capacity] map ents: unexpected scriptable block (total %u reserved %u server end %u array %p): not touched\n", total, reserved,
             server_end, array);
@@ -1604,8 +1616,8 @@ std::uintptr_t link_mapents_stub(void** pointer) {
             return result;
         }
     }
-    if (std::max(reserved, want) > stream_pool_blocks(L.agents)) {   // one stream buffer per instance, one instance per record: the pools hold at most this many
-        game::Com_Error(game::ERR_FATAL, "agent capacity: %u reserved scriptable records exceed the %u blocks of each stream buffer class", std::max(reserved, want), stream_pool_blocks(L.agents));
+    if (std::max(reserved, want) > stream_pool_blocks(L.records)) {   // one stream buffer per instance, one instance per record: the pools hold at most this many
+        game::Com_Error(game::ERR_FATAL, "agent capacity: %u reserved scriptable records exceed the %u blocks of each stream buffer class", std::max(reserved, want), stream_pool_blocks(L.records));
         return result;
     }
     if (reserved >= want) { if (first) console::info("[agent capacity] map ents: %u reserved records are enough for %u agents (skipped)\n", reserved, L.agents); return result; }
@@ -1665,7 +1677,9 @@ public:
         const auto parts = std::max<std::uint32_t>(parse_count(L"-scriptable-parts", 0), scriptable_parts(agents));
         if (const auto why = refuse(agents); *why) throw std::runtime_error(std::string("agent capacity refused: ") + why);
         if (parts > 0xFFFF) throw std::runtime_error("agent capacity: parts are u16 links (at most 65535)");
-        L = make(agents, parts);
+        const auto records = requested_records();
+        if (records > most_scriptable_records) throw std::runtime_error("agent capacity refused: -scriptable-records above " + std::to_string(most_scriptable_records) + " (the entity field 0x78 holds index + 1 up to 1,023 on the stock records)");
+        L = make(agents, parts, records);
         agent_pool = reserve(L.agent_bytes());
         sentient_pool = reserve(L.sentient_bytes());
         sentient_refs = reserve(L.sentient_slots() * 2);
@@ -1715,7 +1729,7 @@ public:
         plan_avoidance();
         plan_rewind_probe();
         active = true;
-        contract = "agents-" + std::to_string(L.agents);
+        contract = "agents-" + std::to_string(L.agents) + "-r" + std::to_string(L.records);   // the fixed records shift by R - 200 on both sides and their index is on the wire
         scheduler::once([] {
             // after the static initialisers chained the stock 64: add room for every sentient slot twice over
             extend_free_list(0x143C1A580, 0x810, 2 * L.sentient_slots());
@@ -1729,13 +1743,14 @@ public:
             game::Dvar_RegisterString("scr_default_maxagents", value.data(), game::DVAR_FLAG_NONE, "Agents this server can hold");
             game::Dvar_RegisterInt("agent_capacity", L.agents, L.agents, L.agents, game::DVAR_FLAG_NONE, "Engine agent records");
             game::Dvar_RegisterInt("agent_capacity_parts", L.parts, L.parts, L.parts, game::DVAR_FLAG_NONE, "Reserved scriptable parts");
+            game::Dvar_RegisterInt("agent_capacity_records", L.records, L.records, L.records, game::DVAR_FLAG_NONE, "Reserved scriptable records");
             console::info("[agent capacity] entity queue: rows %u at %p, %zu references\n", L.queue_rows(),
                 reinterpret_cast<void*>(entity_queue.data), queue_references);
             console::info("[agent capacity] wide sites: %zu caves carry %zu 32-bit fields (characters %u, corpses %u / %u, agents %u)\n", wide_caves,
                 std::size(wide_sites), L.characters, L.player_corpses, L.agent_corpses, L.agents);
             console::info("[agent capacity] replicated state: %u dwords (%u bytes a block), %zu fields, list table %u bytes\n", L.state_dwords(), L.state_bytes(),
                 state_rows, L.state_list_bytes());
-            console::info("[agent capacity] stream buffer pools: %u blocks a class (stock 128 128 64 32 32), %zu fields, server %p client %p\n", stream_pool_blocks(L.agents),
+            console::info("[agent capacity] stream buffer pools: %u blocks a class (stock 128 128 64 32 32), %zu fields, server %p client %p\n", stream_pool_blocks(L.records),
                 pool_rows, reinterpret_cast<void*>(pool_server[2].data), reinterpret_cast<void*>(pool_client[2].data));
             console::info("[agent capacity] character proxy list: %u entries (stock 140), %zu fields, block %p\n", proxy_list_entries, sound_rows, reinterpret_cast<void*>(proxy_list.data));
             console::info("[agent capacity] snapshot entities: cap %u (stock 768), lists %u, server ring %u records a frame + %u a client, client ring %u a frame, %zu fields, cgame entity array at +0x%X\n",
