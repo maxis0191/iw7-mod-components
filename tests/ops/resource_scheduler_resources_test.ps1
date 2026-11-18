@@ -6,6 +6,7 @@ param([string]$TestRoot,[string]$Only='*')   # -Only 'stall*': run only the case
 # by ...", "Runtime owned by soak session"); with named resources the ones that share nothing are admitted.
 # Same seam as resource_scheduler_queue_test.ps1: temporary registry, synthetic callers, clock and memory only.
 $ErrorActionPreference='Stop'
+$env:IW7_SHAREABLE_FLOOR_GB='0'   # these cases pin the arithmetic that came before the free-memory floor (a87, 18 Nov 2026); the floor has its own cases in resource_scheduler_shareable_test.ps1
 . "$PSScriptRoot/../../ops/Resource-Scheduler.Core.ps1"
 if (!$TestRoot) { $TestRoot=Join-Path ([IO.Path]::GetTempPath()) ('iw7-resources-tests-'+[guid]::NewGuid().ToString('N')) }
 [IO.Directory]::CreateDirectory($TestRoot) | Out-Null

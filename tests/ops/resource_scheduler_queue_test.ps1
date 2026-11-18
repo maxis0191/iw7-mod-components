@@ -3,6 +3,7 @@ param([string]$TestRoot)
 # dot-source Core, then redefine the registry root, memory snapshot, process listing, clock and caller.
 # Every caller is synthetic (a fake process with its own PID and parent); no real registry, process or game.
 $ErrorActionPreference='Stop'
+$env:IW7_SHAREABLE_FLOOR_GB='0'   # these cases pin the arithmetic that came before the free-memory floor (a87, 18 Nov 2026); the floor has its own cases in resource_scheduler_shareable_test.ps1
 . "$PSScriptRoot/../../ops/Resource-Scheduler.Core.ps1"
 if (!$TestRoot) { $TestRoot=Join-Path ([IO.Path]::GetTempPath()) ('iw7-queue-tests-'+[guid]::NewGuid().ToString('N')) }
 [IO.Directory]::CreateDirectory($TestRoot) | Out-Null

@@ -11,7 +11,10 @@ if($LASTEXITCODE){throw 'Dirty tracked product sources refused.'}
 if(!$Output){$Output=Join-Path $root ('runtime/source-'+$revision)}
 $Output=[IO.Path]::GetFullPath($Output)
 if(!$DependencyArchive){
-    $cache=Join-Path $root ('runtime/source-dependencies/'+$lock.sha256)
+    # One copy per machine (the build cache), not one per worktree: a fresh worktree used to download the archive again.
+    $machineCache=if($env:IW7_BUILD_CACHE){$env:IW7_BUILD_CACHE}else{'C:\IW7-Cache'}
+    $cache=Join-Path $machineCache ('source-dependencies/'+$lock.sha256)
+    try{[IO.Directory]::CreateDirectory($cache)|Out-Null}catch{$cache=Join-Path $root ('runtime/source-dependencies/'+$lock.sha256)}
     [IO.Directory]::CreateDirectory($cache) | Out-Null
     $DependencyArchive=Join-Path $cache $lock.name
     if(!(Test-Path -LiteralPath $DependencyArchive)){
