@@ -2046,6 +2046,26 @@
         "tests/*"
       ],
       "timeout_seconds": 300
+    },
+    {
+      "id": "build_integrity_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/build_integrity_test.ps1"
+      ],
+      "inputs": [
+        "ops/build/Build-Cache.Core.ps1",
+        "ops/build/Build-Integrity.Core.ps1",
+        "tests/ops/build_integrity_test.ps1"
+      ],
+      "lists": [
+        "ops/*",
+        "tests/*"
+      ]
     }
   ],
   "retained_checks": [

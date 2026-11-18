@@ -42,6 +42,7 @@ if (!$TestsOnly -and !$ServerModules -and !$RhinoExperiment -and !$EnemyExperime
 }
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot/build/Build-Cache.Core.ps1"
+. "$PSScriptRoot/build/Build-Integrity.Core.ps1"
 # Seconds, no game: every file this build reads must be in the prepared workspace (a file product.json does not export used
 # to be found by a build that failed halfway; the production native needed 8 attempts).
 if (Test-Path -LiteralPath (Join-Path $repo 'source-workspace.json')) {
@@ -620,13 +621,33 @@ try {
     $threads = if ($env:IW7_BUILD_THREADS) { [int]$env:IW7_BUILD_THREADS } else { [Math]::Max(2, [Math]::Min(8, [int]([Environment]::ProcessorCount / 2))) }
     $mp = if ($Serial) { @("/m:$BuildJobs", '/p:MultiProcessorCompilation=false') } else { @("/m:$([Math]::Max(2,[Math]::Min(4,$threads)))", '/p:MultiProcessorCompilation=true', "/p:CL_MPCount=$threads") }
     $msbStart = Get-Date
-    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln @mp /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
-    $msbuildCode = $LASTEXITCODE
-    # The record of the sources goes down after a failed build too (a compile error in one branch made the next build, of another branch,
-    # recompile all 415 files): it describes the sources this build saw. A file that failed to compile has an older object than its source,
-    # and a file that changes back to an earlier text no longer equals the record, so it keeps its new time and compiles.
-    Save-IW7SourceTimes -NativeRoot $root
-    if ($msbuildCode) { throw 'Voice build failed.' }
+    # Without a record of a good build nothing proves that the objects in the tree match any source: compile every unit once.
+    $currentHashes = Get-IW7SourceHashes -NativeRoot $root
+    if (!(Test-Path -LiteralPath (Join-Path $root '.iw7-source-good.json'))) {
+        $dropped = Remove-IW7UnitObjects -NativeRoot $root -Units @($currentHashes.Keys | Where-Object { $_ -match '[.](cpp|cc|cxx|c)$' })
+        Write-Output "Build integrity: no record of a good build in this tree; $dropped objects dropped, every unit compiles once."
+    }
+    $integrityRetry = 0
+    while ($true) {
+        $msbuildOutput = @(& "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln @mp /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal")
+        $msbuildCode = $LASTEXITCODE
+        $msbuildOutput | ForEach-Object { Write-Output $_ }
+        $currentHashes = Get-IW7SourceHashes -NativeRoot $root
+        # What this run compiled is remembered with the hash of each source, even when the run failed: a later build may rely on it.
+        Add-IW7CompiledProof -NativeRoot $root -Current $currentHashes -CompiledNames (Get-IW7CompiledUnitNames -MsbuildOutput $msbuildOutput)
+        # The record of the sources goes down after a failed build too (a compile error in one branch made the next build, of another branch,
+        # recompile all 415 files): it describes the sources this build saw. A file that failed to compile has an older object than its source,
+        # and a file that changes back to an earlier text no longer equals the record, so it keeps its new time and compiles.
+        Save-IW7SourceTimes -NativeRoot $root
+        if ($msbuildCode) { throw 'Voice build failed.' }
+        $unproven = @(Get-IW7UnprovenUnits -NativeRoot $root -Current $currentHashes)
+        if (!$unproven.Count) { break }
+        if ($integrityRetry -ge 1) { throw ('Build integrity: these sources changed since the last good build and no build log shows them compiled: ' + (($unproven | Select-Object -First 8) -join ', ') + '. Nothing is stored.') }
+        $integrityRetry++
+        $dropped = Remove-IW7UnitObjects -NativeRoot $root -Units $unproven
+        Write-Output ("Build integrity: {0} changed source(s) were not compiled ({1}); {2} stale object(s) dropped, compiling again." -f $unproven.Count, (($unproven | Select-Object -First 5) -join ', '), $dropped)
+    }
+    Set-IW7GoodBuild -NativeRoot $root -Current $currentHashes
     Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
     Set-Content -LiteralPath $profileMark -Value $linkProfile
     $script:lapAt = Get-Date
