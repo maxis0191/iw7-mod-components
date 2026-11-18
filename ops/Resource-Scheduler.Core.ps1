@@ -91,6 +91,17 @@ function Get-IW7ShareableReserveBytes {
         $gb -ge 2 -and $gb -le 64) { return [long]($gb*1GB) }
     [long]8GB
 }
+function Get-IW7ShareableFloorBytes {
+    # Decision 2026-11-18 (QA rig, a87): a shareable session is admitted only if, after it has taken what it declares, the machine still has this much MEASURED free memory
+    # (available minus what running sessions have still to take, minus the request). The reserve above bounds what is DECLARED; before this floor nothing bounded what was left
+    # FREE, so admitted sessions could take the last gigabyte and the next process of anything, owner's game included, met an out-of-memory failure. IW7_SHAREABLE_FLOOR_GB
+    # overrides it when it is a number from 0 to 16 (0: no floor, the old rule); anything else is ignored.
+    $raw=[Environment]::GetEnvironmentVariable('IW7_SHAREABLE_FLOOR_GB')
+    $gb=0.0
+    if ($raw -and [double]::TryParse($raw.Trim(),[Globalization.NumberStyles]::AllowDecimalPoint,[Globalization.CultureInfo]::InvariantCulture,[ref]$gb) -and
+        $gb -ge 0 -and $gb -le 16) { return [long]($gb*1GB) }
+    [long]2GB
+}
 function Format-IW7Gb([long]$Bytes) {
     ($Bytes/1GB).ToString('0.0',[Globalization.CultureInfo]::InvariantCulture)+' GB'
 }
@@ -117,7 +128,7 @@ function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes) {
         $unloaded += [math]::Max(0L,[long]$l.PhysicalBytes-$taken)
     }
     $reserve=Get-IW7ShareableReserveBytes
-    [pscustomobject]@{Reserve=$reserve;Total=[long]$Snapshot.PhysicalTotal;Budget=([long]$Snapshot.PhysicalTotal-$reserve);
+    [pscustomobject]@{Floor=(Get-IW7ShareableFloorBytes);Reserve=$reserve;Total=[long]$Snapshot.PhysicalTotal;Budget=([long]$Snapshot.PhysicalTotal-$reserve);
         Declared=$declared;Unloaded=$unloaded;Available=[long]$Snapshot.PhysicalAvailable}
 }
 function Assert-IW7ShareableMemoryAdmission($Plan, [long]$RequestBytes, [long]$NeedBytes) {
@@ -134,13 +145,19 @@ function Assert-IW7ShareableMemoryAdmission($Plan, [long]$RequestBytes, [long]$N
             "still to be taken by running reservations leaves $(Format-IW7Gb ([math]::Max(0L,$free))), and this request needs $(Format-IW7Gb $NeedBytes). " +
             "Continue light work; retry when memory is free.")
     }
+    $floor=[long]$Plan.Floor
+    if ($floor -gt 0 -and ($free-$NeedBytes) -lt $floor) {
+        throw ("Resource busy: not enough measured free memory above the floor: $(Format-IW7Gb $Plan.Available) available minus $(Format-IW7Gb $Plan.Unloaded) " +
+            "still to be taken by running reservations leaves $(Format-IW7Gb ([math]::Max(0L,$free))); this request needs $(Format-IW7Gb $NeedBytes), which would leave " +
+            "$(Format-IW7Gb ([math]::Max(0L,$free-$NeedBytes))) free, under the floor of $(Format-IW7Gb $floor). Continue light work; retry when memory is free.")
+    }
 }
 function Get-IW7ShareableReachBytes($Plan) {
     # The most memory a shareable request can get by waiting in the queue: what is free now (available minus
     # what running sessions have still to take) plus what running shareable sessions declare (it comes back
     # when they end), never above the declared budget. Memory held outside the scheduler (kernel pools, the
     # public server, other programs) is not counted: waiting in the queue does not give it back.
-    [math]::Min([long]$Plan.Budget,[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)+[long]$Plan.Declared)
+    [math]::Min([long]$Plan.Budget,[math]::Max(0L,[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)+[long]$Plan.Declared-[long]$Plan.Floor))
 }
 function Assert-IW7ShareableCanFit($Plan, [long]$RequestBytes) {
     # A new shareable request that cannot fit even when every running shareable session has ended is refused
@@ -577,7 +594,7 @@ function Test-IW7FitsBeside($Ticket, $Plan, [long]$NeedBytes) {
     # Would the older ticket still fit in memory if this request were admitted now?
     if (!$Plan) { return $true }
     $free=[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)
-    ($free-$NeedBytes) -ge [long]$Ticket.PhysicalBytes -and ([long]$Plan.Declared+$NeedBytes+[long]$Ticket.PhysicalBytes) -le [long]$Plan.Budget
+    ($free-$NeedBytes-[long]$Plan.Floor) -ge [long]$Ticket.PhysicalBytes -and ([long]$Plan.Declared+$NeedBytes+[long]$Ticket.PhysicalBytes) -le [long]$Plan.Budget
 }
 function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds, $Plan=$null,
     $Resources=$null, [long]$PhysicalBytes=0) {
@@ -1000,7 +1017,7 @@ function Get-IW7TicketWhy($Ticket, $Plan, $Leases, [long]$NowMs) {
     if ($need -gt $reach) {
         return "$head $numbers. It cannot fit as things stand (at most $(Format-IW7Gb $reach) can come free by waiting): later requests that fit go first; asked again, it is refused."
     }
-    if ($need -le $free -and $Plan.Declared+$need -le $Plan.Budget) { return "$head $numbers. It fits now: its next ask is granted unless an older request goes first." }
+    if ($need -le $free-[long]$Plan.Floor -and $Plan.Declared+$need -le $Plan.Budget) { return "$head $numbers. It fits now: its next ask is granted unless an older request goes first." }
     $aged=$wait -ge $policy.AgingSeconds
     $rule=if ($aged) { 'it has waited over the aging time: later sessions wait behind it' } else { "later sessions that fit may pass it for another $(Format-IW7Age ($policy.AgingSeconds-$wait))" }
     "$head $numbers. It fits once running sessions end; $rule."
@@ -1045,7 +1062,7 @@ function Get-IW7ResourceStatus {
         [pscustomobject]@{Why=$why;Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases);Queue=$waiting;
             ShareableReachBytes=(Get-IW7ShareableReachBytes $plan);
             ShareableRuntimeLimit=(Get-IW7ShareableRuntimeLeaseLimit);
-            ShareableReserveBytes=$plan.Reserve;ShareableDeclaredBytes=$plan.Declared;
+            ShareableReserveBytes=$plan.Reserve;ShareableFloorBytes=$plan.Floor;ShareableDeclaredBytes=$plan.Declared;
             ShareableRemainingDeclaredBytes=[math]::Max(0L,$plan.Budget-$plan.Declared);
             ShareableAvailableBytes=$plan.Available;ShareableUnloadedBytes=$unloaded}
     }

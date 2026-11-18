@@ -3,6 +3,7 @@ param([string]$TestRoot)
 # resource_scheduler_test.ps1: dot-source Core, then redefine the registry root,
 # memory snapshot and process listing. No real registry, process or game is used.
 $ErrorActionPreference='Stop'
+$env:IW7_SHAREABLE_FLOOR_GB='0'   # these cases pin the arithmetic that came before the free-memory floor (a87, 18 Nov 2026); the floor has its own cases in resource_scheduler_shareable_test.ps1
 . "$PSScriptRoot/../../ops/Resource-Scheduler.Core.ps1"
 if (!$TestRoot) { $TestRoot=Join-Path ([IO.Path]::GetTempPath()) ('iw7-shareable-tests-'+[guid]::NewGuid().ToString('N')) }
 [IO.Directory]::CreateDirectory($TestRoot) | Out-Null
@@ -395,6 +396,45 @@ Case 'a legacy lease without the flag stays exclusive' {
     Assert (Refused { Enter-Share b -Bytes 1GB } 'Resource busy: Runtime owned by legacy.*') 'Legacy lease blocks a shareable request.'
     $s=Get-IW7ResourceStatus
     Assert ($s.ShareableDeclaredBytes -eq 1GB -and !$s.Leases[0].Shareable -and $s.Leases[0].Holds -contains 'machine') ("A legacy lease holds the machine; its memory counts like every held lease (named resources): "+($s | Select-Object ShareableDeclaredBytes,@{n='h';e={$_.Leases[0].Holds -join ','}} | ConvertTo-Json -Compress))
+}
+Case 'the free-memory floor: an admitted session never leaves less than the floor free' {
+    $env:IW7_SHAREABLE_FLOOR_GB='2'
+    try {
+        $script:avail=14GB
+        Enter-Share h -Bytes 4GB | Out-Null              # 10 GB free beside it
+        $script:avail=14GB
+        Assert ((Enter-Share a -Bytes 8GB).Shareable) '10 free - 8 = 2 GB left: exactly the floor, admitted.'
+        Reset-Registry
+        $script:avail=13.9GB
+        Enter-Share h -Bytes 4GB | Out-Null
+        $script:avail=13.9GB
+        $msg=''
+        try { Enter-Share a -Bytes 8GB | Out-Null } catch { $msg=$_.Exception.Message }
+        Assert ($msg -like 'Resource busy: not enough measured free memory above the floor: 13.9 GB available minus 4.0 GB still to be taken by running reservations leaves 9.9 GB; this request needs 8.0 GB, which would leave 1.9 GB free, under the floor of 2.0 GB.*') "Floor message: $msg"
+        Assert ((Leases).Count -eq 1) 'A refusal by the floor adds no lease.'
+        $s=Get-IW7ResourceStatus
+        Assert ($s.ShareableFloorBytes -eq 2GB) 'Status reports the floor.'
+        $script:avail=16GB
+        Assert ((Enter-Share a -Bytes 8GB).Shareable) 'Admitted once memory rises.'
+    } finally { Remove-Item Env:IW7_SHAREABLE_FLOOR_GB -ErrorAction SilentlyContinue; $env:IW7_SHAREABLE_FLOOR_GB='0' }
+}
+Case 'the floor counts in what waiting can give, and 0 restores the older rule' {
+    $env:IW7_SHAREABLE_FLOOR_GB='2'
+    try {
+        $script:avail=11GB
+        $msg=''
+        try { Enter-Share a -Bytes 10GB | Out-Null } catch { $msg=$_.Exception.Message }
+        Assert ($msg -like 'Refused: this session can never fit*needs 10.0 GB*at most 9.0 GB*Not queued.*') "Nothing held: 11 free - 2 floor = 9 at most: $msg"
+        $env:IW7_SHAREABLE_FLOOR_GB='0'
+        Assert ((Enter-Share a -Bytes 10GB).Shareable) 'With floor 0 the same request is admitted (the older rule).'
+        Reset-Registry
+        foreach ($bad in 'abc','-1','17','') {
+            $env:IW7_SHAREABLE_FLOOR_GB=$bad
+            Assert ((Get-IW7ShareableFloorBytes) -eq 2GB) "A floor of '$bad' is ignored: the default 2 GB."
+        }
+        $env:IW7_SHAREABLE_FLOOR_GB='0.5'
+        Assert ((Get-IW7ShareableFloorBytes) -eq [long](0.5*1GB)) 'A decimal floor is honoured.'
+    } finally { $env:IW7_SHAREABLE_FLOOR_GB='0' }
 }
 } finally { Set-Reserve $script:savedReserve }Reset-Registry
 Write-Output ("PASS $script:cases shareable-runtime cases / $script:checks assertions; temporary registry and synthetic process list only.")
