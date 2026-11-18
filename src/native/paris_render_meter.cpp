@@ -107,6 +107,57 @@ namespace paris_render_meter
             warn_hook.invoke<void>(id, a, b, c);
         }
 
+        // iw7-mod's own renderer component (renderer.cpp) already detours FUN_140E4B0B0 (its stub logs the umbra and static model list warnings), and a second detour on one
+        // address is refused with an error box that blocks the main thread of the client (first run of the meter, 18 Nov 2026). The meter therefore hooks what the
+        // stock detour jumps to: the first bytes of the warning function are a relative jump (to a relay of the hook library, "jmp [rip+0]" and the absolute address), and the
+        // function behind it takes the same four arguments. Done once at the first scene end, when every component has installed its hooks. A warning function that is not
+        // detoured by anyone is hooked itself.
+        bool warn_hook_tried = false;
+        bool resolve_warn_target(std::uintptr_t& target)
+        {
+            __try
+            {
+                const auto* p = reinterpret_cast<const std::uint8_t*>(warn_function);
+                if (p[0] != 0xE9) { target = warn_function; return std::memcmp(p, "\x48\x8B\xC4\x89\x48\x08\x48\x89\x50\x10", 10) == 0; }
+                std::int32_t rel{};
+                std::memcpy(&rel, p + 1, 4);
+                std::uintptr_t at = warn_function + 5 + static_cast<std::intptr_t>(rel);
+                for (int hop = 0; hop < 4; ++hop)
+                {
+                    const auto* t = reinterpret_cast<const std::uint8_t*>(at);
+                    if (t[0] == 0xFF && t[1] == 0x25)
+                    {
+                        std::int32_t disp{};
+                        std::memcpy(&disp, t + 2, 4);
+                        at = *reinterpret_cast<const std::uintptr_t*>(at + 6 + static_cast<std::intptr_t>(disp));
+                    }
+                    else if (t[0] == 0xE9)
+                    {
+                        std::int32_t r2{};
+                        std::memcpy(&r2, t + 1, 4);
+                        at = at + 5 + static_cast<std::intptr_t>(r2);
+                    }
+                    else break;
+                }
+                target = at;
+                return at != 0;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        }
+        void ensure_warn_hook()
+        {
+            if (warn_hook_tried) return;
+            warn_hook_tried = true;
+            std::uintptr_t target = 0;
+            if (!resolve_warn_target(target))
+            {
+                console::error("[RenderMeter] warning function at 0x%llX: its first bytes are neither the stock ones nor a jump, warnings are not counted\n", static_cast<unsigned long long>(warn_function));
+                return;
+            }
+            warn_hook.create(target, warn_stub);
+            console::info("[RenderMeter] warning counter on 0x%llX (%s)\n", static_cast<unsigned long long>(target), target == warn_function ? "the function itself" : "behind the stock detour");
+        }
+
         bool read_text(std::uintptr_t pointer, char* out, std::size_t size)
         {
             if (pointer < 0x140000000ull || pointer > 0x14C000000ull) return false;
@@ -418,6 +469,7 @@ namespace paris_render_meter
 
         void finish_scene()
         {
+            ensure_warn_hook();
             const auto stamp = now();
             if (!scene_tid.load(std::memory_order_relaxed)) scene_tid = GetCurrentThreadId();
             if (last_scene_qpc)
@@ -524,13 +576,10 @@ namespace paris_render_meter
                 for (int i = 0; i + 1 < argc; ++i) if (std::wstring(args[i]) == L"-agent-capacity") agents_capacity = static_cast<std::uint32_t>(_wtoi(args[i + 1]));
                 LocalFree(args);
             }
-            static const unsigned char warn_code[] = {0x48, 0x8B, 0xC4, 0x89, 0x48, 0x08, 0x48, 0x89, 0x50, 0x10};
             static const unsigned char draw_code[] = {0x40, 0x53, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x68};
             static const unsigned char render_end_code[] = {0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05};
             static const unsigned char process_code[] = {0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C, 0x24, 0x18, 0x48, 0x89, 0x74, 0x24, 0x20, 0x41, 0x56};
             const auto matches = [](std::uintptr_t at, const unsigned char* code, std::size_t size) { return std::memcmp(reinterpret_cast<const void*>(at), code, size) == 0; };
-            if (matches(warn_function, warn_code, sizeof(warn_code))) warn_hook.create(warn_function, warn_stub);
-            else console::error("[RenderMeter] warning function at 0x%llX: code differs, warnings are not counted\n", static_cast<unsigned long long>(warn_function));
             if (matches(draw_function, draw_code, sizeof(draw_code))) draw_hook.create(draw_function, draw_stub);
             else console::error("[RenderMeter] draw command at 0x%llX: code differs, drawn entities are not recorded\n", static_cast<unsigned long long>(draw_function));
             if (matches(process_function, process_code, sizeof(process_code))) process_hook.create(process_function, process_stub);
