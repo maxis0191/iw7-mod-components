@@ -15,6 +15,7 @@
 #include <string>
 #include <intrin.h>
 #include <dxgi1_4.h>
+#include <psapi.h>
 
 // Render meter for isolated lab clients: -paris-render-meter with -paris-isolated-lab (a90, 18 Nov 2026). Built with the Perf switch.
 //
@@ -430,6 +431,12 @@ namespace paris_render_meter
             std::snprintf(buf, sizeof(buf), "\"vram\":{\"ok\":%d,\"budget_mb\":%llu,\"usage_mb\":%llu,\"available_mb\":%llu,\"shared_budget_mb\":%llu,\"shared_usage_mb\":%llu},",
                 vram.ok ? 1 : 0, static_cast<unsigned long long>(vram.budget >> 20), static_cast<unsigned long long>(vram.usage >> 20), static_cast<unsigned long long>(vram.available >> 20),
                 static_cast<unsigned long long>(vram.remote_budget >> 20), static_cast<unsigned long long>(vram.remote_usage >> 20));
+            row += buf;
+            PROCESS_MEMORY_COUNTERS_EX pmc{};
+            pmc.cb = sizeof(pmc);
+            GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof(pmc));
+            std::snprintf(buf, sizeof(buf), "\"process_mb\":{\"working_set\":%llu,\"private\":%llu,\"peak_working_set\":%llu},", static_cast<unsigned long long>(pmc.WorkingSetSize >> 20),
+                static_cast<unsigned long long>(pmc.PrivateUsage >> 20), static_cast<unsigned long long>(pmc.PeakWorkingSetSize >> 20));
             row += buf;
             row += "\"drawsurf_full\":[";
             for (unsigned r = 0, k = 0; r < 32; ++r)
