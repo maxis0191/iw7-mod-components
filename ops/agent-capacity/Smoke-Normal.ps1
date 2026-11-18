@@ -1,7 +1,8 @@
 param([Parameter(Mandatory)][string]$CandidateRoot,[Parameter(Mandatory)][string]$PackageRoot,
-      [ValidateRange(27100,27999)][int]$ServerPort=27946)
+      [ValidateScript({$_ -eq 0 -or ($_ -ge 27100 -and $_ -le 27999)})][int]$ServerPort=0)
 $ErrorActionPreference='Stop'
 $ops=Split-Path $PSScriptRoot -Parent;$source=Split-Path $ops -Parent
+if(!$ServerPort){ . "$ops/netlab/LabPorts.Core.ps1"; $ServerPort=Get-IW7FreeLabPort }   # shared code of the server repository, in this workspace through the dependency
 . "$ops/Base-Client.Core.ps1"
 . "$ops/Resource-Scheduler.Core.ps1"
 . "$ops/Agent-LabCrash.Core.ps1"

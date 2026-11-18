@@ -30,9 +30,11 @@ param(
     [string]$BuildManifest,
     [string]$CandidateSource,
     [ValidateSet('CP', 'MP')][string[]]$Modes = @('CP', 'MP'),
-    [ValidateRange(27100, 27999)][int]$ServerPort = 27416,
-    [ValidateRange(27100, 27999)][int]$ClientAPort = 27417,
-    [ValidateRange(27100, 27999)][int]$ClientBPort = 27418,
+    # 0 (the default): a free port of the lab range, reserved for this run (the server repository's ops/netlab/LabPorts.Core.ps1);
+    # a port that is named stays strictly checked.
+    [ValidateScript({ $_ -eq 0 -or ($_ -ge 27100 -and $_ -le 27999) })][int]$ServerPort = 0,
+    [ValidateScript({ $_ -eq 0 -or ($_ -ge 27100 -and $_ -le 27999) })][int]$ClientAPort = 0,
+    [ValidateScript({ $_ -eq 0 -or ($_ -ge 27100 -and $_ -le 27999) })][int]$ClientBPort = 0,
     [ValidatePattern('^cp_[a-z0-9_]+$')][string]$CpMap = 'cp_zmb',
     [ValidatePattern('^cp_[a-z0-9_]+$')][string]$CpSecondMap = 'cp_rave',
     [ValidatePattern('^mp_[a-z0-9_]+$')][string]$MpMap = 'mp_frontier',
@@ -106,6 +108,16 @@ $ServerRoot = Get-FullPath $ServerRoot
 $ClientARoot = Get-FullPath $ClientARoot
 $ClientBRoot = Get-FullPath $ClientBRoot
 $roots = [ordered]@{ Server = $ServerRoot; A = $ClientARoot; B = $ClientBRoot }
+# Ports left at 0 are chosen free and reserved by file lock (shared code: the server repository owns LabPorts.Core.ps1, this
+# repository's workspace receives it through the product dependency; a busy machine used to fail a fixed default).
+$labPorts = Join-Path $PSScriptRoot '../netlab/LabPorts.Core.ps1'
+if (!(Test-Path -LiteralPath $labPorts)) { throw 'ops/netlab/LabPorts.Core.ps1 is not in this workspace (it comes from the server repository; prepare the workspace with bootstrap.ps1).' }
+. $labPorts
+$takenPorts = @()
+foreach ($portName in 'ServerPort', 'ClientAPort', 'ClientBPort') {
+    if (!(Get-Variable $portName -ValueOnly)) { $chosen = Get-IW7FreeLabPort -Exclude $takenPorts; $takenPorts += $chosen; Set-Variable $portName $chosen }
+    else { $takenPorts += (Get-Variable $portName -ValueOnly) }
+}
 $rolePorts = @{ Server = $ServerPort; A = $ClientAPort; B = $ClientBPort }
 if ($LeaseScope) { $LeaseScope = Get-FullPath $LeaseScope }
 else {
