@@ -95,6 +95,9 @@ namespace paris_render_meter
         std::atomic<std::uintptr_t> warn_site[warn_ids]{};
         std::atomic<std::uint64_t> warn_arg0[warn_ids]{}, warn_arg1[warn_ids]{};
         std::uint32_t warn_prev[warn_ids]{};
+        // warning 0x29 (draw surface list full) names the function and the list (region) it was writing: counted by list
+        std::atomic<std::uint32_t> drawsurf_full[32]{};
+        std::atomic<std::uint64_t> drawsurf_full_name[32]{};
         void warn_stub(int id, std::uint64_t a, std::uint64_t b, std::uint64_t c)
         {
             if (static_cast<unsigned>(id) < static_cast<unsigned>(warn_ids))
@@ -103,6 +106,7 @@ namespace paris_render_meter
                 warn_site[id].store(reinterpret_cast<std::uintptr_t>(_ReturnAddress()), std::memory_order_relaxed);
                 warn_arg0[id].store(a, std::memory_order_relaxed);
                 warn_arg1[id].store(b, std::memory_order_relaxed);
+                if (id == 0x29 && b < 32) { drawsurf_full[b].fetch_add(1, std::memory_order_relaxed); drawsurf_full_name[b].store(a, std::memory_order_relaxed); }
             }
             warn_hook.invoke<void>(id, a, b, c);
         }
@@ -427,6 +431,17 @@ namespace paris_render_meter
                 vram.ok ? 1 : 0, static_cast<unsigned long long>(vram.budget >> 20), static_cast<unsigned long long>(vram.usage >> 20), static_cast<unsigned long long>(vram.available >> 20),
                 static_cast<unsigned long long>(vram.remote_budget >> 20), static_cast<unsigned long long>(vram.remote_usage >> 20));
             row += buf;
+            row += "\"drawsurf_full\":[";
+            for (unsigned r = 0, k = 0; r < 32; ++r)
+            {
+                const auto n = drawsurf_full[r].load(std::memory_order_relaxed);
+                if (!n) continue;
+                char who[64] = {};
+                if (!read_text(static_cast<std::uintptr_t>(drawsurf_full_name[r].load(std::memory_order_relaxed)), who, sizeof(who))) who[0] = 0;
+                std::snprintf(buf, sizeof(buf), "%s{\"list\":%u,\"total\":%u,\"by\":\"%s\"}", k++ ? "," : "", r, n, who);
+                row += buf;
+            }
+            row += "],";
             row += "\"warnings\":[" + warn_rows() + "]}\n";
             utils::io::write_file(output_path, row, true);
             const std::uint64_t warns_now = [] { std::uint64_t n = 0; for (int i = 0; i < warn_ids; ++i) n += warn_total[i].load(std::memory_order_relaxed); return n; }();
