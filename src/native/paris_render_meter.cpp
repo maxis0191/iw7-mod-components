@@ -160,6 +160,7 @@ namespace paris_render_meter
                 return;
             }
             warn_hook.create(target, warn_stub);
+            warn_hook.enable();   // a hook created after post_unpack is not always enabled by the queue (runs crowd-before and crowd-skin2 counted nothing)
             console::info("[RenderMeter] warning counter on 0x%llX (%s)\n", static_cast<unsigned long long>(target), target == warn_function ? "the function itself" : "behind the stock detour");
         }
 
