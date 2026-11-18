@@ -968,6 +968,7 @@
     },
     {
       "id": "native_unit_tests",
+      "timeout_seconds": 3600,
       "command": [
         "pwsh",
         "-NoLogo",
