@@ -206,6 +206,9 @@ function Restore-IW7SourceTimes {
                 $kept++; continue
             }
         }
+        # Bytes that differ from what the tree last built get the time of NOW, whatever time the file carries (a workspace file keeps its
+        # checkout time through Copy-Item): a source older than its object was not recompiled and the stale object went into the exe.
+        $f.LastWriteTimeUtc = [datetime]::UtcNow
         $changed++
     }
     [pscustomobject]@{ Kept = $kept; Changed = $changed }
