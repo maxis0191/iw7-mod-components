@@ -387,9 +387,30 @@ namespace paris_render_meter
             window_start_qpc = now();
         }
 
+        void write_table()
+        {
+            // every id the engine has a text for (the table is .data, read here once): the census of what the renderer can report
+            std::string row = "{\"kind\":\"warn_table\",\"ids\":[";
+            char line[320];
+            bool first = true;
+            for (int id = 0; id < 0xA0; ++id)
+            {
+                char msg[200] = {};
+                const auto pointer = read_pointer(warn_table + static_cast<std::uintptr_t>(id) * 8);
+                if (!pointer || !read_text(pointer, msg, sizeof(msg))) continue;
+                std::snprintf(line, sizeof(line), "%s{\"id\":%d,\"msg\":\"%s\"}", first ? "" : ",", id, msg);
+                row += line;
+                first = false;
+            }
+            row += "]}
+";
+            utils::io::write_file(output_path, row, true);
+        }
+
         void write_config()
         {
             config_written = true;
+            write_table();
             char buf[512];
             std::snprintf(buf, sizeof(buf), "{\"kind\":\"config\",\"agents_capacity\":%u,\"window_seconds\":%.0f,\"hooks\":{\"scene_end\":%d,\"warn\":%d,\"draw\":%d,\"process\":%d,\"render_end\":%d}}\n", agents_capacity,
                 window_seconds, scene_hook_created ? 1 : 0, 1, 1, 1, 1);
@@ -505,7 +526,7 @@ namespace paris_render_meter
                 LocalFree(args);
             }
             static const unsigned char warn_code[] = {0x48, 0x8B, 0xC4, 0x89, 0x48, 0x08, 0x48, 0x89, 0x50, 0x10};
-            static const unsigned char draw_code[] = {0x53, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x68};
+            static const unsigned char draw_code[] = {0x40, 0x53, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x48, 0x83, 0xEC, 0x68};
             static const unsigned char render_end_code[] = {0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x05};
             static const unsigned char process_code[] = {0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C, 0x24, 0x18, 0x48, 0x89, 0x74, 0x24, 0x20, 0x41, 0x56};
             const auto matches = [](std::uintptr_t at, const unsigned char* code, std::size_t size) { return std::memcmp(reinterpret_cast<const void*>(at), code, size) == 0; };
