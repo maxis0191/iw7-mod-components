@@ -1257,6 +1257,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/build_cache_test.ps1"
+      ],
+      "inputs": [
+        "ops/build/Build-Cache.Core.ps1",
+        "tests/ops/build_cache_test.ps1"
+      ],
+      "lists": [
+        "ops/*",
+        "tests/*"
       ]
     },
     {
@@ -1908,6 +1916,21 @@
         "python",
         "-B",
         "tests/ops/build_inputs_test.py"
+      ],
+      "inputs": [
+        "ops/*",
+        "ops/agent-capacity/*",
+        "ops/build/Build-Cache.Core.ps1",
+        "ops/build/Test-BuildInputs.py",
+        "ops/standard-client/Loading-NewMap.Core.ps1",
+        "tests/ops/build_inputs_test.py",
+        "tests/ops/capacity_checkpoint_overlay_test.ps1",
+        "tests/ops/download_cache_overlay_test.ps1",
+        "tests/ops/kernel_image_alias_regression_test.ps1"
+      ],
+      "lists": [
+        "ops/build/*",
+        "tests/ops/*"
       ]
     }
   ],
