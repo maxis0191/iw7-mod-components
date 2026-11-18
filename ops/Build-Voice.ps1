@@ -1,4 +1,4 @@
-param([ValidateRange(0,86400)][int]$WaitForSlotSeconds = 0, [switch]$NoLabLink, [switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
+param([ValidateRange(0,86400)][int]$WaitForSlotSeconds = 0, [switch]$OwnTree, [switch]$NoLabLink, [switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = 'auto')   # 'auto': a pooled tree of the machine build cache (ops/build/Build-Cache.Core.ps1); or the absolute path of your own tree
@@ -80,6 +80,14 @@ if ($NativeRoot -eq 'auto') {
         Write-Output ("Native tree {0} ({1}, waited {2} s)" -f $NativeRoot, $nativeTree.Source, $nativeTree.Waited)
     }
 }
+# A private native tree is refused (18 Nov 2026): worker a87 built a lab client in its own tree and compiled all 1,181 files (151 s)
+# where the shared tree, warm, compiles the files that changed. Use ops/enginelab/Get-LabClient.ps1 (it takes the shared tree).
+if (!$nativeTree -and !$TestsOnly -and !$OwnTree) {
+    $cacheTrees = [IO.Path]::GetFullPath((Join-Path (Get-IW7BuildCacheRoot) 'native-trees')).TrimEnd('\') + '\'
+    if (![IO.Path]::GetFullPath($NativeRoot).StartsWith($cacheTrees, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "NativeRoot $NativeRoot is a private native tree: every build in it starts from nothing. Build through ops/enginelab/Get-LabClient.ps1 (or Invoke-EngineLab.ps1) in the server repository, which takes the shared tree in C:\IW7-Cache. -OwnTree overrides this for a diagnostic."
+    }
+}
 $root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
 try {
 if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current ServerModules native profile.' }
@@ -94,8 +102,34 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 # -WaitForSlotSeconds: wait in the scheduler's waiting order (Invoke-IW7QueuedResourceJob) instead of refusing at once; no retry loop outside.
 $jobCommand = if ($WaitForSlotSeconds -gt 0) { 'Invoke-IW7QueuedResourceJob' } else { 'Invoke-IW7ResourceJob' }
 $jobExtra = if ($WaitForSlotSeconds -gt 0) { @{ WaitForSlotSeconds = $WaitForSlotSeconds } } else { @{} }
-& $jobCommand @jobExtra -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
+# What the build asks the scheduler for (measured 18 Nov 2026 with the lease sampler): a one-file change in a warm tree peaks at about
+# 0.5 GB (one cl.exe and an incremental link); a build from nothing (a new tree, other link flags) peaks at several GB. Declaring 4 GB for
+# both kept builds waiting behind memory they never used. A tree is warm when its last successful build had the same link profile.
+$linkProfile = if ($IsolatedLab -or $Debugger) { 'lab' } else { 'prod' }
+$profileMark = Join-Path $root '.iw7-link-profile'
+$warmTree = (Test-Path -LiteralPath $profileMark) -and ((Get-Content -LiteralPath $profileMark -Raw).Trim() -ceq $linkProfile) -and (Test-Path -LiteralPath (Join-Path $root '.iw7-source-times.json'))
+$askPhysical = if ($warmTree -and !$TestsOnly) { 1.5GB } elseif ($TestsOnly) { 1GB } else { 4GB }
+$askCommit = if ($warmTree -and !$TestsOnly) { 3GB } elseif ($TestsOnly) { 2GB } else { 6GB }
+$slotAsked = Get-Date
+& $jobCommand @jobExtra -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes ([long]($askPhysical * $BuildJobs)) -CommitBytes ([long]($askCommit * $BuildJobs)) -Body {
+$slotWaited = ((Get-Date) - $slotAsked).TotalSeconds
+Write-Output ('Waited {0:n0} s for the Build reservation.' -f $slotWaited)
+$script:lapAt = Get-Date
 $null = Resolve-IW7VoiceBuildNativeRoot $root
+# The shared native tree serves every branch, and each branch applies its own overlays. Every build therefore starts from the pinned
+# state: tracked files back to the pin, files an overlay added under src removed (a87's Apply-SharedGpuHooksOverlay edit of dedicated.cpp
+# made a76's build fail with "Unowned dedicated edits", 18 Nov 2026). Overlay scripts see a clean tree and need not know of each other.
+# File times are not lost: Restore-IW7SourceTimes gives every file whose bytes equal the last build's its old time back, so only the
+# files that really differ between two branches compile.
+if (!$TestsOnly -and (Test-Path -LiteralPath (Join-Path $root '.git'))) {
+    & git -C $root checkout -q -- .
+    if ($LASTEXITCODE) { throw 'Could not reset the native tree to its pin.' }
+    & git -C $root clean -fdq -- src
+    if ($LASTEXITCODE) { throw 'Could not remove overlay files from the native tree.' }
+    # The overlays keep receipts of what they changed (*.local.json at the tree root); with the files back at the pin they would only refuse.
+    Get-ChildItem -LiteralPath $root -File -Filter '*.local.json' -ErrorAction SilentlyContinue | Remove-Item -Force
+    Write-Output 'Native tree reset to its pin before the overlays.'
+}
 # The opt-in voice overlays are added last, so they are removed first.
 Remove-IW7VoiceCertifyOverlay $root
 Remove-IW7VoiceRelayOverlay $root
@@ -328,7 +362,7 @@ $capacityCheckpointBuild = & "$PSScriptRoot/agent-capacity/Apply-WatchCheckpoint
 $frameCutsOverlay = & "$PSScriptRoot/Apply-FrameCutsOverlay.ps1" -NativeRoot $root -Commit $commit
 if ($Debugger) { $nativeSources += @('paris_debugger.cpp','paris_debugger.hpp','debugger_stats.hpp') }
 # The performance recorder, the network update recorder and the server meter are compiled only when asked: a kept native tree must not carry them into another build.
-foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp', 'paris_sperf.cpp', 'paris_crash_memory.cpp', 'paris_write_watch.cpp')) {
+foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp', 'paris_sperf.cpp', 'paris_crash_memory.cpp', 'paris_write_watch.cpp', 'paris_write_census.cpp')) {
     $perfTarget = Join-Path $root "src/client/component/$perfFile"
     if ($Perf) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$perfFile") -Destination $perfTarget -Force; $nativeSources += @($perfFile) }
     elseif (Test-Path -LiteralPath $perfTarget) { Remove-Item -LiteralPath $perfTarget -Force }
@@ -589,9 +623,14 @@ try {
     $mp = if ($Serial) { @("/m:$BuildJobs", '/p:MultiProcessorCompilation=false') } else { @("/m:$([Math]::Max(2,[Math]::Min(4,$threads)))", '/p:MultiProcessorCompilation=true', "/p:CL_MPCount=$threads") }
     $msbStart = Get-Date
     & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln @mp /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
-    if ($LASTEXITCODE) { throw 'Voice build failed.' }
-    Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
+    $msbuildCode = $LASTEXITCODE
+    # The record of the sources goes down after a failed build too (a compile error in one branch made the next build, of another branch,
+    # recompile all 415 files): it describes the sources this build saw. A file that failed to compile has an older object than its source,
+    # and a file that changes back to an earlier text no longer equals the record, so it keeps its new time and compiles.
     Save-IW7SourceTimes -NativeRoot $root
+    if ($msbuildCode) { throw 'Voice build failed.' }
+    Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
+    Set-Content -LiteralPath $profileMark -Value $linkProfile
     $script:lapAt = Get-Date
 } finally { Pop-Location }
 $voiceState = Get-IW7VoiceOverlayState $root
@@ -718,6 +757,6 @@ if ($cacheKey -and !$voiceOptIn -and !$Sanitizers) {
     $null = Save-IW7CachedPackage -Key $cacheKey -Exe $packagedExe -Pdb "$root/build/bin/x64/Release/iw7-mod.pdb" -Manifest "$output/build-manifest.json" -ProjectCommit $sourceIdentity.Commit -Switches $switchNames
     Invoke-IW7PackageCachePrune
 }
-Write-Output ("Build total {0:n1} s" -f ((Get-Date) - $buildStart).TotalSeconds)
+Write-Output ("Build total {0:n1} s of work ({1:n0} s more waiting for the Build reservation)" -f (((Get-Date) - $buildStart).TotalSeconds - $slotWaited), $slotWaited)
 }
 } finally { if ($nativeTree) { Exit-IW7NativeTree $nativeTree } }
