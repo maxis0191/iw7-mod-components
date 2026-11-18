@@ -295,7 +295,7 @@ function Test-IW7BenchRoot([string]$Root) {
         $initOut = Join-Path $tmp 'init-evidence'
         $switchText = ($switches | ForEach-Object { "-$_" }) -join ' '
         $command = "& '$harness\Invoke-VoiceCertify.ps1' -ServerRoot '$server' -ClientARoot '$clientA' -ClientBRoot '$clientB' -LabImage '$baseImage' " +
-            "-OutputRoot '$initOut' -ServerPort 27991 -ClientAPort 27992 -ClientBPort 27993 $switchText"
+            "-OutputRoot '$initOut' $switchText"
         $pwshExe = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
         $result = & $pwshExe -NoLogo -NoProfile -NonInteractive -Command $command 2>&1 | Out-String
         if ($LASTEXITCODE) { throw "exit $LASTEXITCODE with $switchText`n$result" }

@@ -525,7 +525,7 @@
     {
       "id": "iw7-paris-server",
       "repository": "https://github.com/maxis0191/iw7-paris-server.git",
-      "revision": "5e47dc2299fde638f31af6c026c0e17ee9ddb8ef",
+      "revision": "e93e472e1d98e38ca45c77e688866448be2d2ba8",
       "files": [
         "config/modules.json",
         "config/retired-artifacts.json",
@@ -546,6 +546,7 @@
         "ops/enemy-ports/rave-wave-agent-animclasses.txt",
         "ops/enemy-ports/rave-wave-agent-scriptfiles.txt",
         "ops/fixtures/agent_voice_pair_fixture.gsc",
+        "ops/netlab/LabPorts.Core.ps1",
         "src/custom_scripts/cp/experiments/paris_agent_lab.gsc",
         "src/custom_scripts/cp/experiments/paris_enemy_ports.gsc",
         "src/custom_scripts/cp/experiments/paris_rhino.cpp",
