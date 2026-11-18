@@ -39,7 +39,17 @@ namespace paris_bot_client
 			if (fault_ip < 0x140001000ull || fault_ip >= 0x141435000ull || unwinds.load() > 400) return EXCEPTION_CONTINUE_SEARCH;
 			DWORD64 image_base = 0;
 			auto* unwind_entry = RtlLookupFunctionEntry(fault_ip, &image_base, nullptr);
-			if (!unwind_entry) return EXCEPTION_CONTINUE_SEARCH;
+			if (!unwind_entry)
+			{
+				// a leaf function has no unwind data: its return address is the word at the stack pointer
+				auto* sp = reinterpret_cast<unsigned long long*>(info->ContextRecord->Rsp);
+				if (!sp) return EXCEPTION_CONTINUE_SEARCH;
+				info->ContextRecord->Rip = *sp;
+				info->ContextRecord->Rsp += 8;
+				info->ContextRecord->Rax = 0;
+				unwinds++;
+				return EXCEPTION_CONTINUE_EXECUTION;
+			}
 			PVOID unwind_handler_data = nullptr;
 			DWORD64 unwind_frame = 0;
 			RtlVirtualUnwind(UNW_FLAG_NHANDLER, image_base, fault_ip, unwind_entry, info->ContextRecord, &unwind_handler_data, &unwind_frame, nullptr);
