@@ -43,6 +43,8 @@ if (!$TestsOnly -and !$ServerModules -and !$RhinoExperiment -and !$EnemyExperime
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot/build/Build-Cache.Core.ps1"
 $buildStart = Get-Date
+$lapAt = Get-Date
+function Write-IW7Lap([string]$Name) { Write-Output ('Step {0}: {1:n1} s' -f $Name, ((Get-Date) - $script:lapAt).TotalSeconds); $script:lapAt = Get-Date }
 $switchNames = @('Sanitizers','RhinoExperiment','EnemyExperiment','ServerModules','IsolatedLab','Debugger','CollisionProvider','WordProvenance','OwnerCheats','Capacity64','VoiceRelay','VoiceCertify','Perf','AgentCapacity') | Where-Object { (Get-Variable -Name $_ -ValueOnly).IsPresent }
 $pin = $null
 if ($RhinoExperiment -or $EnemyExperiment) { $pin = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
@@ -222,6 +224,7 @@ if ($Sanitizers) {
 }
 & "$repo/tests/ops/download_cache_overlay_test.ps1"
 if ($unitTests) { foreach ($k in $unitTests.Keys) { Set-IW7TestsPassed $k } }
+Write-IW7Lap 'checkout, tools and unit tests'
 if ($TestsOnly) { return }
 $properties = Join-Path $root 'src/common/utils/properties.cpp'
 $baseProperties = (((git -C $root show ($commit + ':src/common/utils/properties.cpp')) -join "`n").TrimEnd()) + "`n"
@@ -557,10 +560,12 @@ foreach ($family in @('agent_capacity*', 'script_variables*')) {
 if ($staleSources.Count) { Write-Output ("Removed {0} source file(s) of other branches from the native tree: {1}" -f $staleSources.Count, ($staleSources -join ', ')) }
 Push-Location $root
 try {
+    Write-IW7Lap 'overlays'
     $timeStep = Restore-IW7SourceTimes -NativeRoot $root
     Write-Output ("Native sources: {0} unchanged since the last build of this tree (times restored), {1} new or changed." -f $timeStep.Kept, $timeStep.Changed)
     & ./tools/premake5.exe vs2022
     if ($LASTEXITCODE) { throw 'Premake failed.' }
+    Write-IW7Lap 'source times and premake'
     # Compile in parallel: the lead used to be one cl.exe at a time (/m:1 and MultiProcessorCompilation=false).
     $threads = if ($env:IW7_BUILD_THREADS) { [int]$env:IW7_BUILD_THREADS } else { [Math]::Max(2, [Math]::Min(8, [int]([Environment]::ProcessorCount / 2))) }
     $mp = if ($Serial) { @("/m:$BuildJobs", '/p:MultiProcessorCompilation=false') } else { @("/m:$([Math]::Max(2,[Math]::Min(4,$threads)))", '/p:MultiProcessorCompilation=true', "/p:CL_MPCount=$threads") }
@@ -569,6 +574,7 @@ try {
     if ($LASTEXITCODE) { throw 'Voice build failed.' }
     Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
     Save-IW7SourceTimes -NativeRoot $root
+    $script:lapAt = Get-Date
 } finally { Pop-Location }
 $voiceState = Get-IW7VoiceOverlayState $root
 if ($voiceState.VoiceRelay -ne [bool]$VoiceRelay -or $voiceState.VoiceCertify -ne [bool]$VoiceCertify) { throw 'Voice overlay receipts differ from the requested build.' }
@@ -689,6 +695,7 @@ if ($voiceState.VoiceCertify) {
     $certifyRecord | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$output/voice-certify-build.json" -Encoding UTF8
 }
 Write-Output "Prepared private client/server build: $output"
+Write-IW7Lap 'manifest and package'
 if ($cacheKey -and !$voiceOptIn -and !$Sanitizers) {
     $null = Save-IW7CachedPackage -Key $cacheKey -Exe $packagedExe -Pdb "$root/build/bin/x64/Release/iw7-mod.pdb" -Manifest "$output/build-manifest.json" -ProjectCommit $sourceIdentity.Commit -Switches $switchNames
     Invoke-IW7PackageCachePrune
