@@ -120,7 +120,7 @@ A page that faults more than `-paris-write-census-limit` times (default 20,000: 
 
 | Option | Meaning |
 |---|---|
-| `-paris-write-census [<regions>]` | comma list: `cg` (the Zombies client object of local client 0; re-armed when it moves; its size follows `-agent-capacity`) and `abs:<hex address>:<size>` (a static block, up to 12 MB; NOT WORKING YET: the pages of the image's data sections are copy-on-write, `PAGE_WRITECOPY`, and the arming skips every page that is not `PAGE_READWRITE` (run abs264, 17 Nov 2026: `pages=0 skipped=N` for all six regions, 0 stores). Accepting `PAGE_WRITECOPY` is the fix; not built or run) |
+| `-paris-write-census [<regions>]` | comma list: `cg` (the Zombies client object of local client 0; re-armed when it moves; its size follows `-agent-capacity`) and `abs:<hex address>:<size>` (a static block of the image's data or any committed read-write block, up to 12 MB; up to 16 regions; the pages of the image's data sections are copy-on-write and are armed like the others) |
 | `-paris-write-census-limit <n>` | stores a page may fault before it is released (default 20000) |
 | `-paris-write-census-delay <s>` | arm this many seconds after the client started (the map load and the join are too slow under page protection: a netlab client armed from the start never joined) |
 

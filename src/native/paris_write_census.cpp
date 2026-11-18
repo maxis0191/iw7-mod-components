@@ -27,7 +27,7 @@ namespace paris_write_census
     namespace
     {
         constexpr std::uint64_t cg_cp_array = 0x141FDBEF0, game_base = 0x140000000;
-        constexpr unsigned max_regions = 8, max_pages = 3072, site_count = 8192, sample_count = 128;
+        constexpr unsigned max_regions = 16, max_pages = 3072, site_count = 8192, sample_count = 128;
         constexpr std::uint64_t page_size = 0x1000;
 
         struct page { std::atomic<int> state{0}; std::atomic<std::uint32_t> faults{0}; std::uint32_t original{}; };   // state 0 free, 1 protected, 2 released (hot)
@@ -188,7 +188,7 @@ namespace paris_write_census
                 MEMORY_BASIC_INFORMATION m{};
                 auto& p = r.pages[i];
                 p.faults.store(0);
-                if (!VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) || m.State != MEM_COMMIT || (m.Protect & 0xFF) != PAGE_READWRITE) { p.state.store(0); ++skipped; continue; }
+                if (!VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) || m.State != MEM_COMMIT || ((m.Protect & 0xFF) != PAGE_READWRITE && (m.Protect & 0xFF) != PAGE_WRITECOPY)) { p.state.store(0); ++skipped; continue; }   // the data sections of the image are copy-on-write until first written
                 p.original = m.Protect;
                 p.state.store(1);
                 DWORD old{};
