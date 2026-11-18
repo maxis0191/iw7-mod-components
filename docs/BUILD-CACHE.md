@@ -89,3 +89,18 @@ Hard links into the cache are safe to delete. It also trims the package cache to
 - `ops/build/Test-BuildInputs.py <workspace>` (also run first by `Build-Voice.ps1`, and the judge check
   `build_inputs_test`) fails in seconds when a script the build reads is not in the prepared workspace, so an export
   missing from `product.json` is found before the build, not by eight builds.
+
+## Lab link without LTCG, the standard client cache, the mod build (18 Nov 2026, evening)
+
+- Lab profiles (any with IsolatedLab or Debugger) build with `ops/build/premake-lab.lua`: no `/GL`, no `/LTCG`, incremental
+  link. Production profiles (the standard client, builds without those switches) keep both. Each kind has its own native
+  tree (`<pin>-1` lab, `<pin>-prod1`), so neither recompiles the other. First lab build in a tree: everything again once
+  (176 s). Then job (c), one line in `paris_hang.cpp`: **MSBuild 10.9 s** (was 51 to 59 s with LTCG); the whole build was
+  about 35 s of work (tests skipped, overlays 1.6, MSBuild 10.9, the rest startup) plus 23 s prepare: the 30 s target is
+  missed by about 5 s on a loaded machine. The lab client passes `headless-basics` (11/11 steps, 5/5 expectations).
+- `Build-StandardClient.ps1` restores a finished standard client by input hash (`packages-standard/`), no tree, compiler
+  or reservation. Unit tested; not yet run on a real production build.
+- Job (d), `Build-ParisMod.ps1` with a test tone as the song, the retained stock of a bench root, one line of
+  `ui_scripts/maxis/__init__.lua` changed: full 656 s, one script changed 260 s (both wall time with queueing), the same
+  inputs again **3 s** (the mod zone restored from the stage cache). DJ songs have their own per-song cache (not run).
+- Scheduler: measured budgets and passing a ticket that cannot fit: `docs/RESOURCE-WORKFLOW.md`.
