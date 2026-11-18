@@ -1806,7 +1806,7 @@ public:
         plan_snapshot();
         plan_render_list();
         plan_drawsurf_lists();
-        plan_rings();
+        // plan_rings(); not installed: growing the trace_to_entity ring froze the client 44 s after the join (run f200-ring, 18 Nov); the ring record is dumped by the render meter instead
         plan_ai_pool();
         plan_tables();
         plan_entity_queue();
