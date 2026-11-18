@@ -74,6 +74,9 @@ namespace paris_bot_client
 			utils::hook::set<uint8_t>(0x140E26490, 0xC3);   // R_BeginFrame
 			utils::hook::set<uint8_t>(0x140E26EF0, 0xC3);   // R_IssueRenderCommandsEnd
 			utils::hook::set<uint8_t>(0x140E56790, 0xC3);   // renderer call of the client frame (sub_1403471E0)
+			// the first run (botonly1) booted and then idled at 0% CPU with no join: the client frame waits on the render thread that the shared set removed.
+			for (const unsigned long long r : { 0x140E27EE0ull, 0x140E27FE0ull, 0x140E26E30ull, 0x140E26520ull, 0x140E25660ull, 0x140E244A0ull })
+				utils::hook::set<uint8_t>(static_cast<size_t>(r), 0xC3);  // R_SyncRenderThread, R_ToggleSmpFrame, R_IssueRenderCommandsBegin, and the draw submission calls of sub_140346F40
 			utils::hook::call(0x1403428B1, sync_gpu_stub);  // R_SyncGpu: the pacing sleep at com_maxfps
 			scheduler::once([]() { game::Com_GameMode_SetDesiredGameMode(game::GAME_MODE_CP); }, scheduler::pipeline::main);
 			scheduler::loop(join, scheduler::pipeline::main, 1s);
