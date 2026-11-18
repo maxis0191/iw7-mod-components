@@ -310,6 +310,18 @@ owner's desktop and his own game. Set the environment variable
 `IW7_SHAREABLE_RESERVE_GB` to a number from 2 to 64 to change it (decimal point,
 for example `12.5`); anything else is ignored. It is read at each admission.
 
+The floor (18 Nov 2026, QA rig): the reserve bounds what is DECLARED, so until then nothing
+bounded what was left FREE: sessions were admitted while measured free memory covered each
+one's declaration, and the last one could take the last gigabyte. `Get-IW7ShareableFloorBytes`:
+a shareable session is admitted only if, after it, measured free memory (available minus what
+running sessions have still to take, minus the request) is at least 2 GB; below that the ask
+is `Resource busy: not enough measured free memory above the floor` and waits. What waiting
+can give (`Get-IW7ShareableReachBytes`) is counted net of the floor, so a request that could
+only fit by eating the floor is refused at once. `IW7_SHAREABLE_FLOOR_GB` (0 to 16; 0 is the
+older rule, anything else ignored) overrides it; `Get-IW7ResourceStatus` reports
+`ShareableFloorBytes`. The same-day proof, three QA runs launched together on a machine with
+13 GB held by other sessions: docs/GAME-QA.md of iw7-paris-server.
+
 What callers must declare: the measured session need, not a guess upward, for
 example 2.5 GB for a headless server session, 10 GB for a full client, 12.5 GB for
 a server plus a client. Under-declaring is caught by the measured-memory check
@@ -713,3 +725,30 @@ remains independently checked. Paging rates unavailable through this API are nul
 The Windows ABI and 100 real reads pass in CI's operations test.
 [Microsoft API](https://learn.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-getperformanceinfo),
 [field definitions](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-performance_information).
+
+## Measured budgets and passing a ticket that cannot fit (18 Nov 2026)
+
+What the scheduler's own records and a lease sampler showed on 18 Nov: the scheduler already admits by memory and by
+named resources (builds in different scopes never exclude each other), so its waits were memory waits. Two causes:
+
+- A lease counted every declared byte it had not yet taken as promised for as long as it lived. A client session that
+  declared 8 GB and stood at 5.1 GB for 28 samples kept 3 GB from everyone else; a build waited with 8.5 GB available.
+  Now the scheduler records each lease's highest working set (`peaks.json`, under the admission lock) and, after the
+  load phase (180 s), counts `min(declared, peak * 1.15 + 256 MB)`, never less than what it holds. The declared number
+  stays the ceiling. `IW7_SCHEDULER_MEASURED=0` is the old rule. Every release line of `admission-log.jsonl` now carries
+  `Declared` and `PeakWorkingSet`, so the real cost of every job class is in the scheduler's own record.
+- An older ticket that waited 600 s and did not fit even now held back every younger request, although it was waiting
+  for running leases to end, not for the younger one (a 35-minute wait behind a session that could not start). Now it
+  holds a younger request back only when it fits now, or after 1800 s (starvation guard).
+
+Replay of the admission log of 17 Nov 00:00 to 18 Nov 07:00 (428 jobs; model: 31.8 GiB, reserve 8, floor 2, 17 GiB used
+outside the scheduler; the model's waits match the log: mean 63 s against 56 s, 13 against 15 jobs over ten minutes):
+
+| Rule | Mean wait | p95 | Over 10 min | Builds, mean / max | Peak use, least free |
+|---|---|---|---|---|---|
+| declared (before) | 63 s | 412 s | 13 | 70 s / 747 s | 26.6 / 5.2 GiB |
+| measured budgets | 50 s | 302 s | 12 | 40 s / 410 s | 27.2 / 4.6 GiB |
+| measured + passing a ticket that cannot fit | 40 s | 180 s | 9 | 31 s / 410 s | 27.2 / 4.6 GiB |
+
+The big client sessions (6 to 10 GB) wait longer (mean 532 s to 624 s): they are what the small jobs now pass.
+Tests: `tests/ops/resource_scheduler_measured_test.ps1` and the changed cases of the queue and named-resource tests.

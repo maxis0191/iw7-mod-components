@@ -10,6 +10,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/capacity_peer_overlay_test.ps1"
+      ],
+      "inputs": [
+        "ops/agent-capacity/Peer-Overlay.Core.ps1",
+        "tests/ops/capacity_peer_overlay_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -21,6 +28,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/build_voice_foreign_sources_test.ps1"
+      ],
+      "inputs": [
+        "ops/Build-Voice.ps1",
+        "tests/ops/build_voice_foreign_sources_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -34,6 +48,24 @@
         "-File",
         "tests/ops/cutscene_test.ps1",
         "-Compile"
+      ],
+      "inputs": [
+        "ops/Cutscene-Overlay.Core.ps1",
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "src/native/cutscene.cpp",
+        "src/native/cutscene.hpp",
+        "src/native/cutscene_policy.hpp",
+        "tests/native/cutscene_test.cpp",
+        "tests/ops/cutscene_test.ps1"
+      ],
+      "lists": [
+        "src/native/*",
+        "tests/*",
+        "tests/native/*"
       ]
     },
     {
@@ -47,6 +79,21 @@
         "-File",
         "tests/ops/owner_cheats_test.ps1",
         "-Compile"
+      ],
+      "inputs": [
+        "ops/*",
+        "ops/native/ResourceMemory.cs",
+        "src/native/owner_cheats.cpp",
+        "src/native/owner_cheats.hpp",
+        "src/native/owner_cheats_crypto.hpp",
+        "src/native/owner_cheats_policy.hpp",
+        "tests/native/owner_cheats_test.cpp",
+        "tests/ops/owner_cheats_test.ps1"
+      ],
+      "lists": [
+        "src/native/*",
+        "tests/*",
+        "tests/native/*"
       ]
     },
     {
@@ -58,6 +105,16 @@
         "-NonInteractive",
         "-File",
         "tests/ops/standard_client_loading_hook_test.ps1"
+      ],
+      "inputs": [
+        "ops/Build-StandardClient.ps1",
+        "ops/Build-Voice.ps1",
+        "ops/Download-CacheOverlay.Core.ps1",
+        "ops/standard-client/Loading-NewMap.Core.ps1",
+        "tests/ops/standard_client_loading_hook_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -69,6 +126,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/source_guard_root_candidate_test.ps1"
+      ],
+      "inputs": [
+        "ops/diagnostics/SourceGuardRootCandidate.cs",
+        "tests/managed/source_guard_root_candidate_test.cs",
+        "tests/ops/source_guard_root_candidate_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -80,6 +145,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/immutable_snapshot_cursor_test.ps1"
+      ],
+      "inputs": [
+        "ops/diagnostics/ImmutableSnapshotCursor.cs",
+        "tests/managed/immutable_snapshot_cursor_test.cs",
+        "tests/ops/immutable_snapshot_cursor_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -91,6 +164,12 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_owned_process_test.ps1"
+      ],
+      "inputs": [
+        "tests/ops/resource_owned_process_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -102,6 +181,15 @@
         "-NonInteractive",
         "-File",
         "tests/ops/capacity_word_provenance_test.ps1"
+      ],
+      "inputs": [
+        "ops/agent-capacity/Provenance-BuildCopy.Core.ps1",
+        "ops/agent-capacity/Provenance-LifecycleOverlay.Core.ps1",
+        "tests/ops/capacity_word_provenance_test.ps1",
+        "tests/ops/fixtures/word_provenance_main_77e.cpp.txt"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -113,6 +201,16 @@
         "-NonInteractive",
         "-File",
         "tests/ops/author_platform_display_test.ps1"
+      ],
+      "inputs": [
+        "ops/Author-Platform.Core.ps1",
+        "ops/Collision-Player.Core.ps1",
+        "ops/Invoke-AuthorPlatformContact.ps1",
+        "tests/fixtures/author_platform_contact.gsc",
+        "tests/ops/author_platform_display_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -124,6 +222,15 @@
         "-NonInteractive",
         "-File",
         "tests/ops/author_platform_result_test.ps1"
+      ],
+      "inputs": [
+        "ops/Author-Platform.Core.ps1",
+        "ops/Collision-Player.Core.ps1",
+        "tests/ops/author_platform_result_test.ps1",
+        "tests/ops/collision_player_result_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -135,6 +242,16 @@
         "-NonInteractive",
         "-File",
         "tests/ops/author_platform_source_test.ps1"
+      ],
+      "inputs": [
+        "ops/Author-Platform.Core.ps1",
+        "ops/Collision-Player.Core.ps1",
+        "ops/Invoke-AuthorPlatformContact.ps1",
+        "tests/fixtures/author_platform_contact.gsc",
+        "tests/ops/author_platform_source_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -146,6 +263,15 @@
         "-NonInteractive",
         "-File",
         "tests/ops/stock_links_test.ps1"
+      ],
+      "inputs": [
+        "ops/Lab-Paths.ps1",
+        "ops/Stock-Links.Core.ps1",
+        "ops/native/StockLinks.cs",
+        "tests/ops/stock_links_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -157,6 +283,15 @@
         "-NonInteractive",
         "-File",
         "ops/Test-BO3HUDSource.ps1"
+      ],
+      "inputs": [
+        "ops/Test-BO3HUDSource.ps1",
+        "src/ui_scripts/bo3_zombies_hud/__init__.lua",
+        "tests/ops/bo3_zombies_hud_test.py"
+      ],
+      "lists": [
+        "*",
+        "tests/ops/*"
       ]
     },
     {
@@ -165,6 +300,13 @@
         "python",
         "-B",
         "tests/ops/raygun_weapon_authoring_test.py"
+      ],
+      "inputs": [
+        "ops/raygun/prepare_weapon.py",
+        "tests/ops/raygun_weapon_authoring_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -173,6 +315,14 @@
         "python",
         "-B",
         "tests/ops/iw7_neutral_clone_test.py"
+      ],
+      "inputs": [
+        "ops/raygun/prepare_iw7_clone.py",
+        "ops/raygun/prepare_weapon.py",
+        "tests/ops/iw7_neutral_clone_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -181,6 +331,13 @@
         "python",
         "-B",
         "tests/ops/iw7_frame_evidence_test.py"
+      ],
+      "inputs": [
+        "ops/iw7_frame_evidence.py",
+        "tests/ops/iw7_frame_evidence_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -192,6 +349,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/collision_player_result_test.ps1"
+      ],
+      "inputs": [
+        "ops/Collision-Player.Core.ps1",
+        "tests/ops/collision_player_result_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -203,6 +367,15 @@
         "-NonInteractive",
         "-File",
         "tests/ops/collision_player_source_test.ps1"
+      ],
+      "inputs": [
+        "ops/Collision-Player.Core.ps1",
+        "ops/Invoke-CollisionPlayerContact.ps1",
+        "tests/fixtures/collision_player_contact.gsc",
+        "tests/ops/collision_player_source_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -214,6 +387,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/collision_probe_transport_test.ps1"
+      ],
+      "inputs": [
+        "ops/Collision-Probe.Core.ps1",
+        "ops/native/LabProcess.cs",
+        "tests/ops/collision_probe_transport_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -225,6 +406,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/collision_probe_result_test.ps1"
+      ],
+      "inputs": [
+        "ops/Collision-Probe.Core.ps1",
+        "ops/Run-CollisionProbe.ps1",
+        "tests/ops/collision_probe_result_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -236,6 +425,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/rig_assets_probe_test.ps1"
+      ],
+      "inputs": [
+        "ops/Base-Client.Core.ps1",
+        "tests/ops/rig_assets_probe_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -247,6 +443,15 @@
         "-NonInteractive",
         "-File",
         "tests/ops/original_rig_console_caller_test.ps1"
+      ],
+      "inputs": [
+        "ops/*",
+        "ops/native/LabProcess.cs",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/original_rig_console_caller_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -258,6 +463,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/original_rig_console_test.ps1"
+      ],
+      "inputs": [
+        "ops/*",
+        "ops/native/LabProcess.cs",
+        "tests/ops/original_rig_console_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -269,6 +482,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/collision_provider_build_test.ps1"
+      ],
+      "inputs": [
+        "ops/Build-Voice.ps1",
+        "tests/ops/collision_provider_build_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -280,6 +500,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/base_client_context_test.ps1"
+      ],
+      "inputs": [
+        "ops/Base-Client.Core.ps1",
+        "ops/Lab-Lifecycle.ps1",
+        "tests/ops/base_client_context_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -291,6 +519,15 @@
         "-NonInteractive",
         "-File",
         "tests/ops/base_client_exit_test.ps1"
+      ],
+      "inputs": [
+        "ops/Base-Client.Core.ps1",
+        "ops/Lab-Lifecycle.ps1",
+        "ops/native/LabProcess.cs",
+        "tests/ops/base_client_exit_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -302,6 +539,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/base_client_test.ps1"
+      ],
+      "inputs": [
+        "ops/Base-Client.Core.ps1",
+        "ops/Lab-RunPlan.ps1",
+        "tests/ops/base_client_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -313,6 +558,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/capacity_checkpoint_overlay_test.ps1"
+      ],
+      "inputs": [
+        "ops/agent-capacity/Apply-WatchCheckpointOverlay.ps1",
+        "ops/agent-capacity/Checkpoint-Overlay.Core.ps1",
+        "tests/ops/capacity_checkpoint_overlay_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -324,6 +577,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/debugger_operations_test.ps1"
+      ],
+      "inputs": [
+        "ops/*",
+        "tests/ops/debugger_operations_test.ps1"
+      ],
+      "lists": [
+        "ops/*",
+        "tests/*"
       ]
     },
     {
@@ -332,6 +593,16 @@
         "python",
         "-B",
         "tests/ops/debugger_test.py"
+      ],
+      "inputs": [
+        "ops/iw7_capture.py",
+        "ops/iw7_debugger.py",
+        "ops/iw7_watch.py",
+        "tests/ops/debugger_test.py"
+      ],
+      "lists": [
+        "ops/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -340,6 +611,17 @@
         "python",
         "-B",
         "tests/ops/engine_test.py"
+      ],
+      "inputs": [
+        "ops/engine/build_image.py",
+        "ops/engine/engine.py",
+        "ops/engine/engine_mcp.py",
+        "ops/engine/ghidra_export.py",
+        "tests/ops/engine_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -348,6 +630,13 @@
         "python",
         "-B",
         "tests/ops/engine_collect_names_test.py"
+      ],
+      "inputs": [
+        "ops/engine/collect_names.py",
+        "tests/ops/engine_collect_names_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -356,6 +645,16 @@
         "python",
         "-B",
         "tests/ops/static_tables_test.py"
+      ],
+      "inputs": [
+        "ops/engine/engine.py",
+        "ops/engine/knowledge/engine-knowledge.json",
+        "ops/engine/static_tables.py",
+        "tests/ops/static_tables_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -364,6 +663,14 @@
         "python",
         "-B",
         "tests/ops/engine_live_test.py"
+      ],
+      "inputs": [
+        "ops/engine/live/engine_live.py",
+        "tests/ops/engine_live_test.py"
+      ],
+      "lists": [
+        "ops/engine/live/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -372,6 +679,13 @@
         "python",
         "-B",
         "tests/ops/engine_map_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_engine_map.py",
+        "tests/ops/engine_map_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -380,6 +694,14 @@
         "python",
         "-B",
         "tests/ops/cave_plan_test.py"
+      ],
+      "inputs": [
+        "ops/engine/cave_plan.py",
+        "tests/ops/cave_plan_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -388,6 +710,15 @@
         "python",
         "-B",
         "tests/ops/compile_check_exports_test.py"
+      ],
+      "inputs": [
+        "ops/compile_check_exports.py",
+        "ops/source_workspace.py",
+        "tests/ops/compile_check_exports_test.py"
+      ],
+      "lists": [
+        "ops/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -396,6 +727,20 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_sites_test.py"
+      ],
+      "inputs": [
+        "ops/Build-Voice.ps1",
+        "ops/engine/cave_plan.py",
+        "ops/engine/caves/*",
+        "ops/engine/frame_grow.py",
+        "ops/engine/unwind_info.py",
+        "src/native/*",
+        "tests/ops/agent_capacity_sites_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "ops/engine/caves/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -420,6 +765,19 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_pools_test.py"
+      ],
+      "inputs": [
+        "ops/engine/cave_plan.py",
+        "ops/engine/pool-sites.json",
+        "ops/engine/pool_sites.py",
+        "ops/engine/state_sites.py",
+        "src/native/*",
+        "tests/ops/agent_capacity_pools_test.py",
+        "tests/ops/agent_capacity_sites_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -428,6 +786,17 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_state_test.py"
+      ],
+      "inputs": [
+        "ops/engine/cave_plan.py",
+        "ops/engine/state-sites.json",
+        "src/native/*",
+        "tests/ops/agent_capacity_sites_test.py",
+        "tests/ops/agent_capacity_state_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -436,6 +805,16 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_render_test.py"
+      ],
+      "inputs": [
+        "ops/engine/cave_plan.py",
+        "src/native/agent_capacity.cpp",
+        "tests/ops/agent_capacity_render_test.py",
+        "tests/ops/agent_capacity_sites_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -444,6 +823,19 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_snapshot_test.py"
+      ],
+      "inputs": [
+        "ops/engine/cave_plan.py",
+        "ops/engine/snapshot-sites.json",
+        "ops/engine/snapshot_sites.py",
+        "ops/engine/state_sites.py",
+        "src/native/*",
+        "tests/ops/agent_capacity_sites_test.py",
+        "tests/ops/agent_capacity_snapshot_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -452,6 +844,18 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_net_rows_test.py"
+      ],
+      "inputs": [
+        "ops/engine/net_rows.py",
+        "ops/engine/state_sites.py",
+        "src/native/agent_capacity.cpp",
+        "src/native/agent_capacity.hpp",
+        "src/native/agent_capacity_net_rows.inc",
+        "tests/ops/agent_capacity_net_rows_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -460,6 +864,21 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_sound_test.py"
+      ],
+      "inputs": [
+        "ops/engine/*",
+        "ops/engine/caves/frame-1405532d0.frame.json",
+        "src/native/agent_capacity.cpp",
+        "src/native/agent_capacity.hpp",
+        "src/native/agent_capacity_frame_cave_5532d0.inc",
+        "src/native/agent_capacity_frame_fields_5532d0.inc",
+        "src/native/agent_capacity_sound.inc",
+        "tests/ops/agent_capacity_sites_test.py",
+        "tests/ops/agent_capacity_sound_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -468,6 +887,14 @@
         "python",
         "-B",
         "tests/ops/agent_capacity_records_test.py"
+      ],
+      "inputs": [
+        "src/native/agent_capacity.cpp",
+        "src/native/agent_capacity.hpp",
+        "tests/ops/agent_capacity_records_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -476,6 +903,36 @@
         "python",
         "-B",
         "tests/ops/script_var_accessor_test.py"
+      ],
+      "inputs": [
+        "ops/Apply-ScriptVarAccessorOverlay.ps1",
+        "ops/Build-Voice.ps1",
+        "ops/script-variables/accessor-edits.json",
+        "src/native/script_var_layout.hpp",
+        "src/native/script_variables.cpp",
+        "tests/ops/script_var_accessor_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
+      ]
+    },
+    {
+      "id": "script_canonical_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/script_canonical_test.py"
+      ],
+      "inputs": [
+        "ops/engine/cave_plan.py",
+        "src/native/script_canonical.cpp",
+        "src/native/script_canonical.hpp",
+        "tests/ops/agent_capacity_sites_test.py",
+        "tests/ops/script_canonical_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -484,6 +941,19 @@
         "python",
         "-B",
         "tests/ops/script_variables_test.py"
+      ],
+      "inputs": [
+        "ops/engine/cave_plan.py",
+        "ops/engine/state_sites.py",
+        "ops/engine/variable-buckets.json",
+        "ops/engine/variable-sites.json",
+        "src/native/*",
+        "tests/ops/agent_capacity_sites_test.py",
+        "tests/ops/script_variables_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -492,6 +962,20 @@
         "python",
         "-B",
         "tests/ops/script_parent_ids_test.py"
+      ],
+      "inputs": [
+        "ops/engine/caves/parent-keys.plan.json",
+        "ops/engine/caves/parent-keys.requests.json",
+        "ops/engine/state_sites.py",
+        "ops/engine/variable-sites.json",
+        "ops/engine/variable_sites.py",
+        "src/native/script_variables.cpp",
+        "src/native/script_variables_caves.inc",
+        "tests/ops/script_parent_ids_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -500,6 +984,16 @@
         "python",
         "-B",
         "tests/ops/script_children_census_test.py"
+      ],
+      "inputs": [
+        "ops/engine/state_sites.py",
+        "ops/engine/variable-sites.json",
+        "ops/engine/variable_sites.py",
+        "tests/ops/script_children_census_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -508,6 +1002,42 @@
         "python",
         "-B",
         "tests/ops/script_segments_test.py"
+      ],
+      "inputs": [
+        "ops/engine/cave_plan.py",
+        "ops/engine/state_sites.py",
+        "ops/engine/variable-segments.json",
+        "ops/engine/variable-sites.json",
+        "ops/engine/variable_sites.py",
+        "src/native/*",
+        "tests/ops/agent_capacity_sites_test.py",
+        "tests/ops/script_segments_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "src/native/*",
+        "tests/ops/*"
+      ]
+    },
+    {
+      "id": "script_threads_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/script_threads_test.py"
+      ],
+      "inputs": [
+        "ops/engine/state_sites.py",
+        "ops/engine/variable-sites.json",
+        "ops/engine/variable-threads.json",
+        "ops/engine/variable_sites.py",
+        "src/native/script_variables.cpp",
+        "src/native/script_variables_threads.inc",
+        "tests/ops/script_threads_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -516,6 +1046,23 @@
         "python",
         "-B",
         "tests/ops/frame_cuts_test.py"
+      ],
+      "inputs": [
+        "ops/*",
+        "ops/agent-capacity/*",
+        "ops/engine/Install-EngineTools.ps1",
+        "ops/engine/Invoke-EngineAnalysis.ps1",
+        "ops/frame-cuts/frame-cut-edits.json",
+        "ops/standard-client/Loading-NewMap.Core.ps1",
+        "ops/voice-certify/Invoke-VoiceCertify.ps1",
+        "ops/voice-certify/VoiceCertify.Core.ps1",
+        "src/native/*",
+        "tests/ops/frame_cuts_test.py"
+      ],
+      "lists": [
+        "ops/**",
+        "src/native/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -527,6 +1074,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/frame_cuts_overlay_test.ps1"
+      ],
+      "inputs": [
+        "ops/FrameCuts.Core.ps1",
+        "tests/ops/frame_cuts_overlay_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -535,6 +1089,14 @@
         "python",
         "-B",
         "tests/ops/engine_xref32_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_xref32.py",
+        "tests/ops/engine_xref32_test.py"
+      ],
+      "lists": [
+        "ops/engine-map/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -543,6 +1105,14 @@
         "python",
         "-B",
         "tests/ops/engine_map_names_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_engine_map.py",
+        "tests/ops/engine_map_names_test.py",
+        "tests/ops/engine_map_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -551,6 +1121,17 @@
         "python",
         "-B",
         "tests/ops/crash_stack_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_crash.py",
+        "ops/engine-map/iw7_engine_map.py",
+        "ops/iw7_debugger.py",
+        "tests/ops/crash_stack_test.py",
+        "tests/ops/engine_map_test.py"
+      ],
+      "lists": [
+        "ops/engine-map/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -559,6 +1140,16 @@
         "python",
         "-B",
         "tests/ops/perf_window_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_engine_map.py",
+        "ops/engine-map/iw7_perf.py",
+        "tests/ops/engine_map_test.py",
+        "tests/ops/perf_window_test.py"
+      ],
+      "lists": [
+        "ops/engine-map/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -567,6 +1158,14 @@
         "python",
         "-B",
         "tests/ops/sperf_report_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_sperf.py",
+        "tests/ops/sperf_report_test.py"
+      ],
+      "lists": [
+        "ops/engine-map/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -575,6 +1174,13 @@
         "python",
         "-B",
         "tests/ops/net_report_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_net.py",
+        "tests/ops/net_report_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -583,6 +1189,13 @@
         "python",
         "-B",
         "tests/ops/memory_watch_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_watch.py",
+        "tests/ops/memory_watch_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -591,6 +1204,17 @@
         "python",
         "-B",
         "tests/ops/hang_report_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_engine_map.py",
+        "ops/engine-map/iw7_hang.py",
+        "ops/engine-map/iw7_perf.py",
+        "tests/ops/engine_map_test.py",
+        "tests/ops/hang_report_test.py"
+      ],
+      "lists": [
+        "ops/engine-map/*",
+        "tests/ops/*"
       ]
     },
     {
@@ -599,6 +1223,13 @@
         "python",
         "-B",
         "tests/ops/world_live_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_world_live.py",
+        "tests/ops/world_live_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -607,6 +1238,14 @@
         "python",
         "-B",
         "tests/ops/fixture_frame_request_test.py"
+      ],
+      "inputs": [
+        "docs/UI-DUMP.md",
+        "src/native/paris_test_fixture.cpp",
+        "tests/ops/fixture_frame_request_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -615,6 +1254,33 @@
         "python",
         "-B",
         "tests/ops/ui_dump_test.py"
+      ],
+      "inputs": [
+        "ops/engine-map/iw7_ui.py",
+        "tests/ops/ui_dump_test.py"
+      ],
+      "lists": [
+        "ops/engine-map/*",
+        "tests/ops/*"
+      ]
+    },
+    {
+      "id": "build_cache_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/build_cache_test.ps1"
+      ],
+      "inputs": [
+        "ops/build/Build-Cache.Core.ps1",
+        "tests/ops/build_cache_test.ps1"
+      ],
+      "lists": [
+        "ops/*",
+        "tests/*"
       ]
     },
     {
@@ -626,6 +1292,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/download_cache_overlay_test.ps1"
+      ],
+      "inputs": [
+        "ops/Download-CacheOverlay.Core.ps1",
+        "tests/ops/download_cache_overlay_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -637,6 +1310,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/kernel_image_alias_regression_test.ps1"
+      ],
+      "inputs": [
+        "tests/native/kernel_image_alias_regression_test.cs",
+        "tests/ops/kernel_image_alias_regression_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -648,6 +1328,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/lab_asset_process_test.ps1"
+      ],
+      "inputs": [
+        "ops/Lab-AssetProcess.ps1",
+        "ops/native/LabProcess.cs",
+        "tests/ops/lab_asset_process_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -659,6 +1347,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/lab_evidence_test.ps1"
+      ],
+      "inputs": [
+        "ops/Lab-Evidence.ps1",
+        "tests/ops/lab_evidence_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -670,6 +1365,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/lab_paths_test.ps1"
+      ],
+      "inputs": [
+        "ops/Lab-Paths.ps1",
+        "tests/ops/lab_paths_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -681,6 +1383,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/lab_process_test.ps1"
+      ],
+      "inputs": [
+        "ops/Lab-Lifecycle.ps1",
+        "ops/native/LabProcess.cs",
+        "tests/ops/lab_process_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -692,6 +1402,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/lab_run_plan_test.ps1"
+      ],
+      "inputs": [
+        "ops/Lab-Evidence.ps1",
+        "ops/Lab-RunPlan.ps1",
+        "tests/ops/lab_run_plan_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -703,6 +1421,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/lab_state_test.ps1"
+      ],
+      "inputs": [
+        "ops/Lab-Paths.ps1",
+        "ops/Lab-State.ps1",
+        "tests/ops/lab_state_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -711,6 +1437,13 @@
         "python",
         "-B",
         "tests/ops/late_join_trace_test.py"
+      ],
+      "inputs": [
+        "ops/Trace-LateJoin.py",
+        "tests/ops/late_join_trace_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -722,6 +1455,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/measure_agent_group_test.ps1"
+      ],
+      "inputs": [
+        "ops/Measure-AgentGroup.Core.ps1",
+        "ops/Measure-AgentGroup.ps1",
+        "tests/ops/measure_agent_group_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -733,6 +1474,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/memory_budget_test.ps1"
+      ],
+      "inputs": [
+        "ops/Memory-Budget.ps1",
+        "ops/Resource-Memory.ps1",
+        "tests/ops/memory_budget_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -741,6 +1490,15 @@
         "python",
         "-B",
         "tests/ops/model_diagnostics_source_test.py"
+      ],
+      "inputs": [
+        "ops/iw7_debugger.py",
+        "src/native/paris_model_diagnostics.cpp",
+        "src/native/paris_test_fixture.cpp",
+        "tests/ops/model_diagnostics_source_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -749,6 +1507,14 @@
         "python",
         "-B",
         "tests/ops/rejoin_trace_test.py"
+      ],
+      "inputs": [
+        "ops/Trace-LateJoin.py",
+        "ops/Trace-Rejoin.py",
+        "tests/ops/rejoin_trace_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -760,6 +1526,18 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_memory_test.ps1"
+      ],
+      "inputs": [
+        "ops/Memory-Budget.ps1",
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_memory_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -771,6 +1549,12 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_recorder_owned_process_test.ps1"
+      ],
+      "inputs": [
+        "tests/ops/resource_recorder_owned_process_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -782,6 +1566,17 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_scheduler_test.ps1"
+      ],
+      "inputs": [
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_scheduler_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -794,6 +1589,13 @@
         "-File",
         "tests/ops/resource_scheduler_test.ps1",
         "-InitialAdmissionSourceOnly"
+      ],
+      "inputs": [
+        "ops/Resource-Scheduler.Core.ps1",
+        "tests/ops/resource_scheduler_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -806,6 +1608,13 @@
         "-File",
         "tests/ops/resource_scheduler_test.ps1",
         "-RetainedReleaseSourceOnly"
+      ],
+      "inputs": [
+        "ops/Resource-Scheduler.Core.ps1",
+        "tests/ops/resource_scheduler_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -817,6 +1626,18 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_scheduler_queue_test.ps1"
+      ],
+      "inputs": [
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/Resource-Scheduler.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_scheduler_queue_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -828,6 +1649,17 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_scheduler_admission_lock_test.ps1"
+      ],
+      "inputs": [
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_scheduler_admission_lock_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -839,6 +1671,17 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_scheduler_reclaim_test.ps1"
+      ],
+      "inputs": [
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_scheduler_reclaim_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -850,6 +1693,17 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_scheduler_resources_test.ps1"
+      ],
+      "inputs": [
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_scheduler_resources_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -861,6 +1715,17 @@
         "-NonInteractive",
         "-File",
         "tests/ops/resource_scheduler_shareable_test.ps1"
+      ],
+      "inputs": [
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_scheduler_shareable_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -872,6 +1737,13 @@
         "-NonInteractive",
         "-File",
         "tests/ops/test_privacy_overlay_test.ps1"
+      ],
+      "inputs": [
+        "ops/Apply-TestPrivacyOverlay.ps1",
+        "tests/ops/test_privacy_overlay_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
@@ -883,6 +1755,14 @@
         "-NonInteractive",
         "-File",
         "tools-source/community-download/tests/Test-HarnessPolicies.ps1"
+      ],
+      "inputs": [
+        "tools-source/community-download/Harness.Core.ps1",
+        "tools-source/community-download/Harness.ps1",
+        "tools-source/community-download/tests/Test-HarnessPolicies.ps1"
+      ],
+      "lists": [
+        "tools-source/community-download/*"
       ]
     },
     {
@@ -896,6 +1776,16 @@
         "tools-source/community-download/tests/Test-H1Profile.ps1",
         "-Providers",
         "{workspace}"
+      ],
+      "inputs": [
+        "tools-source/community-download/Harness.Profile.ps1",
+        "tools-source/community-download/h1-source.json",
+        "tools-source/community-download/tests/Test-H1Profile.ps1",
+        "tools-source/community-download/tests/expected-cases.json"
+      ],
+      "lists": [
+        "tools-source/*",
+        "tools-source/community-download/*"
       ]
     },
     {
@@ -907,6 +1797,11 @@
         "-NonInteractive",
         "-File",
         "ops/agent-capacity/test_watch_runtime.ps1"
+      ],
+      "inputs": [
+        "ops/agent-capacity/Watch-Runtime.Core.ps1",
+        "ops/agent-capacity/Watch-Server.ps1",
+        "ops/agent-capacity/test_watch_runtime.ps1"
       ]
     },
     {
@@ -915,6 +1810,14 @@
         "python",
         "-B",
         "ops/agent-capacity/test_xref_owners.py"
+      ],
+      "inputs": [
+        "ops/agent-capacity/inspect_retained.py",
+        "ops/agent-capacity/test_xref_owners.py",
+        "ops/agent-capacity/xref_owners.py"
+      ],
+      "lists": [
+        "ops/agent-capacity/*"
       ]
     },
     {
@@ -923,6 +1826,17 @@
         "python",
         "-B",
         "ops/agent-capacity/test_code_pages.py"
+      ],
+      "inputs": [
+        "ops/*",
+        "ops/agent-capacity/CodePages.Core.ps1",
+        "ops/agent-capacity/CodePages.cs",
+        "ops/agent-capacity/code_pages.py",
+        "ops/agent-capacity/test_code_pages.py"
+      ],
+      "lists": [
+        "ops/*",
+        "ops/agent-capacity/*"
       ]
     },
     {
@@ -931,6 +1845,15 @@
         "python",
         "-B",
         "tests/ops/source_workspace_test.py"
+      ],
+      "inputs": [
+        "ops/Get-SourceIdentity.ps1",
+        "ops/check_boundaries.py",
+        "ops/source_workspace.py",
+        "tests/ops/source_workspace_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
       ]
     },
     {
@@ -941,6 +1864,14 @@
         "-NoProfile",
         "-NonInteractive",
         "-File",
+        "tests/voice-certify/test_voicecertify.ps1"
+      ],
+      "inputs": [
+        "ops/*",
+        "ops/native/LabProcess.cs",
+        "ops/voice-certify/*",
+        "ops/voice-certify/fixtures/voicecert_cp.gsc",
+        "ops/voice-certify/fixtures/voicecert_mp.gsc",
         "tests/voice-certify/test_voicecertify.ps1"
       ]
     },
@@ -953,10 +1884,21 @@
         "-NonInteractive",
         "-File",
         "tests/ops/voice_relay_overlay_test.ps1"
+      ],
+      "inputs": [
+        "ops/Base-Client.Core.ps1",
+        "ops/Voice-RelayOverlay.Core.ps1",
+        "ops/voice-certify/*",
+        "ops/voice-relay/0001-Relay-voice-chat-through-the-server.patch",
+        "tests/ops/voice_relay_overlay_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     },
     {
       "id": "native_unit_tests",
+      "timeout_seconds": 3600,
       "command": [
         "pwsh",
         "-NoLogo",
@@ -964,6 +1906,69 @@
         "-NonInteractive",
         "-File",
         "tests/ops/native_unit_tests.ps1"
+      ],
+      "inputs": [
+        "ops/*",
+        "ops/agent-capacity/*",
+        "ops/native/ResourceMemory.cs",
+        "src/native/*",
+        "tests/fixtures/avoidance_clip_stock.b64.txt",
+        "tests/native/*",
+        "tests/ops/capacity_checkpoint_overlay_test.ps1",
+        "tests/ops/download_cache_overlay_test.ps1",
+        "tests/ops/kernel_image_alias_regression_test.ps1",
+        "tests/ops/native_unit_tests.ps1"
+      ],
+      "lists": [
+        "src/*",
+        "src/native/*",
+        "tests/*",
+        "tests/native/*"
+      ]
+    },
+    {
+      "id": "build_inputs_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/build_inputs_test.py"
+      ],
+      "inputs": [
+        "ops/*",
+        "ops/agent-capacity/*",
+        "ops/build/Build-Cache.Core.ps1",
+        "ops/build/Test-BuildInputs.py",
+        "ops/standard-client/Loading-NewMap.Core.ps1",
+        "tests/ops/build_inputs_test.py",
+        "tests/ops/capacity_checkpoint_overlay_test.ps1",
+        "tests/ops/download_cache_overlay_test.ps1",
+        "tests/ops/kernel_image_alias_regression_test.ps1"
+      ],
+      "lists": [
+        "ops/build/*",
+        "tests/ops/*"
+      ]
+    },
+    {
+      "id": "resource_scheduler_measured_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/resource_scheduler_measured_test.ps1"
+      ],
+      "inputs": [
+        "ops/Resource-Memory.ps1",
+        "ops/Resource-OwnedProcess.Core.ps1",
+        "ops/Resource-RecorderOwnedProcess.Core.ps1",
+        "ops/Resource-Scheduler.Core.ps1",
+        "ops/native/ResourceMemory.cs",
+        "tests/ops/resource_scheduler_measured_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
       ]
     }
   ],

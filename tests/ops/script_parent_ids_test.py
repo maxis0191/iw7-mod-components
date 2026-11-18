@@ -30,10 +30,10 @@ BUILDERS = [0x140C04DDC, 0x140C05156, 0x140C054EA, 0x140C0554A, 0x140C055B3, 0x1
             0x140C07558, 0x140C098C4, 0x140C09A1D, 0x140C09B2D]     # 0x140C0624F: Scr_AddClassField, code that no function of the engine database holds
 READ = 0x140C0531A
 STUB = (0x140C05D70, 45)
-ALLOC_LOW_CALLS = (0x140C043C5, 0x140C0458D, 0x140C096C6, 0x140C096EF, 0x140C0900B, 0x140C04559, 0x140C059B8, 0x140C090B0, 0x140C04523)
+ALLOC_LOW_CALLS = (0x140C043C5, 0x140C0458D, 0x140C096C6, 0x140C096EF, 0x140C0900B, 0x140C04559, 0x140C059B8, 0x140C090B0, 0x140C04523)      # a79: the class arrays always, the others with -script-variables-low-first (the thread sites through a thunk)
 CLIENT_ARRAY_CALLS = (0x140C4F64E, 0x140C503EF)
 REPLACED = {0x140C04650: 'alloc_variable', 0x140C04910: 'release_with_children', 0x140C05C50: 'release_reference', 0x140C08E70: 'release_unreferenced_structs',
-            0x140C09200: 'format_parents', 0x140C08C30: 'rebuild_refused'}
+            0x140C09200: 'format_parents', 0x140C08C30: 'rebuild_refused', 0x140C09340: 'kill_thread_self', 0x140C097B0: 'set_thread_self', 0x140C08D10: 'flush_dead_entities', 0x140C054A0: 'object_word'}
 
 
 def image_and_db():
@@ -163,6 +163,7 @@ class ParentIds(unittest.TestCase):
             self.assertEqual(ins.operands[0].imm, 0x140C04650 if site in ALLOC_LOW_CALLS else 0x140C068B0, hex(site))
         for site in ALLOC_LOW_CALLS:
             self.assertIn('0x%Xull' % site, self.cpp)
+        self.assertIn('redirect_thread_alloc(0x140C043C5ull, false, 0)', self.cpp)
         # the stock functions the replacements call, and the one that raises the error
         self.assertIn('0x140C04990ull', self.cpp)
         self.assertIn('0x140D34180ull', self.cpp)
@@ -190,15 +191,15 @@ class ParentIds(unittest.TestCase):
         self.assertEqual((8 - 6 * 8 - 0x88) % 16, 0)
         # the free path of RemoveRefToObject is aligned already: 4 pushes (32) + 0x80
         self.assertEqual((0 - 4 * 8 - 0x80) % 16, 0)
-        for entry in (0x140C043A0, 0x140C04580):
-            m = re.search(r'entry_hook\(0x%Xull, \{([^}]*)\}' % entry, self.cpp)
-            self.assertIsNotNone(m, hex(entry))
-            got = bytes(int(x, 16) for x in m.group(1).split(','))
-            self.assertEqual(got, self.img.read(entry, len(got)), hex(entry))
-            ins = self.dis(got, entry)
-            self.assertFalse(any(i.mnemonic.startswith(('j', 'call')) or 'rip' in i.op_str for i in ins), 'the window must move: no branch, no rip relative operand')
-            self.assertEqual(sum(i.size for i in ins), len(got))
-            self.assertGreaterEqual(len(got), 5)
+        entry = 0x140C09280                                  # the one entry hook left: the children counters (more than 4 segments)
+        m = re.search(r'entry_hook\(0x%Xull, \{([^}]*)\}' % entry, self.cpp)
+        self.assertIsNotNone(m, hex(entry))
+        got = bytes(int(x, 16) for x in m.group(1).split(','))
+        self.assertEqual(got, self.img.read(entry, len(got)), hex(entry))
+        ins = self.dis(got, entry)
+        self.assertFalse(any(i.mnemonic.startswith(('j', 'call')) or 'rip' in i.op_str for i in ins), 'the window must move: no branch, no rip relative operand')
+        self.assertEqual(sum(i.size for i in ins), len(got))
+        self.assertGreaterEqual(len(got), 5)
 
     # ---- the object key names and the integer key range: object keys 0x40000 + id for ids up to 0x3FFFF end below the integer names
     def test_the_key_name_ranges(self):

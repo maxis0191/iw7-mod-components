@@ -178,7 +178,9 @@ function Test-IW7BenchRoot([string]$Root) {
     function Get-TreeState { @(Get-ChildItem $tmp -Recurse -Force | ForEach-Object { if ($_.PSIsContainer) { $_.FullName } else { $_.FullName + '|' + $_.Length + '|' + $_.LastWriteTimeUtc.Ticks } }) }
     $before = Get-TreeState
     $childrenBefore = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$PID" | ForEach-Object ProcessId)
-    $common = @{ ServerRoot = $server; ClientARoot = $clientA; ClientBRoot = $clientB; LabImage = $image; OutputRoot = $out; DryRun = $true }
+    $common = @{ ServerRoot = $server; ClientARoot = $clientA; ClientBRoot = $clientB; LabImage = $image; OutputRoot = $out; DryRun = $true
+        # dry runs bind nothing: the ports are only text the assertions look for (a real run leaves them at 0: free ports, reserved)
+        ServerPort = 27416; ClientAPort = 27417; ClientBPort = 27418 }
 
     # Directory times are compared by presence only: NTFS updates them lazily.
     # Any attempt to start a process from the dry run path throws.
@@ -257,7 +259,7 @@ function Test-IW7BenchRoot([string]$Root) {
 
     Check 'every command the harness calls exists (static: the run path cannot be run offline)' {
         $sources = @("$harness\Invoke-VoiceCertify.ps1", "$harness\VoiceCertify.Core.ps1", "$repo\ops\Base-Client.Core.ps1",
-            "$repo\ops\Resource-Scheduler.Core.ps1", "$repo\ops\Lab-Lifecycle.ps1")
+            "$repo\ops\Resource-Scheduler.Core.ps1", "$repo\ops\Lab-Lifecycle.ps1", "$repo\ops\netlab\LabPorts.Core.ps1")
         $defined = @{}
         foreach ($file in $sources) {
             $ast = [Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$null)
@@ -295,7 +297,7 @@ function Test-IW7BenchRoot([string]$Root) {
         $initOut = Join-Path $tmp 'init-evidence'
         $switchText = ($switches | ForEach-Object { "-$_" }) -join ' '
         $command = "& '$harness\Invoke-VoiceCertify.ps1' -ServerRoot '$server' -ClientARoot '$clientA' -ClientBRoot '$clientB' -LabImage '$baseImage' " +
-            "-OutputRoot '$initOut' -ServerPort 27991 -ClientAPort 27992 -ClientBPort 27993 $switchText"
+            "-OutputRoot '$initOut' $switchText"
         $pwshExe = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
         $result = & $pwshExe -NoLogo -NoProfile -NonInteractive -Command $command 2>&1 | Out-String
         if ($LASTEXITCODE) { throw "exit $LASTEXITCODE with $switchText`n$result" }

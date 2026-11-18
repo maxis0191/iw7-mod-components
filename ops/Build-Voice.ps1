@@ -1,7 +1,7 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
+param([ValidateRange(0,86400)][int]$WaitForSlotSeconds = 0, [switch]$OwnTree, [switch]$NoLabLink, [switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
-    [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
+    [ValidateNotNullOrEmpty()][string]$NativeRoot = 'auto')   # 'auto': a pooled tree of the machine build cache (ops/build/Build-Cache.Core.ps1); or the absolute path of your own tree
 $ErrorActionPreference = 'Stop'
 function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
     # Never discover/follow a junction target. The caller must name the actual
@@ -41,7 +41,55 @@ if (!$TestsOnly -and !$ServerModules -and !$RhinoExperiment -and !$EnemyExperime
     throw 'Select -ServerModules or an explicit experiment; the 36f7afe player-voice profile is retired.'
 }
 $repo = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot/build/Build-Cache.Core.ps1"
+# Seconds, no game: every file this build reads must be in the prepared workspace (a file product.json does not export used
+# to be found by a build that failed halfway; the production native needed 8 attempts).
+if (Test-Path -LiteralPath (Join-Path $repo 'source-workspace.json')) {
+    $inputsCheck = & python -B (Join-Path $PSScriptRoot 'build/Test-BuildInputs.py') $repo
+    if ($LASTEXITCODE -eq 1) { $inputsCheck | ForEach-Object { Write-Output $_ }; throw 'The prepared workspace lacks files this build needs (export them in product.json).' }
+}
+$buildStart = Get-Date
+$lapAt = Get-Date
+function Write-IW7Lap([string]$Name) { Write-Output ('Step {0}: {1:n1} s' -f $Name, ((Get-Date) - $script:lapAt).TotalSeconds); $script:lapAt = Get-Date }
+$switchNames = @('Sanitizers','RhinoExperiment','EnemyExperiment','ServerModules','IsolatedLab','Debugger','CollisionProvider','WordProvenance','OwnerCheats','Capacity64','VoiceRelay','VoiceCertify','Perf','AgentCapacity') | Where-Object { (Get-Variable -Name $_ -ValueOnly).IsPresent }
+$pin = $null
+if ($RhinoExperiment -or $EnemyExperiment) { $pin = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
+if ($ServerModules) { $pin = 'cfca45b11ee14641945b9a264a95638387f48a4a' }
+# The package cache serves the plain client profile only: not the tests-only and sanitizer runs, not the opt-in voice images.
+$cacheKey = $null
+$toolchainId = $null
+if (!$NoCache -and !$TestsOnly) { $toolchainId = Get-IW7ToolchainId }
+if (!$NoCache -and !$TestsOnly -and !$Sanitizers -and !$VoiceRelay -and !$VoiceCertify -and (Test-Path -LiteralPath (Join-Path $repo 'source-workspace.json'))) {
+    $cacheKey = Get-IW7NativeInputKey -WorkspaceRoot $repo -Switches ($switchNames + @("enemyprofile=$EnemyProfile")) -Pin $pin -Toolchain $toolchainId
+    $hit = Get-IW7CachedPackage -Key $cacheKey
+    if ($hit) {
+        $wsManifest = Get-Content -LiteralPath (Join-Path $repo 'source-workspace.json') -Raw | ConvertFrom-Json
+        $exePath = Restore-IW7CachedPackage -WorkspaceRoot $repo -Package $hit -ProjectCommit ([string]$wsManifest.revisions.'iw7-mod-components')
+        Write-Output ("Build cache hit {0}: client restored in {1:n1} s from a build of commit {2}; nothing compiled." -f $cacheKey.Substring(0,12), ((Get-Date) - $buildStart).TotalSeconds, $hit.Info.ProjectCommit)
+        Write-Output "Prepared private client/server build: $(Split-Path $exePath -Parent)"
+        return
+    }
+}
+$nativeTree = $null
+if ($NativeRoot -eq 'auto') {
+    if ($TestsOnly) { $NativeRoot = Join-Path $repo 'runtime/tests-only-no-native' }
+    else {
+        if (!$pin) { throw 'NativeRoot auto needs a pinned profile (-ServerModules or an experiment).' }
+        $nativeTree = Enter-IW7NativeTree -Pin $pin -Kind $(if ($IsolatedLab -or $Debugger) { 'lab' } else { 'prod' })
+        $NativeRoot = $nativeTree.Path
+        Write-Output ("Native tree {0} ({1}, waited {2} s)" -f $NativeRoot, $nativeTree.Source, $nativeTree.Waited)
+    }
+}
+# A private native tree is refused (18 Nov 2026): worker a87 built a lab client in its own tree and compiled all 1,181 files (151 s)
+# where the shared tree, warm, compiles the files that changed. Use ops/enginelab/Get-LabClient.ps1 (it takes the shared tree).
+if (!$nativeTree -and !$TestsOnly -and !$OwnTree) {
+    $cacheTrees = [IO.Path]::GetFullPath((Join-Path (Get-IW7BuildCacheRoot) 'native-trees')).TrimEnd('\') + '\'
+    if (![IO.Path]::GetFullPath($NativeRoot).StartsWith($cacheTrees, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "NativeRoot $NativeRoot is a private native tree: every build in it starts from nothing. Build through ops/enginelab/Get-LabClient.ps1 (or Invoke-EngineLab.ps1) in the server repository, which takes the shared tree in C:\IW7-Cache. -OwnTree overrides this for a diagnostic."
+    }
+}
 $root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
+try {
 if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current ServerModules native profile.' }
 . "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
 . "$PSScriptRoot/Voice-RelayOverlay.Core.ps1"
@@ -51,7 +99,22 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
 # Reserve the complete operation before compiling tests, sanitizer binaries or
 # native sources. TestsOnly uses the same admission and final release path.
-Invoke-IW7ResourceJob -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
+# -WaitForSlotSeconds: wait in the scheduler's waiting order (Invoke-IW7QueuedResourceJob) instead of refusing at once; no retry loop outside.
+$jobCommand = if ($WaitForSlotSeconds -gt 0) { 'Invoke-IW7QueuedResourceJob' } else { 'Invoke-IW7ResourceJob' }
+$jobExtra = if ($WaitForSlotSeconds -gt 0) { @{ WaitForSlotSeconds = $WaitForSlotSeconds } } else { @{} }
+# What the build asks the scheduler for (measured 18 Nov 2026 with the lease sampler): a one-file change in a warm tree peaks at about
+# 0.5 GB (one cl.exe and an incremental link); a build from nothing (a new tree, other link flags) peaks at several GB. Declaring 4 GB for
+# both kept builds waiting behind memory they never used. A tree is warm when its last successful build had the same link profile.
+$linkProfile = if ($IsolatedLab -or $Debugger) { 'lab' } else { 'prod' }
+$profileMark = Join-Path $root '.iw7-link-profile'
+$warmTree = (Test-Path -LiteralPath $profileMark) -and ((Get-Content -LiteralPath $profileMark -Raw).Trim() -ceq $linkProfile) -and (Test-Path -LiteralPath (Join-Path $root '.iw7-source-times.json'))
+$askPhysical = if ($warmTree -and !$TestsOnly) { 1.5GB } elseif ($TestsOnly) { 1GB } else { 4GB }
+$askCommit = if ($warmTree -and !$TestsOnly) { 3GB } elseif ($TestsOnly) { 2GB } else { 6GB }
+$slotAsked = Get-Date
+& $jobCommand @jobExtra -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes ([long]($askPhysical * $BuildJobs)) -CommitBytes ([long]($askCommit * $BuildJobs)) -Body {
+$slotWaited = ((Get-Date) - $slotAsked).TotalSeconds
+Write-Output ('Waited {0:n0} s for the Build reservation.' -f $slotWaited)
+$script:lapAt = Get-Date
 $null = Resolve-IW7VoiceBuildNativeRoot $root
 # The opt-in voice overlays are added last, so they are removed first.
 Remove-IW7VoiceCertifyOverlay $root
@@ -87,9 +150,10 @@ if (!$installation) { throw 'VS 2022 C++ toolchain not found.' }
 $vcvars = Join-Path $installation 'VC/Auxiliary/Build/vcvars64.bat'
 $runtime = Join-Path $repo 'runtime'
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
+$unitTests = $null
 # Save the compiler invocation to avoid PowerShell 5 native-argument quote rewriting.
 $testCmd = Join-Path $runtime 'compile-voice-tests.cmd'
-@"
+$testScript = @"
 @echo off
 call "$vcvars" >nul
 if errorlevel 1 exit /b 1
@@ -145,6 +209,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\script_parent_
 if errorlevel 1 exit /b 1
 "$runtime\script-parent-pools-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\avoidance_clip_test.cpp" /Fe:"$runtime\avoidance-clip-test.exe" /Fo:"$runtime\avoidance-clip-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\avoidance-clip-test.exe"
+if errorlevel 1 exit /b 1
 "$runtime\dvar-metadata-test.exe"
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\vm_filter_test.cpp" /Fe:"$runtime\vm-filter-test.exe" /Fo:"$runtime\vm-filter-test.obj"
@@ -159,7 +227,15 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.c
 if errorlevel 1 exit /b 1
 "$runtime\audio-output-probe.exe" --self-test
 if errorlevel 1 exit /b 1
-"@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
+"@
+# A unit test whose own source, every header it can include and its compiler line are unchanged since it last passed on this
+# machine is not compiled and run again (Select-IW7UnitTests, ops/build/Build-Cache.Core.ps1).
+if (!$NoCache -and !$TestsOnly -and !$Sanitizers) {
+    $unitTests = Select-IW7UnitTests -Script $testScript -Repo $repo -Toolchain $toolchainId
+    $testScript = $unitTests.Script
+    Write-Output ('Native unit tests: {0} of {1} compiled and run, {2} unchanged since they last passed (not run again).' -f $unitTests.Run, ($unitTests.Run + $unitTests.Skipped), $unitTests.Skipped)
+}
+$testScript | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
 if ($LASTEXITCODE) { throw 'Native unit tests failed.' }
 if ($Sanitizers) {
@@ -176,6 +252,8 @@ if ($Sanitizers) {
     if ($LASTEXITCODE) { throw 'Native AddressSanitizer tests failed.' }
 }
 & "$repo/tests/ops/download_cache_overlay_test.ps1"
+if ($unitTests) { foreach ($k in $unitTests.Keys) { Set-IW7TestsPassed $k } }
+Write-IW7Lap 'checkout, tools and unit tests'
 if ($TestsOnly) { return }
 $properties = Join-Path $root 'src/common/utils/properties.cpp'
 $baseProperties = (((git -C $root show ($commit + ':src/common/utils/properties.cpp')) -join "`n").TrimEnd()) + "`n"
@@ -210,7 +288,7 @@ if (Test-Path -LiteralPath $labComponent) {
 }
 $nativeSources = @('paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp','dvar_metadata.hpp','agent_scenario.hpp',
     'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp','paris_afk.cpp','paris_afk.hpp','afk_inactivity.hpp',
-    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp')
+    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp','paris_weapon_log.cpp','script_canonical.cpp','script_canonical.hpp')
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
 else {
     # The experiment pin does not expose the ServerModules CP WeaponDef.
@@ -274,13 +352,13 @@ foreach ($perfFile in @('paris_perf.cpp', 'paris_net.cpp', 'paris_sperf.cpp', 'p
     elseif (Test-Path -LiteralPath $perfTarget) { Remove-Item -LiteralPath $perfTarget -Force }
 }
 # Engine agent capacity (agent_capacity.cpp): inert unless the game starts with -agent-capacity <n>; compiled only when asked.
-foreach ($capFile in @('agent_capacity.cpp', 'agent_capacity.hpp', 'agent_capacity_caves.inc', 'agent_capacity_caves_rewind.inc', 'agent_capacity_caves_wide.inc', 'agent_capacity_frame_fields.inc', 'agent_capacity_frame_cave.inc', 'agent_capacity_frame_fields_adb8e0.inc', 'agent_capacity_frame_fields_added0.inc', 'agent_capacity_frame_cave_added0.inc', 'agent_capacity_frame_cave_adb8e0.inc', 'agent_capacity_frame_fields_86fba0.inc', 'agent_capacity_caves_mask.inc', 'agent_capacity_caves_guard.inc', 'agent_capacity_caves_interp.inc', 'agent_capacity_state.inc', 'agent_capacity_pools.inc', 'agent_capacity_sound.inc', 'agent_capacity_snapshot.inc', 'agent_capacity_net_rows.inc', 'agent_capacity_frame_fields_5532d0.inc', 'agent_capacity_frame_cave_5532d0.inc')) {
+foreach ($capFile in @('agent_capacity.cpp', 'avoidance_clip.hpp', 'agent_capacity.hpp', 'agent_capacity_caves.inc', 'agent_capacity_caves_rewind.inc', 'agent_capacity_caves_wide.inc', 'agent_capacity_frame_fields.inc', 'agent_capacity_frame_cave.inc', 'agent_capacity_frame_fields_adb8e0.inc', 'agent_capacity_frame_fields_added0.inc', 'agent_capacity_frame_cave_added0.inc', 'agent_capacity_frame_cave_adb8e0.inc', 'agent_capacity_frame_fields_86fba0.inc', 'agent_capacity_caves_mask.inc', 'agent_capacity_caves_guard.inc', 'agent_capacity_caves_interp.inc', 'agent_capacity_state.inc', 'agent_capacity_pools.inc', 'agent_capacity_sound.inc', 'agent_capacity_snapshot.inc', 'agent_capacity_net_rows.inc', 'agent_capacity_frame_fields_5532d0.inc', 'agent_capacity_frame_cave_5532d0.inc')) {
     $capTarget = Join-Path $root "src/client/component/$capFile"
     if ($AgentCapacity) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$capFile") -Destination $capTarget -Force; $nativeSources += @($capFile) }
     elseif (Test-Path -LiteralPath $capTarget) { Remove-Item -LiteralPath $capTarget -Force }
 }
 # GSC variable pools (script_variables.cpp): inert unless the game starts with -agent-capacity; compiled with the agent capacity.
-foreach ($varFile in @('script_variables.cpp', 'script_variables.hpp', 'script_variables_sites.inc', 'script_variables_buckets.inc', 'script_variables_segments.inc', 'script_variables_caves.inc', 'script_parent_pools.hpp')) {
+foreach ($varFile in @('script_variables.cpp', 'script_variables.hpp', 'script_variables_sites.inc', 'script_variables_buckets.inc', 'script_variables_segments.inc', 'script_variables_caves.inc', 'script_variables_threads.inc', 'script_parent_pools.hpp')) {
     $varTarget = Join-Path $root "src/client/component/$varFile"
     if ($AgentCapacity) { Copy-Item -LiteralPath (Join-Path $repo "src/native/$varFile") -Destination $varTarget -Force; $nativeSources += @($varFile) }
     elseif (Test-Path -LiteralPath $varTarget) { Remove-Item -LiteralPath $varTarget -Force }
@@ -511,10 +589,29 @@ foreach ($family in @('agent_capacity*', 'script_variables*')) {
 if ($staleSources.Count) { Write-Output ("Removed {0} source file(s) of other branches from the native tree: {1}" -f $staleSources.Count, ($staleSources -join ', ')) }
 Push-Location $root
 try {
-    & ./tools/premake5.exe vs2022
+    Write-IW7Lap 'overlays'
+    $timeStep = Restore-IW7SourceTimes -NativeRoot $root
+    Write-Output ("Native sources: {0} unchanged since the last build of this tree (times restored), {1} new or changed." -f $timeStep.Kept, $timeStep.Changed)
+    # A lab client (IsolatedLab or Debugger) is a test client: no /GL, no /LTCG, incremental link (ops/build/premake-lab.lua).
+    if (($IsolatedLab -or $Debugger) -and !$NoLabLink) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'build/premake-lab.lua') -Destination (Join-Path $root 'paris-lab.lua') -Force
+        & ./tools/premake5.exe --file=paris-lab.lua vs2022
+    } else {
+        Remove-Item -LiteralPath (Join-Path $root 'paris-lab.lua') -Force -ErrorAction SilentlyContinue
+        & ./tools/premake5.exe vs2022
+    }
     if ($LASTEXITCODE) { throw 'Premake failed.' }
-    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
+    Write-IW7Lap 'source times and premake'
+    # Compile in parallel: the lead used to be one cl.exe at a time (/m:1 and MultiProcessorCompilation=false).
+    $threads = if ($env:IW7_BUILD_THREADS) { [int]$env:IW7_BUILD_THREADS } else { [Math]::Max(2, [Math]::Min(8, [int]([Environment]::ProcessorCount / 2))) }
+    $mp = if ($Serial) { @("/m:$BuildJobs", '/p:MultiProcessorCompilation=false') } else { @("/m:$([Math]::Max(2,[Math]::Min(4,$threads)))", '/p:MultiProcessorCompilation=true', "/p:CL_MPCount=$threads") }
+    $msbStart = Get-Date
+    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln @mp /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
     if ($LASTEXITCODE) { throw 'Voice build failed.' }
+    Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
+    Save-IW7SourceTimes -NativeRoot $root
+    Set-Content -LiteralPath $profileMark -Value $linkProfile
+    $script:lapAt = Get-Date
 } finally { Pop-Location }
 $voiceState = Get-IW7VoiceOverlayState $root
 if ($voiceState.VoiceRelay -ne [bool]$VoiceRelay -or $voiceState.VoiceCertify -ne [bool]$VoiceCertify) { throw 'Voice overlay receipts differ from the requested build.' }
@@ -635,4 +732,11 @@ if ($voiceState.VoiceCertify) {
     $certifyRecord | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$output/voice-certify-build.json" -Encoding UTF8
 }
 Write-Output "Prepared private client/server build: $output"
+Write-IW7Lap 'manifest and package'
+if ($cacheKey -and !$voiceOptIn -and !$Sanitizers) {
+    $null = Save-IW7CachedPackage -Key $cacheKey -Exe $packagedExe -Pdb "$root/build/bin/x64/Release/iw7-mod.pdb" -Manifest "$output/build-manifest.json" -ProjectCommit $sourceIdentity.Commit -Switches $switchNames
+    Invoke-IW7PackageCachePrune
 }
+Write-Output ("Build total {0:n1} s of work ({1:n0} s more waiting for the Build reservation)" -f (((Get-Date) - $buildStart).TotalSeconds - $slotWaited), $slotWaited)
+}
+} finally { if ($nativeTree) { Exit-IW7NativeTree $nativeTree } }

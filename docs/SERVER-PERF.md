@@ -121,6 +121,32 @@ The commands below are in `src/native/paris_sperf.cpp`; the flight recorder of t
 
 Cost: see the measured runs in the server repository's `docs/ZOMBIE-CAPACITY.md` 6e.
 
+
+## Weapon gives (a80, 17 Nov 2026)
+
+`src/native/paris_weapon_log.cpp`, option `-paris-weapon-log` (dedicated server; compiled into every build, inert without the option; the play launcher of the server repository passes it, `-NoWeaponLog` removes it).
+Every call of the script methods `giveweapon` (0x817D), `takeweapon` (0x83B8), `switchtoweapon` (0x83B5) and `switchtoweaponimmediate` (0x83B6) writes one line to the game log (`iw7-mod/logs/games_mp.log`, through
+`paris_log_stream`, the file the slow-frame watchdog and the script recorder write to; the flight recorder collects it):
+
+`[FR] t=<level time> weapon_give fn=<call> ent=<entity number> w=<weapon name> frame=<server frame> caller=<file::function> chain=<outer callers, innermost first, joined by '<'> verified=<1|0>`
+
+- Where it hooks: the engine's method table (`gsc::meth_table`, the array the script VM dispatches through, `script_extension.cpp`). The engine fills it at game start; the component's server-pipeline loop replaces the four entries by wrappers
+  the first frame it finds a stock handler there (and again if the engine fills the table again) and writes `[FR] t=<time> weapon_log_handler fn=<call> id=<id> handler=<address of the stock handler>`. Earlier hooks on `G_GivePlayerWeapon` and on a
+  guessed builtin never fired (the script give does not pass through them); the table entry is the function the VM calls.
+- The hook does: read the call, append a fixed record (4,096 of them, server thread only, no lock) and call the stock handler. A full ring counts `lost`; a call from another thread counts `foreign`. Names are made once a server frame in the scheduler's
+  server pipeline (the same thread, so the script function table cannot change under it) and cached by code position; the ring is also written at a script shutdown. A `weapon_log_stats recorded= lost= foreign= written= hook_ns= drain_ns=` row follows every minute of server frames
+  with gives and at once when something was lost.
+- How the caller is read: `scr_function_stack->pos` is the code position just after the call opcode, inside the calling function; `scr_VmPub->function_frame_start[k].fs.pos` hold the outer frames of the same thread (as `paris_sperf.cpp` reads them). Positions are mapped to
+  `file::function` through the function table iw7-mod keeps (`scripting::script_function_table_sort`). `verified=1`: the two bytes before the position are the id of the method that runs, so the call came from script bytecode. A call from native code (the owner's `give` console command goes
+  through `scripting::call`) leaves the position of whatever script ran before and is written `verified=0`. The chain ends at the root of the thread (a thread resumed by a notify or a wait has no outer frames); the names are the compiled ones: a production script that
+  `#define`s an alias (`#define upgrade_players check_owner`) shows `check_owner`, and `ops/play/flight_report.py` translates them back.
+- `-paris-weapon-log-measure`: the hook times itself (`paris_weapon_log_stats` prints `hook_ns_per_call` and `drain_ns_total`). Not for play.
+- Cost (measured 17 Nov 2026, headless production server, Rush on, client built from 56f71e5; plans `tests/scenarios/gamelab/weapon-give-recorder-cost-*.json` of the server repository, reader `ops/play/burst_cost.py`): a burst is 500 `giveweapon` plus 500 `takeweapon` in one server frame (1,000 calls),
+  10 bursts a light window, 2 windows a session. **The hook:** 52.7 to 63.9 ns a call, timed inside the hook with two performance counter reads (`-paris-weapon-log-measure`, 20,000 calls; the counter reads are part of the figure, so it is an upper bound). **The drain** (naming the caller and chain, formatting, one append to the log handle
+  per frame): 21.0 ms for the 20,000 calls, 1.05 us a call, on the server thread at the end of the frame that held them. **Frame time A/B** (3 sessions a side, 6 windows, 60 burst frames a side): off 5.565 ms a burst, on 6.117 ms: +0.553 ms a burst (+0.55 us a call), with 0.71 ms of noise between windows, so the difference is below the resolution of the frame time (it agrees with hook plus drain, about 1.1 us a call).
+  A real session gives a few dozen weapons a minute (the 300 s session of the proof: 220 calls, 0.7 a second): the cost is a few hundred microseconds of the server's time in a minute. 20,000 calls in a minute lost no record (ring of 4,096; a frame holds at most 1,000 in these bursts).
+- What it does not see: a weapon the engine gives from native code that does not run the script methods (a perk, a game rule inside the engine), and a method called through `gsc::method::add`'s custom path (none of the four is).
+
 ## Tests
 
 `tests/ops/sperf_report_test.py` runs the reader on synthetic windows.

@@ -6,6 +6,8 @@ param([string]$TestRoot,[string]$Only='*')   # -Only 'stall*': run only the case
 # by ...", "Runtime owned by soak session"); with named resources the ones that share nothing are admitted.
 # Same seam as resource_scheduler_queue_test.ps1: temporary registry, synthetic callers, clock and memory only.
 $ErrorActionPreference='Stop'
+$env:IW7_SCHEDULER_MEASURED='0'   # these cases pin the declared-memory arithmetic; measured budgets have their own test (resource_scheduler_measured_test.ps1)
+$env:IW7_SHAREABLE_FLOOR_GB='0'   # these cases pin the arithmetic that came before the free-memory floor (a87, 18 Nov 2026); the floor has its own cases in resource_scheduler_shareable_test.ps1
 . "$PSScriptRoot/../../ops/Resource-Scheduler.Core.ps1"
 if (!$TestRoot) { $TestRoot=Join-Path ([IO.Path]::GetTempPath()) ('iw7-resources-tests-'+[guid]::NewGuid().ToString('N')) }
 [IO.Directory]::CreateDirectory($TestRoot) | Out-Null
@@ -206,8 +208,11 @@ Case 'a build that waits for memory drains the machine after the aging time' {
     Advance 30
     Assert ((Ask s3 Runtime 1.5GB -Path 'bench\s3') -eq 'granted') 'Before the aging time a session that fits passes it.'
     foreach ($i in 1..10) { Advance 60; Ask zb Build 8GB -Path 'zt' | Out-Null }
+    Assert ((Ask s5 Runtime 1.5GB -Path 'bench\s5') -eq 'granted') 'At 600 s a ticket that cannot fit now is still passed by a session that fits (18 Nov 2026).'
+    Release s5
+    foreach ($i in 1..20) { Advance 60; Ask zb Build 8GB -Path 'zt' | Out-Null }
     $m=Ask s4 Runtime 1.5GB -Path 'bench\s4'
-    Assert ($m -like "Resource busy: waiting in turn: 1 earlier request(s) go first: 'zb' (Build, waiting 10m30s)*") "After 600 s new sessions stop taking memory: $m"
+    Assert ($m -like "Resource busy: waiting in turn: 1 earlier request(s) go first: 'zb' (Build, waiting 30m30s)*") "After the starvation guard (1800 s) new sessions stop taking memory: $m"
     Assert ((Ask t Build 256MB -Path 'tiny' -Short 60) -like "Resource busy: waiting in turn*'zb'*") 'Also short checks: memory waiters are never overtaken once aged.'
     Release s1; Release s2; Release s3
     Assert ((Ask zb Build 8GB -Path 'zt') -eq 'granted') 'Drained: the build goes in.'

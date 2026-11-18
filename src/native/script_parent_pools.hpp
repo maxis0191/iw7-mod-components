@@ -4,7 +4,8 @@
 
 // The free parent ids of the engine's GSC variable system (a56, a67). An id is S x local + segment (S = 4, 8 or 16 segments); the free ids of a segment are two stacks, linked
 // through the u16 `link` of the free entries with LOCAL indices: pool 0 holds the ids below 0x10000 (locals 1 .. low_locals - 1), pool 1 the rest.
-// Objects whose id the engine keeps in 16 bits take pool 0 only; every other object takes pool 1 first (pool 0 first with `low_first`). The
+// Only the objects whose id the engine still keeps in 16 bits (the class arrays and the server client arrays, a79) take pool 0 only; every other object takes pool 1 first (pool 0 first with `low_first`).
+// `low_keep` (lab option, the detection test of a55): the low pool keeps only that many locals a segment, every other low id is burned, and a general allocation never falls back to it. `no_fallback` alone keeps the whole low pool for the low-only classes and only forbids the fallback (stage 1: threads stay low). The
 // segment is the one with the fewest children among those that have a free id in the pool, ties to the lowest: the shipped choice.
 // Pure logic over a table of 8 byte entries, so a native test can run it (tests/native/script_parent_pools_test.cpp).
 namespace script_variables {
@@ -16,7 +17,7 @@ class parent_pools {
 public:
     static constexpr unsigned max_segments = 16;
     // table: `ids` entries (ids = segments x locals, locals <= 0x10000); counters: the children in use of each segment (the shipped int[4], a table of `segments` ints beyond 4).
-    void attach(parent_entry* table, const volatile std::uint32_t* counters, std::uint32_t segment_count, std::uint32_t ids, std::uint32_t low_locals, bool low_first) noexcept {
+    void attach(parent_entry* table, const volatile std::uint32_t* counters, std::uint32_t segment_count, std::uint32_t ids, std::uint32_t low_locals, bool low_first, std::uint32_t low_keep = 0, bool no_fallback = false) noexcept {
         table_ = table;
         counters_ = counters;
         segments_ = segment_count;
@@ -24,13 +25,15 @@ public:
         locals_ = ids / segment_count;
         low_locals_ = low_locals;
         low_first_ = low_first;
+        low_keep_ = low_keep && low_keep < low_locals ? low_keep : 0;
+        no_fallback_ = no_fallback || low_keep_ != 0;
     }
     // every id is free; the four list heads (ids 0..3) are not allocatable
     void format() noexcept {
         for (unsigned segment = 0; segment < segments_; ++segment) {
             table_[segment] = {0, 0, 0x18};
             for (std::uint32_t local = 1; local < locals_; ++local) {
-                const auto next = (local + 1 == low_locals_ || local + 1 == locals_) ? 0u : local + 1;
+                const auto next = (local + 1 == low_locals_ || local + 1 == locals_ || (low_keep_ && local + 1 == low_keep_)) ? 0u : local + 1;
                 table_[(local << shift_) | segment] = {0, static_cast<std::uint16_t>(next), 0x18};
             }
             head_[segment][0] = 1;
@@ -41,6 +44,7 @@ public:
     // a free id, or 0 when there is none (the pools asked for are empty)
     std::uint32_t take(bool low_only) noexcept {
         for (unsigned pass = 0; pass < 2; ++pass) {
+            if (pass && !low_only && no_fallback_) break;       // burned: a general allocation never takes a low id
             const unsigned pool = low_only ? 0u : (low_first_ ? pass : 1u - pass);
             unsigned segment = segments_;
             std::uint32_t fewest = 0xFFFFFFFFu;
@@ -67,12 +71,15 @@ public:
     std::size_t low_taken() const noexcept { return low_taken_; }
     std::size_t high_taken() const noexcept { return high_taken_; }
     bool low_first() const noexcept { return low_first_; }
+    bool burned() const noexcept { return no_fallback_; }
 
 private:
     parent_entry* table_{};
     const volatile std::uint32_t* counters_{};
     std::uint32_t segments_{4}, shift_{2}, locals_{}, low_locals_{};
     bool low_first_{};
+    std::uint32_t low_keep_{};
+    bool no_fallback_{};
     std::uint16_t head_[max_segments][2]{};
     std::size_t low_taken_{}, high_taken_{};
 };

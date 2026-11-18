@@ -91,18 +91,67 @@ function Get-IW7ShareableReserveBytes {
         $gb -ge 2 -and $gb -le 64) { return [long]($gb*1GB) }
     [long]8GB
 }
+function Get-IW7ShareableFloorBytes {
+    # Decision 2026-11-18 (QA rig, a87): a shareable session is admitted only if, after it has taken what it declares, the machine still has this much MEASURED free memory
+    # (available minus what running sessions have still to take, minus the request). The reserve above bounds what is DECLARED; before this floor nothing bounded what was left
+    # FREE, so admitted sessions could take the last gigabyte and the next process of anything, owner's game included, met an out-of-memory failure. IW7_SHAREABLE_FLOOR_GB
+    # overrides it when it is a number from 0 to 16 (0: no floor, the old rule); anything else is ignored.
+    $raw=[Environment]::GetEnvironmentVariable('IW7_SHAREABLE_FLOOR_GB')
+    $gb=0.0
+    if ($raw -and [double]::TryParse($raw.Trim(),[Globalization.NumberStyles]::AllowDecimalPoint,[Globalization.CultureInfo]::InvariantCulture,[ref]$gb) -and
+        $gb -ge 0 -and $gb -le 16) { return [long]($gb*1GB) }
+    [long]2GB
+}
 function Format-IW7Gb([long]$Bytes) {
     ($Bytes/1GB).ToString('0.0',[Globalization.CultureInfo]::InvariantCulture)+' GB'
 }
-function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes) {
+# ---------------------------------------------------------------------------------------------------------------
+# Measured budgets (18 Nov 2026). A lease declares what its job might need at most; the plan used to keep every
+# declared byte not yet taken as "promised" for as long as the lease lived, so a session that had settled at 5 GB of
+# a declared 8 GB kept 3 GB from everyone else for hours (measured: a client session 8 GB declared, 5.1 GB taken,
+# flat for 28 samples; a build waited with 8.5 GB available because 3.5 GB were "still to be taken"). Now the
+# scheduler records the highest working set it has seen for each lease (peaks.json, token -> bytes, written under the
+# admission lock) and, once a lease has run SettleSeconds (180 s, the load phase), counts
+# min(declared, peak * 1.15 + 256 MB) as what it needs, never less than what it has taken. The declared number stays the
+# ceiling and the first SettleSeconds; a lease that grows past its measured need is simply counted at its new peak.
+# IW7_SCHEDULER_MEASURED=0 turns it off (the old rule). The peak of each lease is written into its release line of
+# admission-log.jsonl (PeakWorkingSet, Declared), so the real cost of every job class is in the scheduler's own record.
+function Get-IW7MeasuredBudgetOn { $v=[Environment]::GetEnvironmentVariable('IW7_SCHEDULER_MEASURED'); !($v -and $v.Trim() -eq '0') }
+function Get-IW7SettleSeconds { 180 }
+function Get-IW7PeakPath { Join-Path (Get-IW7ResourceRoot) 'peaks.json' }
+function Read-IW7LeasePeaks {
+    $h=@{}
+    try {
+        $path=Get-IW7PeakPath
+        if ([IO.File]::Exists($path)) { $o=[IO.File]::ReadAllText($path) | ConvertFrom-Json -ErrorAction Stop; foreach ($p in $o.PSObject.Properties) { $h[$p.Name]=[long]$p.Value } }
+    } catch { $h=@{} }
+    $h
+}
+function Save-IW7LeasePeaks($Peaks) {
+    try {
+        $path=Get-IW7PeakPath; $tmp=$path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+        [IO.File]::WriteAllText($tmp,($Peaks | ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+        [IO.File]::Move($tmp,$path,$true)
+    } catch { }
+}
+function Get-IW7MeasuredNeedBytes($Lease, [long]$Taken, [long]$Peak) {
+    # What the lease is counted at: declared until it has settled, then its measured peak plus a margin.
+    $declared=[long]$Lease.PhysicalBytes
+    if (!(Get-IW7MeasuredBudgetOn) -or $Peak -le 0) { return $declared }
+    try { $age=((Get-IW7SchedulerUtcNow)-([datetimeoffset]$Lease.CreatedUtc).UtcDateTime).TotalSeconds } catch { return $declared }
+    if ($age -lt (Get-IW7SettleSeconds)) { return $declared }
+    [math]::Min($declared,[math]::Max($Taken,[long]($Peak*1.15)+256MB))
+}
+function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes, [switch]$RecordPeaks) {
     # $Leases: every lease already held that the request would run beside (named resources, 12 Nov 2026: builds,
     # analyses and sessions share the machine by memory). Declared = what they need in total. Unloaded = the part
     # of that their live processes have not taken yet (declared minus working set, never below zero, per lease):
     # free memory that is already promised. A session's processes are the ones it registered; a build's or an
     # analysis's are also its owner and every process below it (compilers, ZoneTool, Java are its children).
     $declared=0L; $unloaded=0L; $index=$null
+    $peaks=Read-IW7LeasePeaks; $peaksChanged=$false
     foreach ($l in @($Leases | Where-Object { $_ })) {
-        $declared += [long]$l.PhysicalBytes
+        $declaredOne=[long]$l.PhysicalBytes
         $taken=0L
         # Identities of ANOTHER lease that cannot be read right now (a server just
         # starting or exiting): count nothing as taken, so all its memory stays reserved.
@@ -114,10 +163,15 @@ function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes) {
             } else { foreach ($p in @(Get-IW7LeaseLiveProcesses $l $Processes)) { $taken += [long]$p.WorkingSet } }
         }
         catch { if ($_.Exception.Message -like 'Reserved process identity unavailable*') { $taken=0L } else { throw } }
-        $unloaded += [math]::Max(0L,[long]$l.PhysicalBytes-$taken)
+        $peak=if ($peaks.ContainsKey([string]$l.Token)) { [long]$peaks[[string]$l.Token] } else { 0L }
+        if ($taken -gt $peak) { $peak=$taken; $peaks[[string]$l.Token]=$peak; $peaksChanged=$true }
+        $need=Get-IW7MeasuredNeedBytes $l $taken $peak
+        $declared += $need
+        $unloaded += [math]::Max(0L,$need-$taken)
     }
+    if ($RecordPeaks -and $peaksChanged) { Save-IW7LeasePeaks $peaks }
     $reserve=Get-IW7ShareableReserveBytes
-    [pscustomobject]@{Reserve=$reserve;Total=[long]$Snapshot.PhysicalTotal;Budget=([long]$Snapshot.PhysicalTotal-$reserve);
+    [pscustomobject]@{Floor=(Get-IW7ShareableFloorBytes);Reserve=$reserve;Total=[long]$Snapshot.PhysicalTotal;Budget=([long]$Snapshot.PhysicalTotal-$reserve);
         Declared=$declared;Unloaded=$unloaded;Available=[long]$Snapshot.PhysicalAvailable}
 }
 function Assert-IW7ShareableMemoryAdmission($Plan, [long]$RequestBytes, [long]$NeedBytes) {
@@ -134,13 +188,19 @@ function Assert-IW7ShareableMemoryAdmission($Plan, [long]$RequestBytes, [long]$N
             "still to be taken by running reservations leaves $(Format-IW7Gb ([math]::Max(0L,$free))), and this request needs $(Format-IW7Gb $NeedBytes). " +
             "Continue light work; retry when memory is free.")
     }
+    $floor=[long]$Plan.Floor
+    if ($floor -gt 0 -and ($free-$NeedBytes) -lt $floor) {
+        throw ("Resource busy: not enough measured free memory above the floor: $(Format-IW7Gb $Plan.Available) available minus $(Format-IW7Gb $Plan.Unloaded) " +
+            "still to be taken by running reservations leaves $(Format-IW7Gb ([math]::Max(0L,$free))); this request needs $(Format-IW7Gb $NeedBytes), which would leave " +
+            "$(Format-IW7Gb ([math]::Max(0L,$free-$NeedBytes))) free, under the floor of $(Format-IW7Gb $floor). Continue light work; retry when memory is free.")
+    }
 }
 function Get-IW7ShareableReachBytes($Plan) {
     # The most memory a shareable request can get by waiting in the queue: what is free now (available minus
     # what running sessions have still to take) plus what running shareable sessions declare (it comes back
     # when they end), never above the declared budget. Memory held outside the scheduler (kernel pools, the
     # public server, other programs) is not counted: waiting in the queue does not give it back.
-    [math]::Min([long]$Plan.Budget,[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)+[long]$Plan.Declared)
+    [math]::Min([long]$Plan.Budget,[math]::Max(0L,[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)+[long]$Plan.Declared-[long]$Plan.Floor))
 }
 function Assert-IW7ShareableCanFit($Plan, [long]$RequestBytes) {
     # A new shareable request that cannot fit even when every running shareable session has ended is refused
@@ -577,7 +637,7 @@ function Test-IW7FitsBeside($Ticket, $Plan, [long]$NeedBytes) {
     # Would the older ticket still fit in memory if this request were admitted now?
     if (!$Plan) { return $true }
     $free=[math]::Max(0L,[long]$Plan.Available-[long]$Plan.Unloaded)
-    ($free-$NeedBytes) -ge [long]$Ticket.PhysicalBytes -and ([long]$Plan.Declared+$NeedBytes+[long]$Ticket.PhysicalBytes) -le [long]$Plan.Budget
+    ($free-$NeedBytes-[long]$Plan.Floor) -ge [long]$Ticket.PhysicalBytes -and ([long]$Plan.Declared+$NeedBytes+[long]$Ticket.PhysicalBytes) -le [long]$Plan.Budget
 }
 function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Shareable, [int]$ShortSeconds, $Plan=$null,
     $Resources=$null, [long]$PhysicalBytes=0) {
@@ -602,7 +662,14 @@ function Assert-IW7QueueTurn($Context, [string]$Scope, [string]$Kind, [bool]$Sha
         $legacy=Test-IW7LegacyRecord $t
         $aged=(($Context.NowMs-[long]$t.FirstMs)/1000) -ge $policy.AgingSeconds
         if (!$legacy -and (Get-IW7ResourceConflict $Resources (Get-IW7HeldResources $t))) { $named+=$t; continue }
-        if ($aged -and ($legacy -or (!(Test-IW7LongRecord $t) -and !(Test-IW7FitsBeside $t $Plan $PhysicalBytes)))) { $memory+=$t }
+        # 18 Nov 2026: an aged older ticket that does not fit even now (it waits for running leases to end, not for this request)
+        # is passed by a request that fits now; it blocks again once it fits now, or after AgingSeconds * 3 (starvation guard).
+        # 18 Nov 2026: a build or other short exclusive job that fits now is not held back by a waiting SESSION, however old: it holds its
+        # memory for minutes, the session waits for other sessions to end anyway (a87: a lab build waited 33 minutes behind four sessions).
+        # An older Build or Extract ticket that is aged still holds it back (a bake must be able to drain).
+        if (!$Shareable -and $Kind -in @('Build','Extract') -and $t.Shareable -and !$legacy) { continue }
+        $drainsForMe=$legacy -or (Test-IW7FitsBeside $t $Plan 0) -or ((($Context.NowMs-[long]$t.FirstMs)/1000) -ge ($policy.AgingSeconds*3))
+        if ($aged -and $drainsForMe -and ($legacy -or (!(Test-IW7LongRecord $t) -and !(Test-IW7FitsBeside $t $Plan $PhysicalBytes)))) { $memory+=$t }
     }
     if (!$Shareable -and $named.Count -and !$memory.Count -and $ShortSeconds -gt 0 -and
         !@($named | Where-Object { [double]$_.OvertakenSeconds+$ShortSeconds -gt $policy.MaxOvertakeSeconds }).Count) {
@@ -860,7 +927,7 @@ function Enter-IW7ResourceLease {
         # declaration adds no demand and is never refused here; nothing is saved on refusal.
         $queuePlan = $null
         if ($Shareable -and (!$same.Count -or $PhysicalBytes -gt [long]$same[0].PhysicalBytes)) {
-            $plan = Get-IW7ShareableMemoryPlan $snapshot $other $processes
+            $plan = Get-IW7ShareableMemoryPlan $snapshot $other $processes -RecordPeaks
             $queuePlan = $plan
             # A new request that cannot fit even after every running lease ends: refused now.
             if (!$same.Count) { Assert-IW7ShareableCanFit $plan $PhysicalBytes }
@@ -868,14 +935,14 @@ function Enter-IW7ResourceLease {
         } elseif (!$same.Count -and $other.Count) {
             # A build, an analysis or an exclusive session beside other leases is admitted by memory too (alone, as
             # before, it is admitted whatever the memory: it is the only one asking).
-            $plan = Get-IW7ShareableMemoryPlan $snapshot $other $processes
+            $plan = Get-IW7ShareableMemoryPlan $snapshot $other $processes -RecordPeaks
             $queuePlan = $plan
             Assert-IW7ShareableMemoryAdmission $plan $PhysicalBytes $PhysicalBytes
         }
         # Waiting order: a new lease that would be admitted still waits for older tickets that conflict with it
         # (a shared name, or memory once they have waited the aging time); the others are passed.
         if (!$same.Count) {
-            if (!$queuePlan) { $queuePlan = Get-IW7ShareableMemoryPlan $snapshot @($other) $processes }
+            if (!$queuePlan) { $queuePlan = Get-IW7ShareableMemoryPlan $snapshot @($other) $processes -RecordPeaks }
             Assert-IW7QueueTurn $queue $canonical $Kind ([bool]$Shareable) $ShortSeconds $queuePlan $named $PhysicalBytes
         }
         } catch {
@@ -960,15 +1027,17 @@ function Exit-IW7ResourceLease {
                 if (@($builders | Where-Object { Test-IW7ProcessUnder $_ $index $roots }).Count) { throw 'Heavy child may still be alive; lease retained.' }
             }
         }
+        $releasePeaks=Read-IW7LeasePeaks
         $state.Leases=@($state.Leases | Where-Object Token -NE $Token)
         Save-IW7ResourceState $state
+        if ($releasePeaks.ContainsKey([string]$Token)) { $kept=@{}; foreach ($k in @($releasePeaks.Keys)) { if ($k -ne [string]$Token -and @($state.Leases | Where-Object Token -EQ $k).Count) { $kept[$k]=$releasePeaks[$k] } }; Save-IW7LeasePeaks $kept }
         try {
             $held=((Get-IW7SchedulerUtcNow)-([datetimeoffset]$lease[0].CreatedUtc).UtcDateTime).TotalSeconds
             $short=$lease[0].PSObject.Properties['ShortSeconds']
             $shortValue=if ($short) { [int]$short.Value } else { 0 }
             Add-IW7AdmissionLog ([pscustomobject]@{Event='release';Kind=$lease[0].Kind;Shareable=(Test-IW7ShareableRuntimeLease $lease[0]);
                 Short=$shortValue;Owner=$lease[0].Owner;Scope=$lease[0].Scope;HeldSeconds=[math]::Round($held,1);
-                Overran=[bool]($shortValue -and $held -gt $shortValue)})
+                Overran=[bool]($shortValue -and $held -gt $shortValue);Declared=[long]$lease[0].PhysicalBytes;PeakWorkingSet=$(if ($releasePeaks.ContainsKey([string]$Token)) { [long]$releasePeaks[[string]$Token] } else { $null })})
         } catch { }
     }
 }
@@ -1000,7 +1069,7 @@ function Get-IW7TicketWhy($Ticket, $Plan, $Leases, [long]$NowMs) {
     if ($need -gt $reach) {
         return "$head $numbers. It cannot fit as things stand (at most $(Format-IW7Gb $reach) can come free by waiting): later requests that fit go first; asked again, it is refused."
     }
-    if ($need -le $free -and $Plan.Declared+$need -le $Plan.Budget) { return "$head $numbers. It fits now: its next ask is granted unless an older request goes first." }
+    if ($need -le $free-[long]$Plan.Floor -and $Plan.Declared+$need -le $Plan.Budget) { return "$head $numbers. It fits now: its next ask is granted unless an older request goes first." }
     $aged=$wait -ge $policy.AgingSeconds
     $rule=if ($aged) { 'it has waited over the aging time: later sessions wait behind it' } else { "later sessions that fit may pass it for another $(Format-IW7Age ($policy.AgingSeconds-$wait))" }
     "$head $numbers. It fits once running sessions end; $rule."
@@ -1045,7 +1114,7 @@ function Get-IW7ResourceStatus {
         [pscustomobject]@{Why=$why;Snapshot=$snapshot;Budget=(Test-IW7ResourceBudget $snapshot 0 0);Leases=@($state.Leases);Queue=$waiting;
             ShareableReachBytes=(Get-IW7ShareableReachBytes $plan);
             ShareableRuntimeLimit=(Get-IW7ShareableRuntimeLeaseLimit);
-            ShareableReserveBytes=$plan.Reserve;ShareableDeclaredBytes=$plan.Declared;
+            ShareableReserveBytes=$plan.Reserve;ShareableFloorBytes=$plan.Floor;ShareableDeclaredBytes=$plan.Declared;
             ShareableRemainingDeclaredBytes=[math]::Max(0L,$plan.Budget-$plan.Declared);
             ShareableAvailableBytes=$plan.Available;ShareableUnloadedBytes=$unloaded}
     }

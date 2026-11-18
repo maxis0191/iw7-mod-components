@@ -57,7 +57,7 @@ if(!(Test-Path -LiteralPath $recipe)){
 & python -B (Join-Path (Split-Path $recipe -Parent) 'check_boundaries.py') $root
 if($LASTEXITCODE){throw 'Product ownership gate failed.'}
 # -Only <id>[,<id>...] runs the named checks alone (a re-run after a fix); a head is judged by the full run.
-$selection=@(foreach($id in $Only){'--only';$id})
+$selection=@(foreach($id in @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })){'--only';$id})
 & python -B $recipe --project $root --workspace $Workspace --output $Output @selection
 if($LASTEXITCODE){
     $resultsPath=Join-Path $Output 'results.json'
