@@ -319,6 +319,8 @@
     "src/native/paris_model_diagnostics.hpp",
     "src/native/paris_net.cpp",
     "src/native/paris_perf.cpp",
+    "src/native/paris_render_meter.cpp",
+    "src/native/paris_render_meter.hpp",
     "src/native/paris_see.cpp",
     "src/native/paris_sperf.cpp",
     "src/native/paris_stack.hpp",
