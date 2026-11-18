@@ -232,14 +232,15 @@ function Save-IW7SourceTimes {
 # compiles everything again (measured: the seed copy of this change rebuilt asmjit, curl and DirectXTex).
 # -Max above 1 makes extra trees for callers that hold a build reservation of their own; each starts cold.
 function Enter-IW7NativeTree {
-    param([Parameter(Mandatory)][string]$Pin, [ValidateRange(1,8)][int]$Max = 1, [int]$WaitSeconds = 7200)
+    param([Parameter(Mandatory)][string]$Pin, [ValidateRange(1,8)][int]$Max = 1, [int]$WaitSeconds = 7200, [string]$Kind = 'lab')
     $root = Join-Path (Get-IW7BuildCacheRoot) 'native-trees'
     New-Item -ItemType Directory -Path $root -Force | Out-Null
     $deadline = [datetime]::UtcNow.AddSeconds($WaitSeconds)
     $waitStart = Get-Date
     while ($true) {
         for ($n = 1; $n -le $Max; $n++) {
-            $name = "$($Pin.Substring(0,10))-$n"
+            # Lab and production profiles link differently (premake-lab.lua), so each has its own tree and neither recompiles the other.
+            $name = if ($Kind -eq 'lab') { "$($Pin.Substring(0,10))-$n" } else { "$($Pin.Substring(0,10))-$Kind$n" }
             $lock = $null
             try { $lock = [IO.File]::Open((Join-Path $root "$name.lock"), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) } catch { continue }
             $tree = Join-Path $root $name
@@ -256,4 +257,48 @@ function Enter-IW7NativeTree {
 function Exit-IW7NativeTree {
     param([Parameter(Mandatory)]$Tree)
     if ($Tree.Lock) { $Tree.Lock.Dispose() }
+}
+
+# ---- a finished folder of files by key (the standard client package) ----
+# packages-<kind>/<key>/: the files of the output folder and complete.json. Restored by hard links.
+function Get-IW7DirPackageRoot([string]$Kind) { Join-Path (Get-IW7BuildCacheRoot) "packages-$Kind" }
+function Restore-IW7DirPackage {
+    param([Parameter(Mandatory)][string]$Kind, [Parameter(Mandatory)][string]$Key, [Parameter(Mandatory)][string]$Destination, [string]$ManifestName = 'build-manifest.json', [string]$ProjectCommit)
+    $dir = Join-Path (Get-IW7DirPackageRoot $Kind) $Key
+    $done = Join-Path $dir 'complete.json'
+    if (!(Test-Path -LiteralPath $done)) { return $null }
+    $info = Get-Content -LiteralPath $done -Raw | ConvertFrom-Json
+    foreach ($f in @($info.Files)) {
+        if (!(Test-Path -LiteralPath (Join-Path $dir $f.Name)) -or (Get-FileHash -LiteralPath (Join-Path $dir $f.Name)).Hash -ne $f.SHA256) { return $null }
+    }
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    foreach ($f in @($info.Files)) {
+        if ($f.Name -eq $ManifestName) { continue }
+        New-IW7HardLinkOrCopy (Join-Path $Destination $f.Name) (Join-Path $dir $f.Name)
+    }
+    if (Test-Path -LiteralPath (Join-Path $dir $ManifestName)) {
+        $m = Get-Content -LiteralPath (Join-Path $dir $ManifestName) -Raw | ConvertFrom-Json -AsHashtable
+        $m.CacheKey = $Key; $m.CacheRestoredUtc = [datetime]::UtcNow.ToString('o')
+        $m.CacheBuiltForProjectCommit = $info.ProjectCommit; $m.CacheRestoredForProjectCommit = $ProjectCommit
+        Set-Content -LiteralPath (Join-Path $Destination $ManifestName) -Value ($m | ConvertTo-Json -Depth 8) -Encoding UTF8
+    }
+    (New-Item -ItemType File -Path (Join-Path $dir 'used.stamp') -Force).LastWriteTimeUtc = [datetime]::UtcNow
+    $info
+}
+function Save-IW7DirPackage {
+    param([Parameter(Mandatory)][string]$Kind, [Parameter(Mandatory)][string]$Key, [Parameter(Mandatory)][string]$Source, [string]$ProjectCommit)
+    $root = Get-IW7DirPackageRoot $Kind
+    New-Item -ItemType Directory -Path $root -Force | Out-Null
+    $final = Join-Path $root $Key
+    if (Test-Path -LiteralPath (Join-Path $final 'complete.json')) { return }
+    $tmp = "$final.tmp-$PID"
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    $files = @(Get-ChildItem -LiteralPath $Source -File | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $tmp $_.Name)
+        [ordered]@{ Name = $_.Name; SHA256 = (Get-FileHash -LiteralPath (Join-Path $tmp $_.Name)).Hash }
+    })
+    [ordered]@{ Key = $Key; Kind = $Kind; ProjectCommit = $ProjectCommit; Files = $files; StoredUtc = [datetime]::UtcNow.ToString('o') } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $tmp 'complete.json') -Encoding UTF8
+    if (Test-Path -LiteralPath $final) { Remove-Item -LiteralPath $final -Recurse -Force }
+    try { Move-Item -LiteralPath $tmp -Destination $final -ErrorAction Stop } catch { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 }

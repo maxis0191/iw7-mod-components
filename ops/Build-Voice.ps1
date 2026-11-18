@@ -1,4 +1,4 @@
-param([ValidateRange(0,86400)][int]$WaitForSlotSeconds = 0, [switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
+param([ValidateRange(0,86400)][int]$WaitForSlotSeconds = 0, [switch]$NoLabLink, [switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
     [ValidateNotNullOrEmpty()][string]$NativeRoot = 'auto')   # 'auto': a pooled tree of the machine build cache (ops/build/Build-Cache.Core.ps1); or the absolute path of your own tree
@@ -75,7 +75,7 @@ if ($NativeRoot -eq 'auto') {
     if ($TestsOnly) { $NativeRoot = Join-Path $repo 'runtime/tests-only-no-native' }
     else {
         if (!$pin) { throw 'NativeRoot auto needs a pinned profile (-ServerModules or an experiment).' }
-        $nativeTree = Enter-IW7NativeTree -Pin $pin
+        $nativeTree = Enter-IW7NativeTree -Pin $pin -Kind $(if ($IsolatedLab -or $Debugger) { 'lab' } else { 'prod' })
         $NativeRoot = $nativeTree.Path
         Write-Output ("Native tree {0} ({1}, waited {2} s)" -f $NativeRoot, $nativeTree.Source, $nativeTree.Waited)
     }
@@ -572,7 +572,14 @@ try {
     Write-IW7Lap 'overlays'
     $timeStep = Restore-IW7SourceTimes -NativeRoot $root
     Write-Output ("Native sources: {0} unchanged since the last build of this tree (times restored), {1} new or changed." -f $timeStep.Kept, $timeStep.Changed)
-    & ./tools/premake5.exe vs2022
+    # A lab client (IsolatedLab or Debugger) is a test client: no /GL, no /LTCG, incremental link (ops/build/premake-lab.lua).
+    if (($IsolatedLab -or $Debugger) -and !$NoLabLink) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'build/premake-lab.lua') -Destination (Join-Path $root 'paris-lab.lua') -Force
+        & ./tools/premake5.exe --file=paris-lab.lua vs2022
+    } else {
+        Remove-Item -LiteralPath (Join-Path $root 'paris-lab.lua') -Force -ErrorAction SilentlyContinue
+        & ./tools/premake5.exe vs2022
+    }
     if ($LASTEXITCODE) { throw 'Premake failed.' }
     Write-IW7Lap 'source times and premake'
     # Compile in parallel: the lead used to be one cl.exe at a time (/m:1 and MultiProcessorCompilation=false).

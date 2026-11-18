@@ -104,6 +104,15 @@ if errorlevel 1 exit /b 1
     Assert ((Get-Item $f1).LastWriteTimeUtc -eq [datetime]'2026-01-01') 'the unchanged file did not get its time back'
     Assert ((Get-Item $f2).LastWriteTimeUtc -gt [datetime]'2026-06-01') 'the changed file lost its new time'
     Assert (!(Test-Path -LiteralPath (Join-Path $nr '.iw7-source-times.json'))) 'the record stayed after the restore; a failed build would trust it'
+    # --- a folder package (the standard client) ---
+    $srcDir = Join-Path $tmp 'stdout'; New-Item -ItemType Directory -Force -Path $srcDir | Out-Null
+    Set-Content -LiteralPath (Join-Path $srcDir 'iw7-mod.exe') -Value 'STD-EXE'
+    '{"ProjectCommit":"c1"}' | Set-Content -LiteralPath (Join-Path $srcDir 'build-manifest.json')
+    Assert ($null -eq (Restore-IW7DirPackage -Kind standard -Key 'k1' -Destination (Join-Path $tmp 'std1'))) 'a folder package existed before it was stored'
+    Save-IW7DirPackage -Kind standard -Key 'k1' -Source $srcDir -ProjectCommit 'c1'
+    $rinfo = Restore-IW7DirPackage -Kind standard -Key 'k1' -Destination (Join-Path $tmp 'std2') -ProjectCommit 'c2'
+    Assert ($null -ne $rinfo -and (Get-Content (Join-Path $tmp 'std2/iw7-mod.exe') -Raw).Trim() -ceq 'STD-EXE') 'the folder package was not restored'
+    Assert ((Get-Content (Join-Path $tmp 'std2/build-manifest.json') -Raw | ConvertFrom-Json).CacheRestoredForProjectCommit -ceq 'c2') 'the restored folder manifest does not say where it came from'
     # --- native tree pool: two builds get two trees, a third waits ---
     $pin = 'abcdef0123456789abcdef0123456789abcdef01'
     $t1 = Enter-IW7NativeTree -Pin $pin -Max 2 -WaitSeconds 5
