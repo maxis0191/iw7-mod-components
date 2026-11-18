@@ -618,6 +618,17 @@
       ]
     },
     {
+      "id": "build_cache_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/build_cache_test.ps1"
+      ]
+    },
+    {
       "id": "download_cache_overlay_test",
       "command": [
         "pwsh",
@@ -957,6 +968,7 @@
     },
     {
       "id": "native_unit_tests",
+      "timeout_seconds": 3600,
       "command": [
         "pwsh",
         "-NoLogo",
@@ -964,6 +976,14 @@
         "-NonInteractive",
         "-File",
         "tests/ops/native_unit_tests.ps1"
+      ]
+    },
+    {
+      "id": "build_inputs_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/build_inputs_test.py"
       ]
     }
   ],

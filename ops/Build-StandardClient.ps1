@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$OwnerCheats,[switch]$Capacity64)
+param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$Serial,[switch]$OwnerCheats,[switch]$Capacity64,[ValidateRange(0,86400)][int]$WaitForSlotSeconds=0)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw | ConvertFrom-Json).Standard
@@ -16,7 +16,9 @@ while($cursor){
     $parent=Split-Path $cursor -Parent;if($parent -eq $cursor){break};$cursor=$parent
 }
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
-Invoke-IW7ResourceJob -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
+$jobCommand=if($WaitForSlotSeconds -gt 0){'Invoke-IW7QueuedResourceJob'}else{'Invoke-IW7ResourceJob'}
+$jobExtra=if($WaitForSlotSeconds -gt 0){@{WaitForSlotSeconds=$WaitForSlotSeconds}}else{@{}}
+& $jobCommand @jobExtra -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
     Remove-IW7VoiceCertifyOverlay $root
     Remove-IW7VoiceRelayOverlay $root
     Remove-IW7CapacityPeerOverlay $root
@@ -75,7 +77,10 @@ Remove-IW7OwnerCheatsOverlay $root
         $postBuildNodes=@($generatedProject.SelectNodes("//*[local-name()='PostBuildEvent']/*[local-name()='Command']")|Where-Object{![string]::IsNullOrWhiteSpace($_.InnerText)})
         if($postBuildNodes.Count){throw 'Automatic upstream copy/deployment post-build events refused before MSBuild.'}
         if($projectText -match '(?:paris_voice|voice_relay|voice_test|paris_test_fixture|player_movement)\.cpp'){throw 'Unexpected private or duplicate translation unit in regenerated client project.'}
-        & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false /p:PostBuildEventUseInBuild=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"
+        # Parallel compile (the lead used to run /m:1 with MultiProcessorCompilation=false: one cl.exe at a time).
+        $threads=if($env:IW7_BUILD_THREADS){[int]$env:IW7_BUILD_THREADS}else{[Math]::Max(2,[Math]::Min(8,[int]([Environment]::ProcessorCount/2)))}
+        $mp=if($Serial){@("/m:$BuildJobs",'/p:MultiProcessorCompilation=false')}else{@("/m:$([Math]::Max(2,[Math]::Min(4,$threads)))",'/p:MultiProcessorCompilation=true',"/p:CL_MPCount=$threads")}
+        & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln @mp /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:PostBuildEventUseInBuild=false "/flp:logfile=$runtime/standard-client-build.log;verbosity=minimal"
         if($LASTEXITCODE){throw 'Standard client native build failed.'}
     } finally {Pop-Location}
     if($OwnerCheats -or $Capacity64){
