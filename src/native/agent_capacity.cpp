@@ -772,6 +772,7 @@ void drawsurf_init_stub() {
     grow_drawsurf_list();
 }
 void plan_drawsurf_lists() {
+    if (utils::flags::has_flag("paris-stock-render-pools")) return;   // A/B runs: the stock renderer pools (this list and the skinned cache) with the capacity build
     drawsurf_init_hook.create(drawsurf_init_function, drawsurf_init_stub);   // queued: main applies every queued hook after post_unpack
     scheduler::once([] { grow_drawsurf_list(); }, scheduler::main);
 }
@@ -822,6 +823,7 @@ void plan_rings() {
 // initialiser) writes r_SkinnedCacheSize itself as (1 / r_lodScale) x the float constant at 0x14153D2A0 (563,200.0), clamped by the dvar's domain (0x200000), and sizes the three frame pools
 // (32 bytes and 4 bytes a vertex) from it; `+set r_SkinnedCacheSize` is overwritten (run crowd-skin). The constant is raised to 2,000,000.0 (three frames x 36 bytes x 2,000,000 = 216 MB of video memory).
 void plan_skin_cache() {
+    if (utils::flags::has_flag("paris-stock-render-pools")) return;
     auto* constant = reinterpret_cast<float*>(0x14153D2A0ull);
     DWORD old{};
     if (*constant != 563200.0f || !VirtualProtect(constant, sizeof(float), PAGE_READWRITE, &old)) { console::error("[agent capacity] skinned cache constant not as expected, size left at the stock\n"); return; }
