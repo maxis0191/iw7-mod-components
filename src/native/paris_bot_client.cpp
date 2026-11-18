@@ -135,6 +135,8 @@ namespace paris_bot_client
 			utils::hook::set<uint8_t>(0x140A81570, 0xC3);  // wait for the render side of the asset stream
 			// botonly5: the stacks showed the db loader thread in sub_140A81640 (the same handshake on _DAT_145A69AD0, called from sub_140A84820), main thread behind it in DB_FindXAssetHeader
 			utils::hook::set(0x140A81640, 0xC3C033);  // same wait, returns 0
+			// botdisc3 stacks: the db thread spins in sub_140A81C80 until the in-flight counter [145A69ACC] reaches 0 (the render side decrements it); the third and last spinner on that counter (refs of 145A69ACC/AD0)
+			utils::hook::set<uint8_t>(0x140A81C80, 0xC3);  // wait for the render side's in-flight counter
 			for (const unsigned long long r : { 0x140E27EE0ull, 0x140E27FE0ull, 0x140E26E30ull, 0x140E26520ull, 0x140E25660ull, 0x140E244A0ull })
 				utils::hook::set<uint8_t>(static_cast<size_t>(r), 0xC3);  // R_SyncRenderThread, R_ToggleSmpFrame, R_IssueRenderCommandsBegin, and the draw submission calls of sub_140346F40
 			utils::hook::call(0x1403428B1, sync_gpu_stub);  // R_SyncGpu: the pacing sleep at com_maxfps
