@@ -102,8 +102,16 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 # -WaitForSlotSeconds: wait in the scheduler's waiting order (Invoke-IW7QueuedResourceJob) instead of refusing at once; no retry loop outside.
 $jobCommand = if ($WaitForSlotSeconds -gt 0) { 'Invoke-IW7QueuedResourceJob' } else { 'Invoke-IW7ResourceJob' }
 $jobExtra = if ($WaitForSlotSeconds -gt 0) { @{ WaitForSlotSeconds = $WaitForSlotSeconds } } else { @{} }
+# What the build asks the scheduler for (measured 18 Nov 2026 with the lease sampler): a one-file change in a warm tree peaks at about
+# 0.5 GB (one cl.exe and an incremental link); a build from nothing (a new tree, other link flags) peaks at several GB. Declaring 4 GB for
+# both kept builds waiting behind memory they never used. A tree is warm when its last successful build had the same link profile.
+$linkProfile = if ($IsolatedLab -or $Debugger) { 'lab' } else { 'prod' }
+$profileMark = Join-Path $root '.iw7-link-profile'
+$warmTree = (Test-Path -LiteralPath $profileMark) -and ((Get-Content -LiteralPath $profileMark -Raw).Trim() -ceq $linkProfile) -and (Test-Path -LiteralPath (Join-Path $root '.iw7-source-times.json'))
+$askPhysical = if ($warmTree -and !$TestsOnly) { 1.5GB } elseif ($TestsOnly) { 1GB } else { 4GB }
+$askCommit = if ($warmTree -and !$TestsOnly) { 3GB } elseif ($TestsOnly) { 2GB } else { 6GB }
 $slotAsked = Get-Date
-& $jobCommand @jobExtra -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes (4GB * $BuildJobs) -CommitBytes (6GB * $BuildJobs) -Body {
+& $jobCommand @jobExtra -Scope $repo -Owner 'IW7 native build and checks' -PhysicalBytes ([long]($askPhysical * $BuildJobs)) -CommitBytes ([long]($askCommit * $BuildJobs)) -Body {
 $slotWaited = ((Get-Date) - $slotAsked).TotalSeconds
 Write-Output ('Waited {0:n0} s for the Build reservation.' -f $slotWaited)
 $script:lapAt = Get-Date
@@ -602,6 +610,7 @@ try {
     if ($LASTEXITCODE) { throw 'Voice build failed.' }
     Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
     Save-IW7SourceTimes -NativeRoot $root
+    Set-Content -LiteralPath $profileMark -Value $linkProfile
     $script:lapAt = Get-Date
 } finally { Pop-Location }
 $voiceState = Get-IW7VoiceOverlayState $root
