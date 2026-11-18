@@ -16,6 +16,7 @@ server repository (`docs/DEVKIT.md`, `docs/TOOLS-INDEX.md`). Paths are relative 
 | A freeze | `ops/engine-map/iw7_hang.py` with `src/native/paris_hang.cpp` | [HANG.md](HANG.md) | `tests/ops/hang_report_test.py` |
 | A crash | `ops/engine-map/iw7_crash.py` with `src/native/paris_stack.hpp` | [CRASH.md](CRASH.md) | `tests/ops/crash_stack_test.py` |
 | Who writes this client memory (a hardware data breakpoint on every thread, a per-frame guard; the writer's RIP and stack) | `src/native/paris_write_watch.cpp` (`-paris-write-watch`) | [WRITE-WATCH.md](WRITE-WATCH.md) | the server repository's play launcher, `[WW-TEST]` self test |
+| What does the renderer refuse (every pool overflow by id with the engine's text), is the skinned cache full, which entities are drawn each frame, video memory | `src/native/paris_render_meter.cpp` (`-paris-render-meter`) | [RENDER-METER.md](RENDER-METER.md) | `tests/ops/render_meter_test.py` |
 | Network update timing | `ops/engine-map/iw7_net.py` with `src/native/paris_net.cpp` | [NET.md](NET.md) | `tests/ops/net_report_test.py` |
 | Change the live world of a lab client | `ops/engine-map/iw7_world_live.py` with `src/native/paris_world.cpp` | [WORLD-LIVE.md](WORLD-LIVE.md) | `tests/ops/world_live_test.py` |
 | What is on the screen, as data: which UI elements, where, how big, which text, visible or not; defects with no picture | `ops/engine-map/iw7_ui.py` with `src/native/paris_ui.cpp` | [UI-DUMP.md](UI-DUMP.md) | `tests/ops/ui_dump_test.py` |
