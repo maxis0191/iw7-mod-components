@@ -836,6 +836,25 @@
       ]
     },
     {
+      "id": "render_meter_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/render_meter_test.py"
+      ],
+      "inputs": [
+        "src/native/agent_capacity.cpp",
+        "src/native/paris_perf.cpp",
+        "src/native/paris_render_meter.cpp",
+        "tests/ops/agent_capacity_sites_test.py",
+        "tests/ops/render_meter_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
+      ]
+    },
+    {
       "id": "agent_capacity_snapshot_test",
       "command": [
         "python",

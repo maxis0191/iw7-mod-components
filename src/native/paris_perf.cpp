@@ -4,6 +4,7 @@
 #include "command.hpp"
 #include "console/console.hpp"
 #include "paris_stack.hpp"
+#include "paris_render_meter.hpp"
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
@@ -124,7 +125,6 @@ namespace paris_perf
         constexpr std::uint32_t list_capacity[4] = {1024, 1024, 1024, 512};
         constexpr unsigned list_skip_id[4] = {0x9A, 5, 1, 2};
         constexpr const char* list_name[4] = {"params", "lights", "draws", "draws_other"};
-        utils::hook::detour scene_copy_hook;
         std::atomic<std::uint64_t> list_calls{}, list_sum[4]{}, list_peak[4]{}, skip_base[4]{}, skip_frame_max{}, skip_last{};
         std::uint64_t skip_total_now()
         {
@@ -132,9 +132,8 @@ namespace paris_perf
             for (const auto id : list_skip_id) n += agent_capacity::render_skipped(id);
             return n;
         }
-        void scene_copy_stub()
+        void scene_copy_callback()   // runs after the stock function; the hook is owned by paris_render_meter.cpp (one detour per address)
         {
-            scene_copy_hook.invoke<void>();
             if (!window_open.load(std::memory_order_acquire)) return;
             ++list_calls;
             for (int i = 0; i < 4; ++i)
@@ -574,11 +573,8 @@ namespace paris_perf
                 snapshot_parse_hook.create(snapshot_parse_function, snapshot_parse_stub);
             else console::error("[Paris perf] snapshot parser at 0x%llX: code differs from the expected bytes, its counter is left out\n",
                 static_cast<unsigned long long>(snapshot_parse_function));
-            static const unsigned char copy_code[] = {0x48, 0x83, 0xEC, 0x28, 0x8B, 0x05};
-            if (std::memcmp(reinterpret_cast<const void*>(scene_copy_function), copy_code, sizeof(copy_code)) == 0)
-                scene_copy_hook.create(scene_copy_function, scene_copy_stub);
-            else console::error("[Paris perf] scene copy at 0x%llX: code differs from the expected bytes, the render list meter is left out\n",
-                static_cast<unsigned long long>(scene_copy_function));
+            if (!paris_render_meter::subscribe_scene_end(scene_copy_callback))
+                console::error("[Paris perf] scene copy at 0x%llX: not hooked, the render list meter is left out\n", static_cast<unsigned long long>(scene_copy_function));
             install_motion_hook();
             scheduler::loop([]
             {
