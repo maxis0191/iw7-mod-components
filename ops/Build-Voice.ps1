@@ -1,7 +1,7 @@
-param([switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
+param([switch]$NoCache, [switch]$Serial, [switch]$TestsOnly, [switch]$Sanitizers, [switch]$RhinoExperiment, [switch]$EnemyExperiment, [switch]$ServerModules, [switch]$IsolatedLab, [switch]$Debugger, [switch]$CollisionProvider, [switch]$WordProvenance, [switch]$OwnerCheats, [switch]$Capacity64, [switch]$VoiceRelay, [switch]$VoiceCertify, [switch]$Perf, [switch]$AgentCapacity,
     [ValidateSet('Rave','Slasher')][string]$EnemyProfile = 'Rave',
     [ValidateRange(1,2)][int]$BuildJobs = 1,
-    [ValidateNotNullOrEmpty()][string]$NativeRoot = (Join-Path $PSScriptRoot '../tools/iw7-mod-native'))
+    [ValidateNotNullOrEmpty()][string]$NativeRoot = 'auto')   # 'auto': a pooled tree of the machine build cache (ops/build/Build-Cache.Core.ps1); or the absolute path of your own tree
 $ErrorActionPreference = 'Stop'
 function Resolve-IW7VoiceBuildNativeRoot([string]$Path) {
     # Never discover/follow a junction target. The caller must name the actual
@@ -41,7 +41,39 @@ if (!$TestsOnly -and !$ServerModules -and !$RhinoExperiment -and !$EnemyExperime
     throw 'Select -ServerModules or an explicit experiment; the 36f7afe player-voice profile is retired.'
 }
 $repo = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot/build/Build-Cache.Core.ps1"
+$buildStart = Get-Date
+$switchNames = @('Sanitizers','RhinoExperiment','EnemyExperiment','ServerModules','IsolatedLab','Debugger','CollisionProvider','WordProvenance','OwnerCheats','Capacity64','VoiceRelay','VoiceCertify','Perf','AgentCapacity') | Where-Object { (Get-Variable -Name $_ -ValueOnly).IsPresent }
+$pin = $null
+if ($RhinoExperiment -or $EnemyExperiment) { $pin = '77e6d4d24e918ee363b3feee3735c3b889dff7d7' }
+if ($ServerModules) { $pin = 'cfca45b11ee14641945b9a264a95638387f48a4a' }
+# The package cache serves the plain client profile only: not the tests-only and sanitizer runs, not the opt-in voice images.
+$cacheKey = $null
+$toolchainId = $null
+if (!$NoCache -and !$TestsOnly) { $toolchainId = Get-IW7ToolchainId }
+if (!$NoCache -and !$TestsOnly -and !$Sanitizers -and !$VoiceRelay -and !$VoiceCertify -and (Test-Path -LiteralPath (Join-Path $repo 'source-workspace.json'))) {
+    $cacheKey = Get-IW7NativeInputKey -WorkspaceRoot $repo -Switches ($switchNames + @("enemyprofile=$EnemyProfile")) -Pin $pin -Toolchain $toolchainId
+    $hit = Get-IW7CachedPackage -Key $cacheKey
+    if ($hit) {
+        $wsManifest = Get-Content -LiteralPath (Join-Path $repo 'source-workspace.json') -Raw | ConvertFrom-Json
+        $exePath = Restore-IW7CachedPackage -WorkspaceRoot $repo -Package $hit -ProjectCommit ([string]$wsManifest.revisions.'iw7-mod-components')
+        Write-Output ("Build cache hit {0}: client restored in {1:n1} s from a build of commit {2}; nothing compiled." -f $cacheKey.Substring(0,12), ((Get-Date) - $buildStart).TotalSeconds, $hit.Info.ProjectCommit)
+        Write-Output "Prepared private client/server build: $(Split-Path $exePath -Parent)"
+        return
+    }
+}
+$nativeTree = $null
+if ($NativeRoot -eq 'auto') {
+    if (!$pin) { throw 'NativeRoot auto needs a pinned profile (-ServerModules or an experiment).' }
+    if ($TestsOnly) { $NativeRoot = Join-Path $repo 'runtime/tests-only-no-native' }
+    else {
+        $nativeTree = Enter-IW7NativeTree -Pin $pin
+        $NativeRoot = $nativeTree.Path
+        Write-Output ("Native tree {0} ({1}, waited {2} s)" -f $NativeRoot, $nativeTree.Source, $nativeTree.Waited)
+    }
+}
 $root = Resolve-IW7VoiceBuildNativeRoot $NativeRoot
+try {
 if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current ServerModules native profile.' }
 . "$PSScriptRoot/Owner-CheatsOverlay.Core.ps1"
 . "$PSScriptRoot/Voice-RelayOverlay.Core.ps1"
@@ -87,6 +119,10 @@ if (!$installation) { throw 'VS 2022 C++ toolchain not found.' }
 $vcvars = Join-Path $installation 'VC/Auxiliary/Build/vcvars64.bat'
 $runtime = Join-Path $repo 'runtime'
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
+$testKey = $null
+if (!$NoCache -and !$TestsOnly -and !$Sanitizers -and (Test-Path -LiteralPath (Join-Path $repo 'source-workspace.json'))) { $testKey = Get-IW7TestInputKey -WorkspaceRoot $repo -Toolchain $toolchainId }
+if ($testKey -and (Test-IW7TestsPassed $testKey)) { Write-Output "Native unit tests: passed before for these test and source files (cache $($testKey.Substring(0,12))); not compiled again." }
+else {
 # Save the compiler invocation to avoid PowerShell 5 native-argument quote rewriting.
 $testCmd = Join-Path $runtime 'compile-voice-tests.cmd'
 @"
@@ -180,6 +216,8 @@ if ($Sanitizers) {
     if ($LASTEXITCODE) { throw 'Native AddressSanitizer tests failed.' }
 }
 & "$repo/tests/ops/download_cache_overlay_test.ps1"
+if ($testKey) { Set-IW7TestsPassed $testKey }
+}
 if ($TestsOnly) { return }
 $properties = Join-Path $root 'src/common/utils/properties.cpp'
 $baseProperties = (((git -C $root show ($commit + ':src/common/utils/properties.cpp')) -join "`n").TrimEnd()) + "`n"
@@ -515,10 +553,18 @@ foreach ($family in @('agent_capacity*', 'script_variables*')) {
 if ($staleSources.Count) { Write-Output ("Removed {0} source file(s) of other branches from the native tree: {1}" -f $staleSources.Count, ($staleSources -join ', ')) }
 Push-Location $root
 try {
+    $timeStep = Restore-IW7SourceTimes -NativeRoot $root
+    Write-Output ("Native sources: {0} unchanged since the last build of this tree (times restored), {1} new or changed." -f $timeStep.Kept, $timeStep.Changed)
     & ./tools/premake5.exe vs2022
     if ($LASTEXITCODE) { throw 'Premake failed.' }
-    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln "/m:$BuildJobs" /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 /p:MultiProcessorCompilation=false "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
+    # Compile in parallel: the lead used to be one cl.exe at a time (/m:1 and MultiProcessorCompilation=false).
+    $threads = if ($env:IW7_BUILD_THREADS) { [int]$env:IW7_BUILD_THREADS } else { [Math]::Max(2, [Math]::Min(8, [int]([Environment]::ProcessorCount / 2))) }
+    $mp = if ($Serial) { @("/m:$BuildJobs", '/p:MultiProcessorCompilation=false') } else { @("/m:$([Math]::Max(2,[Math]::Min(4,$threads)))", '/p:MultiProcessorCompilation=true', "/p:CL_MPCount=$threads") }
+    $msbStart = Get-Date
+    & "$installation/MSBuild/Current/Bin/MSBuild.exe" build/iw7-mod.sln @mp /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64 "/flp:logfile=$runtime/voice-build.log;verbosity=minimal"
     if ($LASTEXITCODE) { throw 'Voice build failed.' }
+    Write-Output ("MSBuild: {0:n1} s ({1})" -f ((Get-Date) - $msbStart).TotalSeconds, ($mp -join ' '))
+    Save-IW7SourceTimes -NativeRoot $root
 } finally { Pop-Location }
 $voiceState = Get-IW7VoiceOverlayState $root
 if ($voiceState.VoiceRelay -ne [bool]$VoiceRelay -or $voiceState.VoiceCertify -ne [bool]$VoiceCertify) { throw 'Voice overlay receipts differ from the requested build.' }
@@ -639,4 +685,11 @@ if ($voiceState.VoiceCertify) {
     $certifyRecord | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$output/voice-certify-build.json" -Encoding UTF8
 }
 Write-Output "Prepared private client/server build: $output"
+if ($cacheKey -and !$voiceOptIn -and !$Sanitizers) {
+    $null = Save-IW7CachedPackage -Key $cacheKey -Exe $packagedExe -Pdb "$root/build/bin/x64/Release/iw7-mod.pdb" -Manifest "$output/build-manifest.json" -ProjectCommit $sourceIdentity.Commit -Switches $switchNames
+    Invoke-IW7PackageCachePrune
 }
+if ($nativeTree) { $null = Publish-IW7NativeSeed -Tree $nativeTree }
+Write-Output ("Build total {0:n1} s" -f ((Get-Date) - $buildStart).TotalSeconds)
+}
+} finally { if ($nativeTree) { Exit-IW7NativeTree $nativeTree } }

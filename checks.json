@@ -618,6 +618,17 @@
       ]
     },
     {
+      "id": "build_cache_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/build_cache_test.ps1"
+      ]
+    },
+    {
       "id": "download_cache_overlay_test",
       "command": [
         "pwsh",
