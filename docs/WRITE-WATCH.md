@@ -111,3 +111,19 @@ record at most two lines a frame. The client frame rate was 62 (the launcher cap
 
 Not covered: about 9 threads of the 84 deny `SuspendThread` (error 5; each is named once in the log with its start address and name) and cannot be armed, a thread that starts and writes within 100 ms, and writes made by the kernel or by another process.
 `lost` counted 0 to 8 threads per session (once, right after `cg` moved at a map start; the helper arms them again within one sweep; why they were reset is not determined).
+
+## Write census: every store into a whole object (`-paris-write-census`, a76)
+
+`src/native/paris_write_census.cpp` (`-Perf`, lab only: needs `-paris-isolated-lab`) answers "which instruction writes where in this object", for the whole object instead of four cells. Every page of a region is made `PAGE_READONLY`; a store faults in a vectored handler,
+which counts it per writing instruction (RIP), keeps the lowest and highest offset and the first 128 distinct offsets, makes the page writable, sets the trap flag and continues; the single step puts the protection back. Reads never fault. Nothing is allocated or locked in the handler.
+A page that faults more than `-paris-write-census-limit` times (default 20,000: the first stores of a page are seen, a table's rows still show) is released and armed again 3 s later with a fresh budget (`# released` lists the pages released when the file was written): a writer that only starts after the first 20,000 stores of its page is seen in a later window. Slow on purpose: a census run, never a play session.
+
+| Option | Meaning |
+|---|---|
+| `-paris-write-census [<regions>]` | comma list: `cg` (the Zombies client object of local client 0; re-armed when it moves; its size follows `-agent-capacity`) and `abs:<hex address>:<size>` (a static block, up to 12 MB; NOT WORKING YET: the pages of the image's data sections are copy-on-write, `PAGE_WRITECOPY`, and the arming skips every page that is not `PAGE_READWRITE` (run abs264, 17 Nov 2026: `pages=0 skipped=N` for all six regions, 0 stores). Accepting `PAGE_WRITECOPY` is the fix; not built or run) |
+| `-paris-write-census-limit <n>` | stores a page may fault before it is released (default 20000) |
+| `-paris-write-census-delay <s>` | arm this many seconds after the client started (the map load and the join are too slow under page protection: a netlab client armed from the start never joined) |
+
+Output: `iw7-mod/paris-write-census/census-<time>-<pid>.tsv`, rewritten every 5 s (the play launcher copies it to `OutputRoot/write-census`; `-WriteCensus cg` of `Start-CapacityPlay.ps1`).
+Columns: region, RIP (relative to the image), stores, stores on the main thread, distinct offsets (up to 128), lowest and highest offset, gcd of the sampled offsets (the stride of a table), the first sampled offsets.
+Reading: run the same scripted scene at a small count and at a large one and `python -I -B ops/engine/census_diff.py <small.tsv> <big.tsv>`: a writer that exists only at the large count (`only_big`) or whose offsets reach further (`reaches`), with a stride and 20 or more distinct offsets, is a table indexed by a number that grew with the count.

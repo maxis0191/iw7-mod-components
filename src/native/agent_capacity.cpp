@@ -327,6 +327,11 @@ void plan_client() {
                    0x140241BDAull, 0x140242BF6ull}) add(a, 0xFDEA8, l.client_size());
     for (auto a : {0x140240AA0ull, 0x140241B15ull, 0x140242C13ull}) add(a, 0xFD7F8, l.client_tail());
     for (auto a : {0x140180172ull, 0x1401833EBull, 0x14018340Bull, 0x140183435ull, 0x140D2BE4Aull}) add(a, 0x86B17, l.client_flags());
+    // The per-character table of the client's snapshot update (FUN_140945FD0 returns cg + 0x70950 + n * 0xC0; FUN_140949810 writes 16 bytes into row n for every character
+    // but the local one): 42 rows end at cg + 0x728D0, where the next member of cg starts, so every character number from 42 on wrote over members of cg (a73 write watch: row 76
+    // is the vtable of the hit result 0). Its only instruction field is the `add rdx, 0x70950` at 0x140946FD0 (client_tables.py find; the 0x70950 appears nowhere else in the
+    // image). The table moves to the tail of cg, after the flags, so it is zeroed with cg and freed with it.
+    add(0x140946FD3, 0x70950, l.client_char_table());
     // CL_GetSnapshot copied min(numAgents, 24) agent states: zombies 25+ had entities but no model (invisible).
     for (auto a : {0x1408646D1ull, 0x1408646EAull, 0x140864726ull, 0x1408648BDull}) add(a, 2 * 0x3DC78, 2 * l.snap_size());
     for (auto a : {0x14086470Dull, 0x14086471Full, 0x1408648E9ull, 0x1408648FBull, 0x14086C728ull}) add(a, 0x3DC78, l.snap_size());

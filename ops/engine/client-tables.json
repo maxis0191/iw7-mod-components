@@ -1,0 +1,25 @@
+{
+ "schema": "iw7.client-tables/1",
+ "tables": [
+  {
+   "name": "char_c0",
+   "base": 461136,
+   "stride": 192,
+   "rows": 42,
+   "getter": 5378432976,
+   "note": "per-character smoothing record: FUN_140949810 stores 16 bytes at +0x24 of row n for every snapshot character but the local one",
+   "sites": [
+    {
+     "at": 5378437072,
+     "field": 5378437075,
+     "kind": "imm",
+     "stock": 461136,
+     "text": "add rdx, 0x70950",
+     "bytes": "4881c250090700",
+     "func": 5378432976,
+     "offset_in_table": 0
+    }
+   ]
+  }
+ ]
+}
