@@ -72,9 +72,9 @@ if (!$NoCache -and !$TestsOnly -and !$Sanitizers -and !$VoiceRelay -and !$VoiceC
 }
 $nativeTree = $null
 if ($NativeRoot -eq 'auto') {
-    if (!$pin) { throw 'NativeRoot auto needs a pinned profile (-ServerModules or an experiment).' }
     if ($TestsOnly) { $NativeRoot = Join-Path $repo 'runtime/tests-only-no-native' }
     else {
+        if (!$pin) { throw 'NativeRoot auto needs a pinned profile (-ServerModules or an experiment).' }
         $nativeTree = Enter-IW7NativeTree -Pin $pin
         $NativeRoot = $nativeTree.Path
         Write-Output ("Native tree {0} ({1}, waited {2} s)" -f $NativeRoot, $nativeTree.Source, $nativeTree.Waited)
