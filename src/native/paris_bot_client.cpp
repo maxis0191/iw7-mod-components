@@ -48,8 +48,7 @@ namespace paris_bot_client
 			static std::mutex lock;
 			{
 				std::lock_guard<std::mutex> g(lock);
-				if (seen.insert(rip).second) console::info("[Paris bot client] null read of %llx at rip %llx: function returned 0 (%d)
-", static_cast<unsigned long long>(rec->ExceptionInformation[1]), static_cast<unsigned long long>(rip), unwinds.load() + 1);
+				if (seen.insert(rip).second) console::info("[Paris bot client] null read of %llx at rip %llx: function returned 0 (%d)\n", static_cast<unsigned long long>(rec->ExceptionInformation[1]), static_cast<unsigned long long>(rip), unwinds.load() + 1);
 			}
 			unwinds++;
 			return EXCEPTION_CONTINUE_EXECUTION;
