@@ -5,9 +5,8 @@
 #                          change the exe (see Get-IW7NativeInputKey), so a commit that was built anywhere is
 #                          restored in a second by hard links.
 #   tests-pass/<key>       the native unit tests passed for these test and source files: they are not compiled again.
-#   native-seed/<pin>/     a finished native build tree (pinned upstream sources, submodules, objects and libraries);
-#                          a new native tree is a copy of it, never a clone and a cold compile.
-#   native-trees/<n>/      the pooled native build trees (Lock-IW7NativeTree); one build owns one tree at a time.
+#   native-trees/<pin>/    the native build tree (pinned upstream, submodules, objects, libraries): built in place by
+#                          every build in turn, so it stays warm. Never copied (see Enter-IW7NativeTree).
 #   source-dependencies/   the pinned source dependency archive (bootstrap.ps1), downloaded once per machine.
 #
 # Location: $env:IW7_BUILD_CACHE, default C:\IW7-Cache. Cap: $env:IW7_BUILD_CACHE_GB (default 40) for packages.
@@ -30,8 +29,6 @@ function Get-IW7InputHash([string[]]$Lines) {
 # and the creator tools are not inputs, so a change in them keeps the key. Everything under src and the build and
 # overlay scripts are.
 $script:IW7NativeInputPattern = '^(src/|ops/Build-Voice\.ps1$|ops/Build-StandardClient\.ps1$|ops/Apply-[^/]+$|ops/[^/]+\.Core\.ps1$|ops/agent-capacity/|ops/script-variables/|ops/standard-client/|ops/build/|client-profiles\.json$|product\.json$)'
-# Unit-test inputs: the tests themselves, the sources they include, and the script that compiles them.
-$script:IW7TestInputPattern = '^(tests/native/|src/native/|ops/Build-Voice\.ps1$|tests/ops/(download_cache_overlay|capacity_checkpoint_overlay|kernel_image_alias_regression)_test\.ps1$|ops/agent-capacity/)'
 
 function Get-IW7ToolchainId {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -55,11 +52,6 @@ function Get-IW7NativeInputKey {
     param([Parameter(Mandatory)][string]$WorkspaceRoot, [Parameter(Mandatory)][string[]]$Switches, [string]$Pin, [string]$Toolchain)
     $sw = (@($Switches | ForEach-Object { $_.ToLowerInvariant() } | Sort-Object -Unique -CaseSensitive) -join '+')
     Get-IW7WorkspaceInputKey -WorkspaceRoot $WorkspaceRoot -Pattern $script:IW7NativeInputPattern -Extra @("switches=$sw", "pin=$Pin", "toolchain=$Toolchain", 'schema=1')
-}
-
-function Get-IW7TestInputKey {
-    param([Parameter(Mandatory)][string]$WorkspaceRoot, [string]$Toolchain)
-    Get-IW7WorkspaceInputKey -WorkspaceRoot $WorkspaceRoot -Pattern $script:IW7TestInputPattern -Extra @("toolchain=$Toolchain", 'schema=1')
 }
 
 function New-IW7HardLinkOrCopy([string]$Path, [string]$Target) {
@@ -144,12 +136,50 @@ function Invoke-IW7PackageCachePrune {
     }
 }
 
-# ---- the native test marker ----
+# ---- the native unit tests ----
+# Build-Voice compiles and runs about twenty unit tests (one cl.exe each, one after the other: about 85 s) before every
+# build. A test is a function of its own source, the headers it can include (tests/native and src/native) and its
+# compiler line, so a change of a component's .cpp file or of a script leaves every test as it was. Test results are
+# kept by that hash in the cache; the passed ones are left out of the generated command file.
 function Test-IW7TestsPassed([string]$Key) { Test-Path -LiteralPath (Join-Path (Get-IW7BuildCacheRoot) "tests-pass/$Key") }
 function Set-IW7TestsPassed([string]$Key) {
     $d = Join-Path (Get-IW7BuildCacheRoot) 'tests-pass'
     New-Item -ItemType Directory -Path $d -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $d $Key) -Value ([datetime]::UtcNow.ToString('o'))
+}
+
+function Select-IW7UnitTests {
+    param([Parameter(Mandatory)][string]$Script, [Parameter(Mandatory)][string]$Repo, [string]$Toolchain)
+    $headerFiles = @(Get-ChildItem -LiteralPath (Join-Path $Repo 'src/native'), (Join-Path $Repo 'tests/native') -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.hpp', '.h', '.inc' } | Sort-Object FullName)
+    $headerHash = Get-IW7InputHash @($headerFiles | ForEach-Object { "$($_.Name)`t$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash)" })
+    $lines = @($Script -split "`r?`n")
+    $out = [Collections.Generic.List[string]]::new()
+    $keys = [Collections.Generic.List[string]]::new()
+    $skippedExe = @{}
+    $run = 0; $skipped = 0
+    $i = 0
+    while ($i -lt $lines.Count) {
+        $line = $lines[$i]
+        $isCl = $line -match '^cl /nologo .*/Fe:"[^"]*\\([^\\"]+)\.exe"'
+        if ($isCl) {
+            $exe = $Matches[1]
+            $src = if ($line -match '"([^"]*\\tests\\native\\[^"\\]+\.cpp)"') { $Matches[1] } else { $null }
+            if ($src -and (Test-Path -LiteralPath $src)) {
+                $key = 't-' + (Get-IW7InputHash @(($line -replace '"[^"]*\\runtime\\', '"runtime\'), (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash, $headerHash, $Toolchain))
+                $block = @($line); if ($lines[$i + 1] -like 'if errorlevel*') { $block += $lines[$i + 1]; $i++ }
+                if (Test-IW7TestsPassed $key) { $skippedExe[$exe] = $true; $skipped++ }
+                else { foreach ($b in $block) { $out.Add($b) }; $keys.Add($key); $run++ }
+                $i++; continue
+            }
+        }
+        # a run line of a test whose compile was left out
+        if ($line -match '^"[^"]*\\([^\\"]+)\.exe"' -and $skippedExe[$Matches[1]]) {
+            if ($lines[$i + 1] -like 'if errorlevel*') { $i++ }
+            $i++; continue
+        }
+        $out.Add($line); $i++
+    }
+    [pscustomobject]@{ Script = ($out -join "`r`n"); Run = $run; Skipped = $skipped; Keys = @($keys) }
 }
 
 # ---- content-addressed timestamps ----
@@ -192,55 +222,35 @@ function Save-IW7SourceTimes {
     $map | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $state -Encoding UTF8
 }
 
-# ---- pooled native build trees ----
-# A native tree (pinned upstream, submodules, objects, libraries) is 2 GB and a cold build of it clones 17 repositories
-# and compiles every dependency. Every worker used to make its own. Now a few trees live in the cache; a build takes
-# the first one that is free (a lock file held open for the whole build, released by the system if the build dies),
-# applies its overlays and compiles only what differs from what that tree built last. A tree that does not exist yet
-# is a copy of the seed, which is the first tree that finished a build.
+# ---- the native build tree ----
+# A native tree (pinned upstream, submodules, objects, libraries) is 2 GB, and a cold build of it clones 17 repositories
+# and compiles every dependency (measured 18 Nov 2026: 11 minutes). Every worker used to make its own. Now one tree per
+# pinned upstream lives in the cache and every build of every worktree takes it in turn: a lock file held open for the
+# whole build (released by the system if the build dies), overlays applied, and only what differs from what the tree
+# built last is compiled. Builds are exclusive on the machine anyway (the scheduler's Build reservation), so one tree
+# serves them all. A tree is never copied: MSBuild's tracking logs hold absolute paths, so a copy at another path
+# compiles everything again (measured: the seed copy of this change rebuilt asmjit, curl and DirectXTex).
+# -Max above 1 makes extra trees for callers that hold a build reservation of their own; each starts cold.
 function Enter-IW7NativeTree {
-    param([Parameter(Mandatory)][string]$Pin, [ValidateRange(1,8)][int]$Max = 3, [int]$WaitSeconds = 7200)
+    param([Parameter(Mandatory)][string]$Pin, [ValidateRange(1,8)][int]$Max = 1, [int]$WaitSeconds = 7200)
     $root = Join-Path (Get-IW7BuildCacheRoot) 'native-trees'
     New-Item -ItemType Directory -Path $root -Force | Out-Null
-    $seed = Join-Path (Get-IW7BuildCacheRoot) "native-seed/$($Pin.Substring(0,10))"
     $deadline = [datetime]::UtcNow.AddSeconds($WaitSeconds)
     $waitStart = Get-Date
     while ($true) {
         for ($n = 1; $n -le $Max; $n++) {
-            $lockPath = Join-Path $root ("$($Pin.Substring(0,10))-$n.lock")
+            $name = "$($Pin.Substring(0,10))-$n"
             $lock = $null
-            try { $lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) } catch { continue }
-            $tree = Join-Path $root "$($Pin.Substring(0,10))-$n"
-            $source = 'reused'
-            if (!(Test-Path -LiteralPath (Join-Path $tree '.git'))) {
-                if (Test-Path -LiteralPath (Join-Path $seed 'complete.json')) {
-                    & robocopy $seed $tree /MIR /XF complete.json /MT:16 /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-                    if ($LASTEXITCODE -ge 8) { $lock.Dispose(); throw "Native seed copy failed ($LASTEXITCODE)." }
-                    $global:LASTEXITCODE = 0
-                    $source = 'copied from the seed'
-                } else { $source = 'cold (no seed yet)' }
-            }
+            try { $lock = [IO.File]::Open((Join-Path $root "$name.lock"), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) } catch { continue }
+            $tree = Join-Path $root $name
+            $source = if (Test-Path -LiteralPath (Join-Path $tree '.git')) { 'warm' } else { 'cold: cloned now' }
             $owner = [Text.Encoding]::UTF8.GetBytes("pid=$PID since=$([datetime]::UtcNow.ToString('o'))")
             $lock.SetLength(0); $lock.Write($owner, 0, $owner.Length); $lock.Flush()
-            return [pscustomobject]@{ Path = $tree; Lock = $lock; Source = $source; Waited = [int]((Get-Date) - $waitStart).TotalSeconds; Pin = $Pin; Seed = $seed }
+            return [pscustomobject]@{ Path = $tree; Lock = $lock; Source = $source; Waited = [int]((Get-Date) - $waitStart).TotalSeconds; Pin = $Pin }
         }
         if ([datetime]::UtcNow -gt $deadline) { throw "No native build tree became free in $WaitSeconds s (all $Max are in use)." }
         Start-Sleep -Seconds 5
     }
-}
-
-# The first tree that finishes a build becomes the seed (once).
-function Publish-IW7NativeSeed {
-    param([Parameter(Mandatory)]$Tree)
-    if (Test-Path -LiteralPath (Join-Path $Tree.Seed 'complete.json')) { return $false }
-    $tmp = "$($Tree.Seed).tmp-$PID"
-    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
-    & robocopy $Tree.Path $tmp /MIR /XF .iw7-source-times.json /MT:16 /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "Native seed publish failed ($LASTEXITCODE)." }
-    $global:LASTEXITCODE = 0
-    Set-Content -LiteralPath (Join-Path $tmp 'complete.json') -Value ([datetime]::UtcNow.ToString('o'))
-    try { Move-Item -LiteralPath $tmp -Destination $Tree.Seed -ErrorAction Stop } catch { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; return $false }
-    $true
 }
 
 function Exit-IW7NativeTree {

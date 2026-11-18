@@ -119,13 +119,10 @@ if (!$installation) { throw 'VS 2022 C++ toolchain not found.' }
 $vcvars = Join-Path $installation 'VC/Auxiliary/Build/vcvars64.bat'
 $runtime = Join-Path $repo 'runtime'
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
-$testKey = $null
-if (!$NoCache -and !$TestsOnly -and !$Sanitizers -and (Test-Path -LiteralPath (Join-Path $repo 'source-workspace.json'))) { $testKey = Get-IW7TestInputKey -WorkspaceRoot $repo -Toolchain $toolchainId }
-if ($testKey -and (Test-IW7TestsPassed $testKey)) { Write-Output "Native unit tests: passed before for these test and source files (cache $($testKey.Substring(0,12))); not compiled again." }
-else {
+$unitTests = $null
 # Save the compiler invocation to avoid PowerShell 5 native-argument quote rewriting.
 $testCmd = Join-Path $runtime 'compile-voice-tests.cmd'
-@"
+$testScript = @"
 @echo off
 call "$vcvars" >nul
 if errorlevel 1 exit /b 1
@@ -199,7 +196,15 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.c
 if errorlevel 1 exit /b 1
 "$runtime\audio-output-probe.exe" --self-test
 if errorlevel 1 exit /b 1
-"@ | Set-Content -LiteralPath $testCmd -Encoding ASCII
+"@
+# A unit test whose own source, every header it can include and its compiler line are unchanged since it last passed on this
+# machine is not compiled and run again (Select-IW7UnitTests, ops/build/Build-Cache.Core.ps1).
+if (!$NoCache -and !$TestsOnly -and !$Sanitizers) {
+    $unitTests = Select-IW7UnitTests -Script $testScript -Repo $repo -Toolchain $toolchainId
+    $testScript = $unitTests.Script
+    Write-Output ('Native unit tests: {0} of {1} compiled and run, {2} unchanged since they last passed (not run again).' -f $unitTests.Run, ($unitTests.Run + $unitTests.Skipped), $unitTests.Skipped)
+}
+$testScript | Set-Content -LiteralPath $testCmd -Encoding ASCII
 & $testCmd
 if ($LASTEXITCODE) { throw 'Native unit tests failed.' }
 if ($Sanitizers) {
@@ -216,8 +221,7 @@ if ($Sanitizers) {
     if ($LASTEXITCODE) { throw 'Native AddressSanitizer tests failed.' }
 }
 & "$repo/tests/ops/download_cache_overlay_test.ps1"
-if ($testKey) { Set-IW7TestsPassed $testKey }
-}
+if ($unitTests) { foreach ($k in $unitTests.Keys) { Set-IW7TestsPassed $k } }
 if ($TestsOnly) { return }
 $properties = Join-Path $root 'src/common/utils/properties.cpp'
 $baseProperties = (((git -C $root show ($commit + ':src/common/utils/properties.cpp')) -join "`n").TrimEnd()) + "`n"
@@ -689,7 +693,6 @@ if ($cacheKey -and !$voiceOptIn -and !$Sanitizers) {
     $null = Save-IW7CachedPackage -Key $cacheKey -Exe $packagedExe -Pdb "$root/build/bin/x64/Release/iw7-mod.pdb" -Manifest "$output/build-manifest.json" -ProjectCommit $sourceIdentity.Commit -Switches $switchNames
     Invoke-IW7PackageCachePrune
 }
-if ($nativeTree) { $null = Publish-IW7NativeSeed -Tree $nativeTree }
 Write-Output ("Build total {0:n1} s" -f ((Get-Date) - $buildStart).TotalSeconds)
 }
 } finally { if ($nativeTree) { Exit-IW7NativeTree $nativeTree } }

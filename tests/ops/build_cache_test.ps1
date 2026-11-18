@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 # The machine build cache (ops/build/Build-Cache.Core.ps1): input keys, package store and restore, pruning, the native
-# test marker, content-addressed source times, the native tree pool. Runs on a temporary cache; compiles nothing.
+# unit test selection, content-addressed source times, the native tree pool. Runs on a temporary cache; compiles nothing.
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('bcache-' + [guid]::NewGuid().ToString('N'))
 $env:IW7_BUILD_CACHE = Join-Path $tmp 'cache'
@@ -52,10 +52,41 @@ try {
     Invoke-IW7PackageCachePrune -MaxGB (($oneBytes + 10) / 1GB)
     Assert (Test-Path -LiteralPath (Join-Path (Get-IW7BuildCacheRoot) "packages/$k1")) 'prune removed the most recently used package'
     Assert (!(Test-Path -LiteralPath (Join-Path (Get-IW7BuildCacheRoot) "packages/$k3"))) 'prune kept the least recently used package over the cap'
-    # --- test marker ---
-    Assert (!(Test-IW7TestsPassed 'abc')) 'marker present before set'
-    Set-IW7TestsPassed 'abc'
-    Assert (Test-IW7TestsPassed 'abc') 'marker missing after set'
+    # --- unit tests: a passed test is left out of the command file until its source or a header changes ---
+    $repoT = Join-Path $tmp 'repoT'; New-Item -ItemType Directory -Force -Path (Join-Path $repoT 'tests/native'), (Join-Path $repoT 'src/native'), (Join-Path $repoT 'runtime') | Out-Null
+    foreach ($n in 'a', 'b') { Set-Content -LiteralPath (Join-Path $repoT "tests/native/${n}_test.cpp") -Value "int $n;" }
+    Set-Content -LiteralPath (Join-Path $repoT 'src/native/h.hpp') -Value 'int h;'
+    Set-Content -LiteralPath (Join-Path $repoT 'src/native/c.cpp') -Value 'int c;'
+    function New-TestScript {
+        $r = $repoT; $rt = Join-Path $repoT 'runtime'
+        @"
+@echo off
+call "vc" >nul
+cl /nologo /std:c++17 /W4 "$r\tests\native\a_test.cpp" /Fe:"$rt\a-test.exe" /Fo:"$rt\a-test.obj"
+if errorlevel 1 exit /b 1
+"$rt\a-test.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /W4 "$r\tests\native\b_test.cpp" /Fe:"$rt\b-test.exe" /Fo:"$rt\b-test.obj"
+if errorlevel 1 exit /b 1
+pwsh -NoProfile -File x.ps1
+if errorlevel 1 exit /b 1
+"$rt\b-test.exe"
+if errorlevel 1 exit /b 1
+"@
+    }
+    $sel = Select-IW7UnitTests -Script (New-TestScript) -Repo $repoT -Toolchain 'tc'
+    Assert ($sel.Run -eq 2 -and $sel.Skipped -eq 0 -and $sel.Keys.Count -eq 2) 'a first run did not run both tests'
+    foreach ($k in $sel.Keys) { Set-IW7TestsPassed $k }
+    $sel = Select-IW7UnitTests -Script (New-TestScript) -Repo $repoT -Toolchain 'tc'
+    Assert ($sel.Run -eq 0 -and $sel.Skipped -eq 2) 'passed tests were not skipped'
+    Assert ($sel.Script -match 'pwsh -NoProfile -File x.ps1' -and $sel.Script -notmatch '-test\.exe') 'the other steps stayed and every test line went, run lines included'
+    Set-Content -LiteralPath (Join-Path $repoT 'src/native/c.cpp') -Value 'int c2;'
+    Assert ((Select-IW7UnitTests -Script (New-TestScript) -Repo $repoT -Toolchain 'tc').Run -eq 0) 'a component .cpp change re-ran the tests'
+    Set-Content -LiteralPath (Join-Path $repoT 'tests/native/b_test.cpp') -Value 'int b2;'
+    $sel = Select-IW7UnitTests -Script (New-TestScript) -Repo $repoT -Toolchain 'tc'
+    Assert ($sel.Run -eq 1 -and $sel.Skipped -eq 1 -and $sel.Script -match 'b-test\.exe"\r?\nif errorlevel' -and $sel.Script -notmatch 'a-test\.exe') 'a changed test did not run alone (with its run line)'
+    Set-Content -LiteralPath (Join-Path $repoT 'src/native/h.hpp') -Value 'int h2;'
+    Assert ((Select-IW7UnitTests -Script (New-TestScript) -Repo $repoT -Toolchain 'tc').Run -eq 2) 'a header change did not re-run every test'
     # --- source times: same bytes get the recorded time back, changed bytes keep theirs ---
     $nr = Join-Path $tmp 'native'; New-Item -ItemType Directory -Force -Path (Join-Path $nr 'src') | Out-Null
     $f1 = Join-Path $nr 'src/one.cpp'; $f2 = Join-Path $nr 'src/two.cpp'
