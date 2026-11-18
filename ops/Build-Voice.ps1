@@ -268,7 +268,7 @@ if (Test-Path -LiteralPath $labComponent) {
 }
 $nativeSources = @('paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp','dvar_metadata.hpp','agent_scenario.hpp',
     'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp','paris_afk.cpp','paris_afk.hpp','afk_inactivity.hpp',
-    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp','paris_weapon_log.cpp','paris_bot_client.cpp','script_canonical.cpp','script_canonical.hpp')
+    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp','paris_weapon_log.cpp','paris_bot_client.cpp','paris_no_gpu.hpp','script_canonical.cpp','script_canonical.hpp')
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
 else {
     # The experiment pin does not expose the ServerModules CP WeaponDef.
@@ -304,6 +304,7 @@ else {
 $capacityWatchBuild=Set-IW7CapacityWatchBuildCopy -RepoRoot $repo -NativeRoot $root -Enabled:([bool]($Capacity64 -or ($IsolatedLab -and $Debugger))) -PortOnly:([bool]($Capacity64 -and !$Debugger))
 if ($capacityWatchBuild.Compiled) { $nativeSources += $capacityWatchBuild.Files }
 Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src/native/' + $_) }) -Destination "$root/src/client/component"
+$sharedGpuHooks = & "$PSScriptRoot/Apply-SharedGpuHooksOverlay.ps1" -NativeRoot $root -Commit $commit   # the dedicated profile calls the shared GPU hook list (paris_no_gpu.hpp)
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 $incidentOverlay = & "$PSScriptRoot/Apply-IncidentOverlay.ps1" -NativeRoot $root -Commit $commit
 $testPrivacyOverlay = & "$PSScriptRoot/Apply-TestPrivacyOverlay.ps1" -NativeRoot $root -Commit $commit
