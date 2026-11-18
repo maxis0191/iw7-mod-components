@@ -2011,6 +2011,25 @@
         "tests/*"
       ],
       "timeout_seconds": 600
+    },
+    {
+      "id": "stop_own_processes_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/stop_own_processes_test.ps1"
+      ],
+      "inputs": [
+        "ops/Stop-OwnProcesses.ps1",
+        "tests/ops/stop_own_processes_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
+      ],
+      "timeout_seconds": 300
     }
   ],
   "retained_checks": [
