@@ -126,6 +126,8 @@ if (!$TestsOnly -and (Test-Path -LiteralPath (Join-Path $root '.git'))) {
     if ($LASTEXITCODE) { throw 'Could not reset the native tree to its pin.' }
     & git -C $root clean -fdq -- src
     if ($LASTEXITCODE) { throw 'Could not remove overlay files from the native tree.' }
+    # The overlays keep receipts of what they changed (*.local.json at the tree root); with the files back at the pin they would only refuse.
+    Get-ChildItem -LiteralPath $root -File -Filter '*.local.json' -ErrorAction SilentlyContinue | Remove-Item -Force
     Write-Output 'Native tree reset to its pin before the overlays.'
 }
 # The opt-in voice overlays are added last, so they are removed first.
