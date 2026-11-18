@@ -553,6 +553,7 @@
         "src/custom_scripts/cp/experiments/paris_slasher_lab.gsc",
         "src/native/afk_inactivity.hpp",
         "src/native/paris_afk.cpp",
+        "src/native/paris_bot_client.cpp",
         "src/native/paris_afk.hpp",
         "src/native/paris_chat.hpp",
         "src/native/paris_country.cpp",
