@@ -259,8 +259,7 @@ function Test-IW7BenchRoot([string]$Root) {
 
     Check 'every command the harness calls exists (static: the run path cannot be run offline)' {
         $sources = @("$harness\Invoke-VoiceCertify.ps1", "$harness\VoiceCertify.Core.ps1", "$repo\ops\Base-Client.Core.ps1",
-            "$repo\ops\Resource-Scheduler.Core.ps1", "$repo\ops\Lab-Lifecycle.ps1", "$repo\ops
-etlab\LabPorts.Core.ps1")
+            "$repo\ops\Resource-Scheduler.Core.ps1", "$repo\ops\Lab-Lifecycle.ps1", "$repo\ops\netlab\LabPorts.Core.ps1")
         $defined = @{}
         foreach ($file in $sources) {
             $ast = [Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$null)
