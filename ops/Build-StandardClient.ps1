@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$Serial,[switch]$OwnerCheats,[switch]$Capacity64,[ValidateRange(0,86400)][int]$WaitForSlotSeconds=0)
+param([switch]$NoCache,[Parameter(Mandatory)][string]$NativeRoot,[ValidateRange(1,2)][int]$BuildJobs=1,[switch]$Serial,[switch]$OwnerCheats,[switch]$Capacity64,[ValidateRange(0,86400)][int]$WaitForSlotSeconds=0)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 $profile=(Get-Content -LiteralPath (Join-Path $repo 'client-profiles.json') -Raw | ConvertFrom-Json).Standard
@@ -16,6 +16,19 @@ while($cursor){
     $parent=Split-Path $cursor -Parent;if($parent -eq $cursor){break};$cursor=$parent
 }
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
+# Package cache (ops/build/Build-Cache.Core.ps1): the same inputs and switches give the same client, restored by hard links
+# with no native tree, no compiler and no build reservation.
+. "$PSScriptRoot/build/Build-Cache.Core.ps1"
+$stdKey=$null
+if(!$NoCache -and (Test-Path -LiteralPath (Join-Path $repo 'source-workspace.json'))){
+    $stdKey=Get-IW7WorkspaceInputKey -WorkspaceRoot $repo -Pattern $script:IW7NativeInputPattern -Extra @("standard;ownercheats=$([bool]$OwnerCheats);capacity64=$([bool]$Capacity64)","toolchain=$(Get-IW7ToolchainId)",'schema=1')
+    $stdOut=Join-Path $repo 'runtime/standard-client-package'
+    if(!(Test-Path -LiteralPath $stdOut)){
+        $wsm=Get-Content -LiteralPath (Join-Path $repo 'source-workspace.json') -Raw | ConvertFrom-Json
+        $stdHit=Restore-IW7DirPackage -Kind standard -Key $stdKey -Destination $stdOut -ProjectCommit ([string]$wsm.revisions.'iw7-mod-components')
+        if($stdHit){ Write-Output "Build cache hit $($stdKey.Substring(0,12)): standard client restored, nothing compiled."; Write-Output "Prepared standard client: $stdOut"; return }
+    }
+}
 $jobCommand=if($WaitForSlotSeconds -gt 0){'Invoke-IW7QueuedResourceJob'}else{'Invoke-IW7ResourceJob'}
 $jobExtra=if($WaitForSlotSeconds -gt 0){@{WaitForSlotSeconds=$WaitForSlotSeconds}}else{@{}}
 & $jobCommand @jobExtra -Scope $repo -Owner 'CB compatible standard client native build' -PhysicalBytes (4GB*$BuildJobs) -CommitBytes (6GB*$BuildJobs) -Body {
@@ -121,4 +134,5 @@ Remove-IW7OwnerCheatsOverlay $root
     $manifest.CapacityLauncherSHA256=if($Capacity64){(Get-FileHash -LiteralPath (Join-Path $output 'Launch-IW7-Paris48.bat')).Hash}else{$null}
     $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $output 'build-manifest.json')
     Write-Output "Prepared standard client: $output"
+    if($stdKey){Save-IW7DirPackage -Kind standard -Key $stdKey -Source $output -ProjectCommit $identity.Commit}
 }
