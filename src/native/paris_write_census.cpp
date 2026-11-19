@@ -182,13 +182,14 @@ namespace paris_write_census
             if (r.page_total > max_pages) r.page_total = max_pages;
             r.base.store(base);   // before the first page is protected: a store that faults must find its region
             unsigned armed = 0, skipped = 0;
+            DWORD first_skip_state = 0, first_skip_protect = 0, first_skip_type = 0;
             for (std::uint64_t i = 0; i < r.page_total; ++i)
             {
                 const auto address = (r.first_page + i) << 12;
                 MEMORY_BASIC_INFORMATION m{};
                 auto& p = r.pages[i];
                 p.faults.store(0);
-                if (!VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) || m.State != MEM_COMMIT || ((m.Protect & 0xFF) != PAGE_READWRITE && (m.Protect & 0xFF) != PAGE_WRITECOPY)) { p.state.store(0); ++skipped; continue; }   // the data sections of the image are copy-on-write until first written
+                if (!VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) || m.State != MEM_COMMIT || ((m.Protect & 0xFF) != PAGE_READWRITE && (m.Protect & 0xFF) != PAGE_WRITECOPY && (m.Protect & 0xFF) != PAGE_EXECUTE_READWRITE && (m.Protect & 0xFF) != PAGE_EXECUTE_WRITECOPY)) { if (!skipped) { first_skip_state = m.State; first_skip_protect = m.Protect; first_skip_type = m.Type; } p.state.store(0); ++skipped; continue; }   // the data sections of the image are copy-on-write until first written
                 p.original = m.Protect;
                 p.state.store(1);
                 DWORD old{};
