@@ -17,6 +17,11 @@ Knowledge (written back, committed: ops/engine/knowledge/engine-knowledge.json)
   name ADDR NAME [--note TEXT] [--evidence TEXT]   name a function or a global
   note ADDR TEXT [--tag limit] [--value V] [--evidence TEXT]
   notes [--tag T] [--like TEXT]
+Atlases (derived once from the database into <lab>/engine/atlas, docs/ENGINE.md)
+  limits [TEXT] [--max N]    where the engine refuses because something is full: message, function, guarding condition
+  dvars TEXT [--max N]       console variables: default/min/max, pointer, where registered, who reads them
+  builtins TEXT [--max N]    script-callable natives: script name -> native function, with its strings
+  atlas build                make all three atlases (about a minute)
 Maintenance
   index                  build the instruction index (imm/disp) from the image (about a minute)
   status                 what the database holds and how fresh it is
@@ -33,6 +38,9 @@ import sqlite3
 import struct
 import sys
 import zlib
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import atlas as atlas_mod  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LAB = os.environ.get("IW7_RE_LAB", os.path.join(os.path.expanduser("~"), "Documents", "IW7-RE-Lab"))
@@ -747,6 +755,33 @@ def cmd_status(e, a):
     out(a, res, [f"{k}: {v}" for k, v in res.items()])
 
 
+def cmd_atlas(e, a):
+    if a.action != "build":
+        die("usage: engine.py atlas build")
+    stats = atlas_mod.build(e.need_db(), atlas_mod.atlas_dir(a))
+    for k, v in stats.items():
+        print(f"{k}: {v['records']} records, {v['seconds']} s -> {v['path']}")
+    print(f"total {sum(v['seconds'] for v in stats.values()):.1f} s")
+
+
+def atlas_query(e, a, name, fn, text):
+    recs = atlas_mod.load(e.need_db(), atlas_mod.atlas_dir(a), name, lambda m: print(m, file=sys.stderr))
+    hits, lines = fn(recs, text, a.max)
+    out(a, hits, lines)
+
+
+def cmd_limits(e, a):
+    atlas_query(e, a, "limits", atlas_mod.query_limits, a.text)
+
+
+def cmd_dvars(e, a):
+    atlas_query(e, a, "dvars", atlas_mod.query_dvars, a.text)
+
+
+def cmd_builtins(e, a):
+    atlas_query(e, a, "builtins", atlas_mod.query_builtins, a.text)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="engine", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=os.environ.get("IW7_ENGINE_DB", DEFAULT_DB))
@@ -754,6 +789,7 @@ def main(argv=None):
     ap.add_argument("--image", default=DEFAULT_IMAGE)
     ap.add_argument("--snapshots", default=DEFAULT_SNAPSHOTS)
     ap.add_argument("--names", default=DEFAULT_NAMES)
+    ap.add_argument("--atlas", default=None, help="atlas folder (default: <folder of the database>/atlas)")
     ap.add_argument("--json", action="store_true")
     sp = ap.add_subparsers(dest="cmd", required=True)
 
@@ -787,6 +823,10 @@ def main(argv=None):
     x = p("note", cmd_note, "addr", "text"); x.add_argument("--tag"); x.add_argument("--value"); x.add_argument("--evidence")
     x.add_argument("--by", default=os.environ.get("IW7_AGENT", "agent"))
     x = p("notes", cmd_notes); x.add_argument("--tag"); x.add_argument("--like")
+    x = p("limits", cmd_limits); x.add_argument("text", nargs="?", default=""); x.add_argument("--max", type=int, default=25)
+    x = p("dvars", cmd_dvars, "text"); x.add_argument("--max", type=int, default=25)
+    x = p("builtins", cmd_builtins, "text"); x.add_argument("--max", type=int, default=25)
+    p("atlas", cmd_atlas, "action")
     p("index", cmd_index)
     p("status", cmd_status)
     a = ap.parse_args(argv)
