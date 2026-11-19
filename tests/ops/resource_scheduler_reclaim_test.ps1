@@ -109,14 +109,67 @@ Case 'an old-core Runtime lease (no Shareable, no Resources: holds machine) is r
     $r=Ask
     Assert ($r -eq 'granted') "Old-core machine lease with owner and child gone not reclaimed at once: $r"
 }
-Case 'a build lease is never reclaimed by these rules' {
+# A Build lease as the real orphan of 18 Nov 2026 was: pending, no processes, 4 GB, exclusive, one named resource.
+function BuildLease([string]$Name,$Owner) {
+    [pscustomobject]@{Token=([guid]::NewGuid().ToString('N'));Scope=(Join-Path $TestRoot "bench-$Name").ToLowerInvariant();Kind='Build';Owner='IW7 native build and checks';
+        OwnerIdentity=[pscustomobject]@{PID=$Owner.PID;CreatedUtc=$Owner.CreatedUtc;Image=$Owner.Image};CreatedUtc='2026-11-12T01:53:33.0000000Z';Phase='Pending';
+        PhysicalBytes=4GB;CommitBytes=6GB;BaseClientImage=$null;Shareable=$false;Resources=@("work:$Name");Processes=@()}
+}
+function Stamp { $l=@((Read-IW7ResourceState).Leases); if ($l.Count -and $l[0].PSObject.Properties['OwnerGoneSinceUtc']) { $l[0].OwnerGoneSinceUtc } else { $null } }
+Case 'a build lease whose owner is gone is kept for OrphanSeconds, then reclaimed and logged' {
     $o=Proc 70061 'C:\fake\pwsh.exe'
-    $l=[pscustomobject]@{Token=([guid]::NewGuid().ToString('N'));Scope=(Join-Path $TestRoot 'bench-e').ToLowerInvariant();Kind='Build';Owner='e';
-        OwnerIdentity=[pscustomobject]@{PID=$o.PID;CreatedUtc=$o.CreatedUtc;Image=$o.Image};CreatedUtc='2026-11-12T01:53:33.0000000Z';Phase='Pending';
-        PhysicalBytes=4GB;CommitBytes=6GB;BaseClientImage=$null;Shareable=$false;Processes=@()}
-    Save @($l); $script:processes=@($script:me)
-    $null=Ask Runtime; Advance 900; $null=Ask Runtime
-    Assert ((Owners) -join ',' -eq 'e') 'A build lease was reclaimed.'
+    Save @(BuildLease 'e' $o); $script:processes=@($script:me)
+    $null=Ask Runtime
+    Assert ((Owners).Count -eq 1) 'Reclaimed at once.'
+    Assert (Stamp) 'OwnerGoneSinceUtc not saved.'
+    Advance 599; $null=Ask Runtime
+    Assert ((Owners).Count -eq 1) 'Reclaimed before 600 s.'
+    $plan=Get-IW7ShareableMemoryPlan (Get-IW7ResourceSnapshot) @((Read-IW7ResourceState).Leases) $script:processes
+    Assert ($plan.Declared -eq 4GB) "Declared is not 4 GB before the reclaim: $($plan.Declared)"
+    Advance 2; $r=Ask Runtime
+    Assert ($r -eq 'granted') "Runtime not granted after the reclaim: $r"
+    Assert ((Owners).Count -eq 0) 'Dead build lease still in the state.'
+    $rows=@(Reclaims)
+    Assert ($rows.Count -eq 1 -and $rows[0].Kind -eq 'Build' -and $rows[0].Why -like '*owner process is gone*no detached builder*10m01s*') "Reclaim not logged: $($rows.Why)"
+}
+Case 'a build lease with a process running in its scope is never reclaimed' {
+    $o=Proc 70071 'C:\fake\pwsh.exe'; $c=Proc 70072 (Join-Path $TestRoot 'bench-f\tool\x.exe')
+    Save @(BuildLease 'f' $o); $script:processes=@($script:me,$c)
+    $null=Ask Runtime; Advance 601; $null=Ask Runtime; Advance 3600; $null=Ask Runtime
+    Assert ((Owners).Count -eq 1) 'A build lease with a process in its scope was reclaimed.'
+    Assert (!(Stamp)) 'A stamp was left on a lease with a process in its scope.'
+}
+Case 'a detached builder keeps the lease; the stamp restarts when it is gone' {
+    $o=Proc 70081 'C:\fake\pwsh.exe'
+    $cl=Proc 70082 'C:\fake\cl.exe'; $cl.CreatedUtc='2026-11-12T01:56:00.0000000Z'
+    Save @(BuildLease 'g' $o); $script:processes=@($script:me,$cl)
+    $null=Ask Runtime; Advance 601; $null=Ask Runtime; Advance 3600; $null=Ask Runtime
+    Assert ((Owners).Count -eq 1) 'A build lease with a detached compiler left was reclaimed.'
+    Assert (!(Stamp)) 'A stamp was left while a detached compiler runs.'
+    $script:processes=@($script:me); $null=Ask Runtime
+    Assert ((Owners).Count -eq 1 -and (Stamp)) 'The stamp did not start when the compiler went.'
+    Advance 599; $null=Ask Runtime
+    Assert ((Owners).Count -eq 1) 'Reclaimed before a full OrphanSeconds after the compiler went.'
+    Advance 2; $null=Ask Runtime
+    Assert ((Owners).Count -eq 0) 'Not reclaimed OrphanSeconds after the compiler went.'
+}
+Case 'a compiler older than the lease does not keep it' {
+    $o=Proc 70091 'C:\fake\pwsh.exe'; $oldCl=Proc 70092 'C:\fake\cl.exe'
+    Save @(BuildLease 'h' $o); $script:processes=@($script:me,$oldCl)
+    $null=Ask Runtime; Advance 601; $null=Ask Runtime
+    Assert ((Owners).Count -eq 0) 'A compiler created before the lease kept it.'
+}
+Case 'a build lease whose owner is alive is never reclaimed' {
+    $o=Proc 70101 'C:\fake\pwsh.exe'
+    Save @(BuildLease 'i' $o); $script:processes=@($script:me,$o)
+    $null=Ask Runtime; Advance 3600; $null=Ask Runtime
+    Assert ((Owners).Count -eq 1 -and !(Stamp)) 'A build lease of a live owner was reclaimed or stamped.'
+}
+Case 'a build lease whose owner identity cannot be read is never reclaimed' {
+    $o=Proc 70111 'C:\fake\pwsh.exe'; $unknown=Proc 70111 'C:\fake\pwsh.exe'; $unknown.Image=$null
+    Save @(BuildLease 'j' $o); $script:processes=@($script:me,$unknown)
+    $null=Ask Runtime; Advance 3600; $null=Ask Runtime
+    Assert ((Owners).Count -eq 1 -and !(Stamp)) 'A build lease with an unreadable owner was reclaimed or stamped.'
 }
 Write-Output ("PASS $script:cases reclaim cases / $script:checks assertions; temporary registry, synthetic processes and clock.")
 Remove-Item -LiteralPath $TestRoot -Recurse -Force -ErrorAction SilentlyContinue
