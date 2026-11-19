@@ -155,6 +155,74 @@ a field of another structure, and arrays whose index comes from an argument of a
 Known tables are the test ground truth (`tests/ops/static_tables_test.py`: the entity queue by all three passes, the
 per-character work tables, the sentient pool and the two 71-object pools).
 
+## Atlases: limits, console variables, script builtins
+
+The first question of an engine job is usually "where is this limit enforced", "who reads this console variable" or
+"which native function is this script call". Three atlases answer it in a second. They are derived once from the
+database by `ops/engine/atlas.py` into `<RE lab>/engine/atlas/` (`limits.json`, `dvars.json`, `builtins.json`; `--atlas DIR`
+overrides; they hold game text and are never committed). A query builds the atlas it needs when its file is absent.
+
+```
+python -B ops/engine/engine.py atlas build               # all three: counts and seconds
+python -B ops/engine/engine.py limits "gestures"         # [TEXT] [--max N]; no TEXT: the 30 with the most callers
+python -B ops/engine/engine.py dvars timescale           # TEXT [--max N]
+python -B ops/engine/engine.py builtins settimescale     # TEXT [--max N]
+```
+
+`limits` (derived from every string that reads like a "full / too many / exceeded / maximum" message and has at least two
+spaces, the functions that reference it, and the decompiled code around the reference; the guard is the nearest `if (` or
+`while (` within 40 lines above the line that names the string, or the data label of the string when the decompiler did
+not inline it):
+
+```
+$ engine.py limits "Too many gestures"
+'Too many gestures loaded, maximum is %i'  FUN_140041a70 at 0x140041A70 (0 callers)
+    condition: if (0xff < param_1) {
+    constants: 255 (0xFF)
+    next: engine.py decomp 0x140041A70
+```
+
+`dvars` (derived from every `X = Dvar_Register<Kind>("name", ...)` in the decompiled code; Float and Int defaults/limits
+decoded, Bool default; readers are the functions with a read or data reference to the pointer, the registering write
+excluded):
+
+```
+$ engine.py dvars timescale
+com_timescale  [Float]  default 1.0  min 0.001  max 1000.0
+    pointer 0x146005398   registered in FUN_140bae423 at 0x140BAE423
+    8 reading function(s): GScr_gettimescale, GScr_settimescale, FUN_140b8eba0, ...
+    next: engine.py xrefs 0x146005398
+```
+
+`builtins` (derived from the function names `GScr_`, `Scr_`, `PlayerCmd_`; in this database no other script-callable
+prefix exists with a real name: `ScrCmd_`, `ScriptEntCmd_`, `ActorCmd_`, `HECmd_`, `BotCmd_`, `VehicleCmd_`, `Scriptable_Cmd`,
+`ScrVehicle_` are searched too and match nothing yet. `GScr_` is kind `function`, the `...Cmd_` families are `method`.
+`Scr_` holds 15 script-engine API functions, not builtins; they are in because the plan said so. Methods that have no
+real name are `PlayerCmd__meth_XXXX`, so their script name is `_meth_xxxx`; the strings are the function's own messages):
+
+```
+$ engine.py builtins settimescale
+settimescale  [function]  GScr_settimescale at 0x14049F500 (size 30)
+    next: engine.py decomp 0x14049F500
+```
+
+What they do not know:
+
+- A limit with no error text is not in `limits` (a silent clamp, a wrap, a loop bound); use `grep`, `imm` and
+  `static_tables.py` for those. Of 516 records, 267 have `condition: null` (no `if`/`while` within 40 lines above the
+  string: the check is in the caller, or the message is printed by a shared error helper); 249 have a condition, 135 of them
+  with an integer constant, the others compare two globals or a returned value.
+- A message that the decompiler prints through a wrapper or in a function whose references Ghidra did not find is missing.
+- A dvar registered through a wrapper with another name, or whose result is not assigned (`Dvar_Register...(...)` as an
+  argument), is not in `dvars`: 2,278 registrations were found, 8 of them without a DAT pointer; 586 with a pointer have no
+  reading function in the reference table (read through an `rva` form or an indexed table: use `xrefs`, which also
+  consults the instruction index). Default, min and max are decoded for 1,962.
+- `builtins` lists natives, not the script names the compiler uses: the script name is the function name without its
+  prefix, lowercased. Builtins reached only through a table without a named function are not in it.
+
+Build time: 2.7 s on this machine (limits 0.7 s, dvars 1.5 s, builtins 0.5 s) with the database in the file cache; a query
+answers in 0.1 to 0.3 s.
+
 ## What it cannot know
 
 - Ghidra's call graph misses calls through registers and tables (virtual calls, script builtin tables); `callers`
