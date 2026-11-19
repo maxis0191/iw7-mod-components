@@ -502,8 +502,11 @@ without this optional field remain valid for clients inside their lab scope.
 Process records bind PID, creation time and image. Missing identity retains the
 reservation. PID reuse never authorizes killing or adopting a process. A runtime
 lease may be reclaimed only when its owner, attached children and any process
-under its lab root are gone. Orphan builds remain quarantined, since detached
-compiler children can live outside the scope. After diagnosing and closing the
+under its lab root are gone. A build, extraction or analysis lease is reclaimed only
+when its owner is gone (an unreadable identity counts as alive), none of its registered
+processes and nothing in its scope runs, and no detached compiler, ZoneTool or Java
+process started after it and outside every other lease is left, all of it for 10 minutes
+(OrphanSeconds); a detached compiler child can live outside the scope, so it keeps the lease. After diagnosing and closing the
 exact job, `-Action Release -Token <exact token>` refuses release if its owner or
 a possible heavy child remains. There is no TTL that silently frees a live game.
 Never delete the registry to bypass contention.
