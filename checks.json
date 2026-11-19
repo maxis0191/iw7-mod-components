@@ -2,6 +2,21 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "check_product_schedule_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/check_product_schedule_test.py"
+      ],
+      "inputs": [
+        "ops/check_product.py",
+        "tests/ops/check_product_schedule_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
+      ]
+    },
+    {
       "id": "capacity_peer_overlay",
       "command": [
         "pwsh",
