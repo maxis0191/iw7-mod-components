@@ -195,7 +195,7 @@ namespace paris_write_census
                 DWORD old{};
                 if (VirtualProtect(reinterpret_cast<void*>(address), page_size, PAGE_READONLY, &old)) ++armed; else { p.state.store(0); ++skipped; }
             }
-            console::info("[WC] armed %s base=0x%llX size=0x%llX pages=%u skipped=%u\n", r.name, static_cast<unsigned long long>(base), static_cast<unsigned long long>(r.size), armed, skipped);
+            console::info("[WC] armed %s base=0x%llX size=0x%llX pages=%u skipped=%u\n", r.name, static_cast<unsigned long long>(base), static_cast<unsigned long long>(r.size), armed, skipped, first_skip_state, first_skip_protect, first_skip_type);
         }
         void release(region& r)
         {
