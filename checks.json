@@ -613,11 +613,29 @@
         "tests/ops/engine_test.py"
       ],
       "inputs": [
+        "ops/engine/atlas.py",
         "ops/engine/build_image.py",
         "ops/engine/engine.py",
         "ops/engine/engine_mcp.py",
         "ops/engine/ghidra_export.py",
         "tests/ops/engine_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
+      ]
+    },
+    {
+      "id": "engine_atlas_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_atlas_test.py"
+      ],
+      "inputs": [
+        "ops/engine/atlas.py",
+        "ops/engine/engine.py",
+        "tests/ops/engine_atlas_test.py"
       ],
       "lists": [
         "ops/engine/*",
