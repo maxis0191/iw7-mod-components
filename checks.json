@@ -2,6 +2,21 @@
   "product": "iw7-mod-components",
   "checks": [
     {
+      "id": "check_product_schedule_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/check_product_schedule_test.py"
+      ],
+      "inputs": [
+        "ops/check_product.py",
+        "tests/ops/check_product_schedule_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
+      ]
+    },
+    {
       "id": "capacity_peer_overlay",
       "command": [
         "pwsh",
@@ -613,11 +628,29 @@
         "tests/ops/engine_test.py"
       ],
       "inputs": [
+        "ops/engine/atlas.py",
         "ops/engine/build_image.py",
         "ops/engine/engine.py",
         "ops/engine/engine_mcp.py",
         "ops/engine/ghidra_export.py",
         "tests/ops/engine_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
+      ]
+    },
+    {
+      "id": "engine_atlas_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/engine_atlas_test.py"
+      ],
+      "inputs": [
+        "ops/engine/atlas.py",
+        "ops/engine/engine.py",
+        "tests/ops/engine_atlas_test.py"
       ],
       "lists": [
         "ops/engine/*",
@@ -829,6 +862,25 @@
         "src/native/agent_capacity.cpp",
         "tests/ops/agent_capacity_render_test.py",
         "tests/ops/agent_capacity_sites_test.py"
+      ],
+      "lists": [
+        "ops/engine/*",
+        "tests/ops/*"
+      ]
+    },
+    {
+      "id": "render_meter_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/render_meter_test.py"
+      ],
+      "inputs": [
+        "src/native/agent_capacity.cpp",
+        "src/native/paris_perf.cpp",
+        "src/native/paris_render_meter.cpp",
+        "tests/ops/agent_capacity_sites_test.py",
+        "tests/ops/render_meter_test.py"
       ],
       "lists": [
         "ops/engine/*",

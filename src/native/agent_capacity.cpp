@@ -740,6 +740,42 @@ void plan_render_list() {
                                                     0x00, 0x00, 0x8B, 0xF3, 0x48, 0x8B, 0xEB, 0xE8, 0x4E, 0xB0, 0x01, 0x00, 0xEB, 0x05}, after_b);
 }
 
+// ---- 3c. the draw surface list of the dynamic models (a90, 18 Nov 2026) ------------------------------------------------------
+// With 200 zombies in view the client refused 245 draw surfaces a second at the render meter: warning 0x29 "Max scene drawsurfs exceeded from R_AddDObjSurfacesCamera (region 1)"
+// (run f200-2: 69,647 in 280 s, none at the stock 24). FUN_140E2D000 (R_AddDObjSurfacesCamera) writes one 16 byte entry per surface of every dynamic model into the list of
+// its region and stops at the list's limit; the limits come from three tables that FUN_140E34A80 fills once: the capacity in entries (u32 at 0x149EEAA00 + 4 x list), the
+// base address of the list (qword at 0x149EEAAC0 + 8 x list) and, at 0x149EEAA60 + 4 x list, the count the frame has used. List 1 holds 0x100 entries (4 KB at 0x149E0AD80:
+// 256 surfaces for every dynamic model of the frame: a zombie has 6 to 14). The readers (FUN_140DDE800 builds the cursor and limit arrays; FUN_140E3CEE0 hands base and count to
+// the sort jobs) take base and capacity from the tables, so the list can live elsewhere and be larger: a new block of 0x2000 entries (128 KB) replaces it. Nothing is patched in
+// code: two table values are written after the stock initialiser (a hook, because the initialiser may run after post_unpack) and at once when it already ran.
+constexpr std::uintptr_t drawsurf_init_function = 0x140E34A80;
+constexpr std::uintptr_t drawsurf_capacities = 0x149EEAA00, drawsurf_bases = 0x149EEAAC0;
+constexpr unsigned drawsurf_dobj_list = 1;
+constexpr std::uint32_t drawsurf_dobj_stock = 0x100, drawsurf_dobj_grown = 0x2000;
+constexpr std::uintptr_t drawsurf_dobj_stock_base = 0x149E0AD80;
+utils::hook::detour drawsurf_init_hook;
+std::atomic<std::uint32_t> drawsurf_grown{0};
+void* drawsurf_block = nullptr;
+void grow_drawsurf_list() {
+    auto* capacity = reinterpret_cast<volatile std::uint32_t*>(drawsurf_capacities) + drawsurf_dobj_list;
+    auto* base = reinterpret_cast<volatile std::uintptr_t*>(drawsurf_bases) + drawsurf_dobj_list;
+    if (*capacity != drawsurf_dobj_stock || *base != drawsurf_dobj_stock_base) return;   // the initialiser has not run yet, or the list is already moved
+    if (!drawsurf_block) drawsurf_block = VirtualAlloc(nullptr, static_cast<std::size_t>(drawsurf_dobj_grown) * 16, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!drawsurf_block) { console::error("[agent capacity] draw surface list 1: no memory for %u entries, the stock list stays\n", drawsurf_dobj_grown); return; }
+    *base = reinterpret_cast<std::uintptr_t>(drawsurf_block);
+    *capacity = drawsurf_dobj_grown;
+    drawsurf_grown.fetch_add(1);
+    console::info("[agent capacity] draw surface list 1 (dynamic models): %u entries at %p (stock %u at %llX)\n", drawsurf_dobj_grown, drawsurf_block, drawsurf_dobj_stock, static_cast<unsigned long long>(drawsurf_dobj_stock_base));
+}
+void drawsurf_init_stub() {
+    drawsurf_init_hook.invoke<void>();
+    grow_drawsurf_list();
+}
+void plan_drawsurf_lists() {
+    drawsurf_init_hook.create(drawsurf_init_function, drawsurf_init_stub);   // queued: main applies every queued hook after post_unpack
+    scheduler::once([] { grow_drawsurf_list(); }, scheduler::main);
+}
+
 // ---- 3d. the two per-sentient tables of an SV agent record (map A1) ---------------------------------------------------
 // Each SV agent record (0x3F08 bytes, one per agent) holds table 1 (64-byte rows at +0x10) and table 2 (60-byte rows at +0x23E4),
 // 66 rows each, indexed by the sentient slot; with more than 24 agents a slot passes 65 and the stock code writes past the
@@ -1729,6 +1765,7 @@ public:
         plan_proxy_list();
         plan_snapshot();
         plan_render_list();
+        plan_drawsurf_lists();
         plan_ai_pool();
         plan_tables();
         plan_entity_queue();

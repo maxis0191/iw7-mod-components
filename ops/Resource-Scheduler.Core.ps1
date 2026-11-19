@@ -453,10 +453,50 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOt
         $ownerAlive = $owner.Count -and (Test-IW7ResourceIdentity $lease.OwnerIdentity $owner[0])
         $ownerUnknown = $owner.Count -and (!$owner[0].Image -or !$owner[0].CreatedUtc)
         $live = @(Get-IW7LeaseLiveProcesses $lease $Processes)
-        # A crashed builder might have detached children outside its root. Keep it
-        # quarantined until explicit release; runtime children must be inside scope.
-        # The scope scan (700 processes, about 100 ms) runs only when it decides.
-        if ($lease.Kind -ne 'Runtime' -or $live.Count) { Clear-IW7LeaseChildless $lease; return $true }
+        # A build, extraction or analysis whose owner is gone is reclaimed only when nothing of it is left: no
+        # registered process, nothing in its scope, no detached builder started after it and under no other
+        # lease (a crashed builder can leave those outside its root), all of it for OrphanSeconds (a pending
+        # build of a dead owner held 4 GB of every admission for a day, 19 Nov 2026). Runtime children must be
+        # inside scope. The scope scan (700 processes, about 100 ms) runs only when it decides.
+        if ($lease.Kind -ne 'Runtime') {
+            $orphan = !$live.Count -and !$ownerAlive -and !$ownerUnknown -and
+                !@(@($Processes).Where({ Test-IW7ReservedProcess $_ $lease }, 'First')).Count
+            if ($orphan) {
+                $left = @(@($Processes).Where({ Test-IW7BuilderProcess $_ }))
+                if ($left.Count) {
+                    $index = New-IW7ProcessIndex $Processes
+                    $roots = New-IW7RootMap @($State.Leases | Where-Object { $_.Token -ne $lease.Token })
+                    $createdLease = $null
+                    try { $createdLease = ([datetimeoffset]$lease.CreatedUtc).UtcDateTime } catch { }
+                    $left = @($left | Where-Object {
+                        $born = $null
+                        try { if ($_.CreatedUtc) { $born = ([datetimeoffset]$_.CreatedUtc).UtcDateTime } } catch { }
+                        ($null -eq $born -or $null -eq $createdLease -or $born -gt $createdLease) -and !(Test-IW7ProcessUnder $_ $index $roots)
+                    })
+                }
+                if ($left.Count) { $orphan = $false }
+            }
+            if (!$orphan) {
+                if ($lease.PSObject.Properties['OwnerGoneSinceUtc']) { $lease.PSObject.Properties.Remove('OwnerGoneSinceUtc'); $script:IW7LeaseStateChanged = $true }
+                Clear-IW7LeaseChildless $lease
+                return $true
+            }
+            $now = Get-IW7SchedulerUtcNow
+            $since = $null
+            $p = $lease.PSObject.Properties['OwnerGoneSinceUtc']
+            if ($p -and $p.Value) { try { $since = ([datetimeoffset]$p.Value).UtcDateTime } catch { $since = $null } }
+            if ($null -eq $since) {
+                Add-Member -InputObject $lease -NotePropertyName OwnerGoneSinceUtc -NotePropertyValue $now.ToString('o') -Force
+                $script:IW7LeaseStateChanged = $true
+                return $true
+            }
+            $idle = ($now - $since).TotalSeconds
+            $limit = (Get-IW7QueuePolicy).OrphanSeconds; if (!$limit) { $limit = 600 }
+            if ($idle -lt $limit) { return $true }
+            Add-IW7ReclaimLog $lease ("its owner process is gone, nothing runs in its scope and no detached builder process is left, for $(Format-IW7Age $idle)")
+            return $false
+        }
+        if ($live.Count) { Clear-IW7LeaseChildless $lease; return $true }
         if (@(@($Processes).Where({ Test-IW7ReservedProcess $_ $lease }, 'First')).Count) { Clear-IW7LeaseChildless $lease; return $true }
         if (!$ownerAlive -and !$ownerUnknown) {
             Add-IW7ReclaimLog $lease 'its owner process and every registered child are gone'
@@ -513,7 +553,7 @@ function Remove-IW7FinishedRuntimeLeases($State, $Processes, [switch]$TolerateOt
 function Get-IW7SchedulerUtcNow { [datetime]::UtcNow }
 function Get-IW7CallerPid { $PID }
 function Get-IW7QueuePolicy {
-    [pscustomobject]@{FirstGraceSeconds=90;MinGraceSeconds=90;MaxGraceSeconds=660;AgingSeconds=600;MaxOvertakeSeconds=300;MaxShortSeconds=120;LogRotateBytes=8MB;ChildlessSeconds=600}
+    [pscustomobject]@{FirstGraceSeconds=90;MinGraceSeconds=90;MaxGraceSeconds=660;AgingSeconds=600;MaxOvertakeSeconds=300;MaxShortSeconds=120;LogRotateBytes=8MB;ChildlessSeconds=600;OrphanSeconds=600}
 }
 function Get-IW7NowMs { [DateTimeOffset]::new([datetime]::SpecifyKind((Get-IW7SchedulerUtcNow),'Utc')).ToUnixTimeMilliseconds() }
 function Get-IW7QueuePath { Join-Path (Get-IW7ResourceRoot) 'queue.json' }

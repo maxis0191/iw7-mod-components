@@ -524,6 +524,17 @@ Differential test of the clip (`ops/engine/avoidance_clip.py compare`): the ship
 
 Not proven: the clip's behaviour past 32 vertices against any reference but the host test (the shipped function cannot be run there: it overruns); the consumer path past 32 vertices ran 17 times in the three site A repro runs (`solves_big`); a crowd that makes the final polygon of a solve pass 32 (ring3's 36 was an intermediate polygon: `over_stock` 56, `solves_big` 0) was not met in any run; site B was read on one map (Spaceland) and the flag `+0x30` of the entity is not named by a function of the engine (data only: 207 in use, 58 parked).
 
+## Draw surface list of the dynamic models (a90, 18 Nov 2026)
+
+Measured with the render meter ([RENDER-METER](RENDER-METER.md)): with 200 zombies alive and in view, warning 0x29 "Max scene drawsurfs exceeded from R_AddDObjSurfacesCamera (region 1)" fired 245 times a second (69,647 in 280 s;
+none at the stock 24 records). FUN_140E2D000 writes one 16 byte entry per surface of every dynamic model (zombies, doors, props, scriptables: every DObj) into the list of the surface's region and stops at the list's
+limit; the surfaces that do not fit are not drawn that frame, so zombies are partly or wholly invisible and whichever models come last in the frame change from frame to frame. FUN_140E34A80 fills three tables once:
+the capacity in entries (u32 at 0x149EEAA00 + 4 x list), the base (qword at 0x149EEAAC0 + 8 x list), and the count a frame has used lives at 0x149EEAA60. List 1 holds **0x100 entries (4 KB at 0x149E0AD80)**.
+The readers take base and capacity from the tables (FUN_140DDE800 builds the cursor and limit arrays, FUN_140E3CEE0 hands base and count to the sort jobs), so **`agent_capacity.cpp` section 3c** moves the list to a new block of
+0x2000 entries (128 KB) by writing two table values after the stock initialiser (a hook on FUN_140E34A80, and at once when it already ran). No code is patched. Proof (QA plans `flicker-200`, same camera, client at fov 120):
+warning 0x29 245.5 a second before, 0 after, 280 s with 200 alive, no crash, scene interval 17.1 ms mean before and after (`tests/ops/render_meter_test.py` checks the initialiser's values and the three warning sites against the shipped code).
+The same plan names two more refusals at 200 that this does not touch: 0x0D, the scene surface buffer (0x40000 bytes at frame data +0xB5580, a u16 index in 4 byte units, 24 code sites: 30 a second), and 0x56, a worker command ring that is full (a stall, not a drop).
+
 ## Players on another layout
 
 The server announces `agentcap=agents-<n>` in its info and refuses at connect a client whose layout differs (today's
