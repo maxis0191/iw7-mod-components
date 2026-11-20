@@ -261,6 +261,30 @@ std::uintptr_t read_pointer(std::uintptr_t address)
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
         }
+
+        // lab (-paris-surf-log): the entries of draw surface list 1 against the scene surface buffer counter. An entry keeps a 16 bit unit index (4 byte units) in its first qword (low 16 bits) or in bits 48..63;
+        // an index above the bytes the frame has allocated (counter / 4) names an entry whose record was never allocated: logged with the raw entry, once a second.
+        std::uint64_t surf_log_last_ms = 0;
+        bool surf_log_entries(std::uint32_t counter, unsigned& count, std::uint64_t* raw, std::uint32_t& bad_low, std::uint32_t& bad_high)
+        {
+            __try
+            {
+                const auto base = *reinterpret_cast<const volatile std::uintptr_t*>(0x149EEAAC8ull);
+                count = *reinterpret_cast<const volatile std::uint32_t*>(0x149EEAA64ull);
+                if (!base || count > 8192) return false;
+                const std::uint32_t units = counter / 4;
+                bad_low = bad_high = 0;
+                for (unsigned i = 0; i < count; ++i)
+                {
+                    const auto key = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i);
+                    const std::uint32_t low = static_cast<std::uint32_t>(key & 0xFFFF), high = static_cast<std::uint32_t>(key >> 48);
+                    if (low > units && low != 0xFFFF) { if (!bad_low) { raw[0] = key; raw[1] = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i + 8); } ++bad_low; }
+                    if (high > units && high != 0xFFFF) { if (!bad_high) { raw[2] = key; raw[3] = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i + 8); } ++bad_high; }
+                }
+                return true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        }
         const game::dvar_t* skin_size_dvar = nullptr;
         const game::dvar_t* skin_threshold_dvar = nullptr;
         const game::dvar_t* skin_compute_dvar = nullptr;
@@ -301,6 +325,15 @@ std::uintptr_t read_pointer(std::uintptr_t address)
             std::uint32_t sa = 0, sb = 0;
             if (read_surf_counters(sa, sb))
             {
+                static const bool surf_log = utils::flags::has_flag("paris-surf-log");
+                const auto ms = GetTickCount64();
+                if (surf_log && ms - surf_log_last_ms > 1000)
+                {
+                    surf_log_last_ms = ms;
+                    unsigned count = 0; std::uint64_t raw[4]{}; std::uint32_t bl = 0, bh = 0;
+                    if (surf_log_entries(sa, count, raw, bl, bh))
+                        console::info("[RenderMeter] surf entries: list 1 holds %u, counter %u bytes (%u units): %u entries with a low index above it (first %016llX %016llX), %u with a high index above it (first %016llX %016llX)\n", count, sa, sa / 4, bl, static_cast<unsigned long long>(raw[0]), static_cast<unsigned long long>(raw[1]), bh, static_cast<unsigned long long>(raw[2]), static_cast<unsigned long long>(raw[3]));
+                }
                 const std::uint64_t v[2] = {sa, sb};
                 for (int i = 0; i < 2; ++i) { surf_sum[i].fetch_add(v[i]); surf_n[i].fetch_add(1); auto m = surf_max[i].load(); while (v[i] > m && !surf_max[i].compare_exchange_weak(m, v[i])) {} }
             }
