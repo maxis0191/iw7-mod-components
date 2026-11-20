@@ -608,14 +608,26 @@ try {
     $timeStep = Restore-IW7SourceTimes -NativeRoot $root
     Write-Output ("Native sources: {0} unchanged since the last build of this tree (times restored), {1} new or changed." -f $timeStep.Kept, $timeStep.Changed)
     # A lab client (IsolatedLab or Debugger) is a test client: no /GL, no /LTCG, incremental link (ops/build/premake-lab.lua).
-    if (($IsolatedLab -or $Debugger) -and !$NoLabLink) {
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'build/premake-lab.lua') -Destination (Join-Path $root 'paris-lab.lua') -Force
-        & ./tools/premake5.exe --file=paris-lab.lua vs2022
+    $useLabLink = [bool](($IsolatedLab -or $Debugger) -and !$NoLabLink)
+    $labLuaSrc = Join-Path $PSScriptRoot 'build/premake-lab.lua'
+    $labLuaHash = if ($useLabLink -and (Test-Path -LiteralPath $labLuaSrc)) { (Get-FileHash -LiteralPath $labLuaSrc -Algorithm SHA256).Hash } else { 'none' }
+    $srcList = @((Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File | Sort-Object FullName | ForEach-Object { $_.FullName.Substring($root.Length) })) -join "`n"
+    $premakeKey = ([BitConverter]::ToString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes("$useLabLink|$labLuaHash|`n$srcList"))) -replace '-','').ToLowerInvariant()
+    $premakeStamp = Join-Path $root 'build/.premake-inputs.sha256'
+    $premakeCached = (Test-Path -LiteralPath (Join-Path $root 'build/iw7-mod.sln')) -and (Test-Path -LiteralPath $premakeStamp) -and ((Get-Content -LiteralPath $premakeStamp -Raw).Trim() -eq $premakeKey)
+    if ($premakeCached) {
+        Write-Output "Premake: skipped (source tree and premake inputs unchanged)."
     } else {
-        Remove-Item -LiteralPath (Join-Path $root 'paris-lab.lua') -Force -ErrorAction SilentlyContinue
-        & ./tools/premake5.exe vs2022
+        if ($useLabLink) {
+            Copy-Item -LiteralPath $labLuaSrc -Destination (Join-Path $root 'paris-lab.lua') -Force
+            & ./tools/premake5.exe --file=paris-lab.lua vs2022
+        } else {
+            Remove-Item -LiteralPath (Join-Path $root 'paris-lab.lua') -Force -ErrorAction SilentlyContinue
+            & ./tools/premake5.exe vs2022
+        }
+        if ($LASTEXITCODE) { throw 'Premake failed.' }
+        Set-Content -LiteralPath $premakeStamp -Value $premakeKey -NoNewline
     }
-    if ($LASTEXITCODE) { throw 'Premake failed.' }
     Write-IW7Lap 'source times and premake'
     # Compile in parallel: the lead used to be one cl.exe at a time (/m:1 and MultiProcessorCompilation=false).
     $threads = if ($env:IW7_BUILD_THREADS) { [int]$env:IW7_BUILD_THREADS } else { [Math]::Max(2, [Math]::Min(8, [int]([Environment]::ProcessorCount / 2))) }
