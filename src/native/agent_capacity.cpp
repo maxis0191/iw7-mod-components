@@ -773,8 +773,64 @@ void drawsurf_init_stub() {
     grow_drawsurf_list();
 }
 void plan_drawsurf_lists() {
+    if (utils::flags::has_flag("paris-stock-render-pools")) return;   // A/B runs: the stock renderer pools (this list and the skinned cache) with the capacity build
     drawsurf_init_hook.create(drawsurf_init_function, drawsurf_init_stub);   // queued: main applies every queued hook after post_unpack
     scheduler::once([] { grow_drawsurf_list(); }, scheduler::main);
+}
+
+// ---- 3e. the renderer worker command rings (a90) ---------------------------------------------------------------------------------
+// Warning 0x56 "worker command size exceeded for trace_to_entity" (17 a second at 200 zombies, 0 at 24): FUN_140E4B3C0 takes a slot of the ring of one command kind; with none free the
+// caller runs the command itself or waits for the consumer (a stall, not a drop). The rings are 0x80 byte records at 0x14ABC8600 + 0x80 x kind: +0x14 entry bytes, +0x18 buffer, +0x20 ring bytes
+// (the modulus of the cursors), +0x24 slot limit; their values are set once by FUN_140E4BB60 and the kind's name is the string at 0x141BD3930 + 8 x kind. After that initialiser the ring
+// named below gets a buffer 16 times as large and the two sizes 16 times as large (the size stays a multiple of the entry).
+constexpr std::uintptr_t ring_init_function = 0x140E4BB60, ring_records = 0x14ABC8600, ring_names = 0x141BD3930;
+constexpr unsigned ring_kinds = 64, ring_growth = 16;
+utils::hook::detour ring_init_hook;
+std::atomic<std::uint32_t> rings_grown{0};
+void grow_rings() {
+    for (unsigned k = 0; k < ring_kinds; ++k) {
+        const auto name_pointer = *reinterpret_cast<const std::uintptr_t*>(ring_names + 8ull * k);
+        if (name_pointer < 0x140000000ull || name_pointer > 0x14C000000ull) continue;
+        if (std::strcmp(reinterpret_cast<const char*>(name_pointer), "trace_to_entity") != 0) continue;
+        auto* record = reinterpret_cast<std::uint8_t*>(ring_records + 0x80ull * k);
+        auto* entry = reinterpret_cast<volatile std::int32_t*>(record + 0x14);
+        auto* buffer = reinterpret_cast<void* volatile*>(record + 0x18);
+        auto* bytes = reinterpret_cast<volatile std::int32_t*>(record + 0x20);
+        auto* slots = reinterpret_cast<volatile std::int32_t*>(record + 0x24);
+        if (*entry <= 0 || *bytes <= 0 || *slots <= 0 || *buffer == nullptr || *bytes % *entry != 0 || rings_grown.load()) return;
+        const std::size_t new_bytes = static_cast<std::size_t>(*bytes) * ring_growth;
+        void* block = VirtualAlloc(nullptr, new_bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!block) { console::error("[agent capacity] worker ring %u (trace_to_entity): no memory\n", k); return; }
+        console::info("[agent capacity] worker ring %u trace_to_entity: entry %d, %d bytes, %d slots -> %zu bytes, %d slots\n", k, *entry, *bytes, *slots, new_bytes, *slots * static_cast<int>(ring_growth));
+        *buffer = block;
+        *bytes = static_cast<std::int32_t>(new_bytes);
+        *slots = *slots * static_cast<std::int32_t>(ring_growth);
+        rings_grown.fetch_add(1);
+        return;
+    }
+}
+void ring_init_stub() {
+    ring_init_hook.invoke<void>();
+    grow_rings();
+}
+void plan_rings() {
+    ring_init_hook.create(ring_init_function, ring_init_stub);   // queued: main applies every queued hook after post_unpack
+    scheduler::once([] { grow_rings(); }, scheduler::main);
+}
+
+// ---- 3f. the skinned cache (a90) ------------------------------------------------------------------------------------------------
+// With a crowd of 183 zombies in view the render meter reads a skinned cache demand of 850,000 vertices every frame against the 563,200 of r_SkinnedCacheSize: warning 0xB "too many skinned verts -
+// not drawing surface" 434,000 times in 180 s, every frame over the size (run crowd-after4; 400,000 at 200 zombies out of view). The dvar is not the setting: FUN_140DD3820 (the pool
+// initialiser) writes r_SkinnedCacheSize itself as (1 / r_lodScale) x the float constant at 0x14153D2A0 (563,200.0), clamped by the dvar's domain (0x200000), and sizes the three frame pools
+// (32 bytes and 4 bytes a vertex) from it; `+set r_SkinnedCacheSize` is overwritten (run crowd-skin). The constant is raised to 2,000,000.0 (three frames x 36 bytes x 2,000,000 = 216 MB of video memory).
+void plan_skin_cache() {
+    if (utils::flags::has_flag("paris-stock-render-pools")) return;
+    auto* constant = reinterpret_cast<float*>(0x14153D2A0ull);
+    DWORD old{};
+    if (*constant != 563200.0f || !VirtualProtect(constant, sizeof(float), PAGE_READWRITE, &old)) { console::error("[agent capacity] skinned cache constant not as expected, size left at the stock\n"); return; }
+    *constant = 2000000.0f;
+    VirtualProtect(constant, sizeof(float), old, &old);
+    console::info("[agent capacity] skinned cache constant 563,200 -> 2,000,000 vertices\n");
 }
 
 // ---- 3d. the two per-sentient tables of an SV agent record (map A1) ---------------------------------------------------
@@ -1768,6 +1824,8 @@ public:
         plan_snapshot();
         plan_render_list();
         plan_drawsurf_lists();
+        plan_skin_cache();
+        // plan_rings(); not installed: growing the trace_to_entity ring froze the client 44 s after the join (run f200-ring, 18 Nov); the ring record is dumped by the render meter instead
         plan_ai_pool();
         plan_tables();
         plan_entity_queue();
