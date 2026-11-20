@@ -8,6 +8,7 @@
 #include <intrin.h>
 #include <algorithm>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 // Trace census of the agent movement step (a91, 20 Nov 2026): -paris-trace-census.
@@ -64,8 +65,44 @@ namespace paris_trace_census
             return result;
         }
 
+        // Inclusive time and call count of a few functions above the sweep, to put the sweep's share in the frame (the native sampler's stack attribution is a claim until a hook measures it).
+        struct timer_row { const char* name; std::uintptr_t address; std::uint64_t calls; std::int64_t ticks; utils::hook::detour hook; };
+        timer_row timers[] = {
+            {"FUN_140c1a3f0 agent iteration", 0x140C1A3F0, 0, 0, {}},
+            {"FUN_140c5c560 Pmove", 0x140C5C560, 0, 0, {}},
+            {"FUN_140c5ef00 agent step", 0x140C5EF00, 0, 0, {}},
+            {"FUN_1403e61b0 path follow", 0x1403E61B0, 0, 0, {}},
+            {"FUN_1403e5700 path trace", 0x1403E5700, 0, 0, {}},
+            {"FUN_14043ec10 two-point trace", 0x14043EC10, 0, 0, {}},
+        };
+
+        template <std::size_t I>
+        std::uint64_t timer_stub(std::uint64_t a, std::uint64_t b, std::uint64_t c, std::uint64_t d, std::uint64_t e, std::uint64_t f, std::uint64_t g)
+        {
+            if (server_thread.load(std::memory_order_relaxed) != GetCurrentThreadId()) return timers[I].hook.invoke<std::uint64_t>(a, b, c, d, e, f, g);
+            const auto begin = now();
+            const auto result = timers[I].hook.invoke<std::uint64_t>(a, b, c, d, e, f, g);
+            timers[I].ticks += now() - begin;
+            ++timers[I].calls;
+            return result;
+        }
+
+        template <std::size_t... Is>
+        void install_timers(std::index_sequence<Is...>)
+        {
+            (timers[Is].hook.create(timers[Is].address, timer_stub<Is>), ...);
+        }
+
         void report()
         {
+            for (auto& t : timers)
+            {
+                console::info("[Paris trace census] frames=%llu timer=%s calls_per_frame=%.2f ms_per_frame=%.3f
+", static_cast<unsigned long long>(frames), t.name,
+                    static_cast<double>(t.calls) / frames, 1000.0 * static_cast<double>(t.ticks) / static_cast<double>(qpc_hz) / frames);
+                t.calls = 0;
+                t.ticks = 0;
+            }
             std::vector<row> rows;
             for (const auto& r : table) if (r.site) rows.push_back(r);
             std::sort(rows.begin(), rows.end(), [](const row& x, const row& y) { return x.ticks > y.ticks; });
@@ -95,6 +132,7 @@ namespace paris_trace_census
                 QueryPerformanceFrequency(&hz);
                 qpc_hz = hz.QuadPart;
                 sweep_hook.create(sweep_function, sweep_stub);
+                install_timers(std::make_index_sequence<6>{});
                 scheduler::loop([]
                 {
                     server_thread.store(GetCurrentThreadId());
