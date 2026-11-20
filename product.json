@@ -323,6 +323,7 @@
     "src/native/paris_perf.cpp",
     "src/native/paris_render_meter.cpp",
     "src/native/paris_render_meter.hpp",
+    "src/native/paris_replace_total.cpp",
     "src/native/paris_script_chain.hpp",
     "src/native/paris_see.cpp",
     "src/native/paris_sperf.cpp",
