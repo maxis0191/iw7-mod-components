@@ -242,6 +242,18 @@ std::uintptr_t read_pointer(std::uintptr_t address)
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
         }
+        bool read_surf_counters(std::uint32_t& a, std::uint32_t& b)
+        {
+            __try
+            {
+                const auto frame = *reinterpret_cast<const volatile std::uintptr_t*>(frame_pointer);
+                if (!frame) return false;
+                a = *reinterpret_cast<const volatile std::uint32_t*>(frame + 0x18A0);
+                b = *reinterpret_cast<const volatile std::uint32_t*>(frame + 0x18A4);
+                return true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        }
         const game::dvar_t* skin_size_dvar = nullptr;
         const game::dvar_t* skin_threshold_dvar = nullptr;
         const game::dvar_t* skin_compute_dvar = nullptr;
@@ -279,6 +291,12 @@ std::uintptr_t read_pointer(std::uintptr_t address)
                 if (tension_units > cap) skin_tension_over.fetch_add(1, std::memory_order_relaxed);
             }
             if (flag & 1) skin_over_flag.fetch_add(1, std::memory_order_relaxed);
+            std::uint32_t sa = 0, sb = 0;
+            if (read_surf_counters(sa, sb))
+            {
+                const std::uint64_t v[2] = {sa, sb};
+                for (int i = 0; i < 2; ++i) { surf_sum[i].fetch_add(v[i]); surf_n[i].fetch_add(1); auto m = surf_max[i].load(); while (v[i] > m && !surf_max[i].compare_exchange_weak(m, v[i])) {} }
+            }
         }
 
         // ---- video memory ----
@@ -341,6 +359,8 @@ std::uintptr_t read_pointer(std::uintptr_t address)
         class_sum classes[3]; // players, agents, rest
         constexpr const char* class_name[3] = {"players", "agents", "world"};
         std::uint64_t history_drawn[2][entity_words]{}, history_processed[2][entity_words]{};
+        // bytes asked of the two scene surface buffers (counters [[0x148F73088]+0x18A0] 256 KB and +0x18A4 64 KB: they keep counting past the limit, so the value is the whole demand)
+        std::atomic<std::uint64_t> surf_sum[2]{}, surf_max[2]{}, surf_n[2]{};
         std::uint64_t frames_total{}, frames_window{}, lists_sum[4]{}, lists_peak[4]{}, lists_total_peak[4]{};
         std::int64_t window_start_qpc{}, last_scene_qpc{};
         double frame_ms_sum{}, frame_ms_max{};
@@ -458,6 +478,11 @@ std::uintptr_t read_pointer(std::uintptr_t address)
                 row += buf;
             }
             row += "],";
+            const auto ss0 = surf_sum[0].exchange(0), ss1 = surf_sum[1].exchange(0), sm0 = surf_max[0].exchange(0), sm1 = surf_max[1].exchange(0), sn0 = surf_n[0].exchange(0), sn1 = surf_n[1].exchange(0);
+            std::snprintf(buf, sizeof(buf), "\"surf_demand_bytes\":{\"scene_surfs\":{\"mean\":%.0f,\"max\":%llu,\"cap\":262144},\"motionblur\":{\"mean\":%.0f,\"max\":%llu,\"cap\":65536}},",
+                sn0 ? static_cast<double>(ss0) / static_cast<double>(sn0) : 0.0, static_cast<unsigned long long>(sm0),
+                sn1 ? static_cast<double>(ss1) / static_cast<double>(sn1) : 0.0, static_cast<unsigned long long>(sm1));
+            row += buf;
             row += "\"drawsurf_full\":[";
             for (unsigned r = 0, k = 0; r < 32; ++r)
             {
