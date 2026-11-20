@@ -861,6 +861,29 @@ std::uint32_t surf_old_damaged_count() {
     }
     return damaged;
 }
+
+// lab (-paris-surf-log): where do pointers into the scene surface buffers live? Every second for six seconds after the patch the two frame structs are scanned for qwords that point into either old
+// buffer (or +-1 MB of it) or into either new buffer; the first hits are logged with their offset in the frame, so a pointer computed once at init and stored in a frame field shows up with the
+// value it holds (old-based = computed before the patch or by an unpatched form, new-based = computed after). Also the time of the patch and of every scan against the process start.
+void surf_log_scan(int round) {
+    constexpr std::uintptr_t window = 0x100000;
+    unsigned printed = 0;
+    std::size_t old_hits = 0, new_hits = 0;
+    for (unsigned k = 0; k < 2; ++k) {
+        const std::uintptr_t frame = surf_frame_array + k * surf_frame_stride;
+        const std::uintptr_t old_lo = frame + surf_old_base - window, old_hi = frame + surf_old_base + surf_bytes + window;
+        const std::uintptr_t new_lo = frame + surf_distance - window, new_hi = frame + surf_distance + surf_bytes + window;
+        const auto* q = reinterpret_cast<const std::uintptr_t*>(frame);
+        for (std::size_t i = 0; i < surf_frame_stride / 8; ++i) {
+            const auto v = q[i];
+            const bool o = v >= old_lo && v < old_hi, n = v >= new_lo && v < new_hi;
+            if (!o && !n) continue;
+            (o ? old_hits : new_hits)++;
+            if (printed < 24) { ++printed; console::info("[agent capacity] surf scan %d: frame %u +0x%zX = %llX (%s, %+lld from the buffer base)\n", round, k, i * 8, static_cast<unsigned long long>(v), o ? "old" : "new", static_cast<long long>(v - (frame + (o ? surf_old_base : surf_distance)))); }
+        }
+    }
+    console::info("[agent capacity] surf scan %d at %llu ms: %zu qwords point near the old buffers, %zu near the new ones\n", round, static_cast<unsigned long long>(GetTickCount64()), old_hits, new_hits);
+}
 void plan_surf_relocation() {
     if (game::environment::is_dedi() || utils::flags::has_flag("paris-stock-render-pools")) return;
     // the frame array is where the table was made for
@@ -910,6 +933,12 @@ void plan_surf_relocation() {
     }
     surf_distance = distance;
     surf_done.store(true);
+    if (utils::flags::has_flag("paris-surf-log")) {
+        console::info("[agent capacity] surf patch applied at %llu ms (tick), process uptime above\n", static_cast<unsigned long long>(GetTickCount64()));
+        static int round = 0;
+        surf_log_scan(0);
+        scheduler::loop([] { if (round < 6) surf_log_scan(++round); }, scheduler::main, 1000ms);
+    }
     console::info("[agent capacity] surface buffer moved: %zu sites, frame + %llX (block %p), old regions poisoned\n", sizeof(surf_sites) / sizeof(surf_sites[0]), static_cast<unsigned long long>(distance), base);
 }
 
