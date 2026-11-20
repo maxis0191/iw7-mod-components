@@ -8,6 +8,7 @@ FUN_140949810 (a73 write watch): 0xC0 x 240 bytes over the next members of `cg`.
 
     python -I -B ops/engine/client_tables.py scan   -o client-tables-scan.json     # every function that loads `cg`: every stride-indexed member access
     python -I -B ops/engine/client_tables.py report client-tables-scan.json        # the clusters (stride, rows), what lies after them
+    python -I -B ops/engine/client_tables.py candidates <static_tables.json> [--top 16]   # rank the client static tables for a census run (static_tables.py --json)
     python -I -B ops/engine/client_tables.py find   -o ops/engine/client-tables.json   # the field of every instruction that names a moved table
     python -I -B ops/engine/client_tables.py check  ops/engine/client-tables.json  # decode every row against the image
 
@@ -216,11 +217,46 @@ def check(args):
     return 1 if bad else 0
 
 
+# the client game and its helpers; the server game (0x1403D0000..0x140500000, the queue and AI code at 0x1405C0000..0x140600000) is left out
+CLIENT_FUNCTION_RANGES = [(0x140070000, 0x1403D0000), (0x140500000, 0x1405C0000), (0x140600000, 0x140A00000)]
+# the loop and count evidence of static_tables.py that points at a number of characters (clients then agents)
+CHARACTER_SIGNALS = ('MAX_CHARACTERS', 'MAX_CLIENTS', 'start 18', 'last 41')
+
+
+def candidates(args):
+    """Rank the client static tables of `static_tables.py --json` for a census run: loops over the characters (clients then agents) and stock row counts of 42
+    or 24 come first; the pointer arrays that every function reads by `param_1` (a local client number or an entity number, not a character) are dropped."""
+    data = json.load(open(args.file))
+    ranked = []
+    for t in data['tables']:
+        funcs = [int(f, 16) for f in t['funcs']]
+        client = [f for f in funcs if any(lo <= f < hi for lo, hi in CLIENT_FUNCTION_RANGES)]
+        if not client or len(client) < len(funcs) / 2:
+            continue
+        loops = [e for e in t['evidence'] if 'loop with' in e and any(x in e for x in CHARACTER_SIGNALS)]
+        if not loops:
+            continue
+        stride = t['stride']
+        if stride == 8 and t['room_rows'] <= 1 and len(funcs) > 30:
+            continue
+        score = 4 * (42 in t['rows_implied']) + 2 * (24 in t['rows_implied']) + 3 * any('MAX_' in e for e in loops) + 2 * any('start 18' in e for e in loops) + 2 * (t['room_rows'] <= 2)
+        ranked.append((score, int(t['base'], 16), stride, t['rows_implied'], len(funcs), loops[0][:110]))
+    ranked.sort(key=lambda r: (-r[0], r[1]))
+    regions = []
+    for score, base, stride, rows, n, ev in ranked[:args.top]:
+        size = min(282 * stride, 12 * 1024 * 1024 - 0x1000)
+        regions.append('abs:%X:%d' % (base, size))
+        print('%2d  %X  stride %#x  rows %s  funcs %d  %s' % (score, base, stride, rows, n, ev))
+    print()
+    print('census regions (282 rows: the stock 42 and what lies behind them at 264 agents): ' + ','.join(regions))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest='cmd', required=True)
     p = sub.add_parser('scan'); p.add_argument('-o', required=True); p.set_defaults(fn=scan)
     p = sub.add_parser('report'); p.add_argument('file'); p.add_argument('--all', action='store_true'); p.set_defaults(fn=report)
+    p = sub.add_parser('candidates'); p.add_argument('file'); p.add_argument('--top', type=int, default=16); p.set_defaults(fn=candidates)
     p = sub.add_parser('find'); p.add_argument('-o', required=True); p.set_defaults(fn=find)
     p = sub.add_parser('check'); p.add_argument('file'); p.set_defaults(fn=check)
     args = ap.parse_args()
