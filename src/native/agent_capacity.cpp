@@ -911,7 +911,13 @@ void plan_surf_relocation() {
     if (distance % 8 != 0 || distance >= 0x7FFF0000ull) { console::error("[agent capacity] surface buffer: distance %llX unusable\n", static_cast<unsigned long long>(distance)); return; }
     const std::uintptr_t delta = distance - surf_old_base;
     for (unsigned k = 0; k < 2; ++k) {
+        // the buffer is moved with its content (the data of a frame struct is not all zero at start: run surflog2 crashed on a record that the old region holds before the first frame)
         auto* p = reinterpret_cast<std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf_old_base);
+        std::size_t used = 0;
+        for (std::size_t i = 0; i < surf_bytes / 4; ++i) used += p[i] != 0;
+        std::memcpy(reinterpret_cast<void*>(a0 + k * surf_frame_stride), p, surf_bytes);
+        console::info("[agent capacity] surface buffer %u: %zu non-zero dwords copied to the new place
+", k, used);
         for (std::size_t i = 0; i < surf_bytes / 4; ++i) p[i] = surf_poison;
     }
     for (const auto& site : surf_sites) {
