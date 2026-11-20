@@ -882,6 +882,18 @@ void surf_log_scan(int round) {
             if (printed < 24) { ++printed; console::info("[agent capacity] surf scan %d: frame %u +0x%zX = %llX (%s, %+lld from the buffer base)\n", round, k, i * 8, static_cast<unsigned long long>(v), o ? "old" : "new", static_cast<long long>(v - (frame + (o ? surf_old_base : surf_distance)))); }
         }
     }
+    {
+        // do the patched sites still hold their new value? (the engine may restore code pages: run stage0b crashed on an index made with the old constant)
+        const std::uintptr_t delta = surf_distance - surf_old_base;
+        unsigned wrong = 0, shown = 0;
+        for (const auto& site : surf_sites) {
+            std::uint32_t now{};
+            std::memcpy(&now, reinterpret_cast<const void*>(site.address + site.field_offset), 4);
+            const std::uint32_t want = site.old_value + static_cast<std::uint32_t>(site.kind == 0 ? delta : delta / 4);
+            if (now != want) { ++wrong; if (shown++ < 8) console::info("[agent capacity] surf site %llX holds %08X, patched value %08X\n", static_cast<unsigned long long>(site.address), now, want); }
+        }
+        console::info("[agent capacity] surf scan %d: %u of %zu patched sites no longer hold their new value\n", round, wrong, sizeof(surf_sites) / sizeof(surf_sites[0]));
+    }
     console::info("[agent capacity] surf scan %d at %llu ms: %zu qwords point near the old buffers, %zu near the new ones\n", round, static_cast<unsigned long long>(GetTickCount64()), old_hits, new_hits);
 }
 void plan_surf_relocation() {
