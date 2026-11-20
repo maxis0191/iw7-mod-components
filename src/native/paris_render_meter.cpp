@@ -285,6 +285,24 @@ std::uintptr_t read_pointer(std::uintptr_t address)
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
         }
+
+        // lab (-paris-surf-log): every draw surface list (24, tables at 0x149EEAAC0 bases / 0x149EEAA60 counts): how many entries and the first two raw entries
+        bool surf_log_list(unsigned list, unsigned& n, std::uint64_t* raw)
+        {
+            __try
+            {
+                const auto base = *reinterpret_cast<const volatile std::uintptr_t*>(0x149EEAAC0ull + 8ull * list);
+                n = *reinterpret_cast<const volatile std::uint32_t*>(0x149EEAA60ull + 4ull * list);
+                if (!base || n > 0x10000) return false;
+                for (unsigned i = 0; i < 2 && i < n; ++i)
+                {
+                    raw[2 * i] = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i);
+                    raw[2 * i + 1] = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i + 8);
+                }
+                return true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        }
         const game::dvar_t* skin_size_dvar = nullptr;
         const game::dvar_t* skin_threshold_dvar = nullptr;
         const game::dvar_t* skin_compute_dvar = nullptr;
@@ -330,6 +348,12 @@ std::uintptr_t read_pointer(std::uintptr_t address)
                 if (surf_log && ms - surf_log_last_ms > 1000)
                 {
                     surf_log_last_ms = ms;
+                    for (unsigned l = 0; l < 24; ++l)
+                    {
+                        unsigned n = 0; std::uint64_t r[4]{};
+                        if (surf_log_list(l, n, r) && n)
+                            console::info("[RenderMeter] surf list %u: %u entries, first %016llX %016llX, second %016llX %016llX\n", l, n, static_cast<unsigned long long>(r[0]), static_cast<unsigned long long>(r[1]), static_cast<unsigned long long>(r[2]), static_cast<unsigned long long>(r[3]));
+                    }
                     unsigned n_ent = 0; std::uint64_t rawv[4]{}; std::uint32_t badl = 0, badh = 0;
                     if (surf_log_entries(sa, n_ent, rawv, badl, badh))
                         console::info("[RenderMeter] surf entries: list 1 holds %u, counter %u bytes (%u units): %u entries with a low index above it (first %016llX %016llX), %u with a high index above it (first %016llX %016llX)\n", n_ent, sa, sa / 4, badl, static_cast<unsigned long long>(rawv[0]), static_cast<unsigned long long>(rawv[1]), badh, static_cast<unsigned long long>(rawv[2]), static_cast<unsigned long long>(rawv[3]));
