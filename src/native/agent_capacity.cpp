@@ -920,6 +920,44 @@ void surf_resume(std::vector<HANDLE>& handles) {
     for (const HANDLE h : handles) { ResumeThread(h); CloseHandle(h); }
     handles.clear();
 }
+
+// lab: a cached base. Every committed writable page of the game image (.data, .bss: 0x140000000 + 0xC301400) is scanned for qwords equal to the old base of either frame (frame + 0xB5580) within
+// +-0x100, and for dwords equal to its low half within +-0x100: a converter that subtracts a base loaded from memory (computed at renderer init, before the patch) would find it there.
+void surf_log_image_scan(int round) {
+    unsigned shown = 0, hits64 = 0, hits32 = 0;
+    const std::uintptr_t lo = 0x140000000ull, hi = lo + 0xC301400ull;
+    std::uintptr_t a = lo;
+    while (a < hi) {
+        MEMORY_BASIC_INFORMATION m{};
+        if (!VirtualQuery(reinterpret_cast<void*>(a), &m, sizeof(m))) break;
+        const std::uintptr_t end = reinterpret_cast<std::uintptr_t>(m.BaseAddress) + m.RegionSize;
+        const bool writable = m.State == MEM_COMMIT && (m.Protect & (PAGE_READWRITE | PAGE_WRITECOPY)) && !(m.Protect & PAGE_GUARD);
+        if (writable) {
+            const auto* q = reinterpret_cast<const std::uintptr_t*>(a);
+            const std::size_t n = (std::min(end, hi) - a) / 8;
+            for (std::size_t i = 0; i < n; ++i) {
+                const std::uintptr_t v = q[i];
+                for (unsigned k = 0; k < 2; ++k) {
+                    const std::uintptr_t base = surf_frame_array + k * surf_frame_stride + surf_old_base;
+                    if (v + 0x100 >= base && v <= base + 0x100) {
+                        ++hits64;
+                        if (shown++ < 40) console::info("[agent capacity] image scan %d: qword at %llX = %llX (old base of frame %u %+lld)\n", round, static_cast<unsigned long long>(a + i * 8), static_cast<unsigned long long>(v), k, static_cast<long long>(v - base));
+                    }
+                    const std::uint32_t low = static_cast<std::uint32_t>(base);
+                    const std::uint32_t d0 = static_cast<std::uint32_t>(v), d1 = static_cast<std::uint32_t>(v >> 32);
+                    for (const std::uint32_t d : {d0, d1}) {
+                        if (d + 0x100 >= low && d <= low + 0x100 && !(v + 0x100 >= base && v <= base + 0x100)) {
+                            ++hits32;
+                            if (shown++ < 40) console::info("[agent capacity] image scan %d: dword half of %llX = %08X (low half of the old base of frame %u %+d)\n", round, static_cast<unsigned long long>(a + i * 8), d, k, static_cast<int>(d - low));
+                        }
+                    }
+                }
+            }
+        }
+        a = end;
+    }
+    console::info("[agent capacity] image scan %d: %u qwords and %u dwords near an old base\n", round, hits64, hits32);
+}
 void plan_surf_relocation() {
     if (game::environment::is_dedi() || utils::flags::has_flag("paris-stock-render-pools")) return;
     // the frame array is where the table was made for
@@ -986,7 +1024,8 @@ void plan_surf_relocation() {
         console::info("[agent capacity] surf patch applied at %llu ms (tick), process uptime above\n", static_cast<unsigned long long>(GetTickCount64()));
         static int round = 0;
         surf_log_scan(0);
-        scheduler::loop([] { if (round < 6) surf_log_scan(++round); }, scheduler::main, 1000ms);
+        surf_log_image_scan(0);
+        scheduler::loop([] { if (round < 6) { surf_log_scan(++round); if (round == 1 || round == 4) surf_log_image_scan(round); } }, scheduler::main, 1000ms);
     }
     console::info("[agent capacity] surface buffer moved: %zu sites, frame + %llX (block %p), old regions poisoned\n", sizeof(surf_sites) / sizeof(surf_sites[0]), static_cast<unsigned long long>(distance), base);
 }
