@@ -851,8 +851,9 @@ constexpr surf_site surf_sites[] = {
 constexpr std::uint32_t surf_poison = 0xA5A5A5A5u;
 std::atomic<bool> surf_done{false};
 std::uintptr_t surf_distance = 0;
+bool surf_noaccess = false;
 std::uint32_t surf_old_damaged_count() {
-    if (!surf_done.load()) return 0;
+    if (!surf_done.load() || surf_noaccess) return 0;
     std::uint32_t damaged = 0;
     for (unsigned k = 0; k < 2; ++k) {
         const auto* p = reinterpret_cast<const std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf_old_base);
@@ -898,6 +899,14 @@ void plan_surf_relocation() {
         std::memcpy(field, &value, 4);
         VirtualProtect(field, 4, old, &old);
         FlushInstructionCache(GetCurrentProcess(), field, 4);
+    }
+    // lab: the whole pages of the old regions are made inaccessible, so that a reader or a writer that was missed faults at its own instruction and the crash dump names it (-paris-surf-noaccess)
+    if (utils::flags::has_flag("paris-surf-noaccess")) {
+        for (unsigned k = 0; k < 2; ++k) {
+            DWORD previous{};
+            VirtualProtect(reinterpret_cast<void*>((surf_frame_array + k * surf_frame_stride + surf_old_base + 0xFFF) & ~static_cast<std::uintptr_t>(0xFFF)), surf_bytes - 0x1000, PAGE_NOACCESS, &previous);
+        }
+        surf_noaccess = true;
     }
     surf_distance = distance;
     surf_done.store(true);
