@@ -6,6 +6,7 @@
 #include "console/console.hpp"
 #include "command.hpp"
 #include "avoidance_clip.hpp"
+#include "paris_script_chain.hpp"
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <shellapi.h>
@@ -898,11 +899,12 @@ std::uintptr_t init_record_stub(std::uint8_t* record, void* entity) {
 // crash zips: rcx 0, the stack names vm_call_builtin_method_internal above it). The 24 agents of the stock game never meet it. The stub clears the stale byte
 // (the navigator is gone: there is nothing to release) and goes on; the first five are logged.
 std::atomic<std::uint32_t> stale_navigators{};
+static std::string paris_script_chain_text() { try { return paris_weapon_log::script_chain(); } catch (...) { return std::string(); } }
 void release_nav_stub(std::uint8_t* agent) {
     if (agent && agent[0x1328] && !*reinterpret_cast<void**>(agent + 0x1320)) {
         if (stale_navigators.fetch_add(1) < 5)
-            console::info("[agent capacity] navigator release on a destroyed agent %p (state %u, caller %p): the stale flag is cleared, nothing to release\n", static_cast<void*>(agent),
-                *reinterpret_cast<std::uint32_t*>(agent + 0x1A28 + 4 * static_cast<std::size_t>(*reinterpret_cast<std::uint32_t*>(agent + 0x1A40))), _ReturnAddress());
+            console::info("[agent capacity] navigator release on a destroyed agent %p (state %u, caller %p, script %s): the stale flag is cleared, nothing to release\n", static_cast<void*>(agent),
+                *reinterpret_cast<std::uint32_t*>(agent + 0x1A28 + 4 * static_cast<std::size_t>(*reinterpret_cast<std::uint32_t*>(agent + 0x1A40))), _ReturnAddress(), paris_script_chain_text().c_str());
         agent[0x1328] = 0;
     }
     release_nav_hook.invoke<void>(agent);
