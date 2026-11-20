@@ -225,6 +225,7 @@ std::uintptr_t read_pointer(std::uintptr_t address)
         utils::hook::detour render_end_hook;
         std::atomic<std::uint64_t> skin_frames{0}, skin_demand_sum{0}, skin_demand_max{0}, skin_over_cap{0}, skin_over_flag{0}, skin_tension_max{0}, skin_tension_over{0}, skin_cap_seen{0};
         std::atomic<std::uint64_t> skin_demand_last{0};
+        std::atomic<std::uint64_t> surf_sum[2]{}, surf_max[2]{}, surf_n[2]{};
         std::atomic<int> skin_reads_failed{0};
         bool read_skin(std::uint32_t& used, std::uint32_t& tension, std::uint32_t& flag)
         {
@@ -360,7 +361,7 @@ std::uintptr_t read_pointer(std::uintptr_t address)
         constexpr const char* class_name[3] = {"players", "agents", "world"};
         std::uint64_t history_drawn[2][entity_words]{}, history_processed[2][entity_words]{};
         // bytes asked of the two scene surface buffers (counters [[0x148F73088]+0x18A0] 256 KB and +0x18A4 64 KB: they keep counting past the limit, so the value is the whole demand)
-        std::atomic<std::uint64_t> surf_sum[2]{}, surf_max[2]{}, surf_n[2]{};
+
         std::uint64_t frames_total{}, frames_window{}, lists_sum[4]{}, lists_peak[4]{}, lists_total_peak[4]{};
         std::int64_t window_start_qpc{}, last_scene_qpc{};
         double frame_ms_sum{}, frame_ms_max{};
