@@ -46,19 +46,18 @@ namespace paris_trace_census
         std::uint64_t sweep_stub(std::uint64_t a, std::uint64_t b, std::uint64_t c, std::uint64_t d, std::uint64_t e, std::uint64_t f, std::uint64_t g)
         {
             const auto site = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
-            const auto thread = GetCurrentThreadId();
-            if (server_thread.load(std::memory_order_relaxed) != thread) return sweep_hook.invoke<std::uint64_t>(a, b, c, d, e, f, g);
             const auto begin = now();
             const auto result = sweep_hook.invoke<std::uint64_t>(a, b, c, d, e, f, g);
             const auto spent = now() - begin;
             auto index = (site >> 2) & (slots - 1);
             for (std::size_t probe = 0; probe < slots; ++probe, index = (index + 1) & (slots - 1))
             {
-                if (table[index].site == site || table[index].site == 0)
+                auto* key = reinterpret_cast<volatile LONG64*>(&table[index].site);
+                const auto seen = InterlockedCompareExchange64(key, static_cast<LONG64>(site), 0);
+                if (seen == 0 || static_cast<std::uintptr_t>(seen) == site)
                 {
-                    table[index].site = site;
-                    ++table[index].calls;
-                    table[index].ticks += spent;
+                    InterlockedIncrement64(reinterpret_cast<volatile LONG64*>(&table[index].calls));
+                    InterlockedAdd64(reinterpret_cast<volatile LONG64*>(&table[index].ticks), spent);
                     break;
                 }
             }
@@ -66,24 +65,33 @@ namespace paris_trace_census
         }
 
         // Inclusive time and call count of a few functions above the sweep, to put the sweep's share in the frame (the native sampler's stack attribution is a claim until a hook measures it).
-        struct timer_row { const char* name; std::uintptr_t address; std::uint64_t calls; std::int64_t ticks; utils::hook::detour hook; };
+        struct slot { DWORD tid; std::uint64_t calls; std::int64_t ticks; };
+        struct timer_row { const char* name; std::uintptr_t address; slot slots[8]; utils::hook::detour hook; };
         timer_row timers[] = {
-            {"FUN_140c1a3f0 agent iteration", 0x140C1A3F0, 0, 0, {}},
-            {"FUN_140c5c560 Pmove", 0x140C5C560, 0, 0, {}},
-            {"FUN_140c5ef00 agent step", 0x140C5EF00, 0, 0, {}},
-            {"FUN_1403e61b0 path follow", 0x1403E61B0, 0, 0, {}},
-            {"FUN_1403e5700 path trace", 0x1403E5700, 0, 0, {}},
-            {"FUN_14043ec10 two-point trace", 0x14043EC10, 0, 0, {}},
+            {"FUN_140c1a3f0 agent iteration", 0x140C1A3F0, {}, {}},
+            {"FUN_140c5c560 Pmove", 0x140C5C560, {}, {}},
+            {"FUN_140c5ef00 agent step", 0x140C5EF00, {}, {}},
+            {"FUN_1403e61b0 path follow", 0x1403E61B0, {}, {}},
+            {"FUN_1403e5700 path trace", 0x1403E5700, {}, {}},
+            {"FUN_14043ec10 two-point trace", 0x14043EC10, {}, {}},
         };
 
         template <std::size_t I>
         std::uint64_t timer_stub(std::uint64_t a, std::uint64_t b, std::uint64_t c, std::uint64_t d, std::uint64_t e, std::uint64_t f, std::uint64_t g)
         {
-            if (server_thread.load(std::memory_order_relaxed) != GetCurrentThreadId()) return timers[I].hook.invoke<std::uint64_t>(a, b, c, d, e, f, g);
+            const auto thread = GetCurrentThreadId();
             const auto begin = now();
             const auto result = timers[I].hook.invoke<std::uint64_t>(a, b, c, d, e, f, g);
-            timers[I].ticks += now() - begin;
-            ++timers[I].calls;
+            const auto spent = now() - begin;
+            for (auto& sl : timers[I].slots)
+            {
+                if (sl.tid == thread || InterlockedCompareExchange(reinterpret_cast<volatile LONG*>(&sl.tid), static_cast<LONG>(thread), 0) == 0)
+                {
+                    ++sl.calls;
+                    sl.ticks += spent;
+                    break;
+                }
+            }
             return result;
         }
 
@@ -97,10 +105,15 @@ namespace paris_trace_census
         {
             for (auto& t : timers)
             {
-                console::info("[Paris trace census] frames=%llu timer=%s calls_per_frame=%.2f ms_per_frame=%.3f\n", static_cast<unsigned long long>(frames), t.name,
-                    static_cast<double>(t.calls) / frames, 1000.0 * static_cast<double>(t.ticks) / static_cast<double>(qpc_hz) / frames);
-                t.calls = 0;
-                t.ticks = 0;
+                for (auto& sl : t.slots)
+                {
+                    if (!sl.tid) continue;
+                    console::info("[Paris trace census] frames=%llu timer=%s thread=%lu%s calls_per_frame=%.2f ms_per_frame=%.3f\n", static_cast<unsigned long long>(frames), t.name,
+                        static_cast<unsigned long>(sl.tid), sl.tid == server_thread.load() ? " (frame loop thread)" : "", static_cast<double>(sl.calls) / frames,
+                        1000.0 * static_cast<double>(sl.ticks) / static_cast<double>(qpc_hz) / frames);
+                    sl.calls = 0;
+                    sl.ticks = 0;
+                }
             }
             std::vector<row> rows;
             for (const auto& r : table) if (r.site) rows.push_back(r);
