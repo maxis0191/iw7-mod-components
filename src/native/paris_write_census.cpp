@@ -27,7 +27,7 @@ namespace paris_write_census
     namespace
     {
         constexpr std::uint64_t cg_cp_array = 0x141FDBEF0, game_base = 0x140000000;
-        constexpr unsigned max_regions = 8, max_pages = 3072, site_count = 8192, sample_count = 128;
+        constexpr unsigned max_regions = 16, max_pages = 3072, site_count = 8192, sample_count = 128;
         constexpr std::uint64_t page_size = 0x1000;
 
         struct page { std::atomic<int> state{0}; std::atomic<std::uint32_t> faults{0}; std::uint32_t original{}; };   // state 0 free, 1 protected, 2 released (hot)
@@ -182,19 +182,20 @@ namespace paris_write_census
             if (r.page_total > max_pages) r.page_total = max_pages;
             r.base.store(base);   // before the first page is protected: a store that faults must find its region
             unsigned armed = 0, skipped = 0;
+            DWORD first_skip_state = 0, first_skip_protect = 0, first_skip_type = 0;
             for (std::uint64_t i = 0; i < r.page_total; ++i)
             {
                 const auto address = (r.first_page + i) << 12;
                 MEMORY_BASIC_INFORMATION m{};
                 auto& p = r.pages[i];
                 p.faults.store(0);
-                if (!VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) || m.State != MEM_COMMIT || (m.Protect & 0xFF) != PAGE_READWRITE) { p.state.store(0); ++skipped; continue; }
+                if (!VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) || m.State != MEM_COMMIT || ((m.Protect & 0xFF) != PAGE_READWRITE && (m.Protect & 0xFF) != PAGE_WRITECOPY && (m.Protect & 0xFF) != PAGE_EXECUTE_READWRITE && (m.Protect & 0xFF) != PAGE_EXECUTE_WRITECOPY)) { if (!skipped) { first_skip_state = m.State; first_skip_protect = m.Protect; first_skip_type = m.Type; } p.state.store(0); ++skipped; continue; }   // the data sections of the image are copy-on-write until first written
                 p.original = m.Protect;
                 p.state.store(1);
                 DWORD old{};
                 if (VirtualProtect(reinterpret_cast<void*>(address), page_size, PAGE_READONLY, &old)) ++armed; else { p.state.store(0); ++skipped; }
             }
-            console::info("[WC] armed %s base=0x%llX size=0x%llX pages=%u skipped=%u\n", r.name, static_cast<unsigned long long>(base), static_cast<unsigned long long>(r.size), armed, skipped);
+            console::info("[WC] armed %s base=0x%llX size=0x%llX pages=%u skipped=%u (first skipped: state 0x%X protect 0x%X type 0x%X)\n", r.name, static_cast<unsigned long long>(base), static_cast<unsigned long long>(r.size), armed, skipped, first_skip_state, first_skip_protect, first_skip_type);
         }
         void release(region& r)
         {
