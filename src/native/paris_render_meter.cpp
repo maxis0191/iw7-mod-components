@@ -330,9 +330,9 @@ std::uintptr_t read_pointer(std::uintptr_t address)
                 if (surf_log && ms - surf_log_last_ms > 1000)
                 {
                     surf_log_last_ms = ms;
-                    unsigned count = 0; std::uint64_t raw[4]{}; std::uint32_t bl = 0, bh = 0;
-                    if (surf_log_entries(sa, count, raw, bl, bh))
-                        console::info("[RenderMeter] surf entries: list 1 holds %u, counter %u bytes (%u units): %u entries with a low index above it (first %016llX %016llX), %u with a high index above it (first %016llX %016llX)\n", count, sa, sa / 4, bl, static_cast<unsigned long long>(raw[0]), static_cast<unsigned long long>(raw[1]), bh, static_cast<unsigned long long>(raw[2]), static_cast<unsigned long long>(raw[3]));
+                    unsigned n_ent = 0; std::uint64_t rawv[4]{}; std::uint32_t badl = 0, badh = 0;
+                    if (surf_log_entries(sa, n_ent, rawv, badl, badh))
+                        console::info("[RenderMeter] surf entries: list 1 holds %u, counter %u bytes (%u units): %u entries with a low index above it (first %016llX %016llX), %u with a high index above it (first %016llX %016llX)\n", n_ent, sa, sa / 4, badl, static_cast<unsigned long long>(rawv[0]), static_cast<unsigned long long>(rawv[1]), badh, static_cast<unsigned long long>(rawv[2]), static_cast<unsigned long long>(rawv[3]));
                 }
                 const std::uint64_t v[2] = {sa, sb};
                 for (int i = 0; i < 2; ++i) { surf_sum[i].fetch_add(v[i]); surf_n[i].fetch_add(1); auto m = surf_max[i].load(); while (v[i] > m && !surf_max[i].compare_exchange_weak(m, v[i])) {} }
