@@ -10,6 +10,7 @@
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <shellapi.h>
+#include <tlhelp32.h>
 #include <intrin.h>
 #include <malloc.h>
 #include <algorithm>
@@ -896,6 +897,29 @@ void surf_log_scan(int round) {
     }
     console::info("[agent capacity] surf scan %d at %llu ms: %zu qwords point near the old buffers, %zu near the new ones\n", round, static_cast<unsigned long long>(GetTickCount64()), old_hits, new_hits);
 }
+
+// Every other thread of the process is suspended while the sites are written: a record allocated between the allocator's patch and the index converter's patch would carry the new pointer and the old
+// constant (the index 0x5E66 of the stage 0 crashes). Returns the handles to resume; the number of threads and the process uptime are logged (-paris-surf-log or always: one line).
+std::vector<HANDLE> surf_suspend_others() {
+    std::vector<HANDLE> handles;
+    const DWORD me = GetCurrentThreadId(), pid = GetCurrentProcessId();
+    const HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE) return handles;
+    THREADENTRY32 te{};
+    te.dwSize = sizeof(te);
+    for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
+        if (te.th32OwnerProcessID != pid || te.th32ThreadID == me) continue;
+        if (const HANDLE h = OpenThread(THREAD_SUSPEND_RESUME, FALSE, te.th32ThreadID)) {
+            if (SuspendThread(h) != static_cast<DWORD>(-1)) handles.push_back(h); else CloseHandle(h);
+        }
+    }
+    CloseHandle(snap);
+    return handles;
+}
+void surf_resume(std::vector<HANDLE>& handles) {
+    for (const HANDLE h : handles) { ResumeThread(h); CloseHandle(h); }
+    handles.clear();
+}
 void plan_surf_relocation() {
     if (game::environment::is_dedi() || utils::flags::has_flag("paris-stock-render-pools")) return;
     // the frame array is where the table was made for
@@ -922,6 +946,13 @@ void plan_surf_relocation() {
     const std::uintptr_t distance = a0 - surf_frame_array;   // O: new buffer k at frame k + O
     if (distance % 8 != 0 || distance >= 0x7FFF0000ull) { console::error("[agent capacity] surface buffer: distance %llX unusable\n", static_cast<unsigned long long>(distance)); return; }
     const std::uintptr_t delta = distance - surf_old_base;
+    auto suspended = surf_suspend_others();
+    FILETIME created{}, exited{}, kernel{}, user{};
+    GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user);
+    FILETIME now_ft{};
+    GetSystemTimeAsFileTime(&now_ft);
+    const auto to64 = [](const FILETIME& f) { return (static_cast<std::uint64_t>(f.dwHighDateTime) << 32) | f.dwLowDateTime; };
+    console::info("[agent capacity] surface buffer patch: %zu other threads suspended, process uptime %llu ms\n", suspended.size(), static_cast<unsigned long long>((to64(now_ft) - to64(created)) / 10000));
     for (unsigned k = 0; k < 2; ++k) {
         // the buffer is moved with its content (the data of a frame struct is not all zero at start: run surflog2 crashed on a record that the old region holds before the first frame)
         auto* p = reinterpret_cast<std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf_old_base);
@@ -948,6 +979,7 @@ void plan_surf_relocation() {
         }
         surf_noaccess = true;
     }
+    surf_resume(suspended);
     surf_distance = distance;
     surf_done.store(true);
     if (utils::flags::has_flag("paris-surf-log")) {
