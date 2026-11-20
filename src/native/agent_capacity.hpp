@@ -376,6 +376,8 @@ static_assert(refuse(100)[0] == 0 && refuse(232)[0] == 0 && refuse(236)[0] == 0 
 bool installed() noexcept;
 // How many times the renderer's full-list warning came for a list (a52): 0x9A the model parameter list, 5 the lights, 1 the draw records, 2 the other pass's draw records.
 std::uint32_t render_skipped(unsigned id) noexcept;
+std::uint32_t surf_old_region_damaged() noexcept;   // dwords of the two old scene surface buffers that are no longer the poison pattern (a90, 3g)
+bool surf_relocated() noexcept;
 std::uint32_t agents() noexcept;      // 24 when not installed
 const char* wire_contract() noexcept; // "24" or "agents-<n>": what a peer must match
 // A peer that sends no "agentcap" key is today's official client: the stock layout ("24").

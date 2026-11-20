@@ -7,6 +7,12 @@
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
+#if __has_include("agent_capacity.hpp")
+#include "agent_capacity.hpp"
+#else
+#include <cstdint>
+namespace agent_capacity { inline std::uint32_t surf_old_region_damaged() noexcept { return 0; } inline bool surf_relocated() noexcept { return false; } }
+#endif
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -483,6 +489,8 @@ std::uintptr_t read_pointer(std::uintptr_t address)
             std::snprintf(buf, sizeof(buf), "\"surf_demand_bytes\":{\"scene_surfs\":{\"mean\":%.0f,\"max\":%llu,\"cap\":262144},\"motionblur\":{\"mean\":%.0f,\"max\":%llu,\"cap\":65536}},",
                 sn0 ? static_cast<double>(ss0) / static_cast<double>(sn0) : 0.0, static_cast<unsigned long long>(sm0),
                 sn1 ? static_cast<double>(ss1) / static_cast<double>(sn1) : 0.0, static_cast<unsigned long long>(sm1));
+            row += buf;
+            std::snprintf(buf, sizeof(buf), "\"surf_relocated\":%d,\"surf_old_region_damaged\":%u,", agent_capacity::surf_relocated() ? 1 : 0, agent_capacity::surf_old_region_damaged());
             row += buf;
             row += "\"drawsurf_full\":[";
             for (unsigned r = 0, k = 0; r < 32; ++r)

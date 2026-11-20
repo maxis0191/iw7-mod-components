@@ -833,6 +833,77 @@ void plan_skin_cache() {
     console::info("[agent capacity] skinned cache constant 563,200 -> 2,000,000 vertices\n");
 }
 
+// ---- 3g. the scene surface buffer: relocation, stage 0 (a90, 20 Nov 2026) --------------------------------------------------------
+// The scene surface buffer (0x40000 bytes at +0xB5580 of each of the two frame data structs, 0x5BD280 bytes apart, in the .bss from 0x148F73100; counter [[0x148F73088]+0x18A0]) is full at 200 zombies in
+// view (warning 0x0D, 4.2 million refusals in 180 s with 183 in view; the demand is 435 KB). The surface records keep a 16 bit index in 4 byte units, and 83 instructions address the buffer: a displacement
+// 0xB5580 + k (k a record field) or the frame as an array of dwords (0x2D560 + k / 4 added to the index, scaled by 4 afterwards). ops/engine/surf_sites.py decodes the whole code, checks the
+// dword form against the instructions that follow and writes the table (agent_capacity_surf_sites.inc: address, offset of the 32 bit field, old value, kind). STAGE 0 moves the base only: the same
+// 256 KB and the same unit, in a block placed at the same distance O from both frame structs (new = frame + O), O a multiple of 8, so that every encoding follows: kind 0 old + (O - 0xB5580), kind 1 old + (O - 0xB5580) / 4.
+// Every site is byte-checked before the first write and nothing is written when one differs. The old regions are filled with a poison pattern: a reader that was missed shows garbage at once, a writer
+// that was missed changes the pattern (the render meter reports the damaged dwords of both regions: surf_old_region_damaged).
+constexpr std::uintptr_t surf_frame_array = 0x148F73100ull, surf_frame_array_probe = 0x140E2804Eull;   // lea rsi,[rip+0x814B0AB] at 0x140E2804E: the frame array
+constexpr std::uintptr_t surf_frame_stride = 0x5BD280ull, surf_old_base = 0xB5580ull;
+constexpr std::size_t surf_bytes = 0x40000;
+struct surf_site { std::uintptr_t address; std::uint32_t field_offset, old_value; int kind; };
+constexpr surf_site surf_sites[] = {
+#include "agent_capacity_surf_sites.inc"
+};
+constexpr std::uint32_t surf_poison = 0xA5A5A5A5u;
+std::atomic<bool> surf_done{false};
+std::uintptr_t surf_distance = 0;
+std::uint32_t surf_old_damaged_count() {
+    if (!surf_done.load()) return 0;
+    std::uint32_t damaged = 0;
+    for (unsigned k = 0; k < 2; ++k) {
+        const auto* p = reinterpret_cast<const std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf_old_base);
+        for (std::size_t i = 0; i < surf_bytes / 4; ++i) damaged += p[i] != surf_poison;
+    }
+    return damaged;
+}
+void plan_surf_relocation() {
+    if (game::environment::is_dedi() || utils::flags::has_flag("paris-stock-render-pools")) return;
+    // the frame array is where the table was made for
+    std::int32_t probe_disp{};
+    std::memcpy(&probe_disp, reinterpret_cast<const void*>(surf_frame_array_probe + 3), 4);
+    if (std::memcmp(reinterpret_cast<const void*>(surf_frame_array_probe), "\x48\x8D\x35", 3) != 0 || surf_frame_array_probe + 7 + probe_disp != surf_frame_array) {
+        console::error("[agent capacity] surface buffer: the frame array is not at 0x%llX, nothing moved\n", static_cast<unsigned long long>(surf_frame_array)); return;
+    }
+    for (const auto& site : surf_sites) {
+        std::uint32_t now{};
+        std::memcpy(&now, reinterpret_cast<const void*>(site.address + site.field_offset), 4);
+        if (now != site.old_value) { console::error("[agent capacity] surface buffer: site %llX holds %08X, the table says %08X: nothing moved\n", static_cast<unsigned long long>(site.address), now, site.old_value); return; }
+    }
+    // a block at the same distance from both frames: [A, A + stride + buffer) reserved, the two buffers committed
+    const std::size_t block = (surf_frame_stride + surf_bytes + 0xFFFF) & ~static_cast<std::size_t>(0xFFFF);
+    void* base = nullptr;
+    for (std::uintptr_t a = 0x14D000000ull; a < surf_frame_array + 0x70000000ull && !base; a += 0x1000000ull)
+        base = VirtualAlloc(reinterpret_cast<void*>(a), block, MEM_RESERVE, PAGE_READWRITE);
+    if (!base) { console::error("[agent capacity] surface buffer: no address range near the frames, nothing moved\n"); return; }
+    const auto a0 = reinterpret_cast<std::uintptr_t>(base);
+    if (!VirtualAlloc(reinterpret_cast<void*>(a0), surf_bytes, MEM_COMMIT, PAGE_READWRITE) || !VirtualAlloc(reinterpret_cast<void*>(a0 + surf_frame_stride), surf_bytes, MEM_COMMIT, PAGE_READWRITE)) {
+        console::error("[agent capacity] surface buffer: commit failed, nothing moved\n"); return;
+    }
+    const std::uintptr_t distance = a0 - surf_frame_array;   // O: new buffer k at frame k + O
+    if (distance % 8 != 0 || distance >= 0x7FFF0000ull) { console::error("[agent capacity] surface buffer: distance %llX unusable\n", static_cast<unsigned long long>(distance)); return; }
+    const std::uintptr_t delta = distance - surf_old_base;
+    for (unsigned k = 0; k < 2; ++k) {
+        auto* p = reinterpret_cast<std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf_old_base);
+        for (std::size_t i = 0; i < surf_bytes / 4; ++i) p[i] = surf_poison;
+    }
+    for (const auto& site : surf_sites) {
+        DWORD old{};
+        auto* field = reinterpret_cast<std::uint8_t*>(site.address + site.field_offset);
+        VirtualProtect(field, 4, PAGE_EXECUTE_READWRITE, &old);
+        const std::uint32_t value = site.old_value + static_cast<std::uint32_t>(site.kind == 0 ? delta : delta / 4);
+        std::memcpy(field, &value, 4);
+        VirtualProtect(field, 4, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), field, 4);
+    }
+    surf_distance = distance;
+    surf_done.store(true);
+    console::info("[agent capacity] surface buffer moved: %zu sites, frame + %llX (block %p), old regions poisoned\n", sizeof(surf_sites) / sizeof(surf_sites[0]), static_cast<unsigned long long>(distance), base);
+}
+
 // ---- 3d. the two per-sentient tables of an SV agent record (map A1) ---------------------------------------------------
 // Each SV agent record (0x3F08 bytes, one per agent) holds table 1 (64-byte rows at +0x10) and table 2 (60-byte rows at +0x23E4),
 // 66 rows each, indexed by the sentient slot; with more than 24 agents a slot passes 65 and the stock code writes past the
@@ -1824,6 +1895,7 @@ public:
         plan_snapshot();
         plan_render_list();
         plan_drawsurf_lists();
+        plan_surf_relocation();
         plan_skin_cache();
         // plan_rings(); not installed: growing the trace_to_entity ring froze the client 44 s after the join (run f200-ring, 18 Nov); the ring record is dumped by the render meter instead
         plan_ai_pool();
@@ -1892,6 +1964,8 @@ public:
 }
 
 bool installed() noexcept { return active; }
+std::uint32_t surf_old_region_damaged() noexcept { return surf_old_damaged_count(); }
+bool surf_relocated() noexcept { return surf_done.load(); }
 std::uint32_t render_skipped(unsigned id) noexcept { return id < 0xA0 ? render_skip_table[id].load(std::memory_order_relaxed) : 0; }
 std::uint32_t agents() noexcept { return active ? L.agents : stock_agents; }
 const char* wire_contract() noexcept { return contract.c_str(); }
