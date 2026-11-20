@@ -160,6 +160,7 @@ namespace paris_render_meter
                 return;
             }
             warn_hook.create(target, warn_stub);
+            warn_hook.enable();   // a hook created after post_unpack is not always enabled by the queue (runs crowd-before and crowd-skin2 counted nothing)
             console::info("[RenderMeter] warning counter on 0x%llX (%s)\n", static_cast<unsigned long long>(target), target == warn_function ? "the function itself" : "behind the stock detour");
         }
 
@@ -180,7 +181,12 @@ namespace paris_render_meter
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
         }
-        std::uintptr_t read_pointer(std::uintptr_t address)
+        bool read_ring(std::uintptr_t rec, std::int32_t& entry, std::int32_t& bytes, std::int32_t& slots)
+        {
+            __try { entry = *reinterpret_cast<const volatile std::int32_t*>(rec + 0x14); bytes = *reinterpret_cast<const volatile std::int32_t*>(rec + 0x20); slots = *reinterpret_cast<const volatile std::int32_t*>(rec + 0x24); return true; }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        }
+std::uintptr_t read_pointer(std::uintptr_t address)
         {
             __try { return *reinterpret_cast<const volatile std::uintptr_t*>(address); }
             __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
@@ -438,6 +444,20 @@ namespace paris_render_meter
             std::snprintf(buf, sizeof(buf), "\"process_mb\":{\"working_set\":%llu,\"private\":%llu,\"peak_working_set\":%llu},", static_cast<unsigned long long>(pmc.WorkingSetSize >> 20),
                 static_cast<unsigned long long>(pmc.PrivateUsage >> 20), static_cast<unsigned long long>(pmc.PeakWorkingSetSize >> 20));
             row += buf;
+            row += "\"rings\":[";
+            for (unsigned k = 0, n = 0; k < 64; ++k)
+            {
+                const auto name_pointer = read_pointer(0x141BD3930ull + 8ull * k);
+                char who[48] = {};
+                if (!name_pointer || !read_text(name_pointer, who, sizeof(who))) continue;
+                const std::uintptr_t rec = 0x14ABC8600ull + 0x80ull * k;
+                std::int32_t entry{}, bytes{}, slots{};
+                if (!read_ring(rec, entry, bytes, slots)) continue;
+                if (bytes <= 0) continue;
+                std::snprintf(buf, sizeof(buf), "%s{\"kind\":%u,\"name\":\"%s\",\"entry\":%d,\"bytes\":%d,\"slots\":%d}", n++ ? "," : "", k, who, entry, bytes, slots);
+                row += buf;
+            }
+            row += "],";
             row += "\"drawsurf_full\":[";
             for (unsigned r = 0, k = 0; r < 32; ++r)
             {
