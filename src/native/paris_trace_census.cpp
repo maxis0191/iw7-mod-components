@@ -97,8 +97,7 @@ namespace paris_trace_census
         {
             for (auto& t : timers)
             {
-                console::info("[Paris trace census] frames=%llu timer=%s calls_per_frame=%.2f ms_per_frame=%.3f
-", static_cast<unsigned long long>(frames), t.name,
+                console::info("[Paris trace census] frames=%llu timer=%s calls_per_frame=%.2f ms_per_frame=%.3f\n", static_cast<unsigned long long>(frames), t.name,
                     static_cast<double>(t.calls) / frames, 1000.0 * static_cast<double>(t.ticks) / static_cast<double>(qpc_hz) / frames);
                 t.calls = 0;
                 t.ticks = 0;
