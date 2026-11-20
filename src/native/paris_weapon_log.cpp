@@ -7,6 +7,7 @@
 #include "scheduler.hpp"
 #include "scripting.hpp"
 #include "paris_log_stream.hpp"
+#include "paris_script_chain.hpp"
 #include <utils/flags.hpp>
 #include <algorithm>
 #include <unordered_map>
@@ -276,6 +277,20 @@ namespace paris_weapon_log
                 static_cast<unsigned long long>(written.load()), static_cast<unsigned long long>(fallback.load()),
                 static_cast<long long>(hook_ns.load()), n ? static_cast<double>(hook_ns.load()) / static_cast<double>(n) : 0.0, static_cast<long long>(drain_ns.load()), measure ? 1 : 0);
         }
+    }
+
+    std::string script_chain()
+    {
+        std::uintptr_t pos[max_chain]{};
+        const auto depth = read_vm(pos);
+        std::string chain;
+        for (unsigned i = 0; i < depth; ++i)
+        {
+            bool unresolved = false;
+            if (i) chain += '<';
+            chain += resolve(pos[i], unresolved);
+        }
+        return chain;
     }
 
     class component final : public component_interface
