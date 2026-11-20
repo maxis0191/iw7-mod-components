@@ -46,8 +46,6 @@ namespace paris_trace_census
         {
             const auto site = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
             const auto thread = GetCurrentThreadId();
-            auto expected = DWORD{0};
-            server_thread.compare_exchange_strong(expected, thread);
             if (server_thread.load(std::memory_order_relaxed) != thread) return sweep_hook.invoke<std::uint64_t>(a, b, c, d, e, f, g);
             const auto begin = now();
             const auto result = sweep_hook.invoke<std::uint64_t>(a, b, c, d, e, f, g);
@@ -99,7 +97,7 @@ namespace paris_trace_census
                 sweep_hook.create(sweep_function, sweep_stub);
                 scheduler::loop([]
                 {
-                    if (!server_thread.load()) return;
+                    server_thread.store(GetCurrentThreadId());
                     if (++frames >= window_frames) report();
                 }, scheduler::server);
                 console::info("[Paris trace census] ready: FUN_1405EB170 calls per site, %llu frames a block\n", static_cast<unsigned long long>(window_frames));
