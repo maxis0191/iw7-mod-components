@@ -6,7 +6,7 @@
 The scene surface buffer (0x40000 bytes, counter [[0x148F73088]+0x18A0]) sits at +0xB5580 of the frame data (two structs of 0x5BD280 bytes in the .bss at 0x148F73100). Its readers address it in two
 encodings: a displacement 0xB5580 + k (k a record field) and the frame viewed as an array of dwords, base 0x2D560 + k/4 added to a unit index that a later instruction scales by 4. This tool decodes every
 instruction of every code fragment of the engine map, takes the ones whose displacement or immediate lies in those ranges, checks the form against the instructions that follow, and writes the table
-(address, offset of the 32 bit field inside the instruction, old value, kind): kind 0 = byte base (new = old + delta), kind 1 = dword base (new = old + delta / 4). A site whose form is not one of the proven
+(address, offset of the 32 bit field inside the instruction, old value, kind): kind 0 = byte base (new = old + delta), kind 1 = dword base (new = old + delta / 4), kind 2 = the base as a modulus (0xAA80 = -0xB5580 mod 0x40000, the unit index of a key: new = (-O) mod 0x40000). A site whose form is not one of the proven
 ones is listed as UNRESOLVED and is not emitted: the native code (agent_capacity.cpp section 3g) refuses to start the relocation while the unresolved list is not empty in the table it was built from.
 """
 import argparse
@@ -23,6 +23,7 @@ REF = os.environ.get('IW7_REFERENCE_ROOT', 'C:/Users/ezvalo/Documents/IW7-Paris-
 DB = os.environ.get('IW7_ENGINE_MAP_DB', 'C:/Users/ezvalo/Documents/IW7-Runtime/enginelab/engine-map/iw7-engine-map.sqlite')
 TV = 0x140001000
 BASE, BASE4, SPAN = 0xB5580, 0x2D560, 0x700   # fields of a record lie within SPAN bytes of the base
+WRAP = (-BASE) & 0x3FFFF   # 0xAA80: the key's unit index is ((pointer + WRAP - frame) >> 2) & 0xFFFF, the base as a modulus of the 18 bit span (kind 2: new = (-O) mod 0x40000)
 
 
 def in_bytes(v):
@@ -71,6 +72,10 @@ def scan(lo, hi):
                         kind, value, off = 1, d, i.disp_offset
                 elif op.type == X.X86_OP_IMM and i.imm_size == 4 and i.mnemonic in ('add', 'sub', 'lea'):
                     v = op.imm & 0xFFFFFFFF
+                    if v == WRAP:
+                        kind, value, off = 2, v, i.imm_offset
+                        sites.append({'address': i.address, 'size': i.size, 'field_offset': off, 'old': value, 'kind': 2, 'text': '%s %s' % (i.mnemonic, i.op_str)})
+                        continue
                     if in_bytes(v):
                         kind, value, off = 0, v, i.imm_offset
                     elif in_dwords(v):

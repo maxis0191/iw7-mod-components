@@ -850,6 +850,14 @@ constexpr surf_site surf_sites[] = {
 #include "agent_capacity_surf_sites.inc"
 };
 constexpr std::uint32_t surf_poison = 0xA5A5A5A5u;
+
+// kind 0: byte base, old + (O - 0xB5580); kind 1: dword base, old + (O - 0xB5580) / 4; kind 2: the base as a modulus of the 18 bit span (a key's unit index is ((pointer + 0xAA80 - frame) >> 2) & 0xFFFF in
+// FUN_140E2D000 and its two sisters: 0xAA80 = -0xB5580 mod 0x40000), new = (-O) mod 0x40000.
+std::uint32_t surf_new_value(const surf_site& site, std::uintptr_t delta, std::uintptr_t distance) {
+    if (site.kind == 2) return static_cast<std::uint32_t>((0x40000 - (distance & 0x3FFFF)) & 0x3FFFF);
+    return site.old_value + static_cast<std::uint32_t>(site.kind == 0 ? delta : delta / 4);
+}
+
 std::atomic<bool> surf_done{false};
 std::uintptr_t surf_distance = 0;
 bool surf_noaccess = false;
@@ -890,7 +898,7 @@ void surf_log_scan(int round) {
         for (const auto& site : surf_sites) {
             std::uint32_t now{};
             std::memcpy(&now, reinterpret_cast<const void*>(site.address + site.field_offset), 4);
-            const std::uint32_t want = site.old_value + static_cast<std::uint32_t>(site.kind == 0 ? delta : delta / 4);
+            const std::uint32_t want = surf_new_value(site, delta, surf_distance);
             if (now != want) { ++wrong; if (shown++ < 8) console::info("[agent capacity] surf site %llX holds %08X, patched value %08X\n", static_cast<unsigned long long>(site.address), now, want); }
         }
         console::info("[agent capacity] surf scan %d: %u of %zu patched sites no longer hold their new value\n", round, wrong, sizeof(surf_sites) / sizeof(surf_sites[0]));
@@ -1004,7 +1012,7 @@ void plan_surf_relocation() {
         DWORD old{};
         auto* field = reinterpret_cast<std::uint8_t*>(site.address + site.field_offset);
         VirtualProtect(field, 4, PAGE_EXECUTE_READWRITE, &old);
-        const std::uint32_t value = site.old_value + static_cast<std::uint32_t>(site.kind == 0 ? delta : delta / 4);
+        const std::uint32_t value = surf_new_value(site, delta, distance);
         std::memcpy(field, &value, 4);
         VirtualProtect(field, 4, old, &old);
         FlushInstructionCache(GetCurrentProcess(), field, 4);
