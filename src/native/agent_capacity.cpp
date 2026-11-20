@@ -916,8 +916,7 @@ void plan_surf_relocation() {
         std::size_t used = 0;
         for (std::size_t i = 0; i < surf_bytes / 4; ++i) used += p[i] != 0;
         std::memcpy(reinterpret_cast<void*>(a0 + k * surf_frame_stride), p, surf_bytes);
-        console::info("[agent capacity] surface buffer %u: %zu non-zero dwords copied to the new place
-", k, used);
+        console::info("[agent capacity] surface buffer %u: %zu non-zero dwords copied to the new place\n", k, used);
         for (std::size_t i = 0; i < surf_bytes / 4; ++i) p[i] = surf_poison;
     }
     for (const auto& site : surf_sites) {
