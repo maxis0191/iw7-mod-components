@@ -232,6 +232,8 @@
     "ops/engine/state-sites.json",
     "ops/engine/state_sites.py",
     "ops/engine/static_tables.py",
+    "ops/engine/surf-sites.json",
+    "ops/engine/surf_scan.py",
     "ops/engine/unwind_info.py",
     "ops/engine/variable-buckets.json",
     "ops/engine/variable-segments.json",
