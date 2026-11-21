@@ -99,6 +99,8 @@ dvar under the checksum of the text, which no name finds. `Dvar_FindVar(name)` i
 `Dvar_FindMalleableVar(Dvar_GenerateChecksum(name))`, so `ops/Apply-ClientDvarOverlay.ps1` registers the dvar under the
 server's checksum (`Dvar_RegisterVariant` `0x140CEBDD0`, external string, the engine's own flags and description) and
 sets it; the client's code then reads it by its real name (`Engine.GetDvarString("maxis_dj")`).
+The client log has one line a new dvar: `[Paris dvar] registered from the server: checksum N (ok)`; `N` is
+`Dvar_GenerateChecksum` of the name (FNV-1 from `0xDEADDEAD`, prime `0x1000193`, lowercase).
 
 A client of the public release still crashes on such a dvar. Nothing is sent upstream without the owner.
 

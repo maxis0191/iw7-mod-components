@@ -38,6 +38,7 @@ try {
     if($text.Contains('Dvar_SetFromStringByChecksum(checksum')){throw 'The number is still passed where the engine reads text.'}
     if(!$text.Contains('invoke<game::dvar_t*>(0x140CEBDD0, checksum_text, checksum, game::DVAR_TYPE_STRING')){throw 'Not registered under the server checksum.'}
     if(!$text.Contains('if (created) game::Dvar_SetFromStringFromSource(created, value')){throw 'The new dvar is not set.'}
+    if(!$text.Contains('console::info("[Paris dvar] registered from the server: checksum %u (%s)\n", checksum, dvar ? "ok" : "failed");')){throw 'No log line for a registered dvar.'}
     # The helper sits in the same anonymous namespace, before its only caller.
     if($text.IndexOf('game::dvar_t* paris_register_external_dvar(') -gt $text.IndexOf('void cg_set_client_dvar_from_server_stub(')){throw 'Helper after its caller.'}
     $second=& "$repo/ops/Apply-ClientDvarOverlay.ps1" -NativeRoot $temp -Commit fixture

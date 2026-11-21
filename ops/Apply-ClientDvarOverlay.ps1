@@ -28,8 +28,11 @@ $helper=@(
     "`t`t`tvalue.string = `"`";",
     "`t`t`tgame::DvarLimits domain{};",
     "`t`t`t// Dvar_RegisterVariant: name (read only by its error messages), checksum, type, flags, value, domain, description.",
-    "`t`t`treturn utils::hook::invoke<game::dvar_t*>(0x140CEBDD0, checksum_text, checksum, game::DVAR_TYPE_STRING,",
+    "`t`t`tauto* dvar = utils::hook::invoke<game::dvar_t*>(0x140CEBDD0, checksum_text, checksum, game::DVAR_TYPE_STRING,",
     "`t`t`t`tstatic_cast<unsigned int>(game::DVAR_FLAG_EXTERNAL), &value, &domain, `"External Dvar`");",
+    "`t`t`t// One line a dvar (a client registers a handful): the checksum names it (Dvar_GenerateChecksum of the name).",
+    "`t`t`tconsole::info(`"[Paris dvar] registered from the server: checksum %u (%s)\n`", checksum, dvar ? `"ok`" : `"failed`");",
+    "`t`t`treturn dvar;",
     "`t`t}",
     "",
     "`t`t") -join "`n"
