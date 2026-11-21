@@ -90,8 +90,10 @@ Run stage0d (183 agents in view, the stage 0 move in place, no crash, old region
   the poison after the move). `surf_sites.py` now reads the four bytes at `disp_offset` and skips rip-relative operands: 86 sites.
 - **Scene surface buffer: not done.** The limit is the u16 of 4 byte units (`shr eax,2` at 0x140E1528C and 0x140DE243D, the key's `and edx,0x3FFFC` / `shr rdx,2` at 0x140E2CF01 / 0x140E2CF21 and
   `shr rax,2` at 0x140E2D4C2). 8 byte units (512 KB, one scale bit) hold about 220 in view, not 300 (~700 KB), so the unit has to be 16 bytes (1 MB). x86 has no scale 16: the plan scales the index once
-  where it enters a register (`movzx r32,r16` -> + `lea r,[r*4]` in a cave), so every `[base + r*4 + d]` after it addresses base + 16 idx + d. `ops/engine/surf_units.py` proves it use by use: **41 roots,
-  every use scaled by 4 or a kind 1 add/lea, 0 unresolved**. Work left before it can be built: (1) the 26 pointer sites it lists: 6 allocator byte pointers (fine once the allocations are 16 byte
+  where it enters a register (`movzx r32,r16` -> + `lea r,[r*4]` in a cave), so every `[base + r*4 + d]` after it addresses base + 16 idx + d. `ops/engine/surf_units.py` walks every use of every root it finds from the 86 base
+  sites: **41 roots, each use a scale-4 operand, a kind 1 add/lea or a 64 bit copy, 0 unresolved** (a value live at a call argument, a branch out of the code or the end of the decoded fragment counts as
+  unresolved). Its limits: it accepts any scale-4 use, whatever buffer it addresses, and does not see implicit register reads (`rep movs`, shifts by `cl`); roots found only forward from the u16 loads are not
+  searched yet. Work left before it can be built: (1) the 26 pointer sites it lists: 4 allocator byte pointers (0x140DDE6EA, 0x140DE23FE, 0x140DE2433, 0x140E152B3: fine once the allocations are 16 byte
   aligned) and readers whose root is a `movzx` from memory the backward search does not reach (FUN_140E30360/140E30550: `movzx r15d,word [rcx+6]` then `lea rsi,[rsi+r15*4]`; FUN_140E2C6A0 stores
   the raw index to the stack at 0x140E2C6B3 and passes `idx*4` on in edx: those two escapes need reading); (2) producers `shr 2 -> 4`, the key mask 0x3FFFC -> 0xFFFF0 and its OR constant
   0x80000003FC0000 -> 0x2000000FF000000, the kind 2 modulus over 20 bits; (3) the three limits 0x40000 -> 0xFFFF0 (0x140DE23CA, 0x140E15272 and FUN_140DDDF20's); (4) 16 byte allocation sizes in the

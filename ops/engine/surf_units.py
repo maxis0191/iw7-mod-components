@@ -161,6 +161,10 @@ def walk(img, frag, start_k, reg, seen, uses, bad, depth=0):
                     if m == 'jmp':
                         break
             k += 1
+        else:
+            # the fragment ended (or capstone stopped decoding) with the value still live: not proven
+            if k >= len(L):
+                bad.append({'address': L[-1].address if L else 0, 'text': 'end of fragment', 'reg': r, 'why': 'ran off the decoded fragment with the value live'})
 
 
 def find_root(img, site):
