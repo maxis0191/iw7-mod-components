@@ -547,7 +547,7 @@
     {
       "id": "iw7-paris-server",
       "repository": "https://github.com/maxis0191/iw7-paris-server.git",
-      "revision": "5e47dc2299fde638f31af6c026c0e17ee9ddb8ef",
+      "revision": "19b7e9d8b7ac830fdafd8d8201c106afaf258504",
       "files": [
         "config/modules.json",
         "config/retired-artifacts.json",
