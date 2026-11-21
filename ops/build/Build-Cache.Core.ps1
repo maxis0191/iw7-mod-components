@@ -28,7 +28,7 @@ function Get-IW7InputHash([string[]]$Lines) {
 # Paths of a prepared source workspace (source-workspace.json) that can change the client executable. Documents, tests
 # and the creator tools are not inputs, so a change in them keeps the key. Everything under src and the build and
 # overlay scripts are.
-$script:IW7NativeInputPattern = '^(src/|ops/Build-Voice\.ps1$|ops/Build-StandardClient\.ps1$|ops/Apply-[^/]+$|ops/[^/]+\.Core\.ps1$|ops/agent-capacity/|ops/script-variables/|ops/standard-client/|ops/build/|client-profiles\.json$|product\.json$)'
+$script:IW7NativeInputPattern = '^(src/|ops/Build-Voice\.ps1$|ops/Build-StandardClient\.ps1$|ops/Apply-[^/]+$|ops/[^/]+\.Core\.ps1$|ops/agent-capacity/|ops/script-variables/|ops/standard-client/|ops/frame-cuts/|ops/build/|client-profiles\.json$|product\.json$)'
 
 function Get-IW7ToolchainId {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
