@@ -347,6 +347,8 @@ Copy-Item -LiteralPath @($nativeSources | ForEach-Object { Join-Path $repo ('src
 & "$PSScriptRoot/Apply-ChatOverlay.ps1" -NativeRoot $root -Commit $commit
 $incidentOverlay = & "$PSScriptRoot/Apply-IncidentOverlay.ps1" -NativeRoot $root -Commit $commit
 $testPrivacyOverlay = & "$PSScriptRoot/Apply-TestPrivacyOverlay.ps1" -NativeRoot $root -Commit $commit
+# After the incident overlay, which owns the rest of patches.cpp: a dvar the server sets before the client has it.
+$clientDvarOverlay = & "$PSScriptRoot/Apply-ClientDvarOverlay.ps1" -NativeRoot $root -Commit $commit
 # The script variable accessors read the tables through script_var_layout.hpp (stock or relocated), never a fixed address.
 $scriptVarAccessorOverlay = & "$PSScriptRoot/Apply-ScriptVarAccessorOverlay.ps1" -NativeRoot $root -Commit $commit
 $downloadCacheOverlay = $null
@@ -754,6 +756,7 @@ $manifest.IncidentOverlaySHA256 = $incidentOverlay.SHA256
 $manifest.IncidentDropOverlaySHA256 = $incidentOverlay.DropSHA256
 $manifest.TestPrivacyOverlaySHA256 = $testPrivacyOverlay.SHA256
 $manifest.TestHeartbeatSuppressed = $testPrivacyOverlay.TestHeartbeatSuppressed
+$manifest.ClientDvarOverlaySHA256 = $clientDvarOverlay.SHA256
 $manifest.IncidentRecorder = 'Explicit dedicated paris-incident-log flag; no packet retries or protocol changes'
 $manifest.IsolatedLab = [bool]$IsolatedLab
 $manifest.VoiceRelay = $voiceState.VoiceRelay

@@ -82,6 +82,26 @@ The failure then reports as an illegal instruction (`0xC000001D`) with the stack
 Read it as follows: the crashing frame is `__report_gsfailure` (or another CRT function above); the first verified entry of the return list below it is the function whose stack cookie check failed, that is the function whose stack buffer was overrun. Disassemble that function: its loops and copies that write into its `sub rsp, N` frame are the candidates.
 The sites in the protector span (`0x14B...`, `0x14C...`) and two hits that are data bytes are not patched (their instruction boundary is not known).
 
+## Known crashes
+
+### `iw7_ship.exe+0x12C6DAF`: a dvar the server sets before the client has it (fixed 21 Nov 2026)
+
+`sub_1412C6D34+0x7B` (the C runtime's `strtol`, called by `atoi` at `sub_1412C7AA8`), reached from
+`CG_DrawActiveFrame` through the server command parser (`sub_140848C50`) and `Dvar_SetFromStringByChecksum`. The read
+address is a dvar checksum, not a pointer: in 10 of 10 lab dumps it was `0x18AB14DA` (`maxis_dj`) or `0x9C7F72B5`
+(`maxis_name`), dvars the server's Maxis UI scripts set on a client at UI tier 1 and the client never registered.
+
+The cause is in the pinned iw7-mod stub `cg_set_client_dvar_from_server_stub` (`src/client/component/patches.cpp`,
+the same in Aurora's v1.1.0 release and develop of 9 Nov 2026): for an unknown checksum it calls the engine's
+`Dvar_SetFromStringByChecksum` (`0x140CECDB0`) with the number, but that function takes the checksum as text (its first
+call is `atoi`). Passing the text would stop the crash but not deliver the value: that function registers a missing
+dvar under the checksum of the text, which no name finds. `Dvar_FindVar(name)` is
+`Dvar_FindMalleableVar(Dvar_GenerateChecksum(name))`, so `ops/Apply-ClientDvarOverlay.ps1` registers the dvar under the
+server's checksum (`Dvar_RegisterVariant` `0x140CEBDD0`, external string, the engine's own flags and description) and
+sets it; the client's code then reads it by its real name (`Engine.GetDvarString("maxis_dj")`).
+
+A client of the public release still crashes on such a dvar. Nothing is sent upstream without the owner.
+
 ## What it cannot do
 
 - No full unwinding with the unwind data of each function. A real frame chain may differ from this list.

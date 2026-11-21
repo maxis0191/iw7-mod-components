@@ -1815,6 +1815,24 @@
       ]
     },
     {
+      "id": "client_dvar_overlay_test",
+      "command": [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "tests/ops/client_dvar_overlay_test.ps1"
+      ],
+      "inputs": [
+        "ops/Apply-ClientDvarOverlay.ps1",
+        "tests/ops/client_dvar_overlay_test.ps1"
+      ],
+      "lists": [
+        "tests/*"
+      ]
+    },
+    {
       "id": "test_privacy_overlay_test",
       "command": [
         "pwsh",
