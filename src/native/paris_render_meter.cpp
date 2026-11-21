@@ -7,6 +7,12 @@
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
+#if __has_include("agent_capacity.hpp")
+#include "agent_capacity.hpp"
+#else
+#include <cstdint>
+namespace agent_capacity { inline std::uint32_t surf_old_region_damaged() noexcept { return 0; } inline bool surf_relocated() noexcept { return false; } }
+#endif
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -225,6 +231,7 @@ std::uintptr_t read_pointer(std::uintptr_t address)
         utils::hook::detour render_end_hook;
         std::atomic<std::uint64_t> skin_frames{0}, skin_demand_sum{0}, skin_demand_max{0}, skin_over_cap{0}, skin_over_flag{0}, skin_tension_max{0}, skin_tension_over{0}, skin_cap_seen{0};
         std::atomic<std::uint64_t> skin_demand_last{0};
+        std::atomic<std::uint64_t> surf_sum[2]{}, surf_max[2]{}, surf_n[2]{};
         std::atomic<int> skin_reads_failed{0};
         bool read_skin(std::uint32_t& used, std::uint32_t& tension, std::uint32_t& flag)
         {
@@ -238,6 +245,60 @@ std::uintptr_t read_pointer(std::uintptr_t address)
                 used = *a;
                 tension = *b;
                 flag = *reinterpret_cast<const volatile std::uint8_t*>(skin_flag);
+                return true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        }
+        bool read_surf_counters(std::uint32_t& a, std::uint32_t& b)
+        {
+            __try
+            {
+                const auto frame = *reinterpret_cast<const volatile std::uintptr_t*>(frame_pointer);
+                if (!frame) return false;
+                a = *reinterpret_cast<const volatile std::uint32_t*>(frame + 0x18A0);
+                b = *reinterpret_cast<const volatile std::uint32_t*>(frame + 0x18A4);
+                return true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        }
+
+        // lab (-paris-surf-log): the entries of draw surface list 1 against the scene surface buffer counter. An entry keeps a 16 bit unit index (4 byte units) in its first qword (low 16 bits) or in bits 48..63;
+        // an index above the bytes the frame has allocated (counter / 4) names an entry whose record was never allocated: logged with the raw entry, once a second.
+        std::uint64_t surf_log_last_ms = 0;
+        bool surf_log_entries(std::uint32_t counter, unsigned& count, std::uint64_t* raw, std::uint32_t& bad_low, std::uint32_t& bad_high)
+        {
+            __try
+            {
+                const auto base = *reinterpret_cast<const volatile std::uintptr_t*>(0x149EEAAC8ull);
+                count = *reinterpret_cast<const volatile std::uint32_t*>(0x149EEAA64ull);
+                if (!base || count > 8192) return false;
+                const std::uint32_t units = counter / 4;
+                bad_low = bad_high = 0;
+                for (unsigned i = 0; i < count; ++i)
+                {
+                    const auto key = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i);
+                    const std::uint32_t low = static_cast<std::uint32_t>(key & 0xFFFF), high = static_cast<std::uint32_t>(key >> 48);
+                    if (low > units && low != 0xFFFF) { if (!bad_low) { raw[0] = key; raw[1] = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i + 8); } ++bad_low; }
+                    if (high > units && high != 0xFFFF) { if (!bad_high) { raw[2] = key; raw[3] = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i + 8); } ++bad_high; }
+                }
+                return true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        }
+
+        // lab (-paris-surf-log): every draw surface list (24, tables at 0x149EEAAC0 bases / 0x149EEAA60 counts): how many entries and the first two raw entries
+        bool surf_log_list(unsigned list, unsigned& n, std::uint64_t* raw)
+        {
+            __try
+            {
+                const auto base = *reinterpret_cast<const volatile std::uintptr_t*>(0x149EEAAC0ull + 8ull * list);
+                n = *reinterpret_cast<const volatile std::uint32_t*>(0x149EEAA60ull + 4ull * list);
+                if (!base || n > 0x10000) return false;
+                for (unsigned i = 0; i < 2 && i < n; ++i)
+                {
+                    raw[2 * i] = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i);
+                    raw[2 * i + 1] = *reinterpret_cast<const volatile std::uint64_t*>(base + 16ull * i + 8);
+                }
                 return true;
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -279,6 +340,27 @@ std::uintptr_t read_pointer(std::uintptr_t address)
                 if (tension_units > cap) skin_tension_over.fetch_add(1, std::memory_order_relaxed);
             }
             if (flag & 1) skin_over_flag.fetch_add(1, std::memory_order_relaxed);
+            std::uint32_t sa = 0, sb = 0;
+            if (read_surf_counters(sa, sb))
+            {
+                static const bool surf_log = utils::flags::has_flag("paris-surf-log");
+                const auto ms = GetTickCount64();
+                if (surf_log && ms - surf_log_last_ms > 1000)
+                {
+                    surf_log_last_ms = ms;
+                    for (unsigned l = 0; l < 24; ++l)
+                    {
+                        unsigned n = 0; std::uint64_t r[4]{};
+                        if (surf_log_list(l, n, r) && n)
+                            console::info("[RenderMeter] surf list %u: %u entries, first %016llX %016llX, second %016llX %016llX\n", l, n, static_cast<unsigned long long>(r[0]), static_cast<unsigned long long>(r[1]), static_cast<unsigned long long>(r[2]), static_cast<unsigned long long>(r[3]));
+                    }
+                    unsigned n_ent = 0; std::uint64_t rawv[4]{}; std::uint32_t badl = 0, badh = 0;
+                    if (surf_log_entries(sa, n_ent, rawv, badl, badh))
+                        console::info("[RenderMeter] surf entries: list 1 holds %u, counter %u bytes (%u units): %u entries with a low index above it (first %016llX %016llX), %u with a high index above it (first %016llX %016llX)\n", n_ent, sa, sa / 4, badl, static_cast<unsigned long long>(rawv[0]), static_cast<unsigned long long>(rawv[1]), badh, static_cast<unsigned long long>(rawv[2]), static_cast<unsigned long long>(rawv[3]));
+                }
+                const std::uint64_t v[2] = {sa, sb};
+                for (int i = 0; i < 2; ++i) { surf_sum[i].fetch_add(v[i]); surf_n[i].fetch_add(1); auto m = surf_max[i].load(); while (v[i] > m && !surf_max[i].compare_exchange_weak(m, v[i])) {} }
+            }
         }
 
         // ---- video memory ----
@@ -341,6 +423,8 @@ std::uintptr_t read_pointer(std::uintptr_t address)
         class_sum classes[3]; // players, agents, rest
         constexpr const char* class_name[3] = {"players", "agents", "world"};
         std::uint64_t history_drawn[2][entity_words]{}, history_processed[2][entity_words]{};
+        // bytes asked of the two scene surface buffers (counters [[0x148F73088]+0x18A0] 256 KB and +0x18A4 64 KB: they keep counting past the limit, so the value is the whole demand)
+
         std::uint64_t frames_total{}, frames_window{}, lists_sum[4]{}, lists_peak[4]{}, lists_total_peak[4]{};
         std::int64_t window_start_qpc{}, last_scene_qpc{};
         double frame_ms_sum{}, frame_ms_max{};
@@ -458,6 +542,13 @@ std::uintptr_t read_pointer(std::uintptr_t address)
                 row += buf;
             }
             row += "],";
+            const auto ss0 = surf_sum[0].exchange(0), ss1 = surf_sum[1].exchange(0), sm0 = surf_max[0].exchange(0), sm1 = surf_max[1].exchange(0), sn0 = surf_n[0].exchange(0), sn1 = surf_n[1].exchange(0);
+            std::snprintf(buf, sizeof(buf), "\"surf_demand_bytes\":{\"scene_surfs\":{\"mean\":%.0f,\"max\":%llu,\"cap\":262144},\"motionblur\":{\"mean\":%.0f,\"max\":%llu,\"cap\":65536}},",
+                sn0 ? static_cast<double>(ss0) / static_cast<double>(sn0) : 0.0, static_cast<unsigned long long>(sm0),
+                sn1 ? static_cast<double>(ss1) / static_cast<double>(sn1) : 0.0, static_cast<unsigned long long>(sm1));
+            row += buf;
+            std::snprintf(buf, sizeof(buf), "\"surf_relocated\":%d,\"surf_old_region_damaged\":%u,", agent_capacity::surf_relocated() ? 1 : 0, agent_capacity::surf_old_region_damaged());
+            row += buf;
             row += "\"drawsurf_full\":[";
             for (unsigned r = 0, k = 0; r < 32; ++r)
             {

@@ -10,6 +10,7 @@
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <shellapi.h>
+#include <tlhelp32.h>
 #include <intrin.h>
 #include <malloc.h>
 #include <algorithm>
@@ -831,6 +832,210 @@ void plan_skin_cache() {
     *constant = 2000000.0f;
     VirtualProtect(constant, sizeof(float), old, &old);
     console::info("[agent capacity] skinned cache constant 563,200 -> 2,000,000 vertices\n");
+}
+
+// ---- 3g. the scene surface buffer: relocation, stage 0 (a90, 20 Nov 2026) --------------------------------------------------------
+// The scene surface buffer (0x40000 bytes at +0xB5580 of each of the two frame data structs, 0x5BD280 bytes apart, in the .bss from 0x148F73100; counter [[0x148F73088]+0x18A0]) is full at 200 zombies in
+// view (warning 0x0D, 4.2 million refusals in 180 s with 183 in view; the demand is 435 KB). The surface records keep a 16 bit index in 4 byte units, and 83 instructions address the buffer: a displacement
+// 0xB5580 + k (k a record field) or the frame as an array of dwords (0x2D560 + k / 4 added to the index, scaled by 4 afterwards). ops/engine/surf_sites.py decodes the whole code, checks the
+// dword form against the instructions that follow and writes the table (agent_capacity_surf_sites.inc: address, offset of the 32 bit field, old value, kind). STAGE 0 moves the base only: the same
+// 256 KB and the same unit, in a block placed at the same distance O from both frame structs (new = frame + O), O a multiple of 8, so that every encoding follows: kind 0 old + (O - 0xB5580), kind 1 old + (O - 0xB5580) / 4.
+// Every site is byte-checked before the first write and nothing is written when one differs. The old regions are filled with a poison pattern: a reader that was missed shows garbage at once, a writer
+// that was missed changes the pattern (the render meter reports the damaged dwords of both regions: surf_old_region_damaged).
+constexpr std::uintptr_t surf_frame_array = 0x148F73100ull, surf_frame_array_probe = 0x140E2804Eull;   // lea rsi,[rip+0x814B0AB] at 0x140E2804E: the frame array
+constexpr std::uintptr_t surf_frame_stride = 0x5BD280ull, surf_old_base = 0xB5580ull;
+constexpr std::size_t surf_bytes = 0x40000;
+struct surf_site { std::uintptr_t address; std::uint32_t field_offset, old_value; int kind; };
+constexpr surf_site surf_sites[] = {
+#include "agent_capacity_surf_sites.inc"
+};
+constexpr std::uint32_t surf_poison = 0xA5A5A5A5u;
+
+// kind 0: byte base, old + (O - 0xB5580); kind 1: dword base, old + (O - 0xB5580) / 4; kind 2: the base as a modulus of the 18 bit span (a key's unit index is ((pointer + 0xAA80 - frame) >> 2) & 0xFFFF in
+// FUN_140E2D000 and its two sisters: 0xAA80 = -0xB5580 mod 0x40000), new = (-O) mod 0x40000.
+std::uint32_t surf_new_value(const surf_site& site, std::uintptr_t delta, std::uintptr_t distance) {
+    if (site.kind == 2) return static_cast<std::uint32_t>((0x40000 - (distance & 0x3FFFF)) & 0x3FFFF);
+    return site.old_value + static_cast<std::uint32_t>(site.kind == 0 ? delta : delta / 4);
+}
+
+std::atomic<bool> surf_done{false};
+std::uintptr_t surf_distance = 0;
+bool surf_noaccess = false;
+std::uint32_t surf_old_damaged_count() {
+    if (!surf_done.load() || surf_noaccess) return 0;
+    std::uint32_t damaged = 0;
+    for (unsigned k = 0; k < 2; ++k) {
+        const auto* p = reinterpret_cast<const std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf_old_base);
+        for (std::size_t i = 0; i < surf_bytes / 4; ++i) damaged += p[i] != surf_poison;
+    }
+    return damaged;
+}
+
+// lab (-paris-surf-log): where do pointers into the scene surface buffers live? Every second for six seconds after the patch the two frame structs are scanned for qwords that point into either old
+// buffer (or +-1 MB of it) or into either new buffer; the first hits are logged with their offset in the frame, so a pointer computed once at init and stored in a frame field shows up with the
+// value it holds (old-based = computed before the patch or by an unpatched form, new-based = computed after). Also the time of the patch and of every scan against the process start.
+void surf_log_scan(int round) {
+    constexpr std::uintptr_t window = 0x100000;
+    unsigned printed = 0;
+    std::size_t old_hits = 0, new_hits = 0;
+    for (unsigned k = 0; k < 2; ++k) {
+        const std::uintptr_t frame = surf_frame_array + k * surf_frame_stride;
+        const std::uintptr_t old_lo = frame + surf_old_base - window, old_hi = frame + surf_old_base + surf_bytes + window;
+        const std::uintptr_t new_lo = frame + surf_distance - window, new_hi = frame + surf_distance + surf_bytes + window;
+        const auto* q = reinterpret_cast<const std::uintptr_t*>(frame);
+        for (std::size_t i = 0; i < surf_frame_stride / 8; ++i) {
+            const auto v = q[i];
+            const bool o = v >= old_lo && v < old_hi, n = v >= new_lo && v < new_hi;
+            if (!o && !n) continue;
+            (o ? old_hits : new_hits)++;
+            if (printed < 24) { ++printed; console::info("[agent capacity] surf scan %d: frame %u +0x%zX = %llX (%s, %+lld from the buffer base)\n", round, k, i * 8, static_cast<unsigned long long>(v), o ? "old" : "new", static_cast<long long>(v - (frame + (o ? surf_old_base : surf_distance)))); }
+        }
+    }
+    {
+        // do the patched sites still hold their new value? (the engine may restore code pages: run stage0b crashed on an index made with the old constant)
+        const std::uintptr_t delta = surf_distance - surf_old_base;
+        unsigned wrong = 0, shown = 0;
+        for (const auto& site : surf_sites) {
+            std::uint32_t now{};
+            std::memcpy(&now, reinterpret_cast<const void*>(site.address + site.field_offset), 4);
+            const std::uint32_t want = surf_new_value(site, delta, surf_distance);
+            if (now != want) { ++wrong; if (shown++ < 8) console::info("[agent capacity] surf site %llX holds %08X, patched value %08X\n", static_cast<unsigned long long>(site.address), now, want); }
+        }
+        console::info("[agent capacity] surf scan %d: %u of %zu patched sites no longer hold their new value\n", round, wrong, sizeof(surf_sites) / sizeof(surf_sites[0]));
+    }
+    console::info("[agent capacity] surf scan %d at %llu ms: %zu qwords point near the old buffers, %zu near the new ones\n", round, static_cast<unsigned long long>(GetTickCount64()), old_hits, new_hits);
+}
+
+// Every other thread of the process is suspended while the sites are written: a record allocated between the allocator's patch and the index converter's patch would carry the new pointer and the old
+// constant (the index 0x5E66 of the stage 0 crashes). Returns the handles to resume; the number of threads and the process uptime are logged (-paris-surf-log or always: one line).
+std::vector<HANDLE> surf_suspend_others() {
+    std::vector<HANDLE> handles;
+    const DWORD me = GetCurrentThreadId(), pid = GetCurrentProcessId();
+    const HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE) return handles;
+    THREADENTRY32 te{};
+    te.dwSize = sizeof(te);
+    for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
+        if (te.th32OwnerProcessID != pid || te.th32ThreadID == me) continue;
+        if (const HANDLE h = OpenThread(THREAD_SUSPEND_RESUME, FALSE, te.th32ThreadID)) {
+            if (SuspendThread(h) != static_cast<DWORD>(-1)) handles.push_back(h); else CloseHandle(h);
+        }
+    }
+    CloseHandle(snap);
+    return handles;
+}
+void surf_resume(std::vector<HANDLE>& handles) {
+    for (const HANDLE h : handles) { ResumeThread(h); CloseHandle(h); }
+    handles.clear();
+}
+
+// lab: a cached base. Every committed writable page of the game image (.data, .bss: 0x140000000 + 0xC301400) is scanned for qwords equal to the old base of either frame (frame + 0xB5580) within
+// +-0x100, and for dwords equal to its low half within +-0x100: a converter that subtracts a base loaded from memory (computed at renderer init, before the patch) would find it there.
+void surf_log_image_scan(int round) {
+    unsigned shown = 0, hits64 = 0, hits32 = 0;
+    const std::uintptr_t lo = 0x140000000ull, hi = lo + 0xC301400ull;
+    std::uintptr_t a = lo;
+    while (a < hi) {
+        MEMORY_BASIC_INFORMATION m{};
+        if (!VirtualQuery(reinterpret_cast<void*>(a), &m, sizeof(m))) break;
+        const std::uintptr_t end = reinterpret_cast<std::uintptr_t>(m.BaseAddress) + m.RegionSize;
+        const bool writable = m.State == MEM_COMMIT && (m.Protect & (PAGE_READWRITE | PAGE_WRITECOPY)) && !(m.Protect & PAGE_GUARD);
+        if (writable) {
+            const auto* q = reinterpret_cast<const std::uintptr_t*>(a);
+            const std::size_t n = (std::min(end, hi) - a) / 8;
+            for (std::size_t i = 0; i < n; ++i) {
+                const std::uintptr_t v = q[i];
+                for (unsigned k = 0; k < 2; ++k) {
+                    const std::uintptr_t base = surf_frame_array + k * surf_frame_stride + surf_old_base;
+                    if (v + 0x100 >= base && v <= base + 0x100) {
+                        ++hits64;
+                        if (shown++ < 40) console::info("[agent capacity] image scan %d: qword at %llX = %llX (old base of frame %u %+lld)\n", round, static_cast<unsigned long long>(a + i * 8), static_cast<unsigned long long>(v), k, static_cast<long long>(v - base));
+                    }
+                    const std::uint32_t low = static_cast<std::uint32_t>(base);
+                    const std::uint32_t d0 = static_cast<std::uint32_t>(v), d1 = static_cast<std::uint32_t>(v >> 32);
+                    for (const std::uint32_t d : {d0, d1}) {
+                        if (d + 0x100 >= low && d <= low + 0x100 && !(v + 0x100 >= base && v <= base + 0x100)) {
+                            ++hits32;
+                            if (shown++ < 40) console::info("[agent capacity] image scan %d: dword half of %llX = %08X (low half of the old base of frame %u %+d)\n", round, static_cast<unsigned long long>(a + i * 8), d, k, static_cast<int>(d - low));
+                        }
+                    }
+                }
+            }
+        }
+        a = end;
+    }
+    console::info("[agent capacity] image scan %d: %u qwords and %u dwords near an old base\n", round, hits64, hits32);
+}
+void plan_surf_relocation() {
+    if (game::environment::is_dedi() || utils::flags::has_flag("paris-stock-render-pools")) return;
+    // the frame array is where the table was made for
+    std::int32_t probe_disp{};
+    std::memcpy(&probe_disp, reinterpret_cast<const void*>(surf_frame_array_probe + 3), 4);
+    if (std::memcmp(reinterpret_cast<const void*>(surf_frame_array_probe), "\x48\x8D\x35", 3) != 0 || surf_frame_array_probe + 7 + probe_disp != surf_frame_array) {
+        console::error("[agent capacity] surface buffer: the frame array is not at 0x%llX, nothing moved\n", static_cast<unsigned long long>(surf_frame_array)); return;
+    }
+    for (const auto& site : surf_sites) {
+        std::uint32_t now{};
+        std::memcpy(&now, reinterpret_cast<const void*>(site.address + site.field_offset), 4);
+        if (now != site.old_value) { console::error("[agent capacity] surface buffer: site %llX holds %08X, the table says %08X: nothing moved\n", static_cast<unsigned long long>(site.address), now, site.old_value); return; }
+    }
+    // a block at the same distance from both frames: [A, A + stride + buffer) reserved, the two buffers committed
+    const std::size_t block = (surf_frame_stride + surf_bytes + 0xFFFF) & ~static_cast<std::size_t>(0xFFFF);
+    void* base = nullptr;
+    for (std::uintptr_t a = 0x14D000000ull; a < surf_frame_array + 0x70000000ull && !base; a += 0x1000000ull)
+        base = VirtualAlloc(reinterpret_cast<void*>(a), block, MEM_RESERVE, PAGE_READWRITE);
+    if (!base) { console::error("[agent capacity] surface buffer: no address range near the frames, nothing moved\n"); return; }
+    const auto a0 = reinterpret_cast<std::uintptr_t>(base);
+    if (!VirtualAlloc(reinterpret_cast<void*>(a0), surf_bytes, MEM_COMMIT, PAGE_READWRITE) || !VirtualAlloc(reinterpret_cast<void*>(a0 + surf_frame_stride), surf_bytes, MEM_COMMIT, PAGE_READWRITE)) {
+        console::error("[agent capacity] surface buffer: commit failed, nothing moved\n"); return;
+    }
+    const std::uintptr_t distance = a0 - surf_frame_array;   // O: new buffer k at frame k + O
+    if (distance % 8 != 0 || distance >= 0x7FFF0000ull) { console::error("[agent capacity] surface buffer: distance %llX unusable\n", static_cast<unsigned long long>(distance)); return; }
+    const std::uintptr_t delta = distance - surf_old_base;
+    auto suspended = surf_suspend_others();
+    FILETIME created{}, exited{}, kernel{}, user{};
+    GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user);
+    FILETIME now_ft{};
+    GetSystemTimeAsFileTime(&now_ft);
+    const auto to64 = [](const FILETIME& f) { return (static_cast<std::uint64_t>(f.dwHighDateTime) << 32) | f.dwLowDateTime; };
+    console::info("[agent capacity] surface buffer patch: %zu other threads suspended, process uptime %llu ms\n", suspended.size(), static_cast<unsigned long long>((to64(now_ft) - to64(created)) / 10000));
+    for (unsigned k = 0; k < 2; ++k) {
+        // the buffer is moved with its content (the data of a frame struct is not all zero at start: run surflog2 crashed on a record that the old region holds before the first frame)
+        auto* p = reinterpret_cast<std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf_old_base);
+        std::size_t used = 0;
+        for (std::size_t i = 0; i < surf_bytes / 4; ++i) used += p[i] != 0;
+        std::memcpy(reinterpret_cast<void*>(a0 + k * surf_frame_stride), p, surf_bytes);
+        console::info("[agent capacity] surface buffer %u: %zu non-zero dwords copied to the new place\n", k, used);
+        for (std::size_t i = 0; i < surf_bytes / 4; ++i) p[i] = surf_poison;
+    }
+    for (const auto& site : surf_sites) {
+        DWORD old{};
+        auto* field = reinterpret_cast<std::uint8_t*>(site.address + site.field_offset);
+        VirtualProtect(field, 4, PAGE_EXECUTE_READWRITE, &old);
+        const std::uint32_t value = surf_new_value(site, delta, distance);
+        std::memcpy(field, &value, 4);
+        VirtualProtect(field, 4, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), field, 4);
+    }
+    // lab: the whole pages of the old regions are made inaccessible, so that a reader or a writer that was missed faults at its own instruction and the crash dump names it (-paris-surf-noaccess)
+    if (utils::flags::has_flag("paris-surf-noaccess")) {
+        for (unsigned k = 0; k < 2; ++k) {
+            DWORD previous{};
+            VirtualProtect(reinterpret_cast<void*>((surf_frame_array + k * surf_frame_stride + surf_old_base + 0xFFF) & ~static_cast<std::uintptr_t>(0xFFF)), surf_bytes - 0x1000, PAGE_NOACCESS, &previous);
+        }
+        surf_noaccess = true;
+    }
+    surf_resume(suspended);
+    surf_distance = distance;
+    surf_done.store(true);
+    if (utils::flags::has_flag("paris-surf-log")) {
+        console::info("[agent capacity] surf patch applied at %llu ms (tick), process uptime above\n", static_cast<unsigned long long>(GetTickCount64()));
+        static int round = 0;
+        surf_log_scan(0);
+        surf_log_image_scan(0);
+        scheduler::loop([] { if (round < 6) { surf_log_scan(++round); if (round == 1 || round == 4) surf_log_image_scan(round); } }, scheduler::main, 1000ms);
+    }
+    console::info("[agent capacity] surface buffer moved: %zu sites, frame + %llX (block %p), old regions poisoned\n", sizeof(surf_sites) / sizeof(surf_sites[0]), static_cast<unsigned long long>(distance), base);
 }
 
 // ---- 3d. the two per-sentient tables of an SV agent record (map A1) ---------------------------------------------------
@@ -1824,6 +2029,7 @@ public:
         plan_snapshot();
         plan_render_list();
         plan_drawsurf_lists();
+        plan_surf_relocation();
         plan_skin_cache();
         // plan_rings(); not installed: growing the trace_to_entity ring froze the client 44 s after the join (run f200-ring, 18 Nov); the ring record is dumped by the render meter instead
         plan_ai_pool();
@@ -1892,6 +2098,8 @@ public:
 }
 
 bool installed() noexcept { return active; }
+std::uint32_t surf_old_region_damaged() noexcept { return surf_old_damaged_count(); }
+bool surf_relocated() noexcept { return surf_done.load(); }
 std::uint32_t render_skipped(unsigned id) noexcept { return id < 0xA0 ? render_skip_table[id].load(std::memory_order_relaxed) : 0; }
 std::uint32_t agents() noexcept { return active ? L.agents : stock_agents; }
 const char* wire_contract() noexcept { return contract.c_str(); }
