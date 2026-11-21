@@ -32,6 +32,11 @@ try{
     $cutExt=Read-Native $ext
     foreach($needle in @('paris_vm_filter::table','paris_vm_filter::mark(what.u.codePosValue)','paris_vm_filter::clear()','a.je(end)')){if(!$cutExt.Contains($needle)){Fail "script_extension.cpp lacks $needle"}}
     if(!(Read-Native $game).Contains('paris_log_stream::instance().append(file, line)')){Fail 'game.cpp lacks the kept handle'}
+    if(!(Read-Native 'src/client/component/console/console.cpp').Contains('paris_console_writer::submit(type, message)')){Fail 'console.cpp lacks the console writer hand-off'}
+    if(!(Read-Native 'src/client/component/console/terminal.cpp').Contains('int dispatch_message_direct(')){Fail 'terminal.cpp lacks the direct sink'}
+    foreach($rel in @('src/client/component/console/console.cpp','src/client/component/console/terminal.cpp')){
+        if((Remove-IW7FrameCutText $rel (Read-Native $rel) $pin) -cne (Pinned $rel)){Fail "removal does not give the pinned $rel"}
+    }
     # the cuts come out again, byte for byte
     if((Remove-IW7FrameCutText $ext $cutExt $pin) -cne $baseExt){Fail 'removal does not give the pinned script_extension.cpp'}
     # 2 other pins and other files are left alone

@@ -238,6 +238,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\log_stream_tes
 if errorlevel 1 exit /b 1
 "$runtime\log-stream-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\console_writer_test.cpp" /Fe:"$runtime\console-writer-test.exe" /Fo:"$runtime\console-writer-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\console-writer-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od "$repo\tests\native\audio_output_probe.cpp" /Fe:"$runtime\audio-output-probe.exe" /Fo:"$runtime\audio-output-probe.obj" ole32.lib uuid.lib ksuser.lib mmdevapi.lib
 if errorlevel 1 exit /b 1
 "$runtime\audio-output-probe.exe" --self-test
@@ -303,8 +307,9 @@ if (Test-Path -LiteralPath $labComponent) {
 }
 $nativeSources = @('paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp','dvar_metadata.hpp','agent_scenario.hpp',
     'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp','paris_afk.cpp','paris_afk.hpp','afk_inactivity.hpp',
-    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp','paris_script_chain.hpp','paris_weapon_log.cpp','script_canonical.cpp','script_canonical.hpp')
-if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp') }
+    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp','paris_console_writer.hpp','paris_script_chain.hpp','paris_weapon_log.cpp','script_canonical.cpp','script_canonical.hpp')
+# The console writer (docs/CONSOLE-WRITER.md) calls console.cpp edits that exist only at the ServerModules pin (ops/frame-cuts).
+if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp','paris_console_writer.cpp') }
 else {
     # The experiment pin does not expose the ServerModules CP WeaponDef.
     # Clear only this task's exact previously copied adapter when switching

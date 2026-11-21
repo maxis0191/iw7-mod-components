@@ -42,6 +42,38 @@
      "count": 1
     }
    ]
+  },
+  {
+   "path": "src/client/component/console/console.cpp",
+   "exclusive": true,
+   "edits": [
+    {
+     "old": "#include <utils/io.hpp>\n",
+     "new": "#include <utils/io.hpp>\n\n#include \"component/paris_console_writer.hpp\"\n#include \"component/paris_log_stream.hpp\"\n\nnamespace terminal\n{\n\tint dispatch_message_direct(int type, const std::string& message);\n}\n",
+     "count": 1
+    },
+    {
+     "old": "\tvoid dispatch_message(const int type, const std::string& message)\n\t{\n\t\tif (rcon::message_redirect(message))\n\t\t{\n\t\t\treturn;\n\t\t}\n\n\t\tauto out = message;\n\t\tif (out.empty() || out.back() != '\\n')\n\t\t{\n\t\t\tout.push_back('\\n');\n\t\t}\n\n\t\tif (console_log && console_log->current.string)\n\t\t\tutils::io::write_file(console_log->current.string, out, true);\n\n\t\tif (console::is_enabled())\n\t\t{\n\t\t\tif (wincon::is_enabled())\n\t\t\t{\n\t\t\t\tprintf(message.data());\n\t\t\t}\n\t\t\telse if (terminal::is_enabled())\n\t\t\t{\n\t\t\t\t::terminal::dispatch_message(type, message);\n\t\t\t\treturn;\n\t\t\t}\n\t\t\telse if (syscon::is_enabled())\n\t\t\t{\n\t\t\t\t::syscon::Sys_Print(message.data());\n\t\t\t}\n\t\t}\n\n\t\tgame_console::print(type, message);\n\t}\n",
+     "new": "\tnamespace\n\t{\n\t\t// The sinks of one line. queued: called by the writer thread of paris_console_writer.hpp, which keeps the console log open\n\t\t// (flushed after each batch) and skips the rcon check the printing thread already made.\n\t\tvoid write_sinks(const int type, const std::string& message, const bool queued)\n\t\t{\n\t\t\tauto out = message;\n\t\t\tif (out.empty() || out.back() != '\\n')\n\t\t\t{\n\t\t\t\tout.push_back('\\n');\n\t\t\t}\n\n\t\t\tif (console_log && console_log->current.string)\n\t\t\t{\n\t\t\t\tif (!queued || !paris_log_stream::instance().append(console_log->current.string, out))\n\t\t\t\t\tutils::io::write_file(console_log->current.string, out, true);\n\t\t\t}\n\n\t\t\tif (console::is_enabled())\n\t\t\t{\n\t\t\t\tif (wincon::is_enabled())\n\t\t\t\t{\n\t\t\t\t\tprintf(message.data());\n\t\t\t\t}\n\t\t\t\telse if (terminal::is_enabled())\n\t\t\t\t{\n\t\t\t\t\tif (queued)\n\t\t\t\t\t{\n\t\t\t\t\t\t::terminal::dispatch_message_direct(type, message);\n\t\t\t\t\t}\n\t\t\t\t\telse\n\t\t\t\t\t{\n\t\t\t\t\t\t::terminal::dispatch_message(type, message);\n\t\t\t\t\t}\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\telse if (syscon::is_enabled())\n\t\t\t\t{\n\t\t\t\t\t::syscon::Sys_Print(message.data());\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tgame_console::print(type, message);\n\t\t}\n\t}\n\n\tvoid dispatch_message_queued(const int type, const std::string& message)\n\t{\n\t\twrite_sinks(type, message, true);\n\t}\n\n\tvoid dispatch_message(const int type, const std::string& message)\n\t{\n\t\tif (rcon::message_redirect(message))\n\t\t{\n\t\t\treturn;\n\t\t}\n\n\t\t// A dedicated server hands the line to the writer thread; the syscon window belongs to this thread and stays synchronous.\n\t\tif (!syscon::is_enabled() && paris_console_writer::submit(type, message))\n\t\t{\n\t\t\treturn;\n\t\t}\n\n\t\twrite_sinks(type, message, false);\n\t}\n",
+     "count": 1
+    }
+   ]
+  },
+  {
+   "path": "src/client/component/console/terminal.cpp",
+   "exclusive": true,
+   "edits": [
+    {
+     "old": "\tint dispatch_message(const int type, const std::string& message)\n\t{\n\t\tif (rcon::message_redirect(message))\n\t\t{\n\t\t\treturn 0;\n\t\t}\n\n\t\tstd::lock_guard _0(print_mutex);\n",
+     "new": "\t// The screen sink without the rcon check: the writer thread of paris_console_writer.hpp calls it for a line the printing thread already checked.\n\tint dispatch_message_direct(const int type, const std::string& message)\n\t{\n\t\tstd::lock_guard _0(print_mutex);\n",
+     "count": 1
+    },
+    {
+     "old": "\t\tupdate();\n\t\treturn res;\n\t}\n",
+     "new": "\t\tupdate();\n\t\treturn res;\n\t}\n\n\tint dispatch_message(const int type, const std::string& message)\n\t{\n\t\tif (rcon::message_redirect(message))\n\t\t{\n\t\t\treturn 0;\n\t\t}\n\n\t\treturn dispatch_message_direct(type, message);\n\t}\n",
+     "count": 1
+    }
+   ]
   }
  ]
 }
