@@ -25,6 +25,8 @@ server thread on every console line (engine lines, error lines, any mod's `print
      round trips and a file open per line. With `-stdout` the same code runs against a redirected handle (`main.cpp:157`, unbuffered): a file write per
      byte block.
    - `game_console::print` returns at once on a dedicated server.
+   - Not part of `dispatch_message` but the same kind of call: `dedicated.cpp:475/493` sets the console title every second through `console::set_title`, which is a
+     `SetConsoleTitleA` (a round trip to the console host) on the main thread every second, changed or not. `set_title` now skips an unchanged title.
 3. Which one blocks: the round trips to the console host. When `conhost.exe` is busy or descheduled (a machine at 80 to 100 %, six console writers beside
    the server) every one of them waits for it; `ops/gamelab/console_stall.py` (server repository) makes this certain by suspending that process, and the
    stall of a frame follows. `logprint` never touches it. It is a sink, not a lock shared with another engine thread, so the fix is to move the sinks to
@@ -37,10 +39,12 @@ server thread on every console line (engine lines, error lines, any mod's `print
 - `src/native/paris_console_writer.hpp` (no game types, tested alone): `queue` is a bounded ring of 4096 lines and 1 MiB of text (slots keep their
   string capacity, so a push copies bytes and allocates nothing once warm); `writer` owns the ring and one thread.
 - `src/native/paris_console_writer.cpp`: the component. In a dedicated server it starts the writer in `post_unpack`.
-- `ops/frame-cuts/frame-cut-edits.json` (the overlay of fork edits as data, `docs/FRAME-CUTS.md`) edits two fork files:
+- `ops/frame-cuts/frame-cut-edits.json` (the overlay of fork edits as data, `docs/FRAME-CUTS.md`) edits three fork files:
   - `console/console.cpp`: `dispatch_message` keeps the rcon check, then offers the line to `paris_console_writer::submit`; when it is taken the call returns.
     The old body is `write_sinks`, run by the writer thread through `console::dispatch_message_queued`; there the console log is appended through the kept
-    handle of `paris_log_stream.hpp` (one open handle, flushed after every batch) instead of open/write/close per line.
+    handle of its own (`paris_console_writer::console_log_stream()`, an `append_log` of `paris_log_stream.hpp`, flushed after every batch) instead of open/write/close per line;
+    it is not the instance `G_LogPrintf` uses, so the game log's mutex never waits for this disk write. `set_title` skips an unchanged title.
+  - `exception.cpp`: the crash wait described below.
   - `console/terminal.cpp`: the screen sink is split: `dispatch_message_direct` (the old body without the rcon check) and `dispatch_message` (rcon check, then
     the direct sink). The writer thread uses the direct one: the rcon check belongs to the thread that printed the line, a line queued before an rcon
     command must not be sent to the rcon client when the writer gets to it later.
@@ -56,9 +60,10 @@ The producer holds one mutex for the copy of one line and returns. It never wait
 - **Start-up and shutdown**: lines before the component starts (and every line in a client, a `-syscon` window, or with the switch off) are printed on the
   calling thread as before. `pre_destroy` and `atexit` close the ring, the writer writes what is queued, prints its counters and ends (waits at most 3 s
   for a writer that is stuck in a sink, then leaves it); lines printed after the close are printed on the calling thread.
-- **Crash**: a vectored exception handler waits up to 100 ms for the writer to empty the ring when an access violation, illegal instruction or in-page error is
-  raised (the writer keeps writing meanwhile), so the last lines before a crash reach the console log. It does nothing when the ring is empty, which is the
-  usual case for exceptions the engine handles itself, and never touches the exception.
+- **Crash**: the game's own exception filter (`exception.cpp`, `exception_filter`) calls `paris_console_writer::wait_for_lines_on_crash()` before it writes its
+  dump: it waits up to 300 ms until every line accepted so far has been written by the sinks and flushed (a lock-free counter, set after the flush of the batch
+  that held the line, so a line the writer already took out of the ring but has not written is waited for too). It returns at once on the writer thread and when
+  the writer is not running. Nothing else is hooked: no vectored handler, so exceptions the engine handles itself (Arxan, the write watch) are untouched.
 - **Tools that read the console**: the console log is flushed after every batch (a few ms behind); the start-up lines (`/nickname` self-test line, `Ready`,
   `[script variables]`, `[agent capacity]`) arrive as before, a few ms later.
 
@@ -84,7 +89,9 @@ On by default in a dedicated server of a ServerModules build (the component is c
 - `g_consoleLog` is read by the writer thread when it writes; changing the dvar while lines are queued applies the new path to them (the dvar is set at launch).
 - A writer stuck in `conhost.exe` stops the console output, not the server: lines queue, then drop and are counted; the console log stops with it (one writer for
   both sinks, to keep the order). Splitting the two sinks into two writers is the next step if the stuck case is measured in the field.
-- Not measured in the running game yet: see the plan below.
+- Not compiled and not measured yet: the header, the component and the unit test were written without a build (the lead builds); see the plan below.
+- The claim that the console host round trips are what blocks rests on `docs/PRINT-COST.md` and `ops/gamelab/console_stall.py` of the server repository (suspending
+  `conhost.exe` makes `print` stall, `logprint` not), not on a measurement made for this change.
 
 ## Tests
 
@@ -92,7 +99,7 @@ On by default in a dedicated server of a ServerModules build (the component is c
 a full ring drops and counts and the notice sits at the gap, byte limit, close, a stalled sink (20 ms a line, 100 lines) does not stall the producer (under 500 ms),
 shutdown writes what is queued, a closed writer refuses lines, six producers of 5,000 lines (each producer's own order kept, none dropped), a throwing sink keeps
 the thread. Standalone compile, from a Visual Studio command prompt: `cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 tests\native\console_writer_test.cpp`.
-`tests/ops/frame_cuts_test.py` and `tests/ops/frame_cuts_overlay_test.ps1` check the two fork edits against the pinned blobs (counts, order of the hand-off after
+`tests/ops/frame_cuts_test.py` and `tests/ops/frame_cuts_overlay_test.ps1` check the fork edits against the pinned blobs (counts, order of the hand-off after
 the rcon check, removal gives the pinned bytes).
 
 ## A/B plan (the lead measures)

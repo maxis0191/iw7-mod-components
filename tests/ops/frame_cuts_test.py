@@ -24,6 +24,7 @@ EXT = 'src/client/component/gsc/script_extension.cpp'
 GAME = 'src/client/game/game.cpp'
 CON = 'src/client/component/console/console.cpp'
 TER = 'src/client/component/console/terminal.cpp'
+EXC = 'src/client/component/exception.cpp'
 
 
 def read(*path):
@@ -58,7 +59,7 @@ class Edits(unittest.TestCase):
     def test_shape(self):
         self.assertEqual(SPEC['schema'], 'iw7.frame-cut-edits/1')
         self.assertEqual(SPEC['pin'], PIN)
-        self.assertEqual(sorted(f['path'] for f in SPEC['files']), sorted([EXT, GAME, CON, TER]))
+        self.assertEqual(sorted(f['path'] for f in SPEC['files']), sorted([EXT, GAME, CON, TER, EXC]))
         for f in SPEC['files']:
             for e in f['edits']:
                 self.assertGreaterEqual(e['count'], 1)
@@ -125,7 +126,7 @@ class Edits(unittest.TestCase):
         self.assertEqual(order, sorted(order))
         # the writer thread skips the rcon check (a line queued before an rcon command must not be sent to the rcon client) and keeps the log handle open
         self.assertIn('::terminal::dispatch_message_direct(type, message);', con)
-        self.assertIn('!queued || !paris_log_stream::instance().append(', con)
+        self.assertIn('!queued || !paris_console_writer::console_log_stream().append(', con)
         self.assertIn('void dispatch_message_queued(const int type, const std::string& message)', con)
         self.assertIn('int dispatch_message(const int type, const std::string& message)\n\t{\n\t\tif (rcon::message_redirect(message))', ter)
         self.assertIn('return dispatch_message_direct(type, message);', ter)
@@ -134,7 +135,11 @@ class Edits(unittest.TestCase):
         cpp = read('src', 'native', 'paris_console_writer.cpp')
         self.assertIn('console::dispatch_message_queued(type, message);', cpp)
         self.assertIn('paris-no-console-writer', cpp)
-        self.assertIn('paris_log_stream::instance().flush()', cpp)
+        self.assertIn('console_log_stream().flush()', cpp)
+        # the crash path: the game's exception filter waits for the writer before it writes its dump; an unchanged console title is not sent again
+        exc = ''.join(e['new'] for e in edits(EXC))
+        self.assertLess(exc.index('wait_for_lines_on_crash();'), exc.index('write_minidump(exceptioninfo);'))
+        self.assertIn('if (title == last_title)', con)
 
 
 class Wiring(unittest.TestCase):

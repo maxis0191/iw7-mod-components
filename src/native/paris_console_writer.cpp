@@ -5,7 +5,6 @@
 #include "console/console.hpp"
 #include "game/game.hpp"
 #include "paris_console_writer.hpp"
-#include "paris_log_stream.hpp"
 
 #include <utils/flags.hpp>
 
@@ -24,30 +23,6 @@ namespace paris_console_writer
 	namespace
 	{
 		writer* instance;
-
-		LONG CALLBACK crash_handler(PEXCEPTION_POINTERS info)
-		{
-			switch (info->ExceptionRecord->ExceptionCode)
-			{
-			case EXCEPTION_ACCESS_VIOLATION:
-			case EXCEPTION_ILLEGAL_INSTRUCTION:
-			case EXCEPTION_PRIV_INSTRUCTION:
-			case EXCEPTION_IN_PAGE_ERROR:
-			{
-				// The writer thread keeps writing while this thread waits (a crash of the server thread is where the last lines matter most).
-				// A first-chance exception the engine handles itself costs nothing here when the ring is empty, which is the usual case.
-				if (instance && instance->running())
-				{
-					instance->wait_until_drained(std::chrono::milliseconds(100));
-				}
-				break;
-			}
-			default:
-				break;
-			}
-
-			return EXCEPTION_CONTINUE_SEARCH;
-		}
 
 		void print_stats()
 		{
@@ -84,13 +59,12 @@ namespace paris_console_writer
 			}, []
 			{
 				// The kept console.log handle: what a batch wrote reaches the file before the next wait, so a tool that tails it is a few ms behind.
-				paris_log_stream::instance().flush();
+				console_log_stream().flush();
 			});
 
 			instance->start();
 			active().store(instance, std::memory_order_release);
 
-			AddVectoredExceptionHandler(1, crash_handler);
 			std::atexit(stop_writer);
 
 			command::add("paris_console_writer_stats", [](const command::params&)
@@ -106,6 +80,7 @@ namespace paris_console_writer
 			// New lines print on the calling thread again; the writer writes what is queued, prints its counters and ends.
 			active().store(nullptr, std::memory_order_release);
 			stop_writer();
+			console_log_stream().close_all();
 		}
 	};
 }

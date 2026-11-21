@@ -1,7 +1,8 @@
 $ErrorActionPreference='Stop'
-# Frame cuts (a51): two changes to fork files of the pinned iw7-mod, kept as data in ops/frame-cuts/frame-cut-edits.json:
+# Frame cuts (a51) and the console writer (21 Nov 2026): changes to fork files of the pinned iw7-mod, kept as data in ops/frame-cuts/frame-cut-edits.json:
 #   gsc/script_extension.cpp  the per-opcode replacefunc check tests a one byte filter (src/native/paris_vm_filter.hpp) before it saves any register
 #   game/game.cpp             G_LogPrintf appends through one open handle per path (src/native/paris_log_stream.hpp) instead of open, write, close
+#   console/console.cpp, console/terminal.cpp, exception.cpp   a console line goes to a ring and a writer thread (src/native/paris_console_writer.hpp, docs/CONSOLE-WRITER.md); the crash filter waits for it
 # Other overlays rebuild a file from the pinned blob and refuse anything else (Apply-DebuggerOverlay.ps1 on script_extension.cpp). These edits are plain text
 # replacements that can be taken out again, so that overlay calls Remove-IW7FrameCutText on what it reads, and Apply-FrameCutsOverlay.ps1 runs after it.
 function Get-IW7FrameCutSpec {

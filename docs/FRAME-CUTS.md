@@ -8,6 +8,8 @@ zombies. Two items were not game work at all, they were the iw7-mod fork's own c
 | per-opcode `replacefunc` check | `gsc/script_extension.cpp`, `vm_execute_stub` at 0x140C0D0A4: `pushad64`, a call, a `std::unordered_map` lookup and `popad64` before every script opcode | 4.3 ms (6.2 with the code cave) |
 | game log writes | `game/game.cpp`, `G_LogPrintf`: `utils::io::write_file` = create directory, open, write, close, for every damage and kill line | 2.3 ms (NtCreateFile alone 1.5) |
 
+The same edit file also carries the console writer's three fork edits (`console.cpp`, `terminal.cpp`, `exception.cpp`): see [CONSOLE-WRITER.md](CONSOLE-WRITER.md).
+
 ## What was changed
 
 **Opcode filter.** `replacefunc` is not a lab feature: the Paris mod redirects about a hundred stock functions with it in production, and every

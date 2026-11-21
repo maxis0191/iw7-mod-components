@@ -280,6 +280,37 @@ static void writer_full_ring_drops_and_says_so()
     CHECK(lines.back().rfind("[console writer] queued=9 written=9 dropped=42", 0) == 0);
 }
 
+static void writer_drained_means_written_and_flushed()
+{
+    recorder rec;
+    std::mutex gate;
+    gate.lock();
+    std::atomic<bool> in_sink{ false };
+    std::atomic<int> flushes{ 0 };
+    writer w([&](const int type, const std::string& text)
+    {
+        in_sink = true;
+        std::lock_guard<std::mutex> hold(gate);
+        rec.add(type, text);
+    }, [&flushes] { ++flushes; });
+    CHECK(w.wait_until_drained(std::chrono::milliseconds(10))); // not running: nothing to wait for
+    w.start();
+    CHECK(w.wait_until_drained(std::chrono::milliseconds(10))); // nothing accepted yet
+    CHECK(w.submit(7, "crash line\n"));
+    for (int i = 0; i < 2000 && !in_sink; ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(in_sink.load()); // the ring is empty now, the line is inside the sink: it is not drained
+    CHECK(w.ring().size() == 0);
+    CHECK(!w.wait_until_drained(std::chrono::milliseconds(30)));
+    gate.unlock();
+    CHECK(w.wait_until_drained(std::chrono::seconds(5)));
+    CHECK(flushes.load() >= 1); // done is counted after the flush of the batch
+    CHECK(rec.get().size() == 1);
+    w.stop();
+}
+
 static void writer_several_producers()
 {
     recorder rec;
@@ -372,6 +403,7 @@ int main()
     writer_order_and_flush_on_stop();
     writer_slow_sink_does_not_block_producer();
     writer_full_ring_drops_and_says_so();
+    writer_drained_means_written_and_flushed();
     writer_several_producers();
     writer_sink_exception_keeps_thread();
     format_line();

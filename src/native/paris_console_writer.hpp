@@ -14,6 +14,8 @@
 #include <thread>
 #include <vector>
 
+#include "paris_log_stream.hpp"
+
 // A console and log writer that never blocks the thread that prints (docs/CONSOLE-WRITER.md).
 //
 // The console sinks of the dedicated server (the console log file, the console host's screen buffer) are synchronous calls to another
@@ -198,16 +200,16 @@ namespace paris_console_writer
 	};
 
 	// The writer thread. sink(type, text) writes one line to the real sinks; after_batch() runs after every batch (flush of the kept file handle).
-	// Both run on the writer thread only (and the sink of a crash flush, see wait_until_drained, never runs on another thread).
+	// Both run on the writer thread only.
 	class writer
 	{
 	public:
 		using sink_fn = std::function<void(int, const std::string&)>;
 		using batch_fn = std::function<void()>;
 
-		writer(sink_fn sink, batch_fn after_batch, const std::size_t max_lines = 4096, const std::size_t max_bytes = 1u << 20,
+		writer(sink_fn sink, batch_fn batch_done, const std::size_t max_lines = 4096, const std::size_t max_bytes = 1u << 20,
 			const std::chrono::seconds report_every = std::chrono::seconds(60))
-			: queue_(max_lines, max_bytes), sink_(std::move(sink)), after_batch_(std::move(after_batch)), report_every_(report_every)
+			: queue_(max_lines, max_bytes), sink_(std::move(sink)), after_batch_(std::move(batch_done)), report_every_(report_every)
 		{
 		}
 
@@ -236,6 +238,10 @@ namespace paris_console_writer
 
 			const auto begin = std::chrono::steady_clock::now();
 			const auto result = this->queue_.push(type, data, length);
+			if (result == push_result::accepted)
+			{
+				++this->accepted_;
+			}
 			update_max(this->max_enqueue_us_, micros_since(begin));
 			return result != push_result::closed;
 		}
@@ -275,16 +281,24 @@ namespace paris_console_writer
 			return this->running_.load();
 		}
 
-		// Crash path: waits up to `limit` for the writer to empty the ring (it keeps writing while the caller waits). Returns whether it is empty.
+		// Crash path (the game's exception filter calls it before it writes its dump): waits up to `limit` until every line accepted so far has been
+		// written by the sink and flushed (the writer keeps writing while the caller waits). Lock-free: the faulting thread may be inside push().
+		// Returns at once on the writer thread itself and when the writer is not running. True when nothing accepted is still unwritten.
 		bool wait_until_drained(const std::chrono::milliseconds limit)
 		{
-			const auto end = std::chrono::steady_clock::now() + limit;
-			while (this->queue_.size() != 0 && std::chrono::steady_clock::now() < end)
+			if (!this->running_.load() || on_writer_thread())
 			{
-				std::this_thread::yield();
+				return true;
 			}
 
-			return this->queue_.size() == 0;
+			const auto target = this->accepted_.load();
+			const auto end = std::chrono::steady_clock::now() + limit;
+			while (this->done_.load() < target && std::chrono::steady_clock::now() < end)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+
+			return this->done_.load() >= target;
 		}
 
 		counters get()
@@ -316,6 +330,12 @@ namespace paris_console_writer
 		}
 
 	private:
+		static bool& on_writer_thread()
+		{
+			static thread_local bool flag = false;
+			return flag;
+		}
+
 		static std::uint64_t micros_since(const std::chrono::steady_clock::time_point begin)
 		{
 			return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - begin).count());
@@ -391,6 +411,7 @@ namespace paris_console_writer
 
 		void run()
 		{
+			on_writer_thread() = true;
 			std::vector<line> batch;
 			auto window = std::chrono::steady_clock::now();
 
@@ -417,6 +438,7 @@ namespace paris_console_writer
 				if (n || trailing)
 				{
 					this->after_batch();
+					this->done_ += n; // lines written and flushed: wait_until_drained compares it with the lines accepted
 				}
 				else if (this->queue_.closed())
 				{
@@ -445,6 +467,8 @@ namespace paris_console_writer
 		std::promise<void> finished_;
 		std::future<void> finished_future_;
 		std::atomic<std::uint64_t> written_{ 0 };
+		std::atomic<std::uint64_t> accepted_{ 0 };
+		std::atomic<std::uint64_t> done_{ 0 };
 		std::atomic<std::uint64_t> max_enqueue_us_{ 0 };
 		std::atomic<std::uint64_t> max_sink_write_us_{ 0 };
 		std::atomic<std::uint64_t> slow_sink_writes_{ 0 };
@@ -457,6 +481,24 @@ namespace paris_console_writer
 	{
 		static std::atomic<writer*> instance{ nullptr };
 		return instance;
+	}
+
+	// The console log has its own kept handle: the game log (G_LogPrintf, paris_log_stream::instance()) is written and flushed on the server thread,
+	// and its mutex must never wait for the writer's disk write.
+	inline paris_log_stream::append_log& console_log_stream()
+	{
+		static paris_log_stream::append_log log;
+		return log;
+	}
+
+	// Called by the game's exception filter before it writes its dump: the lines printed before the crash reach the sinks (at most 300 ms).
+	inline void wait_for_lines_on_crash()
+	{
+		auto* w = active().load(std::memory_order_acquire);
+		if (w)
+		{
+			w->wait_until_drained(std::chrono::milliseconds(300));
+		}
 	}
 
 	// Called by console::dispatch_message for every line. False: print it yourself.

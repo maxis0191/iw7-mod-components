@@ -34,7 +34,8 @@ try{
     if(!(Read-Native $game).Contains('paris_log_stream::instance().append(file, line)')){Fail 'game.cpp lacks the kept handle'}
     if(!(Read-Native 'src/client/component/console/console.cpp').Contains('paris_console_writer::submit(type, message)')){Fail 'console.cpp lacks the console writer hand-off'}
     if(!(Read-Native 'src/client/component/console/terminal.cpp').Contains('int dispatch_message_direct(')){Fail 'terminal.cpp lacks the direct sink'}
-    foreach($rel in @('src/client/component/console/console.cpp','src/client/component/console/terminal.cpp')){
+    if(!(Read-Native 'src/client/component/exception.cpp').Contains('paris_console_writer::wait_for_lines_on_crash()')){Fail 'exception.cpp lacks the crash wait'}
+    foreach($rel in @('src/client/component/console/console.cpp','src/client/component/console/terminal.cpp','src/client/component/exception.cpp')){
         if((Remove-IW7FrameCutText $rel (Read-Native $rel) $pin) -cne (Pinned $rel)){Fail "removal does not give the pinned $rel"}
     }
     # the cuts come out again, byte for byte
