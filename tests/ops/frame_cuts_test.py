@@ -22,6 +22,9 @@ EDITS = os.path.join(ROOT, 'ops', 'frame-cuts', 'frame-cut-edits.json')
 PIN = 'cfca45b11ee14641945b9a264a95638387f48a4a'
 EXT = 'src/client/component/gsc/script_extension.cpp'
 GAME = 'src/client/game/game.cpp'
+CON = 'src/client/component/console/console.cpp'
+TER = 'src/client/component/console/terminal.cpp'
+EXC = 'src/client/component/exception.cpp'
 
 
 def read(*path):
@@ -56,7 +59,7 @@ class Edits(unittest.TestCase):
     def test_shape(self):
         self.assertEqual(SPEC['schema'], 'iw7.frame-cut-edits/1')
         self.assertEqual(SPEC['pin'], PIN)
-        self.assertEqual(sorted(f['path'] for f in SPEC['files']), [EXT, GAME])
+        self.assertEqual(sorted(f['path'] for f in SPEC['files']), sorted([EXT, GAME, CON, TER, EXC]))
         for f in SPEC['files']:
             for e in f['edits']:
                 self.assertGreaterEqual(e['count'], 1)
@@ -115,13 +118,38 @@ class Edits(unittest.TestCase):
         self.assertIn('std::ios::binary | std::ios::out | std::ios::app', hpp)
 
 
+    def test_console_writer_wiring(self):
+        con = ''.join(e['new'] for e in edits(CON))
+        ter = ''.join(e['new'] for e in edits(TER))
+        # the printing thread checks rcon, then offers the line to the writer; the syscon window stays on the printing thread
+        order = [con.index(n) for n in ('rcon::message_redirect(message)', '!syscon::is_enabled() && paris_console_writer::submit(type, message)', 'write_sinks(type, message, false);')]
+        self.assertEqual(order, sorted(order))
+        # the writer thread skips the rcon check (a line queued before an rcon command must not be sent to the rcon client) and keeps the log handle open
+        self.assertIn('::terminal::dispatch_message_direct(type, message);', con)
+        self.assertIn('!queued || !paris_console_writer::console_log_stream().append(', con)
+        self.assertIn('void dispatch_message_queued(const int type, const std::string& message)', con)
+        self.assertIn('int dispatch_message(const int type, const std::string& message)\n\t{\n\t\tif (rcon::message_redirect(message))', ter)
+        self.assertIn('return dispatch_message_direct(type, message);', ter)
+        direct = ter.index('int dispatch_message_direct')
+        self.assertNotIn('rcon::message_redirect', ter[direct:ter.index('update();\n\t\treturn res;')])
+        cpp = read('src', 'native', 'paris_console_writer.cpp')
+        self.assertIn('console::dispatch_message_queued(type, message);', cpp)
+        self.assertIn('paris-no-console-writer', cpp)
+        self.assertIn('console_log_stream().flush()', cpp)
+        # the crash path: the game's exception filter waits for the writer before it writes its dump; an unchanged console title is not sent again
+        exc = ''.join(e['new'] for e in edits(EXC))
+        self.assertLess(exc.index('wait_for_lines_on_crash();'), exc.index('write_minidump(exceptioninfo);'))
+        self.assertIn('if (title == last_title)', con)
+
+
 class Wiring(unittest.TestCase):
     def test_build(self):
         text = read('ops', 'Build-Voice.ps1')
-        for name in ("'paris_vm_filter.hpp'", "'paris_log_stream.hpp'", "'paris_log_stream.cpp'"):
+        for name in ("'paris_vm_filter.hpp'", "'paris_log_stream.hpp'", "'paris_log_stream.cpp'", "'paris_console_writer.hpp'", "'paris_console_writer.cpp'"):
             self.assertIn(name, text)
         self.assertIn('vm_filter_test.cpp', text)
         self.assertIn('log_stream_test.cpp', text)
+        self.assertIn('console_writer_test.cpp', text)
         self.assertLess(text.index('Apply-DebuggerOverlay.ps1" -NativeRoot'), text.index('Apply-FrameCutsOverlay.ps1" -NativeRoot'))
         self.assertLess(text.index('Apply-FrameCutsOverlay.ps1" -NativeRoot'), text.index('Add-IW7CutsceneOverlay $root'))
         self.assertLess(text.index('Copy-Item -LiteralPath @($nativeSources'), text.index('Apply-FrameCutsOverlay.ps1" -NativeRoot'))
