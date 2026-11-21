@@ -27,7 +27,7 @@ dedicated server never registers the commands. On start the console prints `[Par
 
 | Command | What it does |
 |---|---|
-| `paris_ui_dump [tag]` | writes `iw7-mod/paris-perf/ui-<tag>.json` (schema `iw7.ui-dump/1`). A session runner moves that folder into the run folder: the gamelab runner to `<run>/perf/`, the network lab (Invoke-NetLab, Forge joined cells) to `<OutputRoot>/client-perf/`, listed in `netlab.json` `ClientPerf`. In a gamelab plan: `{"do":"ui","name":"page"}` |
+| `paris_ui_dump [tag]` | writes `iw7-mod/paris-perf/ui-<tag>.json` (schema `iw7.ui-dump/1`). A session runner moves that folder into the run folder: the gamelab runner and Forge's client and joined cells to `<run>/perf/`, the classic network lab (Invoke-NetLab) to `<OutputRoot>/client-perf/`, listed in `netlab.json` `ClientPerf`. In a gamelab plan: `{"do":"ui","name":"page"}` |
 | `paris_ui_lua <name>` | runs `iw7-mod/paris-ui/<name>.lua` in the UI's Lua state and writes what it returns to `iw7-mod/paris-perf/ui-lua-<name>.json` (`iw7.ui-lua/1`: `ok`, `ms`, `text` or `error`). For a probe, or to plant elements for a test |
 | `paris_ui_after <ms> <command ...>` | runs a console command after a real-time delay. A menu that pauses a solo game also pauses the script that would have asked for the dump |
 | `paris_ui_observers <0\|1>` | removes or restores the three observers (to measure their cost) |
