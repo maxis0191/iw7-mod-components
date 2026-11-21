@@ -317,7 +317,7 @@ static void writer_several_producers()
     writer w([&rec](const int type, const std::string& text) { rec.add(type, text); }, nullptr, 1u << 16, 1u << 24);
     w.start();
     constexpr int producers = 6;
-    constexpr int each = 5000;
+    static constexpr int each = 5000; // static: MSVC does not capture a local constexpr in a lambda without a capture mode (C3493)
     std::vector<std::thread> threads;
     for (int p = 0; p < producers; ++p)
     {
