@@ -74,10 +74,28 @@ It is gone with the grown list (`agent_capacity.cpp`, section 3c: 8,192 entries,
 
 **The lights are the field of view, not the zombies.** At the stock 24 zombies warning 0x12 fires 1,678 times a second at the owner's `cg_fov 120` and **0 times at `cg_fov 65`** (plan `flicker-24-fov65`, 110 s). FUN_1400C2730 inserts a light into the distance-sorted list of a frustum grid cell (256 entries a cell, `uint` index lists at 0x141D4A160 + 0x400 x set, built by FUN_1400C2950) and skips the farthest lights of a cell that is full: with the wide view more lights stand in the frustum than a cell holds, and which of the far lights are skipped changes as the view moves, so lights (and the surfaces they light) of the map flicker at any zombie count. 256 is the name `FRUSTUM_GRID_MAX_LIGHTS`, shared with the shaders that read the grid: not changed here.
 
-## Not done
+## The two scene buffers (engine-crowd-overhaul, 21 Nov 2026)
 
-- 0x0D: the scene surface buffer is 256 KB because the surface record keeps its offset as a u16 in 4 byte units, and 24 code sites add the buffer's base inside the frame data. Growing it means
-  moving the buffer out of the frame data and widening the unit (8 byte units: allocation sizes are 28 + 24 n bytes, so they must be rounded) in the three allocators and the 14 readers.
+Run stage0d (183 agents in view, the stage 0 move in place, no crash, old regions undamaged) put the crowd's flicker on two counters. The entity, dobj and snapshot pools are not the cause: drawn = processed = 183 every scene, `vanish`, `hole` and `snapshot_hole` are 0.
+
+| Buffer | Where | Index | Demand at 183 in view | Capacity | Refusals (stage0d, 189 s metered) |
+|---|---|---|---|---|---|
+| scene surfaces (0x0D: the surface is not drawn: **the flicker**) | +0xB5580 of each frame, counter `+0x18A0`, allocators FUN_140E147E0, 140DE2390, 140DDDF20 | u16 of 4 byte units (record +6, FUN_140DE2390's record, low 16 bits of the sort key) | 417 KB mean, 430 KB peak | 256 KB = all a u16 of 4 byte units addresses | 3,611,878 |
+| motion blur surfaces (0x77) | +0x577180 of each frame (64 KB; +0x587180 is other frame data), counter `+0x18A4`, allocators FUN_140DDCCD0, 140DDCE00 | u16 of 4 byte units at record +0x3E; readers through the accessor FUN_140E34000 (19 callers) and one inlined cmp (0x140E2D70E) | 65.7 KB mean, 67.9 KB peak | 64 KB | 844,045 |
+
+- **Motion blur buffer: grown to 256 KB** (`agent_capacity.cpp` 3g2, table `agent_capacity_surf2_sites.inc` from `surf_sites.py --buffer 2`: 4 base sites in the whole code; limits 0x140DDCCFE and 0x140DDCE17
+  0x10000 -> 0x3FFF0, so the index never reaches the "none" value 0xFFFF). Its u16 of 4 byte units already reaches 256 KB: base move only, in the stage 0 transaction. `-paris-surf2-stock` keeps it stock.
+  The meter's `surf_demand_bytes.*.cap` is the live capacity. Built and syntax-checked, **not yet run**.
+- **Stage 0 table fix:** capstone reports `disp_size` 2 for a 0x66-prefixed instruction with a disp32, so `cmp ax,[rsi+0xB55BC]` at 0x140E752D4 was missing from the stage 0 table (it compared against
+  the poison after the move). `surf_sites.py` now reads the four bytes at `disp_offset` and skips rip-relative operands: 86 sites.
+- **Scene surface buffer: not done.** The limit is the u16 of 4 byte units (`shr eax,2` at 0x140E1528C and 0x140DE243D, the key's `and edx,0x3FFFC` / `shr rdx,2` at 0x140E2CF01 / 0x140E2CF21 and
+  `shr rax,2` at 0x140E2D4C2). 8 byte units (512 KB, one scale bit) hold about 220 in view, not 300 (~700 KB), so the unit has to be 16 bytes (1 MB). x86 has no scale 16: the plan scales the index once
+  where it enters a register (`movzx r32,r16` -> + `lea r,[r*4]` in a cave), so every `[base + r*4 + d]` after it addresses base + 16 idx + d. `ops/engine/surf_units.py` proves it use by use: **41 roots,
+  every use scaled by 4 or a kind 1 add/lea, 0 unresolved**. Work left before it can be built: (1) the 26 pointer sites it lists: 6 allocator byte pointers (fine once the allocations are 16 byte
+  aligned) and readers whose root is a `movzx` from memory the backward search does not reach (FUN_140E30360/140E30550: `movzx r15d,word [rcx+6]` then `lea rsi,[rsi+r15*4]`; FUN_140E2C6A0 stores
+  the raw index to the stack at 0x140E2C6B3 and passes `idx*4` on in edx: those two escapes need reading); (2) producers `shr 2 -> 4`, the key mask 0x3FFFC -> 0xFFFF0 and its OR constant
+  0x80000003FC0000 -> 0x2000000FF000000, the kind 2 modulus over 20 bits; (3) the three limits 0x40000 -> 0xFFFF0 (0x140DE23CA, 0x140E15272 and FUN_140DDDF20's); (4) 16 byte allocation sizes in the
+  three xadds and FUN_140DE2390's record placed at +4 (its index points at record + 0x1C).
 - 0x12 (lights): an engine limit that the owner's fov 120 reaches (see above): the cell lists are a static table with the stride 0x400 at 0x141D4A160 and the 256 is shared with the grid shaders; the change needed is a bigger table and stride in the builder, its readers and the shaders (or fewer lights in the frustum).
 - The image streamer, xmodel and material streaming, and LOD tables have no counter yet (the Brutes' missing textures).
 - Frame-diff of still frames (`ops/qa/frame_flicker.py` in the server repository) is a tool, not a result: the camera of `flicker-200` looks past the crowd.
