@@ -858,6 +858,68 @@ std::uint32_t surf_new_value(const surf_site& site, std::uintptr_t delta, std::u
     return site.old_value + static_cast<std::uint32_t>(site.kind == 0 ? delta : delta / 4);
 }
 
+// ---- 3g2. the second scene buffer, grown 64 KB -> 256 KB (engine-crowd-overhaul, 21 Nov 2026) ---------------------------------------------------------------------------------
+// Warning 0x77 "MAX_SCENE_MOTIONBLUR_SURFS_SIZE((64 * (1024))) exceeded" (844,045 refusals in run stage0d, demand 65.7 KB mean / 67.9 KB peak at 183 agents in view against 64 KB). The buffer is 0x10000 bytes at
+// +0x577180 of each frame struct (the fields at +0x587180 right after it are other frame data, so it cannot grow in place); counter [[0x148F73088]+0x18A4] (reset at 0x140E289D7), allocators
+// FUN_140DDCCD0 (lock xadd at 0x140DDCCF3, cmp eax,0x10000 at 0x140DDCCFE, then each record's u16 at +0x3E becomes (start + its offset) >> 2: 4 byte units) and FUN_140DDCE00 (cmp ecx,0x10000 at
+// 0x140DDCE17, returns the offset; FUN_140DE2390 turns it into a pointer at 0x140DE246E). Readers: the accessor FUN_140E34000 (frame + 0x577180 + 4 idx, 19 callers in the draw code) and one inlined
+// cmp at 0x140E2D70E. ops/engine/surf_sites.py --buffer 2 finds exactly these 4 base sites in the whole code (agent_capacity_surf2_sites.inc). The u16 of 4 byte units addresses 256 KB, so the buffer
+// grows with the base move alone, no unit change: a 256 KB block at the same distance from both frames, the 4 bases moved, the two limits 0x10000 -> 0x3FFF0 (every start stays under 0x3FFF0: the
+// index never reaches 0xFFFF, the "none" value of +0x3E tested at 0x140E2D6F4).
+constexpr std::uintptr_t surf2_old_base = 0x577180ull;
+constexpr std::size_t surf2_old_bytes = 0x10000, surf2_bytes = 0x40000;
+constexpr std::uint32_t surf2_limit = 0x3FFF0;
+constexpr surf_site surf2_sites[] = {
+#include "agent_capacity_surf2_sites.inc"
+};
+struct surf_limit_site { std::uintptr_t address; std::uint8_t opcode[2]; std::uint32_t opcode_bytes, field_offset, old_value; };
+constexpr surf_limit_site surf2_limits[] = {
+    {0x140DDCCFEull, {0x3D, 0x00}, 1, 1, 0x10000},   // FUN_140DDCCD0: cmp eax,0x10000
+    {0x140DDCE17ull, {0x81, 0xF9}, 2, 2, 0x10000},   // FUN_140DDCE00: cmp ecx,0x10000
+};
+std::atomic<bool> surf2_done{false};
+std::uintptr_t surf2_distance = 0;
+
+bool surf2_sites_hold_stock() {
+    for (const auto& site : surf2_sites) {
+        std::uint32_t now{};
+        std::memcpy(&now, reinterpret_cast<const void*>(site.address + site.field_offset), 4);
+        if (now != site.old_value || site.kind != 0) { console::error("[agent capacity] second scene buffer: site %llX holds %08X, the table says %08X: not grown\n", static_cast<unsigned long long>(site.address), now, site.old_value); return false; }
+    }
+    for (const auto& limit : surf2_limits) {
+        std::uint32_t now{};
+        std::memcpy(&now, reinterpret_cast<const void*>(limit.address + limit.field_offset), 4);
+        if (now != limit.old_value || std::memcmp(reinterpret_cast<const void*>(limit.address), limit.opcode, limit.opcode_bytes) != 0) {
+            console::error("[agent capacity] second scene buffer: limit %llX holds %08X: not grown\n", static_cast<unsigned long long>(limit.address), now); return false;
+        }
+    }
+    return true;
+}
+
+void surf_write_field(std::uintptr_t address, std::uint32_t value) {
+    DWORD old{};
+    auto* field = reinterpret_cast<std::uint8_t*>(address);
+    VirtualProtect(field, 4, PAGE_EXECUTE_READWRITE, &old);
+    std::memcpy(field, &value, 4);
+    VirtualProtect(field, 4, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), field, 4);
+}
+
+// A block [A, A + stride + bytes) reserved, the two buffers committed (buffer k at frame k + (A - frame array)); 0 when no range near the frames is free.
+std::uintptr_t surf_reserve_pair(std::size_t bytes) {
+    const std::size_t block = (surf_frame_stride + bytes + 0xFFFF) & ~static_cast<std::size_t>(0xFFFF);
+    void* base = nullptr;
+    for (std::uintptr_t a = 0x14D000000ull; a < surf_frame_array + 0x70000000ull && !base; a += 0x1000000ull)
+        base = VirtualAlloc(reinterpret_cast<void*>(a), block, MEM_RESERVE, PAGE_READWRITE);
+    if (!base) return 0;
+    const auto a0 = reinterpret_cast<std::uintptr_t>(base);
+    if (!VirtualAlloc(reinterpret_cast<void*>(a0), bytes, MEM_COMMIT, PAGE_READWRITE) || !VirtualAlloc(reinterpret_cast<void*>(a0 + surf_frame_stride), bytes, MEM_COMMIT, PAGE_READWRITE)) {
+        VirtualFree(base, 0, MEM_RELEASE);
+        return 0;
+    }
+    return a0;
+}
+
 std::atomic<bool> surf_done{false};
 std::uintptr_t surf_distance = 0;
 bool surf_noaccess = false;
@@ -867,6 +929,9 @@ std::uint32_t surf_old_damaged_count() {
     for (unsigned k = 0; k < 2; ++k) {
         const auto* p = reinterpret_cast<const std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf_old_base);
         for (std::size_t i = 0; i < surf_bytes / 4; ++i) damaged += p[i] != surf_poison;
+        if (!surf2_done.load()) continue;
+        const auto* q = reinterpret_cast<const std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf2_old_base);
+        for (std::size_t i = 0; i < surf2_old_bytes / 4; ++i) damaged += q[i] != surf_poison;
     }
     return damaged;
 }
@@ -992,6 +1057,13 @@ void plan_surf_relocation() {
     const std::uintptr_t distance = a0 - surf_frame_array;   // O: new buffer k at frame k + O
     if (distance % 8 != 0 || distance >= 0x7FFF0000ull) { console::error("[agent capacity] surface buffer: distance %llX unusable\n", static_cast<unsigned long long>(distance)); return; }
     const std::uintptr_t delta = distance - surf_old_base;
+    // the second buffer (3g2): checked and reserved before the threads stop (nothing is allocated or printed while they are suspended); -paris-surf2-stock keeps it at 64 KB
+    std::uintptr_t b0 = 0;
+    if (!utils::flags::has_flag("paris-surf2-stock") && surf2_sites_hold_stock()) {
+        b0 = surf_reserve_pair(surf2_bytes);
+        if (!b0) console::error("[agent capacity] second scene buffer: no address range near the frames, not grown\n");
+        else if ((b0 - surf_frame_array) % 16 != 0 || b0 - surf_frame_array + surf2_bytes >= 0x7FFF0000ull) { console::error("[agent capacity] second scene buffer: distance unusable, not grown\n"); b0 = 0; }
+    }
     auto suspended = surf_suspend_others();
     FILETIME created{}, exited{}, kernel{}, user{};
     GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user);
@@ -1017,11 +1089,26 @@ void plan_surf_relocation() {
         VirtualProtect(field, 4, old, &old);
         FlushInstructionCache(GetCurrentProcess(), field, 4);
     }
+    if (b0) {
+        // the content moves too (the first 64 KB of the new buffers; the rest of the committed pages is zero), the old 64 KB are poisoned, then the 4 bases and the 2 limits
+        const std::uintptr_t d2 = b0 - surf_frame_array;
+        for (unsigned k = 0; k < 2; ++k) {
+            auto* p = reinterpret_cast<std::uint32_t*>(surf_frame_array + k * surf_frame_stride + surf2_old_base);
+            std::memcpy(reinterpret_cast<void*>(b0 + k * surf_frame_stride), p, surf2_old_bytes);
+            for (std::size_t i = 0; i < surf2_old_bytes / 4; ++i) p[i] = surf_poison;
+        }
+        for (const auto& site : surf2_sites) surf_write_field(site.address + site.field_offset, site.old_value + static_cast<std::uint32_t>(d2 - surf2_old_base));
+        for (const auto& limit : surf2_limits) surf_write_field(limit.address + limit.field_offset, surf2_limit);
+        surf2_distance = d2;
+        surf2_done.store(true);
+    }
     // lab: the whole pages of the old regions are made inaccessible, so that a reader or a writer that was missed faults at its own instruction and the crash dump names it (-paris-surf-noaccess)
     if (utils::flags::has_flag("paris-surf-noaccess")) {
         for (unsigned k = 0; k < 2; ++k) {
             DWORD previous{};
             VirtualProtect(reinterpret_cast<void*>((surf_frame_array + k * surf_frame_stride + surf_old_base + 0xFFF) & ~static_cast<std::uintptr_t>(0xFFF)), surf_bytes - 0x1000, PAGE_NOACCESS, &previous);
+            if (surf2_done.load())
+                VirtualProtect(reinterpret_cast<void*>((surf_frame_array + k * surf_frame_stride + surf2_old_base + 0xFFF) & ~static_cast<std::uintptr_t>(0xFFF)), surf2_old_bytes - 0x1000, PAGE_NOACCESS, &previous);
         }
         surf_noaccess = true;
     }
@@ -1036,6 +1123,8 @@ void plan_surf_relocation() {
         scheduler::loop([] { if (round < 6) { surf_log_scan(++round); if (round == 1 || round == 4) surf_log_image_scan(round); } }, scheduler::main, 1000ms);
     }
     console::info("[agent capacity] surface buffer moved: %zu sites, frame + %llX (block %p), old regions poisoned\n", sizeof(surf_sites) / sizeof(surf_sites[0]), static_cast<unsigned long long>(distance), base);
+    if (surf2_done.load())
+        console::info("[agent capacity] second scene buffer (motion blur surfaces) grown 64 KB -> %u bytes: %zu bases at frame + %llX, 2 limits, old regions poisoned\n", surf2_limit, sizeof(surf2_sites) / sizeof(surf2_sites[0]), static_cast<unsigned long long>(surf2_distance));
 }
 
 // ---- 3d. the two per-sentient tables of an SV agent record (map A1) ---------------------------------------------------
@@ -2100,6 +2189,7 @@ public:
 bool installed() noexcept { return active; }
 std::uint32_t surf_old_region_damaged() noexcept { return surf_old_damaged_count(); }
 bool surf_relocated() noexcept { return surf_done.load(); }
+std::uint32_t surf_capacity(unsigned buffer) noexcept { return buffer == 0 ? static_cast<std::uint32_t>(surf_bytes) : (surf2_done.load() ? surf2_limit : static_cast<std::uint32_t>(surf2_old_bytes)); }
 std::uint32_t render_skipped(unsigned id) noexcept { return id < 0xA0 ? render_skip_table[id].load(std::memory_order_relaxed) : 0; }
 std::uint32_t agents() noexcept { return active ? L.agents : stock_agents; }
 const char* wire_contract() noexcept { return contract.c_str(); }

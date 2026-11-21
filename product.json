@@ -296,6 +296,7 @@
     "src/native/agent_capacity_sound.inc",
     "src/native/agent_capacity_state.inc",
     "src/native/agent_capacity_surf_sites.inc",
+    "src/native/agent_capacity_surf2_sites.inc",
     "src/native/agent_scenario.hpp",
     "src/native/avoidance_clip.hpp",
     "src/native/collision_provider.cpp",

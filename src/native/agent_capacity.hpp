@@ -378,6 +378,7 @@ bool installed() noexcept;
 std::uint32_t render_skipped(unsigned id) noexcept;
 std::uint32_t surf_old_region_damaged() noexcept;   // dwords of the two old scene surface buffers that are no longer the poison pattern (a90, 3g)
 bool surf_relocated() noexcept;
+std::uint32_t surf_capacity(unsigned buffer) noexcept;   // bytes the allocators accept now: 0 = scene surface buffer (warning 0x0D), 1 = motion blur surface buffer (warning 0x77, 3g2)
 std::uint32_t agents() noexcept;      // 24 when not installed
 const char* wire_contract() noexcept; // "24" or "agents-<n>": what a peer must match
 // A peer that sends no "agentcap" key is today's official client: the stock layout ("24").

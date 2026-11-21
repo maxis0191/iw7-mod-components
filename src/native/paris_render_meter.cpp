@@ -11,7 +11,7 @@
 #include "agent_capacity.hpp"
 #else
 #include <cstdint>
-namespace agent_capacity { inline std::uint32_t surf_old_region_damaged() noexcept { return 0; } inline bool surf_relocated() noexcept { return false; } }
+namespace agent_capacity { inline std::uint32_t surf_old_region_damaged() noexcept { return 0; } inline bool surf_relocated() noexcept { return false; } inline std::uint32_t surf_capacity(unsigned buffer) noexcept { return buffer == 0 ? 0x40000u : 0x10000u; } }
 #endif
 #include <algorithm>
 #include <array>
@@ -543,9 +543,9 @@ std::uintptr_t read_pointer(std::uintptr_t address)
             }
             row += "],";
             const auto ss0 = surf_sum[0].exchange(0), ss1 = surf_sum[1].exchange(0), sm0 = surf_max[0].exchange(0), sm1 = surf_max[1].exchange(0), sn0 = surf_n[0].exchange(0), sn1 = surf_n[1].exchange(0);
-            std::snprintf(buf, sizeof(buf), "\"surf_demand_bytes\":{\"scene_surfs\":{\"mean\":%.0f,\"max\":%llu,\"cap\":262144},\"motionblur\":{\"mean\":%.0f,\"max\":%llu,\"cap\":65536}},",
-                sn0 ? static_cast<double>(ss0) / static_cast<double>(sn0) : 0.0, static_cast<unsigned long long>(sm0),
-                sn1 ? static_cast<double>(ss1) / static_cast<double>(sn1) : 0.0, static_cast<unsigned long long>(sm1));
+            std::snprintf(buf, sizeof(buf), "\"surf_demand_bytes\":{\"scene_surfs\":{\"mean\":%.0f,\"max\":%llu,\"cap\":%u},\"motionblur\":{\"mean\":%.0f,\"max\":%llu,\"cap\":%u}},",
+                sn0 ? static_cast<double>(ss0) / static_cast<double>(sn0) : 0.0, static_cast<unsigned long long>(sm0), agent_capacity::surf_capacity(0),
+                sn1 ? static_cast<double>(ss1) / static_cast<double>(sn1) : 0.0, static_cast<unsigned long long>(sm1), agent_capacity::surf_capacity(1));
             row += buf;
             std::snprintf(buf, sizeof(buf), "\"surf_relocated\":%d,\"surf_old_region_damaged\":%u,", agent_capacity::surf_relocated() ? 1 : 0, agent_capacity::surf_old_region_damaged());
             row += buf;
