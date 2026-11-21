@@ -185,7 +185,7 @@ function Get-ServerArguments([string]$Mode) {
 function Get-ClientArguments([string]$Mode, [string]$Role, [string]$Password, [string]$Dir) {
     $cp = if ($Mode -eq 'CP') { '-cpMode ' } else { '' }
     $port = if ($Role -eq 'A') { $ClientAPort } else { $ClientBPort }
-    "-noupdate -nosteam ${cp}-stdout -paris-server-client-test $(if ($Diagnostics) { '-paris-hang ' })$LabFlag -voicetest $Dir " +
+    "-noupdate -nosteam -nointro ${cp}-stdout -paris-server-client-test $(if ($Diagnostics) { '-paris-hang ' })$LabFlag -voicetest $Dir " +
     "+set net_ip 127.0.0.1 +set net_port $port +set paris_lab_server_port $ServerPort +set password `"$Password`" +set name voicecert$Role " +
     '+set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 1280 +set vid_height 720 +set r_mode 1280x720 ' +
     '+set com_maxfps 30 +set r_picmip 2 +set r_picmip_bump 2 +set r_picmip_spec 2' + $(if ($Diagnostics) { ' ' + $DiagnosticDvars.Client } else { '' })

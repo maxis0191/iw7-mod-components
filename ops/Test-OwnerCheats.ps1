@@ -83,7 +83,7 @@ protection()
     foreach($phase in $phases){
         $keySource=if($phase -eq 'wrong-key'){"$Output/wrong-keys/client/iw7-mod/owner-cheats/client-private.blob"}else{"$Output/keys/client/iw7-mod/owner-cheats/client-private.blob"}
         Copy-Item -LiteralPath $keySource -Destination "$root/iw7-mod/owner-cheats/client-private.blob" -Force
-        $arguments="-noupdate -nosteam -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_ip 127.0.0.1 +set net_port 27948 +set paris_lab_server_port 27946 +set password $password +set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 960 +set vid_height 540 +set com_maxfps 20 +set r_picmip 4 +set r_picmip_bump 4 +set r_picmip_spec 4"
+        $arguments="-noupdate -nosteam -nointro -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_ip 127.0.0.1 +set net_port 27948 +set paris_lab_server_port 27946 +set password $password +set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 960 +set vid_height 540 +set com_maxfps 20 +set r_picmip 4 +set r_picmip_bump 4 +set r_picmip_spec 4"
         $client=Start-Process -FilePath $image -WorkingDirectory $root -ArgumentList $arguments -WindowStyle Hidden -RedirectStandardOutput "$Output/$phase.stdout.log" -RedirectStandardError "$Output/$phase.stderr.log" -PassThru
         $clientId=Identity $client $image; Add-IW7ResourceProcess $lease.Token $client.Id
         [IO.File]::WriteAllText("$root/iw7-mod/paris-server-client.request","$($client.Id) $([guid]::NewGuid().ToString('N')) connect",[Text.Encoding]::ASCII)
