@@ -203,7 +203,7 @@ public static class IW7LabProcess
                 !QueryFullProcessImageNameW(process,0,image,ref size))
                 throw new Win32Exception(Marshal.GetLastWin32Error(),"Owned process identity read failed");
             if (Math.Abs(created-expectedCreation)>10 || !String.Equals(image.ToString(),expectedImage,StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Owned process identity changed; operation refused");
+                throw new InvalidOperationException("Owned process identity changed; operation refused (creation " + created + " vs expected " + expectedCreation + ", " + (created-expectedCreation) + " ticks; image '" + image + "' vs '" + expectedImage + "')");
             var owned=new OwnedProcess(process,pid); process=IntPtr.Zero; return owned;
         } finally { if (process!=IntPtr.Zero) CloseHandle(process); }
     }
@@ -223,7 +223,7 @@ public static class IW7LabProcess
             // WMI reports creation time to microsecond precision.
             if (Math.Abs(created - expectedCreation) > 10 ||
                 !String.Equals(image.ToString(), expectedImage, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Owned process identity changed; memory operation refused");
+                throw new InvalidOperationException("Owned process identity changed; memory operation refused (creation " + created + " vs expected " + expectedCreation + ", " + (created-expectedCreation) + " ticks; image '" + image + "' vs '" + expectedImage + "')");
             if (!EmptyWorkingSet(process))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "Owned working-set trim failed");
         } finally { CloseHandle(process); }

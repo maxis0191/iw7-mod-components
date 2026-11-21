@@ -19,7 +19,9 @@ function Open-TestProcess([int]$exitCode, [int]$delay = 2) {
     try {
         $identity = Get-CimInstance Win32_Process -Filter "ProcessId=$($child.Id)"
         if (!$identity) { throw 'Test child exited before ownership capture.' }
-        $created = $identity.CreationDate.ToUniversalTime().ToFileTimeUtc()
+        # StartTime comes from GetProcessTimes, the FILETIME OpenOwned reads (exact). WMI CreationDate
+        # only has microsecond precision, which sits at OpenOwned's 10-tick tolerance.
+        $created = $child.StartTime.ToUniversalTime().ToFileTimeUtc()
         $owned = [IW7LabProcess]::OpenOwned($child.Id, $identity.ExecutablePath, $created)
         [IO.File]::WriteAllText($release, 'owned')
         [pscustomobject]@{Child=$child;Owned=$owned;Image=$identity.ExecutablePath;Created=$created;Release=$release}
