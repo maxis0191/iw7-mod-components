@@ -547,7 +547,7 @@
     {
       "id": "iw7-paris-server",
       "repository": "https://github.com/maxis0191/iw7-paris-server.git",
-      "revision": "5e47dc2299fde638f31af6c026c0e17ee9ddb8ef",
+      "revision": "19b7e9d8b7ac830fdafd8d8201c106afaf258504",
       "files": [
         "config/modules.json",
         "config/retired-artifacts.json",
@@ -558,8 +558,6 @@
         "ops/Apply-ChatOverlay.ps1",
         "ops/Install-Tools.ps1",
         "ops/Isolated-Lab.ps1",
-        "ops/Voice-BaseTest.ps1",
-        "ops/Voice-Pair-Lab.ps1",
         "ops/agent_lab_crash.py",
         "ops/enemy-ports/lab-enemy-toolchain.json",
         "ops/enemy-ports/lab-slasher-animclasses.txt",
@@ -567,7 +565,6 @@
         "ops/enemy-ports/rave-slasher-scriptfile-delta-candidate.txt",
         "ops/enemy-ports/rave-wave-agent-animclasses.txt",
         "ops/enemy-ports/rave-wave-agent-scriptfiles.txt",
-        "ops/fixtures/agent_voice_pair_fixture.gsc",
         "src/custom_scripts/cp/experiments/paris_agent_lab.gsc",
         "src/custom_scripts/cp/experiments/paris_enemy_ports.gsc",
         "src/custom_scripts/cp/experiments/paris_rhino.cpp",
@@ -587,7 +584,6 @@
         "tests/fixtures/modules_ping.gsc",
         "tests/fixtures/modules_timed.gsc",
         "tests/fixtures/public_rush.gsc",
-        "tests/fixtures/voice_native.gsc",
         "tests/native/afk_inactivity_test.cpp",
         "tests/native/doom_test.cpp",
         "tests/native/take_chat_test.cpp"
