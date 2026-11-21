@@ -273,7 +273,7 @@ function Get-IW7BaseClientArguments($Plan,[string]$Password) {
     # a 1879x1057 backbuffer despite r_mode=1280x720. Disable monitor-sized window.
     # This string contains the private password; never write it to evidence.
     $picmip=$Plan.RunPlan.Picmip
-    $arguments="-noupdate -nosteam -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_ip 127.0.0.1 +set net_port $($Plan.ClientPort) +set paris_lab_server_port $($Plan.ServerPort) +set password `"$Password`" +set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 1280 +set vid_height 720 +set r_mode 1280x720 +set r_vsync 1 +set com_maxfps 30 +set r_picmip $picmip +set r_picmip_bump $picmip +set r_picmip_spec $picmip"
+    $arguments="-noupdate -nosteam -nointro -cpMode -stdout -paris-server-client-test -paris-isolated-lab +set net_ip 127.0.0.1 +set net_port $($Plan.ClientPort) +set paris_lab_server_port $($Plan.ServerPort) +set password `"$Password`" +set r_fullscreen 0 +set r_fullscreenWindow 0 +set vid_width 1280 +set vid_height 720 +set r_mode 1280x720 +set r_vsync 1 +set com_maxfps 30 +set r_picmip $picmip +set r_picmip_bump $picmip +set r_picmip_spec $picmip"
     $yaw=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardYawDegreesPerSecond
     if ($yaw -gt 0) { $arguments+=' +set cl_yawspeed '+$yaw.ToString('0.###',[Globalization.CultureInfo]::InvariantCulture) }
     $pitch=ConvertTo-IW7BaseKeyboardYaw $Plan.KeyboardPitchDegreesPerSecond
