@@ -68,9 +68,16 @@ Evidence folders `%USERPROFILE%\Documents\IW7-Runtime\capacity\runs\a82-*` and `
 | Joined NetLab, Beast, production and boss scripts, 5 minute hold | PASS, join 58.8 s, 420.2 s, both sides the raised build. m: a **client of the shipped table** (`IW7_SCRIPT_CANON_NAMES_CLIENT=4095`; its log says `[script canonical] shipped table: 4095 names`) against the raised server (4,127 names loaded): PASS, join 60.1 s, 423.7 s, client and server alive at the end, 0 script errors in either log |
 | A/B, `capacity-agents-held24-headless`, window `a24`, 3 pairs | server frame mean 2.779 ms (shipped) against 2.768 ms (raised), median 2.711 against 2.677, p99 3.695 against 3.850 (-0.4 %); m, a second set of 3 pairs: 2.598 against 2.627 ms (+1.1 %), median 2.531 against 2.561, p99 3.682 against 3.716; `iw7_sperf.py compare`: no function above the noise in either set. The two sets disagree in sign and the pairs differ by 3 % among themselves: the table is read at a script load only, nothing in a frame, and the difference is not shown below the 5 % that three runs a side can show |
 
+## In production (22 Nov 2026)
+
+The production native `CC865A71` (`Build-Voice -ServerModules -OwnerCheats -AgentCapacity` of components `77c67d63`, which
+holds this change; its build manifest lists `script_canonical.cpp` `629EBDED`) runs on Canada (live) and Main (staged) since
+21 Nov 2026, with no `-script-canon-names`: 16,383 names. Beast with every production script and the deployed mod: 4,076
+names used, 12,307 free (19 with the table forced to 4,095); the retail Mephistopheles fight to the victory with and without
+the boss fight module, 0 script errors (Forge, compressed time). The server repository's `docs/BEAST-CANONICAL-STRINGS.md`
+has the runs; its `ops/Test-CanonicalBudget.ps1` fails below 64 free names on Beast.
+
 ## Not proven
 
 - Any value of `-script-canon-names` other than 4,095 and 16,383 (the option accepts 4,095 to 65,535; the ids stay below `0x40000` by a static assert).
-- A build without the lab switches: the component is in the unconditional source list of `ops/Build-Voice.ps1`, so the next build of any profile carries it, active by default.
-- Production: the deployed native does not have it; nothing is deployed.
 - A saved game (not done in a zombies match; the header checksum differs and nothing reads it back).
