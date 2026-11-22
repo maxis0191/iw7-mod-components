@@ -54,6 +54,13 @@ namespace paris_ui
         // getCurrentAlignment, GetImage, getUseStencil, IsInWorld. A picture is written as "@" and the address of its
         // material handle; name_pictures (below) replaces that by the material's name.
         const char* const default_walker = R"LUA(
+-- The UI's Lua heap is a fixed pool: the walk makes a table for every method call of every element, and with the mod zone's LUI (Maxis,
+-- ParisHighSlot, players8) a dump of the downed screen ran it out; the engine used the failed allocation (0xC0000005 write at 0 in a copy
+-- under the number-to-string path, 22 Nov 2026, hud8 z4-zone). The garbage is collected before, stepped during and collected after the walk,
+-- and the heap in use is reported (lua_kb) so the next dump shows the margin.
+local collectgarbage = type(collectgarbage) == 'function' and collectgarbage or function() return 0 end
+collectgarbage('collect')
+local kb_start, kb_peak = collectgarbage('count'), 0
 local out, n = {}, 0
 local function put(s) n = n + 1; out[n] = s end
 local function esc(s)
@@ -119,6 +126,7 @@ local function walk(e, parent, depth, world)
     if count >= limit then truncated = true; return end
     local me = count
     count = count + 1
+    if count % 64 == 0 then local kb = collectgarbage('count'); if kb > kb_peak then kb_peak = kb end; collectgarbage('step', 256) end
     local f = { '"i":' .. me, '"p":' .. parent, '"d":' .. depth }
     local id = e.id
     if id ~= nil then f[#f + 1] = '"id":"' .. esc(id) .. '"' end
@@ -169,9 +177,10 @@ if type(LUI) == 'table' and type(LUI.Alignment) == 'table' then
     end
     table.sort(al)
 end
-put('{"walker":"default/3","alignment":{' .. table.concat(al, ',') .. '},"elements":[\n')
+put('{"walker":"default/4","alignment":{' .. table.concat(al, ',') .. '},"elements":[\n')
 if root then walk(root, -1, 0, false) end
-put('\n],"count":' .. count .. ',"truncated":' .. tostring(truncated) .. ',"root":' .. tostring(root ~= nil) .. '}')
+collectgarbage('collect')
+put('\n],"count":' .. count .. ',"truncated":' .. tostring(truncated) .. ',"root":' .. tostring(root ~= nil) .. ',"lua_kb":{"start":' .. num(math.floor(kb_start)) .. ',"peak":' .. num(math.floor(kb_peak)) .. ',"end":' .. num(math.floor(collectgarbage('count'))) .. '}}')
 return table.concat(out)
 )LUA";
 
