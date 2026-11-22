@@ -7,7 +7,11 @@
 $script:IW7LabPortLocks = @()
 function Get-IW7FreeLabPort {
     param([int[]]$Exclude = @())
-    $reserved = 27016, 27116, 27117, 27216, 27217
+    # The ports bench roots refuse: the product's ops/bench/reserved-ports.json next to this file in a workspace, else this copy
+    # (22 Nov 2026: the five-port list let a NetLab run pick 27957, a retained private test server's, and its bench refused it).
+    $reserved = 27016, 27116, 27117, 27216, 27217, 27956, 27957, 27958, 27959, 27963
+    $list = Join-Path $PSScriptRoot '../bench/reserved-ports.json'
+    if (Test-Path -LiteralPath $list) { try { $reserved = @((Get-Content -LiteralPath $list -Raw | ConvertFrom-Json).ports | ForEach-Object { [int]$_ }) } catch { } }
     $base = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [IO.Path]::GetTempPath() }
     $dir = Join-Path $base 'IW7\lab-port-locks'
     [IO.Directory]::CreateDirectory($dir) | Out-Null
