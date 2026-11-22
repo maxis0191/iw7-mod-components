@@ -1424,7 +1424,7 @@ bool start_reuse = false;
 struct alignas(16) start_cache { bool valid = false; float from[3]{}; void* nav = nullptr; std::uint32_t flags = 0; void* extra = nullptr; bool pass = false; unsigned char point[16]{}; };
 thread_local start_cache tl_start;
 struct alignas(16) nav_buffers { unsigned char query[32]; unsigned char start[32]; unsigned char end[32]; };
-bool project(void* nav, const void* point, std::uint32_t flags, void* extra, nav_buffers& b, unsigned char* out) {
+bool nav_project_point(void* nav, const void* point, std::uint32_t flags, void* extra, nav_buffers& b, unsigned char* out) {
     reinterpret_cast<nav_query_fn>(nav_query_build)(nav, b.query);
     if (!reinterpret_cast<nav_project_fn>(nav_project)(point, b.query, flags, nav, extra, out, 0)) return false;
     return !(reinterpret_cast<nav_distance_fn>(nav_project_distance)(point, out, b.query) >= *reinterpret_cast<const float*>(nav_project_threshold));
@@ -1440,15 +1440,15 @@ std::uint64_t navtrace_written(void* nav, const float* from, const float* to, st
         std::memcpy(b.start, c.point, 16);
         if (avoidance_trace_mode == trace_mode::verify) {
             nav_buffers v{};
-            const bool again = project(nav, from, flags, extra, v, v.start);
+            const bool again = nav_project_point(nav, from, flags, extra, v, v.start);
             if (again != pass || (pass && std::memcmp(v.start, b.start, 12) != 0)) avoidance_trace_stats.start_verify_bad.fetch_add(1, std::memory_order_relaxed);
         }
     } else {
-        pass = project(nav, from, flags, extra, b, b.start);
+        pass = nav_project_point(nav, from, flags, extra, b, b.start);
         c.valid = true; std::memcpy(c.from, from, 12); c.nav = nav; c.flags = flags; c.extra = extra; c.pass = pass; std::memcpy(c.point, b.start, 16);
     }
     if (!pass) return 0;
-    if (!project(nav, to, flags, extra, b, b.end)) return 0;
+    if (!nav_project_point(nav, to, flags, extra, b, b.end)) return 0;
     float a[3], e[3];
     std::memcpy(a, b.start, 12); std::memcpy(e, b.end, 12);
     return reinterpret_cast<nav_raycast_fn>(nav_raycast)(nav, a, e, flags, extra);
