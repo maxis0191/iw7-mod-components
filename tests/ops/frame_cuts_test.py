@@ -153,7 +153,8 @@ class UsermapBase(unittest.TestCase):
 
     def test_loader_rules(self):
         hpp = read('src', 'native', 'paris_usermap_base.hpp')
-        self.assertIn('usermap.value() != zone_name', hpp)
+        self.assertIn('usermap_base::valid_zone_name(zone_name)', hpp)
+        self.assertNotIn('get_current_usermap', hpp)
         self.assertIn('fastfiles::exists(zone, true)', hpp)
         self.assertIn('not found, skipped', hpp)
         self.assertIn('usermaps/%s/%s.base', hpp)

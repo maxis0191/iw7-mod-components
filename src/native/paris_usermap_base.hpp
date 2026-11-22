@@ -21,8 +21,9 @@ namespace paris_usermap_base
 {
 	inline void load_before(const char* zone_name, const std::function<void(const char*)>& load)
 	{
-		const auto usermap = fastfiles::get_current_usermap();
-		if (!usermap.has_value() || usermap.value() != zone_name)
+		// The list file itself is the switch: a dedicated server started with +map never sets the current usermap
+		// (measured 22 Nov 2026: the zone loaded, the list was not read), so the party state is not asked.
+		if (zone_name == nullptr || !usermap_base::valid_zone_name(zone_name))
 		{
 			return;
 		}
