@@ -14,6 +14,7 @@
 #include <malloc.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <cwchar>
 #include <string>
@@ -1382,13 +1383,130 @@ void avoidance_meter() {
         static_cast<unsigned long long>(avoidance_stats.truncated.load()), static_cast<unsigned long long>(avoidance_stats.inconsistent.load()),
         static_cast<unsigned long long>(avoidance_solves_unviewable.load()));
 }
+// ---- 5e2. avoidance plane traces (server-perf-scale, 21 Nov 2026) ------------------------------------------------------------------
+// FUN_1403E5700 (one caller, FUN_1403E61B0 at 0x1403E651E) turns one obstacle entry (0x20 bytes: radius, position, velocity, weight) into the half-plane row
+// {a, b, c, d} of the solver. For an entry of weight 0 (+0x1C) it has up to two tangent candidates and runs, for each, a navmesh trace (FUN_14043EC10 at the
+// one call site 0x1403E5AE4: project both ends onto the navmesh, ray cast between them) whose only use is to choose between the two candidate rows. Measured on
+// the mission field (300 alive, run b2mix305): 11.3 ms of a 39 ms server frame are these traces. The solver uses a row only through the clip
+// (FUN_1403E6B10), and only if row.d < limit (cfg+8, the half size of the velocity box the polygon starts as); the clip keeps b*y + a*x + c*z > d.
+// So the trace cannot change the result when every row it could select is either skipped by the solver (d >= limit, or not finite: "tight") or keeps the
+// whole box with a margin (every vertex of any polygon inside the box is kept: the clip then only rotates the vertex list by one, the same whichever row it
+// is: "identity"). The rows it could select are found by running the shipped function itself twice with the trace answers forced (1, 0 gives the first
+// candidate's row, 0, 1 the second's), so they are the shipped bytes. Switches: -avoidance-trace-stock (IW7_AVOIDANCE_TRACE_STOCK=1) leaves both functions;
+// -avoidance-trace-count (IW7_AVOIDANCE_TRACE_COUNT=1) runs the probes and counts, then always the shipped function with real traces; -avoidance-trace-verify
+// (IW7_AVOIDANCE_TRACE_VERIFY=1) skips as decided but also runs the real traces and counts a real row that is not one of the two probe rows (`verify_bad`, must be 0)
+// and uses the real row. The counters are in the `[avoidance]` meter line.
+using navtrace_fn = std::uint64_t (*)(void*, void*, void*, std::uint64_t, void*);
+constexpr std::uintptr_t navtrace_call_site = 0x1403E5AE4, navtrace_function = 0x14043EC10;
+utils::hook::detour avoidance_plane_hook;
+enum class trace_mode { off, count, skip, verify };
+trace_mode avoidance_trace_mode = trace_mode::off;
+struct trace_force { bool on = false; int calls = 0; char answer[2]{}; };
+thread_local trace_force tl_trace;
+struct trace_stats {
+    std::atomic<std::uint64_t> planes{}, weighted{}, no_trace{}, one_candidate{}, tight{}, identity{}, needed{}, nonfinite{}, verify_bad{}, traces_run{};
+} avoidance_trace_stats;
+std::uint64_t navtrace_stub(void* nav, void* from, void* to, std::uint64_t flags, void* extra) {
+    auto& f = tl_trace;
+    if (f.on) { const int i = f.calls++; return static_cast<unsigned char>(f.answer[i < 2 ? i : 1]); }
+    avoidance_trace_stats.traces_run.fetch_add(1, std::memory_order_relaxed);
+    return reinterpret_cast<navtrace_fn>(navtrace_function)(nav, from, to, flags, extra);
+}
+// rows of the solver: true when the clip of any polygon inside the box [-limit, limit]^2 (z 0) keeps every vertex, with a margin for the rounding of clipped vertices
+bool keeps_box(const float* r, float limit) {
+    const float reach = limit * (std::fabs(r[0]) + std::fabs(r[1]));
+    const float margin = 1e-3f * (limit + std::fabs(r[3])) + 1e-4f;
+    return std::isfinite(reach) && -reach - r[3] > margin;
+}
+enum class row_class { tight, identity, other, nonfinite };
+row_class classify_row(const float* r, float limit) {
+    for (int i = 0; i < 4; ++i) if (!std::isfinite(r[i])) return row_class::nonfinite;
+    if (!(r[3] < limit)) return row_class::tight;
+    return keeps_box(r, limit) ? row_class::identity : row_class::other;
+}
+void avoidance_plane_stub(void* self, void* config, const float* entry, float* out) {
+    const auto original = [](void* a, void* b, const float* c, float* d) { avoidance_plane_hook.invoke<void>(a, b, c, d); };
+    auto& st = avoidance_trace_stats;
+    st.planes.fetch_add(1, std::memory_order_relaxed);
+    if (entry[7] != 0.0f) { st.weighted.fetch_add(1, std::memory_order_relaxed); original(self, config, entry, out); return; }   // no trace in the shipped code
+    // Every combination of trace answers (one candidate: 2, two candidates: 4) through the shipped function: the rows the real traces can give.
+    auto& f = tl_trace;
+    float rows[4][4];
+    f = {}; f.on = true; f.answer[0] = 1; f.answer[1] = 1;
+    original(self, config, entry, rows[0]);
+    const int traces = f.calls;
+    int n = 1;
+    if (traces > 0) {
+        const char combos[3][2] = {{0, 0}, {1, 0}, {0, 1}};
+        const int extra = traces >= 2 ? 3 : 1;
+        for (int k = 0; k < extra; ++k) { f.calls = 0; f.answer[0] = combos[k][0]; f.answer[1] = combos[k][1]; original(self, config, entry, rows[n++]); }
+    }
+    f.on = false;
+    if (traces == 0) {   // the overlap branch: the shipped function makes no trace, the probe's row is its row
+        st.no_trace.fetch_add(1, std::memory_order_relaxed);
+        if (avoidance_trace_mode == trace_mode::count) original(self, config, entry, out); else std::memcpy(out, rows[0], 16);
+        return;
+    }
+    if (traces == 1) st.one_candidate.fetch_add(1, std::memory_order_relaxed);
+    const float limit = *reinterpret_cast<const float*>(static_cast<const char*>(config) + 8);
+    bool same = true, all_tight = true, all_identity = true, nonfinite = false;
+    for (int k = 0; k < n; ++k) {
+        if (k && std::memcmp(rows[k], rows[0], 16) != 0) same = false;
+        const auto c = classify_row(rows[k], limit);
+        if (c == row_class::nonfinite) nonfinite = true;
+        if (c != row_class::tight) all_tight = false;
+        if (c != row_class::identity) all_identity = false;
+    }
+    bool skip = true;
+    if (same) {}   // the traces cannot change the row (one candidate, or both candidates give the same bytes)
+    else if (nonfinite) { st.nonfinite.fetch_add(1, std::memory_order_relaxed); skip = false; }
+    else if (all_tight) st.tight.fetch_add(1, std::memory_order_relaxed);          // the solver skips every row they can give
+    else if (all_identity) st.identity.fetch_add(1, std::memory_order_relaxed);    // every row they can give keeps every vertex: the same rotated polygon
+    else { st.needed.fetch_add(1, std::memory_order_relaxed); skip = false; }
+    if (avoidance_trace_mode == trace_mode::count || !skip) { original(self, config, entry, out); return; }
+    if (avoidance_trace_mode == trace_mode::verify) {
+        original(self, config, entry, out);
+        bool known = false;
+        for (int k = 0; k < n && !known; ++k) known = std::memcmp(out, rows[k], 16) == 0;
+        if (!known) st.verify_bad.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    std::memcpy(out, rows[0], 16);
+}
+bool plan_avoidance_traces() {
+    if (env_switch("avoidance-trace-stock", L"IW7_AVOIDANCE_TRACE_STOCK") || L.agents <= stock_agents) return false;
+    if (unwind_probe_armed) { console::info("[agent capacity] avoidance traces: kept (the unwind probe holds FUN_1403E5700)\n"); return false; }
+    static const unsigned char call_bytes[] = {0xE8, 0x27, 0x91, 0x05, 0x00};   // call 0x14043EC10 at 0x1403E5AE4
+    if (std::memcmp(reinterpret_cast<const void*>(navtrace_call_site), call_bytes, sizeof(call_bytes)) != 0) {
+        console::error("[agent capacity] avoidance traces: the call at 0x1403E5AE4 differs from the shipped bytes; kept\n");
+        return false;
+    }
+    avoidance_trace_mode = env_switch("avoidance-trace-count", L"IW7_AVOIDANCE_TRACE_COUNT") ? trace_mode::count
+        : env_switch("avoidance-trace-verify", L"IW7_AVOIDANCE_TRACE_VERIFY") ? trace_mode::verify : trace_mode::skip;
+    utils::hook::call(navtrace_call_site, navtrace_stub);
+    avoidance_plane_hook.create(0x1403E5700, avoidance_plane_stub);
+    return true;
+}
+void avoidance_trace_meter() {
+    const auto& s = avoidance_trace_stats;
+    console::info("[avoidance traces] {\"mode\":%d,\"planes\":%llu,\"weighted\":%llu,\"no_trace\":%llu,\"one_candidate\":%llu,\"tight\":%llu,\"identity\":%llu,\"needed\":%llu,\"nonfinite\":%llu,\"traces_run\":%llu,\"verify_bad\":%llu}\n",
+        static_cast<int>(avoidance_trace_mode), static_cast<unsigned long long>(s.planes.load()), static_cast<unsigned long long>(s.weighted.load()),
+        static_cast<unsigned long long>(s.no_trace.load()), static_cast<unsigned long long>(s.one_candidate.load()), static_cast<unsigned long long>(s.tight.load()),
+        static_cast<unsigned long long>(s.identity.load()), static_cast<unsigned long long>(s.needed.load()),
+        static_cast<unsigned long long>(s.nonfinite.load()), static_cast<unsigned long long>(s.traces_run.load()), static_cast<unsigned long long>(s.verify_bad.load()));
+}
+
 void plan_avoidance() {
     avoidance_meter_on = env_switch("avoidance-meter", L"IW7_AVOIDANCE_METER");
     avoidance_on = !env_switch("avoidance-stock", L"IW7_AVOIDANCE_STOCK");
     if (!avoidance_on) { console::info("[agent capacity] avoidance clip: shipped functions kept (-avoidance-stock)\n"); return; }
     if (!unwind_probe_armed) avoidance_clip_hook.create(0x1403E6B10, avoidance_clip_stub);   // an armed unwind probe already detours it and calls the dispatch
     avoidance_solve_hook.create(0x1403E51C0, avoidance_solve_stub);
+    const bool traces = plan_avoidance_traces();
+    console::info("[agent capacity] avoidance traces: %s\n", !traces ? "shipped (every plane traced)" : avoidance_trace_mode == trace_mode::count ? "counted, every plane traced"
+        : avoidance_trace_mode == trace_mode::verify ? "skipped where no row can change the polygon, verified against the real trace" : "skipped where no row can change the polygon");
     if (avoidance_meter_on) scheduler::loop(avoidance_meter, scheduler::main, 10s);
+    if (avoidance_meter_on && traces) scheduler::loop(avoidance_trace_meter, scheduler::main, 10s);
     console::info("[agent capacity] avoidance clip: polygon workspace of %u vertices a thread (stock 32), meter %s, parked records %s\n", 4 * L.sentient_slots() + 64,
         avoidance_meter_on ? "on" : "off", avoidance_parked_cave ? "skipped by the solver" : "kept (stock)");
 }
