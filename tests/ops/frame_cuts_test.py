@@ -25,6 +25,7 @@ GAME = 'src/client/game/game.cpp'
 CON = 'src/client/component/console/console.cpp'
 TER = 'src/client/component/console/terminal.cpp'
 EXC = 'src/client/component/exception.cpp'
+FFS = 'src/client/component/fastfiles.cpp'
 
 
 def read(*path):
@@ -59,7 +60,7 @@ class Edits(unittest.TestCase):
     def test_shape(self):
         self.assertEqual(SPEC['schema'], 'iw7.frame-cut-edits/1')
         self.assertEqual(SPEC['pin'], PIN)
-        self.assertEqual(sorted(f['path'] for f in SPEC['files']), sorted([EXT, GAME, CON, TER, EXC]))
+        self.assertEqual(sorted(f['path'] for f in SPEC['files']), sorted([EXT, GAME, CON, TER, EXC, FFS]))
         for f in SPEC['files']:
             for e in f['edits']:
                 self.assertGreaterEqual(e['count'], 1)
@@ -140,6 +141,34 @@ class Edits(unittest.TestCase):
         exc = ''.join(e['new'] for e in edits(EXC))
         self.assertLess(exc.index('wait_for_lines_on_crash();'), exc.index('write_minidump(exceptioninfo);'))
         self.assertIn('if (title == last_title)', con)
+
+
+class UsermapBase(unittest.TestCase):
+    """Studio gate G1: stock zones in usermaps/<map>/<map>.base load right before the map zone."""
+    def test_stub_calls_loader_before_the_map_zone(self):
+        new = ''.join(e['new'] for e in edits(FFS))
+        self.assertLess(new.index('paris_usermap_base::load_before(parent_name'), new.index('Loading zone %s'))
+        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, zone_flags, is_base_map, failure_mode);', new)
+        self.assertIn('#include "paris_usermap_base.hpp"', new)
+
+    def test_loader_rules(self):
+        hpp = read('src', 'native', 'paris_usermap_base.hpp')
+        self.assertIn('usermap.value() != zone_name', hpp)
+        self.assertIn('fastfiles::exists(zone, true)', hpp)
+        self.assertIn('not found, skipped', hpp)
+        self.assertIn('usermaps/%s/%s.base', hpp)
+
+    def test_build_wiring(self):
+        text = read('ops', 'Build-Voice.ps1')
+        for name in ("'paris_usermap_base.hpp'", "'usermap_base_policy.hpp'", 'usermap_base_test.cpp', "Remove-IW7FrameCutText 'src/client/component/fastfiles.cpp'", "Add-IW7FrameCutText 'src/client/component/fastfiles.cpp'"):
+            self.assertIn(name, text)
+
+    def test_pinned_fastfiles(self):
+        text = pinned(FFS)
+        if text is None:
+            self.skipTest('no checkout of the pinned iw7-mod')
+        out = applied(FFS, text)
+        self.assertIn('paris_usermap_base::load_before', out)
 
 
 class Wiring(unittest.TestCase):

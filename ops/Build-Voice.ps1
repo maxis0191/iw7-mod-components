@@ -98,6 +98,7 @@ if ($OwnerCheats -and !$ServerModules) { throw 'OwnerCheats requires the current
 . "$PSScriptRoot/agent-capacity/Peer-Overlay.Core.ps1"
 . "$PSScriptRoot/agent-capacity/AgentCap-Peer-Overlay.Core.ps1"
 . "$PSScriptRoot/Resource-Scheduler.Core.ps1"
+. "$PSScriptRoot/FrameCuts.Core.ps1"
 # Reserve the complete operation before compiling tests, sanitizer binaries or
 # native sources. TestsOnly uses the same admission and final release path.
 # -WaitForSlotSeconds: wait in the scheduler's waiting order (Invoke-IW7QueuedResourceJob) instead of refusing at once; no retry loop outside.
@@ -238,6 +239,10 @@ cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\log_stream_tes
 if errorlevel 1 exit /b 1
 "$runtime\log-stream-test.exe"
 if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\usermap_base_test.cpp" /Fe:"$runtime\usermap-base-test.exe" /Fo:"$runtime\usermap-base-test.obj"
+if errorlevel 1 exit /b 1
+"$runtime\usermap-base-test.exe"
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /Od /RTC1 "$repo\tests\native\console_writer_test.cpp" /Fe:"$runtime\console-writer-test.exe" /Fo:"$runtime\console-writer-test.obj"
 if errorlevel 1 exit /b 1
 "$runtime\console-writer-test.exe"
@@ -307,7 +312,7 @@ if (Test-Path -LiteralPath $labComponent) {
 }
 $nativeSources = @('paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp','dvar_metadata.hpp','agent_scenario.hpp',
     'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp','paris_afk.cpp','paris_afk.hpp','afk_inactivity.hpp',
-    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp','paris_console_writer.hpp','paris_script_chain.hpp','paris_weapon_log.cpp','script_canonical.cpp','script_canonical.hpp')
+    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp','paris_console_writer.hpp','paris_script_chain.hpp','paris_usermap_base.hpp','usermap_base_policy.hpp','paris_weapon_log.cpp','script_canonical.cpp','script_canonical.hpp')
 # The console writer (docs/CONSOLE-WRITER.md) calls console.cpp edits that exist only at the ServerModules pin (ops/frame-cuts).
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp','paris_console_writer.cpp') }
 else {
@@ -578,8 +583,10 @@ $experimentFastfiles = $experimentFastfiles.Replace($addMarker, "const auto pari
 $experimentFastfiles = $experimentFastfiles.Replace($addResultMarker, $addResultMarker + "`n`t`t`tparis_rhino::verify_netconststrings(type, result, paris_rhino_zone);")
 $experimentFastfiles = $experimentFastfiles.Replace($flagMarker, 'info.allocFlags = paris_rhino::donor_flags(name);')
 $currentFastfiles = [IO.File]::ReadAllText($fastfiles).Replace("`r`n", "`n").TrimEnd() + "`n"
+# The usermap base loader (ops/frame-cuts, ServerModules pin) is a reversible text edit made earlier: compare without it, put it back after.
+$currentFastfiles = Remove-IW7FrameCutText 'src/client/component/fastfiles.cpp' $currentFastfiles $commit
 if ($currentFastfiles -ne $baseFastfiles -and $currentFastfiles -ne $experimentFastfiles) { throw 'Unowned fastfiles.cpp changes in build checkout; use an isolated checkout.' }
-[IO.File]::WriteAllText($fastfiles, $(if ($RhinoExperiment -or $EnemyExperiment) { $experimentFastfiles } else { $baseFastfiles }), [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($fastfiles, (Add-IW7FrameCutText 'src/client/component/fastfiles.cpp' $(if ($RhinoExperiment -or $EnemyExperiment) { $experimentFastfiles } else { $baseFastfiles }) $commit), [Text.UTF8Encoding]::new($false))
 $cutsceneOverlay = $null
 $ownerCheatsOverlay = $null
 $capacityPeerOverlay = $null
