@@ -538,6 +538,10 @@ namespace paris_see
             append(out, "\"scene\":{\"width\":%u,\"height\":%u,\"display_width\":%u,\"display_height\":%u,\"scene_aspect\":%.9g,\"display_aspect\":%.9g},\n", vid->sceneWidth,
                 vid->sceneHeight, vid->displayWidth, vid->displayHeight, number(vid->sceneAspectRatio), number(vid->displayAspectRatio));
             out += "\"camera\":\"the engine's own projection (CG_WorldPosToScreenPosReal) of world points: [x, y, z, screen x, screen y], in frame pixels\",\n";
+            // The projection follows the player's own view: with a camera link (cameralinkto, an emote's orbit camera) the frame is rendered from the
+            // linked camera and these points do not describe it (22 Nov 2026, extend-2: the head projected at the centre while the image showed the
+            // character small at the bottom; every linked frame read pitch 45). Said in every file so no pose is solved from a linked frame.
+            out += "\"view\":\"the player's own view; NOT the camera of a camera link (cameralinkto): a frame rendered from a linked camera is not described by these points\",\n";
             append_probes(out, "projection_at_request", r.probes);
             out += ",\n";
             append_probes(out, "projection_after", after);
