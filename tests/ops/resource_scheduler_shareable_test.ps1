@@ -137,6 +137,16 @@ Case 'builders refuse shareable requests' {
     $rogue=New-Proc 'C:\tools\MSBuild.exe' 'MSBuild.exe'; $rogue.ParentPID=0   # started by no lease
     Assert (Refused { Enter-Share b } 'An existing compiler/extractor/Java analysis is running*') 'Running builder refuses shareable.'
 }
+Case 'an MSBuild node kept for reuse after its build ended does not refuse' {
+    Enter-Share a | Out-Null
+    $node=New-Proc 'C:\tools\MSBuild.exe' 'MSBuild.exe'; $node.ParentPID=999999; $node|Add-Member IdleNode $true   # its build is gone
+    Assert (!(Refused { Enter-Share b } 'An existing compiler/extractor/Java analysis is running*')) 'An orphaned idle node is not a build.'
+}
+Case 'an MSBuild node of a build that still runs refuses' {
+    Enter-Share a | Out-Null
+    $node=New-Proc 'C:\tools\MSBuild.exe' 'MSBuild.exe'; $node.ParentPID=$PID; $node|Add-Member IdleNode $true      # its build (this process) is alive
+    Assert (Refused { Enter-Share b } 'An existing compiler/extractor/Java analysis is running*') 'A node whose build runs is still a builder.'
+}
 Case 'a shareable lease may hold several game processes' {
     $a=Enter-Share a
     $first=Client a; $second=Client a; $third=Client a

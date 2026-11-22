@@ -42,6 +42,8 @@ function Get-IW7ResourceProcesses {
             Lab = [bool]($normalCapacityProbe -or $_.CommandLine -match '(?:^|\s)-paris-isolated-lab(?:\s|$)')
             BaseClientTest = [bool]($normalCapacityProbe -or ($_.CommandLine -match '(?:^|\s)-paris-server-client-test(?:\s|$)' -and $_.CommandLine -notmatch '(?:^|\s)-dedicated(?:\s|$)'))
             Heavy = [bool]($_.Name -match '^(?:iw7.*|zonetool.*|MSBuild|cl|link|java)\.exe$')
+            # an MSBuild worker node kept for reuse (/nodemode /nodeReuse:true): it outlives its build by about 15 minutes, idle
+            IdleNode = [bool]($_.Name -eq 'MSBuild.exe' -and $_.CommandLine -match '(?:^|\s)/nodemode:\d' -and $_.CommandLine -match '(?:^|\s)/nodeReuse:true')
             WorkingSet = [long]$_.WorkingSetSize
             PrivateBytes = [long]$_.PrivatePageCount
         }
@@ -949,7 +951,11 @@ function Enter-IW7ResourceLease {
         }
         # A compiler, ZoneTool or Java that no held lease started is unreserved work: nothing is admitted beside it.
         # One below a held lease (its owner or a registered process up the parent chain) is that lease's own.
-        $builders = @($processes | Where-Object { Test-IW7BuilderProcess $_ })
+        # An MSBuild node kept for reuse whose build (its parent) has ended is idle, not a build: 22 Nov 2026, 15 such nodes of a
+        # build run outside the scheduler refused every admission (two builds and the Forge cells) for about 15 minutes, 11.8 GB free.
+        # While its build runs, the parent is alive and the node still counts.
+        $livePids = @{}; foreach ($p in $processes) { $livePids[[int]$p.PID] = $true }
+        $builders = @($processes | Where-Object { (Test-IW7BuilderProcess $_) -and !($_.IdleNode -and !$livePids.ContainsKey([int]$_.ParentPID)) })
         if ($builders.Count -and @($state.Leases).Count) {
             if (!$index) { $index = New-IW7ProcessIndex $processes }
             $allRoots = New-IW7RootMap @($state.Leases)
