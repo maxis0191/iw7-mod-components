@@ -156,7 +156,7 @@ class UsermapBase(unittest.TestCase):
         self.assertIn('usermap.value() != zone_name', hpp)
         self.assertIn('fastfiles::exists(zone, true)', hpp)
         self.assertIn('not found, skipped', hpp)
-        self.assertIn('usermaps\\%s\\%s.base', hpp)
+        self.assertIn('usermaps/%s/%s.base', hpp)
 
     def test_build_wiring(self):
         text = read('ops', 'Build-Voice.ps1')
