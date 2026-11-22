@@ -28,7 +28,7 @@ namespace paris_usermap_base
 		}
 
 		std::string text;
-		if (!utils::io::read_file(utils::string::va("usermaps\%s\%s.base", zone_name, zone_name), &text))
+		if (!utils::io::read_file(utils::string::va("usermaps/%s/%s.base", zone_name, zone_name), &text))
 		{
 			return;
 		}
