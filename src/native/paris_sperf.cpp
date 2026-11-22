@@ -484,9 +484,9 @@ namespace paris_sperf
             // the wall clock at the end of the window (the end_qpc is not on it): a sampler that stamps with time.time() places the window by it
             // (end_unix - seconds .. end_unix); the file time is when the file is written, which can be the end of the run (22 Nov 2026)
             FILETIME ft{}; GetSystemTimePreciseAsFileTime(&ft);
-            const auto ticks = (static_cast<std::uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+            const auto wall = (static_cast<std::uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
             LARGE_INTEGER qnow{}; QueryPerformanceCounter(&qnow);
-            const double end_unix = static_cast<double>(ticks - 116444736000000000ull) / 1e7 - static_cast<double>(qnow.QuadPart - end_qpc) / static_cast<double>(qpc_hz);
+            const double end_unix = static_cast<double>(wall - 116444736000000000ull) / 1e7 - static_cast<double>(qnow.QuadPart - end_qpc) / static_cast<double>(qpc_hz);
             char line[640]{};
             _snprintf_s(line, sizeof(line), _TRUNCATE,
                 "{\"schema\":\"iw7.server-perf/1\",\"name\":\"%s\",\"pid\":%lu,\"seconds\":%.6f,\"qpc_hz\":%lld,\"begin_qpc\":%lld,\"end_qpc\":%lld,\"end_unix\":%.6f,\"server_thread\":%lu,"
