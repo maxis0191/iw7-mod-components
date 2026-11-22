@@ -483,9 +483,9 @@ namespace paris_sperf
             const double seconds = static_cast<double>(end_qpc - begin_qpc) / static_cast<double>(qpc_hz);
             char line[512]{};
             _snprintf_s(line, sizeof(line), _TRUNCATE,
-                "{\"schema\":\"iw7.server-perf/1\",\"name\":\"%s\",\"pid\":%lu,\"seconds\":%.6f,\"qpc_hz\":%lld,\"server_thread\":%lu,"
+                "{\"schema\":\"iw7.server-perf/1\",\"name\":\"%s\",\"pid\":%lu,\"seconds\":%.6f,\"qpc_hz\":%lld,\"begin_qpc\":%lld,\"end_qpc\":%lld,\"server_thread\":%lu,"
                 "\"frame_function\":\"%llX\",\n\"frames_us\":[",
-                window_name.c_str(), GetCurrentProcessId(), seconds, static_cast<long long>(qpc_hz), server_thread.load(),
+                window_name.c_str(), GetCurrentProcessId(), seconds, static_cast<long long>(qpc_hz), static_cast<long long>(begin_qpc), static_cast<long long>(end_qpc), server_thread.load(),
                 static_cast<unsigned long long>(server_frame_function));
             out += line;
             // Each frame: its start after the window began, and its duration, in microseconds.
