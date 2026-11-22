@@ -95,6 +95,22 @@
      "count": 1
     }
    ]
+  },
+  {
+   "path": "src/client/component/fastfiles.cpp",
+   "exclusive": true,
+   "edits": [
+    {
+     "old": "#include \"filesystem.hpp\"\n",
+     "new": "#include \"filesystem.hpp\"\n#include \"paris_usermap_base.hpp\"\n",
+     "count": 1
+    },
+    {
+     "old": "\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
+     "new": "\t\t\t// Studio gate G1: stock zones listed in usermaps/<map>/<map>.base load right before the map zone (paris_usermap_base.hpp).\n\t\t\tparis_usermap_base::load_before(parent_name, [&](const char* base_zone)\n\t\t\t{\n\t\t\t\tdb_load_x_zone_hook.invoke<void>(base_zone, zone_flags, is_base_map, failure_mode);\n\t\t\t});\n\n\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
+     "count": 1
+    }
+   ]
   }
  ]
 }
