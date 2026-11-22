@@ -1405,11 +1405,59 @@ struct trace_force { bool on = false; int calls = 0; char answer[2]{}; };
 thread_local trace_force tl_trace;
 struct trace_stats {
     std::atomic<std::uint64_t> planes{}, weighted{}, no_trace{}, one_candidate{}, tight{}, identity{}, needed{}, nonfinite{}, verify_bad{}, traces_run{};
+    std::atomic<std::uint64_t> start_reused{}, start_verify_bad{};
 } avoidance_trace_stats;
+// The navmesh trace FUN_14043EC10, written out (the shipped bytes are checked before it is used): build the query of the navmesh (FUN_1404442a0), project
+// the start onto the navmesh (FUN_1405eb170) and require it within the threshold at 0x141475944 (FUN_1405eb0c0), the same for the end with a fresh query,
+// then the navmesh raycast FUN_140eb7830 between the two projected points. The plane row FUN_1403E5700 traces its two candidates from the same start
+// (the obstacle's position at the agent's height, the same bits) with the same navmesh, flags and fifth argument; the start's projection is the same
+// query on the same input, so the second trace takes the first one's (projection result, point, threshold test) instead of making it again. The cache holds
+// one start and lives for one call of FUN_1403E5700 (avoidance_plane_stub clears it). Switch -avoidance-start-stock (IW7_AVOIDANCE_START_STOCK=1): the shipped
+// function for every trace. In -avoidance-trace-verify the projection is made anyway and compared (start_verify_bad, must be 0).
+constexpr std::uintptr_t nav_query_build = 0x1404442A0, nav_project = 0x1405EB170, nav_project_distance = 0x1405EB0C0, nav_raycast = 0x140EB7830;
+constexpr std::uintptr_t nav_project_threshold = 0x141475944;
+using nav_query_fn = void (*)(void*, void*);
+using nav_project_fn = unsigned char (*)(const void*, void*, std::uint32_t, void*, void*, void*, std::uint64_t);
+using nav_distance_fn = float (*)(const void*, const void*, const void*);
+using nav_raycast_fn = unsigned char (*)(void*, const void*, const void*, std::uint32_t, void*);
+bool start_reuse = false;
+struct alignas(16) start_cache { bool valid = false; float from[3]{}; void* nav = nullptr; std::uint32_t flags = 0; void* extra = nullptr; bool pass = false; unsigned char point[16]{}; };
+thread_local start_cache tl_start;
+struct alignas(16) nav_buffers { unsigned char query[32]; unsigned char start[32]; unsigned char end[32]; };
+bool nav_project_point(void* nav, const void* point, std::uint32_t flags, void* extra, nav_buffers& b, unsigned char* out) {
+    reinterpret_cast<nav_query_fn>(nav_query_build)(nav, b.query);
+    if (!reinterpret_cast<nav_project_fn>(nav_project)(point, b.query, flags, nav, extra, out, 0)) return false;
+    return !(reinterpret_cast<nav_distance_fn>(nav_project_distance)(point, out, b.query) >= *reinterpret_cast<const float*>(nav_project_threshold));
+}
+std::uint64_t navtrace_written(void* nav, const float* from, const float* to, std::uint32_t flags, void* extra) {
+    nav_buffers b{};
+    auto& c = tl_start;
+    const bool hit = c.valid && c.nav == nav && c.flags == flags && c.extra == extra && std::memcmp(c.from, from, 12) == 0;
+    bool pass;
+    if (hit) {
+        avoidance_trace_stats.start_reused.fetch_add(1, std::memory_order_relaxed);
+        pass = c.pass;
+        std::memcpy(b.start, c.point, 16);
+        if (avoidance_trace_mode == trace_mode::verify) {
+            nav_buffers v{};
+            const bool again = nav_project_point(nav, from, flags, extra, v, v.start);
+            if (again != pass || (pass && std::memcmp(v.start, b.start, 12) != 0)) avoidance_trace_stats.start_verify_bad.fetch_add(1, std::memory_order_relaxed);
+        }
+    } else {
+        pass = nav_project_point(nav, from, flags, extra, b, b.start);
+        c.valid = true; std::memcpy(c.from, from, 12); c.nav = nav; c.flags = flags; c.extra = extra; c.pass = pass; std::memcpy(c.point, b.start, 16);
+    }
+    if (!pass) return 0;
+    if (!nav_project_point(nav, to, flags, extra, b, b.end)) return 0;
+    float a[3], e[3];
+    std::memcpy(a, b.start, 12); std::memcpy(e, b.end, 12);
+    return reinterpret_cast<nav_raycast_fn>(nav_raycast)(nav, a, e, flags, extra);
+}
 std::uint64_t navtrace_stub(void* nav, void* from, void* to, std::uint64_t flags, void* extra) {
     auto& f = tl_trace;
     if (f.on) { const int i = f.calls++; return static_cast<unsigned char>(f.answer[i < 2 ? i : 1]); }
     avoidance_trace_stats.traces_run.fetch_add(1, std::memory_order_relaxed);
+    if (start_reuse) return navtrace_written(nav, static_cast<const float*>(from), static_cast<const float*>(to), static_cast<std::uint32_t>(flags), extra);
     return reinterpret_cast<navtrace_fn>(navtrace_function)(nav, from, to, flags, extra);
 }
 // rows of the solver: true when the clip of any polygon inside the box [-limit, limit]^2 (z 0) keeps every vertex, with a margin for the rounding of clipped vertices
@@ -1427,6 +1475,7 @@ row_class classify_row(const float* r, float limit) {
 void avoidance_plane_stub(void* self, void* config, const float* entry, float* out) {
     const auto original = [](void* a, void* b, const float* c, float* d) { avoidance_plane_hook.invoke<void>(a, b, c, d); };
     auto& st = avoidance_trace_stats;
+    tl_start.valid = false;   // a start projection is shared only between the traces of one row
     st.planes.fetch_add(1, std::memory_order_relaxed);
     if (entry[7] != 0.0f) { st.weighted.fetch_add(1, std::memory_order_relaxed); original(self, config, entry, out); return; }   // no trace in the shipped code
     // Every combination of trace answers (one candidate: 2, two candidates: 4) through the shipped function: the rows the real traces can give.
@@ -1483,17 +1532,25 @@ bool plan_avoidance_traces() {
     }
     avoidance_trace_mode = env_switch("avoidance-trace-count", L"IW7_AVOIDANCE_TRACE_COUNT") ? trace_mode::count
         : env_switch("avoidance-trace-verify", L"IW7_AVOIDANCE_TRACE_VERIFY") ? trace_mode::verify : trace_mode::skip;
+    std::uint64_t hash = 0xCBF29CE484222325ull;   // FNV-1a of the shipped FUN_14043EC10 (0x14043EC10..0x14043ED44), read from iw7_ship
+    for (auto p = reinterpret_cast<const unsigned char*>(navtrace_function); p < reinterpret_cast<const unsigned char*>(0x14043ED44); ++p) hash = (hash ^ *p) * 0x100000001B3ull;
+    start_reuse = !env_switch("avoidance-start-stock", L"IW7_AVOIDANCE_START_STOCK");
+    if (start_reuse && hash != 0x6F0F212895893EF4ull) {
+        console::error("[agent capacity] avoidance traces: FUN_14043EC10 differs from the shipped bytes; the start projection is not shared\n");
+        start_reuse = false;
+    }
     utils::hook::call(navtrace_call_site, navtrace_stub);
     avoidance_plane_hook.create(0x1403E5700, avoidance_plane_stub);
     return true;
 }
 void avoidance_trace_meter() {
     const auto& s = avoidance_trace_stats;
-    console::info("[avoidance traces] {\"mode\":%d,\"planes\":%llu,\"weighted\":%llu,\"no_trace\":%llu,\"one_candidate\":%llu,\"tight\":%llu,\"identity\":%llu,\"needed\":%llu,\"nonfinite\":%llu,\"traces_run\":%llu,\"verify_bad\":%llu}\n",
+    console::info("[avoidance traces] {\"mode\":%d,\"planes\":%llu,\"weighted\":%llu,\"no_trace\":%llu,\"one_candidate\":%llu,\"tight\":%llu,\"identity\":%llu,\"needed\":%llu,\"nonfinite\":%llu,\"traces_run\":%llu,\"verify_bad\":%llu,\"start_reuse\":%d,\"start_reused\":%llu,\"start_verify_bad\":%llu}\n",
         static_cast<int>(avoidance_trace_mode), static_cast<unsigned long long>(s.planes.load()), static_cast<unsigned long long>(s.weighted.load()),
         static_cast<unsigned long long>(s.no_trace.load()), static_cast<unsigned long long>(s.one_candidate.load()), static_cast<unsigned long long>(s.tight.load()),
         static_cast<unsigned long long>(s.identity.load()), static_cast<unsigned long long>(s.needed.load()),
-        static_cast<unsigned long long>(s.nonfinite.load()), static_cast<unsigned long long>(s.traces_run.load()), static_cast<unsigned long long>(s.verify_bad.load()));
+        static_cast<unsigned long long>(s.nonfinite.load()), static_cast<unsigned long long>(s.traces_run.load()), static_cast<unsigned long long>(s.verify_bad.load()),
+        start_reuse ? 1 : 0, static_cast<unsigned long long>(s.start_reused.load()), static_cast<unsigned long long>(s.start_verify_bad.load()));
 }
 
 void plan_avoidance() {
