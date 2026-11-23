@@ -153,6 +153,15 @@ class UsermapBase(unittest.TestCase):
         self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, custom ? (zone_flags | game::DB_ZONE_CUSTOM) : zone_flags, is_base_map, failure_mode);', new)
         self.assertIn('#include "paris_usermap_base.hpp"', new)
 
+    def test_usermap_patch_zone_lookup(self):
+        # the client finds usermaps/<map>/patch_<map>.ff: the file lookup and the existence check both ask the policy, and the old text they replace is still there once
+        es = edits(FFS)
+        new = ''.join(e['new'] for e in es)
+        self.assertIn('usermap_base::patch_zone_path(filename)', new)
+        self.assertIn('usermap_base::patch_zone_path(name)', new)
+        self.assertIn('return create_file_a(patch_zone);', new)
+        self.assertTrue(any(e['old'].strip() == "const auto ext = filename.find_last_of('.');" and e['count'] == 1 for e in es))
+
     def test_loader_rules(self):
         hpp = read('src', 'native', 'paris_usermap_base.hpp')
         self.assertIn('usermap_base::valid_zone_name(zone_name)', hpp)
