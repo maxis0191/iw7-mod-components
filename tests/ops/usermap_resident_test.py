@@ -110,7 +110,7 @@ class Policy(unittest.TestCase):
         self.assertIn('zone.resident = zone.resident || e.resident;', POL)
 
     def test_native_test_covers_the_new_rules(self):
-        for needle in ('cp_town nopatch resident', 'res[1].resident && res[1].no_patch', 'rej3.size() == 3', 'usermap_base::load_flags(0x80u, perm, custom_bit) == 0x81u',
+        for needle in ('cp_town nopatch resident', 'res[1].resident && res[1].no_patch', 'rej3.size() == 3', 'usermap_base::load_flags(0x80u, perm, custom_bit) == 0x1u',
                        'held.claim("cp_zmb")', '!held.claim("cp_zmb") && held.size() == 1', 'held.release_all();'):
             self.assertIn(needle, NATIVE_TEST)
 

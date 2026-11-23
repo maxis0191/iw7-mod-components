@@ -22,8 +22,8 @@ namespace paris_usermap_base
 	// `load(zone, mode)`: loads one zone before the map's. `mode.custom` = load it with the engine's DB_ZONE_CUSTOM flag, which makes the engine's load
 	// function skip every extra zone it would add (techsets_, cache_, patch_ and the language ones, see skip_extra_zones_stub in fastfiles.cpp, which clears
 	// the flag again and queues only the zone itself). A `nopatch` line does that and queues the two extras the zone needs by hand, in the engine's order.
-	// `mode.permanent` = add the engine's DB_ZONE_PERMANENT flag: the level's unload does not free the zone, so a reload of the map in the same process does not
-	// need it again (a `resident` line; the loader then skips the zone for the rest of the process, `resident_zones()`).
+	// `mode.permanent` = load the zone with the engine's DB_ZONE_PERMANENT flag alone (no level bit): the level's unload does not free it, so a reload of the map in the
+	// same process does not need it again (a `resident` line; the loader then skips the zone for the rest of the process, `resident_zones()`).
 	inline usermap_base::resident_set& resident_zones()
 	{
 		static usermap_base::resident_set zones;

@@ -62,7 +62,7 @@ int main() {
     auto plain = usermap_base::parse_base_entries("cp_zmb\ncp_zmb resident\n");
     CHECK(plain.size() == 1 && plain[0].resident && !plain[0].no_patch);
     CHECK(!usermap_base::parse_base_entries("cp_zmb\n")[0].resident);
-    // the flags of one load: the level's flags, the custom bit when asked, the permanent bit when asked
+    // the flags of one load: the level's flags, the custom bit when asked, the permanent flag alone when asked
     const unsigned int custom_bit = 0x1000000u;
     usermap_base::load_mode none, custom, perm, both;
     custom.custom = true;
@@ -71,8 +71,8 @@ int main() {
     both.permanent = true;
     CHECK(usermap_base::load_flags(0x80u, none, custom_bit) == 0x80u);
     CHECK(usermap_base::load_flags(0x80u, custom, custom_bit) == (0x80u | custom_bit));
-    CHECK(usermap_base::load_flags(0x80u, perm, custom_bit) == 0x81u);
-    CHECK(usermap_base::load_flags(0x80u, both, custom_bit) == (0x81u | custom_bit));
+    CHECK(usermap_base::load_flags(0x80u, perm, custom_bit) == 0x1u);                       // the level's bits are not kept: nothing for an unload to match
+    CHECK(usermap_base::load_flags(0x80u, both, custom_bit) == (0x1u | custom_bit));
     // the resident set: the first claim loads, the next ones do not, a release forgets
     usermap_base::resident_set held;
     CHECK(!held.holds("cp_zmb") && held.size() == 0);

@@ -50,10 +50,13 @@ namespace usermap_base
 		bool permanent = false;  // DB_ZONE_PERMANENT: the zone stays loaded when the level is left
 	};
 
-	// The flags of one base zone load: the level's own flags (`zone_flags`), plus the custom bit and the permanent bit as the mode says. `custom_flag` is DB_ZONE_CUSTOM.
+	// The flags of one base zone load. A level zone carries the level's own flags (`zone_flags`, DB_ZONE_GAME = 0x80 for a map), which are what the level's unload
+	// frees. A resident zone belongs to the process, not to the level: it carries the permanent flag ALONE (the way `loadzone` and the code zones load), so no level
+	// bit is left for an unload to match. `custom_flag` is DB_ZONE_CUSTOM, added when the mode asks for it.
 	inline unsigned int load_flags(unsigned int zone_flags, const load_mode& mode, unsigned int custom_flag)
 	{
-		return zone_flags | (mode.custom ? custom_flag : 0u) | (mode.permanent ? static_cast<unsigned int>(zone_flag_permanent) : 0u);
+		const unsigned int own = mode.permanent ? static_cast<unsigned int>(zone_flag_permanent) : zone_flags;
+		return own | (mode.custom ? custom_flag : 0u);
 	}
 
 	// The zones this game process holds on purpose (loaded once with the permanent flag). `claim` answers whether the caller has to load the zone now: true the first
