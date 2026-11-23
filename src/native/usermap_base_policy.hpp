@@ -143,4 +143,25 @@ namespace usermap_base
 		}
 		return names;
 	}
+
+	// A usermap's own patch zone: the engine queues `patch_<zone>` right after a zone's techsets, and the client only looks for a usermap's `<map>.ff`,
+	// `<map>_load.ff`, `<map>_art.ff` and the pak/sound files. `patch_<map>` (a name, or a file name ending in .ff) resolves to usermaps\<map>\patch_<map>.ff;
+	// anything else (another prefix, an empty or invalid map name, a folder part) gives an empty string.
+	inline std::string patch_zone_path(const std::string& zone_or_file)
+	{
+		auto zone = zone_or_file;
+		if (zone.size() > 3 && zone.compare(zone.size() - 3, 3, ".ff") == 0)
+		{
+			zone.resize(zone.size() - 3);
+		}
+
+		static const std::string prefix = "patch_";
+		if (zone.size() <= prefix.size() || zone.compare(0, prefix.size(), prefix) != 0 || !valid_zone_name(zone))
+		{
+			return {};
+		}
+
+		const auto map = zone.substr(prefix.size());
+		return "usermaps\\" + map + "\\" + zone + ".ff";
+	}
 }

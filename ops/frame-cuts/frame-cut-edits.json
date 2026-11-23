@@ -109,6 +109,16 @@
      "old": "\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
      "new": "\t\t\t// Studio gate G1: stock zones listed in usermaps/<map>/<map>.base load right before the map zone (paris_usermap_base.hpp).\n\t\t\tparis_usermap_base::load_before(parent_name, [&](const char* base_zone, bool custom)\n\t\t\t{\n\t\t\t\tdb_load_x_zone_hook.invoke<void>(base_zone, custom ? (zone_flags | game::DB_ZONE_CUSTOM) : zone_flags, is_base_map, failure_mode);\n\t\t\t});\n\n\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
      "count": 1
+    },
+    {
+     "old": "\t\t\tconst auto ext = filename.find_last_of('.');\n",
+     "new": "\t\t\t// Studio: a usermap's own patch zone (usermaps/<map>/patch_<map>.ff, usermap_base_policy.hpp).\n\t\t\tconst auto patch_zone = usermap_base::patch_zone_path(filename);\n\t\t\tif (!patch_zone.empty() && utils::io::file_exists(patch_zone))\n\t\t\t{\n\t\t\t\treturn create_file_a(patch_zone);\n\t\t\t}\n\n\t\t\tconst auto ext = filename.find_last_of('.');\n",
+     "count": 1
+    },
+    {
+     "old": "\t\treturn utils::io::file_exists(utils::string::va(\"usermaps\\\\%s\\\\%s.ff\", name.data(), name.data()));\n",
+     "new": "\t\t// Studio: the engine asks for `patch_<map>` after the map's techsets zone; it exists when the usermap carries that file.\n\t\tconst auto patch_zone = usermap_base::patch_zone_path(name);\n\t\tif (!patch_zone.empty() && utils::io::file_exists(patch_zone))\n\t\t{\n\t\t\treturn true;\n\t\t}\n\n\t\treturn utils::io::file_exists(utils::string::va(\"usermaps\\\\%s\\\\%s.ff\", name.data(), name.data()));\n",
+     "count": 1
     }
    ]
   }

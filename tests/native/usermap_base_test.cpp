@@ -50,6 +50,18 @@ int main() {
     auto comp = usermap_base::companion_zones("cp_zmb");
     CHECK(comp.size() == 2 && comp[0] == "techsets_cp_zmb" && comp[1] == "cache_cp_zmb");
 
+    // a usermap's own patch zone: patch_<map>[.ff] resolves into the map's folder, nothing else does
+    CHECK(usermap_base::patch_zone_path("patch_cp_iwz") == "usermaps\\cp_iwz\\patch_cp_iwz.ff");
+    CHECK(usermap_base::patch_zone_path("patch_cp_iwz.ff") == "usermaps\\cp_iwz\\patch_cp_iwz.ff");
+    CHECK(usermap_base::patch_zone_path("patch_cp_zmb").size() > 0);          // the name alone decides; the file must exist in the map's folder (the caller checks)
+    CHECK(usermap_base::patch_zone_path("cp_iwz.ff").empty());
+    CHECK(usermap_base::patch_zone_path("patch_").empty());
+    CHECK(usermap_base::patch_zone_path("patch_.ff").empty());
+    CHECK(usermap_base::patch_zone_path("techsets_cp_iwz").empty());
+    CHECK(usermap_base::patch_zone_path("patch_..\\evil").empty());
+    CHECK(usermap_base::patch_zone_path("patch_a/b.ff").empty());
+    CHECK(usermap_base::patch_zone_path("").empty());
+
     if (failures) { std::printf("%d failure(s)\n", failures); return 1; }
     std::printf("usermap_base_test: ok\n");
     return 0;
