@@ -148,8 +148,7 @@ class UsermapBase(unittest.TestCase):
     def test_stub_calls_loader_before_the_map_zone(self):
         new = ''.join(e['new'] for e in edits(FFS))
         self.assertLess(new.index('paris_usermap_base::load_before(parent_name'), new.index('Loading zone %s'))
-        # the base zone loads with the custom flag: the engine then adds no patch_<zone>, whose assets would win over the map's own copies
-        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, zone_flags | game::DB_ZONE_CUSTOM, is_base_map, failure_mode);', new)
+        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, zone_flags, is_base_map, failure_mode);', new)
         self.assertIn('#include "paris_usermap_base.hpp"', new)
 
     def test_loader_rules(self):
