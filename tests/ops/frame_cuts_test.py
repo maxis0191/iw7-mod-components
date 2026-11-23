@@ -149,8 +149,8 @@ class UsermapBase(unittest.TestCase):
         new = ''.join(e['new'] for e in edits(FFS))
         self.assertLess(new.index('paris_usermap_base::load_before(parent_name'), new.index('Loading zone %s'))
         # a `nopatch` base zone loads with the custom flag (no patch_<zone>; the loader queues techsets_/cache_ by name), the others as the engine does
-        self.assertIn('[&](const char* base_zone, bool custom)', new)
-        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, custom ? (zone_flags | game::DB_ZONE_CUSTOM) : zone_flags, is_base_map, failure_mode);', new)
+        self.assertIn('[&](const char* base_zone, const usermap_base::load_mode& mode)', new)
+        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map, failure_mode);', new)
         self.assertIn('#include "paris_usermap_base.hpp"', new)
 
     def test_usermap_patch_zone_lookup(self):
@@ -170,7 +170,7 @@ class UsermapBase(unittest.TestCase):
         self.assertIn('not found, skipped', hpp)
         self.assertIn('usermaps/%s/%s.base', hpp)
         self.assertIn('usermap_base::companion_zones(zone.name)', hpp)
-        self.assertLess(hpp.index('usermap_base::companion_zones(zone.name)'), hpp.index('load(names.back().data(), zone.no_patch)'))
+        self.assertLess(hpp.index('usermap_base::companion_zones(zone.name)'), hpp.index('load(names.back().data(), mode)'))
 
     def test_build_wiring(self):
         text = read('ops', 'Build-Voice.ps1')

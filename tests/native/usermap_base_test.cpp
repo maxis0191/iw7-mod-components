@@ -50,6 +50,36 @@ int main() {
     auto comp = usermap_base::companion_zones("cp_zmb");
     CHECK(comp.size() == 2 && comp[0] == "techsets_cp_zmb" && comp[1] == "cache_cp_zmb");
 
+    // the option `resident` (loaded once per game process), alone or with `nopatch`, in either order; a repeated or unknown option rejects the line
+    std::vector<std::string> rej3;
+    auto res = usermap_base::parse_base_entries("cp_zmb resident\ncp_town nopatch resident\ncp_final resident\tnopatch\ncp_a resident resident\ncp_b resident fast\ncp_c nopatch nopatch\n", &rej3);
+    CHECK(res.size() == 3);
+    CHECK(res[0].name == "cp_zmb" && res[0].resident && !res[0].no_patch);
+    CHECK(res[1].name == "cp_town" && res[1].resident && res[1].no_patch);
+    CHECK(res[2].name == "cp_final" && res[2].resident && res[2].no_patch);
+    CHECK(rej3.size() == 3);
+    // a line with no option is not resident, and a repeat of a name turns the option on for the first one
+    auto plain = usermap_base::parse_base_entries("cp_zmb\ncp_zmb resident\n");
+    CHECK(plain.size() == 1 && plain[0].resident && !plain[0].no_patch);
+    CHECK(!usermap_base::parse_base_entries("cp_zmb\n")[0].resident);
+    // the flags of one load: the level's flags, the custom bit when asked, the permanent flag alone when asked
+    const unsigned int custom_bit = 0x1000000u;
+    usermap_base::load_mode none, custom, perm, both;
+    custom.custom = true;
+    perm.permanent = true;
+    both.custom = true;
+    both.permanent = true;
+    CHECK(usermap_base::load_flags(0x80u, none, custom_bit) == 0x80u);
+    CHECK(usermap_base::load_flags(0x80u, custom, custom_bit) == (0x80u | custom_bit));
+    CHECK(usermap_base::load_flags(0x80u, perm, custom_bit) == 0x1u);                       // the level's bits are not kept: nothing for an unload to match
+    CHECK(usermap_base::load_flags(0x80u, both, custom_bit) == (0x1u | custom_bit));
+    // zone names are the same zone ignoring ASCII case; the engine's table has 373 slots
+    CHECK(usermap_base::same_zone_name("cp_zmb", "CP_ZMB") && usermap_base::same_zone_name("techsets_cp_zmb", "techsets_cp_zmb"));
+    CHECK(!usermap_base::same_zone_name("cp_zmb", "cp_zmb2") && !usermap_base::same_zone_name("cp_zmb2", "cp_zmb") && !usermap_base::same_zone_name("cp_zmb", ""));
+    CHECK(!usermap_base::same_zone_name(nullptr, "cp_zmb") && !usermap_base::same_zone_name("cp_zmb", nullptr) && usermap_base::same_zone_name("", ""));
+    int slots = usermap_base::zone_slots;
+    CHECK(slots == 373);
+
     // a usermap's own patch zone: patch_<map>[.ff] resolves into the map's folder, nothing else does
     CHECK(usermap_base::patch_zone_path("patch_cp_iwz") == "usermaps\\cp_iwz\\patch_cp_iwz.ff");
     CHECK(usermap_base::patch_zone_path("patch_cp_iwz.ff") == "usermaps\\cp_iwz\\patch_cp_iwz.ff");
