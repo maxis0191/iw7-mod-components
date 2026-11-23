@@ -28,12 +28,78 @@ namespace usermap_base
 		return true;
 	}
 
-	// One line of the list: a zone name and, after blanks, the option `nopatch` (the engine's own extra zones of that zone are not loaded: no patch_<zone>
-	// whose assets would win over the map's own copies; the loader adds the ones the zone needs, techsets_<zone> and cache_<zone>, by name).
+	// One line of the list: a zone name and, after blanks, up to two options in any order:
+	//  `nopatch`  the engine's own extra zones of that zone are not loaded: no patch_<zone> whose assets would win over the map's own copies; the loader adds the ones
+	//             the zone needs, techsets_<zone> and cache_<zone>, by name.
+	//  `resident` the zone (and the companions the loader adds for it) is loaded once per game process with the engine's permanent flag and is not loaded again when
+	//             the map is loaded again in the same process (a reload in place: Studio's live loop). Without it every map load loads the zone again.
 	struct entry
 	{
 		std::string name;
 		bool no_patch = false;
+		bool resident = false;
+	};
+
+	// The engine's zone flag for a zone that no level unload frees (DB_ZONE_PERMANENT in game/types/database.hpp; the same flag `loadzone` and the code zones use).
+	constexpr int zone_flag_permanent = 0x1;
+
+	// How the loader asks the engine to load one zone before the map's.
+	struct load_mode
+	{
+		bool custom = false;     // DB_ZONE_CUSTOM: the engine adds none of the extra zones of this one
+		bool permanent = false;  // DB_ZONE_PERMANENT: the zone stays loaded when the level is left
+	};
+
+	// The flags of one base zone load: the level's own flags (`zone_flags`), plus the custom bit and the permanent bit as the mode says. `custom_flag` is DB_ZONE_CUSTOM.
+	inline unsigned int load_flags(unsigned int zone_flags, const load_mode& mode, unsigned int custom_flag)
+	{
+		return zone_flags | (mode.custom ? custom_flag : 0u) | (mode.permanent ? static_cast<unsigned int>(zone_flag_permanent) : 0u);
+	}
+
+	// The zones this game process holds on purpose (loaded once with the permanent flag). `claim` answers whether the caller has to load the zone now: true the first
+	// time (and records it), false when it is held already. `release_all` forgets everything (the engine freed the permanent zones, e.g. a full restart of the zone system).
+	class resident_set
+	{
+	public:
+		bool claim(const std::string& name)
+		{
+			for (const auto& held : names_)
+			{
+				if (held == name)
+				{
+					return false;
+				}
+			}
+
+			names_.push_back(name);
+			return true;
+		}
+
+		bool holds(const std::string& name) const
+		{
+			for (const auto& held : names_)
+			{
+				if (held == name)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		void release_all()
+		{
+			names_.clear();
+		}
+
+		std::size_t size() const
+		{
+			return names_.size();
+		}
+
+	private:
+		std::vector<std::string> names_;
 	};
 
 	// Names of the zones the loader adds by hand for a `nopatch` zone, in the engine's own order (techsets_ first, cache_ next); the zone itself follows.
@@ -42,8 +108,8 @@ namespace usermap_base
 		return { "techsets_" + zone, "cache_" + zone };
 	}
 
-	// Lines in file order; blank lines, comments, a trailing CR or blanks, a UTF-8 byte order mark and repeated names are dropped (a repeat with the
-	// option `nopatch` still turns the option on for the first one). A line that is not `<name>` or `<name> nopatch` is reported through `rejected` (when given) and left out.
+	// Lines in file order; blank lines, comments, a trailing CR or blanks, a UTF-8 byte order mark and repeated names are dropped (a repeat with an
+	// option still turns the option on for the first one). A line that is not `<name>` with the options above (each at most once) is reported through `rejected` (when given) and left out.
 	inline std::vector<entry> parse_base_entries(const std::string& text, std::vector<std::string>* rejected = nullptr)
 	{
 		std::vector<entry> zones;
@@ -84,7 +150,7 @@ namespace usermap_base
 
 			entry e;
 			bool ok = true;
-			const auto gap = line.find_first_of(" \t");
+			const auto gap = line.find_first_of(" 	");
 			if (gap == std::string::npos)
 			{
 				e.name = line;
@@ -92,16 +158,36 @@ namespace usermap_base
 			else
 			{
 				e.name = line.substr(0, gap);
-				auto option = line.substr(gap);
-				const auto first = option.find_first_not_of(" \t");
-				option = option.substr(first);
-				if (option == "nopatch")
+				auto options = line.substr(gap);
+				std::size_t at = 0;
+				while (ok)
 				{
-					e.no_patch = true;
-				}
-				else
-				{
-					ok = false;
+					const auto first = options.find_first_not_of(" 	", at);
+					if (first == std::string::npos)
+					{
+						break;
+					}
+
+					auto last = options.find_first_of(" 	", first);
+					if (last == std::string::npos)
+					{
+						last = options.size();
+					}
+
+					const auto option = options.substr(first, last - first);
+					at = last;
+					if (option == "nopatch" && !e.no_patch)
+					{
+						e.no_patch = true;
+					}
+					else if (option == "resident" && !e.resident)
+					{
+						e.resident = true;
+					}
+					else
+					{
+						ok = false;
+					}
 				}
 			}
 
@@ -120,6 +206,7 @@ namespace usermap_base
 				if (zone.name == e.name)
 				{
 					zone.no_patch = zone.no_patch || e.no_patch;
+					zone.resident = zone.resident || e.resident;
 					seen = true;
 				}
 			}
