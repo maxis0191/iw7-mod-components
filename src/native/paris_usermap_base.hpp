@@ -15,11 +15,14 @@
 
 // Reference build for usermaps (studio gate G1): usermaps/<map>/<map>.base lists stock zones that are loaded right before
 // the map's own zone, so the map's fastfile can carry only its own assets and refer to the rest by name. No file, no effect;
-// a zone that is not found is logged and skipped. Server and client alike, because it sits on the zone load itself.
+// a zone that is not found is logged and skipped; `<zone> nopatch` loads the zone without the engine's patch_<zone> (see load_before). Server and client alike, because it sits on the zone load itself.
 // Called from the zone load stub of fastfiles.cpp (an edit in ops/frame-cuts/frame-cut-edits.json).
 namespace paris_usermap_base
 {
-	inline void load_before(const char* zone_name, const std::function<void(const char*)>& load)
+	// `load(zone, custom)`: loads one zone before the map's. `custom` = load it with the engine's DB_ZONE_CUSTOM flag, which makes the engine's load
+	// function skip every extra zone it would add (techsets_, cache_, patch_ and the language ones, see skip_extra_zones_stub in fastfiles.cpp, which clears
+	// the flag again and queues only the zone itself). A `nopatch` line does that and queues the two extras the zone needs by hand, in the engine's order.
+	inline void load_before(const char* zone_name, const std::function<void(const char*, bool)>& load)
 	{
 		// The list file itself is the switch: a dedicated server started with +map never sets the current usermap
 		// (measured 22 Nov 2026: the zone loaded, the list was not read), so the party state is not asked.
@@ -35,25 +38,38 @@ namespace paris_usermap_base
 		}
 
 		std::vector<std::string> rejected;
-		const auto zones = usermap_base::parse_base_list(text, &rejected);
+		const auto zones = usermap_base::parse_base_entries(text, &rejected);
 		for (const auto& name : rejected)
 		{
-			console::error("Base zone name '%s' for usermap %s is not a zone name, skipped\n", name.data(), zone_name);
+			console::error("Base zone line '%s' for usermap %s is not a zone name (with the option nopatch), skipped\n", name.data(), zone_name);
 		}
 
 		// the engine may keep the name pointer after the call
 		static std::deque<std::string> names;
 		for (const auto& zone : zones)
 		{
-			if (!fastfiles::exists(zone, true))
+			if (!fastfiles::exists(zone.name, true))
 			{
-				console::error("Base zone %s for usermap %s not found, skipped\n", zone.data(), zone_name);
+				console::error("Base zone %s for usermap %s not found, skipped\n", zone.name.data(), zone_name);
 				continue;
 			}
 
-			names.push_back(zone);
-			console::info("Loading base zone %s for usermap %s\n", zone.data(), zone_name);
-			load(names.back().data());
+			if (zone.no_patch)
+			{
+				for (const auto& companion : usermap_base::companion_zones(zone.name))
+				{
+					if (fastfiles::exists(companion, true))
+					{
+						names.push_back(companion);
+						console::info("Loading base companion zone %s for usermap %s\n", companion.data(), zone_name);
+						load(names.back().data(), false);
+					}
+				}
+			}
+
+			names.push_back(zone.name);
+			console::info("Loading base zone %s for usermap %s%s\n", zone.name.data(), zone_name, zone.no_patch ? " (custom flag: no patch_ zone)" : "");
+			load(names.back().data(), zone.no_patch);
 		}
 	}
 }

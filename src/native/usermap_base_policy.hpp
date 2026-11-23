@@ -28,11 +28,25 @@ namespace usermap_base
 		return true;
 	}
 
-	// Lines in file order; blank lines, comments, a trailing CR or blanks, a UTF-8 byte order mark and repeated names are dropped.
-	// Names that are not valid zone names are reported through `rejected` (when given) and left out.
-	inline std::vector<std::string> parse_base_list(const std::string& text, std::vector<std::string>* rejected = nullptr)
+	// One line of the list: a zone name and, after blanks, the option `nopatch` (the engine's own extra zones of that zone are not loaded: no patch_<zone>
+	// whose assets would win over the map's own copies; the loader adds the ones the zone needs, techsets_<zone> and cache_<zone>, by name).
+	struct entry
 	{
-		std::vector<std::string> zones;
+		std::string name;
+		bool no_patch = false;
+	};
+
+	// Names of the zones the loader adds by hand for a `nopatch` zone, in the engine's own order (techsets_ first, cache_ next); the zone itself follows.
+	inline std::vector<std::string> companion_zones(const std::string& zone)
+	{
+		return { "techsets_" + zone, "cache_" + zone };
+	}
+
+	// Lines in file order; blank lines, comments, a trailing CR or blanks, a UTF-8 byte order mark and repeated names are dropped (a repeat with the
+	// option `nopatch` still turns the option on for the first one). A line that is not `<name>` or `<name> nopatch` is reported through `rejected` (when given) and left out.
+	inline std::vector<entry> parse_base_entries(const std::string& text, std::vector<std::string>* rejected = nullptr)
+	{
+		std::vector<entry> zones;
 
 		std::size_t begin = 0;
 		if (text.size() >= 3 && text.compare(0, 3, "\xEF\xBB\xBF") == 0)
@@ -68,7 +82,30 @@ namespace usermap_base
 				continue;
 			}
 
-			if (!valid_zone_name(line))
+			entry e;
+			bool ok = true;
+			const auto gap = line.find_first_of(" \t");
+			if (gap == std::string::npos)
+			{
+				e.name = line;
+			}
+			else
+			{
+				e.name = line.substr(0, gap);
+				auto option = line.substr(gap);
+				const auto first = option.find_first_not_of(" \t");
+				option = option.substr(first);
+				if (option == "nopatch")
+				{
+					e.no_patch = true;
+				}
+				else
+				{
+					ok = false;
+				}
+			}
+
+			if (!ok || !valid_zone_name(e.name))
 			{
 				if (rejected)
 				{
@@ -78,17 +115,32 @@ namespace usermap_base
 			}
 
 			bool seen = false;
-			for (const auto& zone : zones)
+			for (auto& zone : zones)
 			{
-				seen = seen || zone == line;
+				if (zone.name == e.name)
+				{
+					zone.no_patch = zone.no_patch || e.no_patch;
+					seen = true;
+				}
 			}
 
 			if (!seen)
 			{
-				zones.push_back(line);
+				zones.push_back(e);
 			}
 		}
 
 		return zones;
+	}
+
+	// The zone names only, in file order (the options are dropped).
+	inline std::vector<std::string> parse_base_list(const std::string& text, std::vector<std::string>* rejected = nullptr)
+	{
+		std::vector<std::string> names;
+		for (const auto& e : parse_base_entries(text, rejected))
+		{
+			names.push_back(e.name);
+		}
+		return names;
 	}
 }
