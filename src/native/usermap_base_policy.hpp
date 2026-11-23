@@ -59,51 +59,31 @@ namespace usermap_base
 		return own | (mode.custom ? custom_flag : 0u);
 	}
 
-	// The zones this game process holds on purpose (loaded once with the permanent flag). `claim` answers whether the caller has to load the zone now: true the first
-	// time (and records it), false when it is held already. `release_all` forgets everything (the engine freed the permanent zones, e.g. a full restart of the zone system).
-	class resident_set
+	// The engine's zone table has 373 slots (0 is "<default>"); a slot with a name is a zone in memory. The engine's own unload loop walks slots 1..372 (0x140A7B7D0).
+	constexpr int zone_slots = 0x175;
+
+	// Two zone names are the same zone when they agree ignoring ASCII case (the engine compares names that way).
+	inline bool same_zone_name(const char* a, const char* b)
 	{
-	public:
-		bool claim(const std::string& name)
+		if (a == nullptr || b == nullptr)
 		{
-			for (const auto& held : names_)
-			{
-				if (held == name)
-				{
-					return false;
-				}
-			}
-
-			names_.push_back(name);
-			return true;
-		}
-
-		bool holds(const std::string& name) const
-		{
-			for (const auto& held : names_)
-			{
-				if (held == name)
-				{
-					return true;
-				}
-			}
-
 			return false;
 		}
 
-		void release_all()
+		while (*a != '\0' && *b != '\0')
 		{
-			names_.clear();
+			const auto lower = [](const char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; };
+			if (lower(*a) != lower(*b))
+			{
+				return false;
+			}
+
+			++a;
+			++b;
 		}
 
-		std::size_t size() const
-		{
-			return names_.size();
-		}
-
-	private:
-		std::vector<std::string> names_;
-	};
+		return *a == *b;
+	}
 
 	// Names of the zones the loader adds by hand for a `nopatch` zone, in the engine's own order (techsets_ first, cache_ next); the zone itself follows.
 	inline std::vector<std::string> companion_zones(const std::string& zone)

@@ -2,10 +2,10 @@
 
 Offline checks (no game, no build):
   - the fastfiles.cpp edit hands the loader a load_mode and builds the zone flags with usermap_base::load_flags, still before the map zone is logged;
-  - the loader claims a resident zone before it loads it, skips it (and its companions) when it is held, and marks the permanent flag for the zone and its companions;
-  - the policy carries the option in the parser, the flag value of DB_ZONE_PERMANENT and the held-zone set; the native test covers them;
-  - the permanent flag is the engine's own value (database.hpp of the pinned client, when a checkout is available);
-  - the two `nopatch` / `resident` options keep their old behaviour when absent (a zone without options is loaded exactly as before: no permanent bit, no claim).
+  - the loader asks the engine's zone table (not a list of its own) before it loads a resident zone, skips it when the table holds it, and gives the permanent flag
+    alone to the zone and its companions (a zone without options loads exactly as before: no permanent bit, the table is not asked);
+  - the policy carries the option in the parser, the flag value of DB_ZONE_PERMANENT, the zone-name rule and the table size; the native test covers them;
+  - the permanent flag and the zone-table accessors are the engine's own (the pinned client's database.hpp and symbols.hpp, when a checkout is available).
 """
 import json
 import os
@@ -60,25 +60,36 @@ class FastfilesEdit(unittest.TestCase):
             text = text.replace(e['old'], e['new'])
         self.assertIn('usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM)', text)
 
-    def test_the_permanent_flag_is_the_engines(self):
+    def test_the_permanent_flag_and_the_zone_table_are_the_engines(self):
         db = pinned('src/client/game/types/database.hpp')
-        if db is None:
+        sym = pinned('src/client/game/symbols.hpp')
+        if db is None or sym is None:
             self.skipTest('no checkout of the pinned iw7-mod (IW7_NATIVE_ROOT)')
         self.assertRegex(db, r'DB_ZONE_PERMANENT\s*=\s*0x1,')
         self.assertRegex(db, r'DB_ZONE_GAME\s*=\s*0x80,')
+        self.assertIn('DB_Zones_GetZoneNameFromIndex{0x1403BC410}', sym)
+        self.assertIn('DB_Zones_IsValidZoneIndex{0x1403BC730}', sym)
         m = re.search(r'constexpr int zone_flag_permanent = (0x[0-9a-f]+);', POL)
         self.assertIsNotNone(m)
         self.assertEqual(int(m.group(1), 16), 1)
 
 
 class Loader(unittest.TestCase):
-    def test_a_resident_zone_is_claimed_before_it_is_loaded_and_skipped_when_held(self):
-        a = HPP.index('zone.resident && !resident_zones().claim(zone.name)')
+    def test_a_resident_zone_is_skipped_when_the_engine_holds_it_and_loaded_otherwise(self):
+        a = HPP.index('zone.resident && zone_loaded(zone.name.data())')
         b = HPP.index('load(names.back().data(), mode);')
         self.assertLess(a, b)
         self.assertIn('is resident, not loaded again', HPP)
         skip = HPP[a:HPP.index('continue;', a)]
         self.assertNotIn('load(', skip)
+
+    def test_the_engines_zone_table_is_the_truth_not_a_list_of_our_own(self):
+        body = HPP[HPP.index('inline bool zone_loaded'):HPP.index('inline void load_before')]
+        self.assertIn('game::DB_Zones_IsValidZoneIndex(slot)', body)
+        self.assertIn('usermap_base::same_zone_name(game::DB_Zones_GetZoneNameFromIndex(slot), name)', body)
+        self.assertIn('slot < usermap_base::zone_slots', body)
+        self.assertNotIn('static', body)                 # no process-wide list that could say a freed zone is still there
+        self.assertIn('#include "game/game.hpp"', HPP)
 
     def test_the_permanent_flag_goes_to_the_zone_and_its_companions(self):
         self.assertIn('mode.permanent = zone.resident;', HPP)
@@ -87,20 +98,15 @@ class Loader(unittest.TestCase):
         self.assertLess(HPP.index('load(names.back().data(), companion_mode);'), HPP.index('load(names.back().data(), mode);'))
 
     def test_a_zone_without_options_loads_as_before(self):
-        # no option: no claim (the claim is only asked when resident), custom and permanent both false
+        # no option: the zone table is not asked (`resident` is tested first), custom and permanent both false
         self.assertIn('usermap_base::load_mode mode;\n\t\t\tmode.custom = zone.no_patch;\n\t\t\tmode.permanent = zone.resident;', HPP)
-        self.assertIn('zone.resident && !resident_zones()', HPP)
+        self.assertIn('zone.resident && zone_loaded(', HPP)
         self.assertRegex(POL, r'struct load_mode\s*\{\s*bool custom = false;[^}]*bool permanent = false;')
-        self.assertIn('static usermap_base::resident_set zones;', HPP)
 
-    def test_the_held_set_lives_for_the_process_not_the_level(self):
-        # a function-local static of an inline function: one object for the whole executable, never cleared by a level change
-        self.assertNotIn('release_all', HPP)
-
-    def test_only_the_not_found_check_comes_before_the_claim(self):
+    def test_a_zone_that_is_not_there_is_never_asked_about(self):
         a = HPP.index('fastfiles::exists(zone.name, true)')
-        b = HPP.index('resident_zones().claim')
-        self.assertLess(a, b)          # a zone that is not there is never claimed (it would then never be loaded once it exists)
+        b = HPP.index('zone_loaded(zone.name.data())')
+        self.assertLess(a, b)
 
 
 class Policy(unittest.TestCase):
@@ -109,9 +115,14 @@ class Policy(unittest.TestCase):
         self.assertIn('option == "nopatch" && !e.no_patch', POL)
         self.assertIn('zone.resident = zone.resident || e.resident;', POL)
 
+    def test_a_resident_zone_carries_the_permanent_flag_alone(self):
+        body = POL[POL.index('inline unsigned int load_flags'):]
+        body = body[:body.index('}')]
+        self.assertIn('mode.permanent ? static_cast<unsigned int>(zone_flag_permanent) : zone_flags', body)
+
     def test_native_test_covers_the_new_rules(self):
         for needle in ('cp_town nopatch resident', 'res[1].resident && res[1].no_patch', 'rej3.size() == 3', 'usermap_base::load_flags(0x80u, perm, custom_bit) == 0x1u',
-                       'held.claim("cp_zmb")', '!held.claim("cp_zmb") && held.size() == 1', 'held.release_all();'):
+                       'usermap_base::same_zone_name("cp_zmb", "CP_ZMB")', 'slots == 373'):
             self.assertIn(needle, NATIVE_TEST)
 
     def test_build_runs_the_native_test(self):

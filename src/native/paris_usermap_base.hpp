@@ -7,6 +7,7 @@
 
 #include "console/console.hpp"
 #include "fastfiles.hpp"
+#include "game/game.hpp"
 
 #include <utils/io.hpp>
 #include <utils/string.hpp>
@@ -19,17 +20,26 @@
 // Called from the zone load stub of fastfiles.cpp (an edit in ops/frame-cuts/frame-cut-edits.json).
 namespace paris_usermap_base
 {
+	// Is a zone of this name in the engine's zone table right now? The table is the engine's own truth (373 slots at 0x143A124F8, 0x478 bytes each, the name first): a
+	// resident zone that the engine freed (a mode switch unloads permanent zones too) is loaded again, one it still holds is not.
+	inline bool zone_loaded(const char* name)
+	{
+		for (int slot = 1; slot < usermap_base::zone_slots; ++slot)
+		{
+			if (game::DB_Zones_IsValidZoneIndex(slot) && usermap_base::same_zone_name(game::DB_Zones_GetZoneNameFromIndex(slot), name))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	// `load(zone, mode)`: loads one zone before the map's. `mode.custom` = load it with the engine's DB_ZONE_CUSTOM flag, which makes the engine's load
 	// function skip every extra zone it would add (techsets_, cache_, patch_ and the language ones, see skip_extra_zones_stub in fastfiles.cpp, which clears
 	// the flag again and queues only the zone itself). A `nopatch` line does that and queues the two extras the zone needs by hand, in the engine's order.
 	// `mode.permanent` = load the zone with the engine's DB_ZONE_PERMANENT flag alone (no level bit): the level's unload does not free it, so a reload of the map in the
-	// same process does not need it again (a `resident` line; the loader then skips the zone for the rest of the process, `resident_zones()`).
-	inline usermap_base::resident_set& resident_zones()
-	{
-		static usermap_base::resident_set zones;
-		return zones;
-	}
-
+	// same process does not need it again (a `resident` line; the loader then skips the zone while the engine's zone table holds it, `zone_loaded`).
 	inline void load_before(const char* zone_name, const std::function<void(const char*, const usermap_base::load_mode&)>& load)
 	{
 		// The list file itself is the switch: a dedicated server started with +map never sets the current usermap
@@ -62,8 +72,8 @@ namespace paris_usermap_base
 				continue;
 			}
 
-			// A resident zone is loaded once per game process: the second load of the same map (a reload in place) finds it there and skips it, with its companions.
-			if (zone.resident && !resident_zones().claim(zone.name))
+			// A resident zone is loaded once per game process: the second load of the same map (a reload in place) finds it in the engine's zone table and skips it.
+			if (zone.resident && zone_loaded(zone.name.data()))
 			{
 				console::info("Base zone %s for usermap %s is resident, not loaded again\n", zone.name.data(), zone_name);
 				continue;

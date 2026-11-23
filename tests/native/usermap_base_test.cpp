@@ -73,14 +73,12 @@ int main() {
     CHECK(usermap_base::load_flags(0x80u, custom, custom_bit) == (0x80u | custom_bit));
     CHECK(usermap_base::load_flags(0x80u, perm, custom_bit) == 0x1u);                       // the level's bits are not kept: nothing for an unload to match
     CHECK(usermap_base::load_flags(0x80u, both, custom_bit) == (0x1u | custom_bit));
-    // the resident set: the first claim loads, the next ones do not, a release forgets
-    usermap_base::resident_set held;
-    CHECK(!held.holds("cp_zmb") && held.size() == 0);
-    CHECK(held.claim("cp_zmb") && held.holds("cp_zmb"));
-    CHECK(!held.claim("cp_zmb") && held.size() == 1);
-    CHECK(held.claim("cp_town") && held.size() == 2);
-    held.release_all();
-    CHECK(!held.holds("cp_zmb") && held.size() == 0 && held.claim("cp_zmb"));
+    // zone names are the same zone ignoring ASCII case; the engine's table has 373 slots
+    CHECK(usermap_base::same_zone_name("cp_zmb", "CP_ZMB") && usermap_base::same_zone_name("techsets_cp_zmb", "techsets_cp_zmb"));
+    CHECK(!usermap_base::same_zone_name("cp_zmb", "cp_zmb2") && !usermap_base::same_zone_name("cp_zmb2", "cp_zmb") && !usermap_base::same_zone_name("cp_zmb", ""));
+    CHECK(!usermap_base::same_zone_name(nullptr, "cp_zmb") && !usermap_base::same_zone_name("cp_zmb", nullptr) && usermap_base::same_zone_name("", ""));
+    int slots = usermap_base::zone_slots;
+    CHECK(slots == 373);
 
     // a usermap's own patch zone: patch_<map>[.ff] resolves into the map's folder, nothing else does
     CHECK(usermap_base::patch_zone_path("patch_cp_iwz") == "usermaps\\cp_iwz\\patch_cp_iwz.ff");
