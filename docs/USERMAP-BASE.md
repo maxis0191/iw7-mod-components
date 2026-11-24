@@ -91,3 +91,38 @@ $env:IWZ_BASE_RESIDENT = '1'; python -m compile.build <emit> --out <usermap>\cp_
 #    the log says "is resident, not loaded again" from the second load on, the zone load shrinks by the stock zone's 3.6 s
 $env:STUDIO_MAX_INPLACE = '9'; python tools\reload_probe.py <test map folder> <out> --reloads 6 --start
 ```
+
+## Which asset is used when two zones hold the same name (read 24 Nov 2026)
+
+Read from the decompiled engine (`ops/engine/engine.py decomp`), no game. The raw text of every function named here is kept on the machine under `C:\studio-data\r1\engine`.
+
+**The link of one asset, `FUN_140a782b0` (type, pointer to the header pointer).** It runs for every asset of a zone while the zone loads.
+
+1. The name is looked up in the asset name table (`DB_AssetEntryTable_FindAsset(&s_assetManager_table 0x1453E7370, name, type)`). A name that starts with `,` is a reference: when the name is
+   known, the loading zone gets the known asset and nothing is added; when it is not, `FUN_140a76ab0` makes a PLACEHOLDER entry with zone slot 0 (a copy of the type's default asset under
+   that name).
+2. A real asset whose name is already known: `FUN_140a78230(existing, loading zone)` walks the existing entry and the entries chained behind it (`+0xC`) and asks, for each one with a zone slot
+   other than 0, `FUN_140a7c400(entry zone, loading zone)`: "is the loading zone of the same family as the zone that holds this entry". When any answer is yes the NEW asset is thrown away
+   (`FUN_140a77d20` frees it, the zone's pointer is set to the existing asset): **the asset loaded first stays, the later one never exists.**
+3. `FUN_140a7c400`, with `f1` the flags of the zone that holds the entry and `f2` the flags of the loading zone (zone table 0x143A124F8, flags at +0x470, `FUN_1403bc380`):
+   * `f1 & 0x4F800` set: the same family only when it is the same zone slot;
+   * otherwise equal flags: the same family;
+   * otherwise `f2 & 0x10000`: the same family when `f1 & 0x3F` is set; `f2 & 0x20080` (a level zone, DB_ZONE_GAME 0x80): when `f1 & 0x1F` is set (any permanent zone: code, common, global, a
+     resident base); in every other case: when `f2 & 0x1F` is set and `f1 & 1` is set.
+4. Not the same family: the new asset gets its own entry, which `FUN_1403b56b0` hangs at the END of the existing entry's `+0xC` chain. The name still answers with the FIRST entry; the
+   loading zone's own pointers go to its own copy (`*header = new entry's header`). Only when the first entry is a placeholder (zone slot 0) does the new asset take the name
+   (`FUN_140a7a260`: the contents are swapped into the placeholder's header, so every pointer taken earlier now sees the real asset). `DAT_145685992` (set by `FUN_140a7b290` while a zone with
+   `flags & 0x7F800` loads) narrows that swap to one case of type 0x12; for a level zone it is 0.
+5. An entry of the chain becomes the first one only when the zone of the first entry is freed (`FUN_140a76280`, `FUN_140a78ab0`: zone slots and header contents are swapped, the freed zone's entry is removed).
+
+**So the rule is: the zone loaded FIRST wins the name. No flag makes a later zone win; a later zone is either thrown away (same family) or parked behind the first one.**
+
+**How the stock patch zone wins.** By being queued first, not by a priority. The engine's zone load function (`0x1403BA920`, the function our `fastfiles.cpp` stub replaces) queues, for a zone
+`X` loaded with a level flag, in this order (calls of the queue function `FUN_1403baea0`): `techsets_X` (0x1403BAAB7), `cache_X` (0x1403BAAFB), `patch_X` (0x1403BAB37), two language forms of the patch
+zone and the language zone (0x1403BAB88, 0x1403BABC7, 0x1403BAC01), and `X` itself LAST (0x1403BAC19). `patch_cp_zmb` and `cp_zmb` carry the same flags, so every asset of `cp_zmb` that the patch zone
+also holds is thrown away at step 2. The relation is derived from the zone's NAME by the load function, and it is nothing but the order.
+
+**What that means for a usermap with a base zone today.** `load_before` runs at the top of the stub for the map's zone: the base zones (and, for each, the engine's `techsets_`, `cache_`, `patch_`)
+are queued BEFORE `techsets_<map>`, `patch_<map>` and `<map>`. With the base loaded with the level's flags (0x80, equal flags) or as `resident` (0x1, `f1 & 0x1F`), every asset of the map zone AND of
+`patch_<map>` whose name a base zone, its patch zone or a permanent zone already holds is thrown away at step 2. It does not matter for a byte-identical copy; for an asset the map changed under a
+stock name the game silently runs the stock one (measured in Studio: lightmaps, visions).
