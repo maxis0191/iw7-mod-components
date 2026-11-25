@@ -56,10 +56,16 @@ namespace paris_usermap_base
 	// `mode.permanent` = load the zone with the engine's DB_ZONE_PERMANENT flag alone (no level bit): the level's unload does not free it, so a reload of the map in the
 	// same process does not need it again (a `resident` line; the loader then skips the zone while the engine's zone table holds it, `zone_loaded`).
 	// `paris_usermap_map_wins` (int 0..1, default 1, registered by paris_usermap_ncs.cpp): the base zones load after the map's own zones (phase `after`), as ordinary level zones.
-	inline bool map_wins_enabled()
+	// 1: base after the map; 2: the same, and the base zones are not queued as a base map (is_base_map false): only the map is the level's base map.
+	inline int map_wins_value()
 	{
 		const auto* setting = game::Dvar_FindVar("paris_usermap_map_wins");
-		return !setting || setting->type != game::DVAR_TYPE_INT || setting->current.integer != 0;
+		return !setting || setting->type != game::DVAR_TYPE_INT ? 1 : setting->current.integer;
+	}
+
+	inline bool map_wins_enabled()
+	{
+		return map_wins_value() != 0;
 	}
 
 	inline void load_before(const char* zone_name, const std::function<void(const char*, const usermap_base::load_mode&)>& load,

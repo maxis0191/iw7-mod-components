@@ -47,7 +47,7 @@ class FastfilesEdit(unittest.TestCase):
     def test_the_callback_takes_a_mode_and_the_flags_come_from_the_policy(self):
         new = self.new_text()
         self.assertIn('[&](const char* base_zone, const usermap_base::load_mode& mode)', new)
-        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map, failure_mode);', new)
+        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map && paris_usermap_base::map_wins_value() != 2, failure_mode);', new)
         self.assertNotIn('bool custom', new)
         self.assertLess(new.index('paris_usermap_base::load_before(parent_name'), new.index('Loading zone %s'))
 
