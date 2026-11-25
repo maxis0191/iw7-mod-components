@@ -104,7 +104,7 @@ namespace paris_usermap_ncs
         void post_unpack() override
         {
             game::Dvar_RegisterInt("paris_usermap_hint_filter", 1, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: keep the base's own hint string lists out of the 254 hint slots");
-            game::Dvar_RegisterInt("paris_usermap_map_wins", 2, 0, 2, game::DVAR_FLAG_NONE, "Usermap with a base zone: the base zones load after the map's own zones, so the map's same-named assets win (0 = the old order, base first)");
+            game::Dvar_RegisterInt("paris_usermap_map_wins", 0, 0, 2, game::DVAR_FLAG_NONE, "Usermap with a base zone: the base zones load after the map's own zones, so the map's same-named assets win (0 = the old order, base first)");
             register_hook.create(register_function, register_stub); // queued: main applies every queued hook after post_unpack
             drop_hook.create(drop_function, drop_stub);
         }

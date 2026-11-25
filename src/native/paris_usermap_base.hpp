@@ -55,7 +55,7 @@ namespace paris_usermap_base
 	// the flag again and queues only the zone itself). A `nopatch` line does that and queues the two extras the zone needs by hand, in the engine's order.
 	// `mode.permanent` = load the zone with the engine's DB_ZONE_PERMANENT flag alone (no level bit): the level's unload does not free it, so a reload of the map in the
 	// same process does not need it again (a `resident` line; the loader then skips the zone while the engine's zone table holds it, `zone_loaded`).
-	// `paris_usermap_map_wins` (int 0..1, default 1, registered by paris_usermap_ncs.cpp): the base zones load after the map's own zones (phase `after`), as ordinary level zones.
+	// `paris_usermap_map_wins` (int 0..2, default 0, registered by paris_usermap_ncs.cpp): the base zones load after the map's own zones (phase `after`), as ordinary level zones.
 	// 1: base after the map; 2: the same, and the base zones are not queued as a base map (is_base_map false): only the map is the level's base map.
 	inline int map_wins_value()
 	{
