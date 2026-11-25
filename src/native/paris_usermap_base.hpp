@@ -55,7 +55,15 @@ namespace paris_usermap_base
 	// the flag again and queues only the zone itself). A `nopatch` line does that and queues the two extras the zone needs by hand, in the engine's order.
 	// `mode.permanent` = load the zone with the engine's DB_ZONE_PERMANENT flag alone (no level bit): the level's unload does not free it, so a reload of the map in the
 	// same process does not need it again (a `resident` line; the loader then skips the zone while the engine's zone table holds it, `zone_loaded`).
-	inline void load_before(const char* zone_name, const std::function<void(const char*, const usermap_base::load_mode&)>& load)
+	// `paris_usermap_map_wins` (int 0..1, default 1, registered by paris_usermap_ncs.cpp): the base zones load after the map's own zones (phase `after`), as ordinary level zones.
+	inline bool map_wins_enabled()
+	{
+		const auto* setting = game::Dvar_FindVar("paris_usermap_map_wins");
+		return !setting || setting->type != game::DVAR_TYPE_INT || setting->current.integer != 0;
+	}
+
+	inline void load_before(const char* zone_name, const std::function<void(const char*, const usermap_base::load_mode&)>& load,
+		usermap_base::base_phase phase = usermap_base::base_phase::before)
 	{
 		// The list file itself is the switch: a dedicated server started with +map never sets the current usermap
 		// (measured 22 Nov 2026: the zone loaded, the list was not read), so the party state is not asked.
@@ -90,6 +98,13 @@ namespace paris_usermap_base
 			current_bases().push_back(zone.name);
 		}
 
+		// The list is read in both phases (the state above is needed by the hint filter before the map loads); only one phase loads.
+		const auto wins = map_wins_enabled();
+		if (!usermap_base::loads_in_phase(wins, phase))
+		{
+			return;
+		}
+
 		// the engine may keep the name pointer after the call
 		static std::deque<std::string> names;
 		for (const auto& zone : zones)
@@ -101,7 +116,7 @@ namespace paris_usermap_base
 			}
 
 			// A resident zone is loaded once per game process: the second load of the same map (a reload in place) finds it in the engine's zone table and skips it.
-			if (zone.resident && zone_loaded(zone.name.data()))
+			if (!wins && zone.resident && zone_loaded(zone.name.data()))
 			{
 				console::info("Base zone %s for usermap %s is resident, not loaded again\n", zone.name.data(), zone_name);
 				continue;
@@ -110,11 +125,20 @@ namespace paris_usermap_base
 			usermap_base::load_mode mode;
 			mode.custom = zone.no_patch;
 			mode.permanent = zone.resident;
+			if (wins)
+			{
+				mode = usermap_base::map_wins_mode(mode);
+			}
 
 			if (zone.no_patch)
 			{
 				usermap_base::load_mode companion_mode;
 				companion_mode.permanent = zone.resident;
+				if (wins)
+				{
+					companion_mode = usermap_base::map_wins_mode(companion_mode);
+				}
+
 				for (const auto& companion : usermap_base::companion_zones(zone.name))
 				{
 					if (fastfiles::exists(companion, true))
@@ -127,7 +151,7 @@ namespace paris_usermap_base
 			}
 
 			names.push_back(zone.name);
-			console::info("Loading base zone %s for usermap %s%s%s\n", zone.name.data(), zone_name, zone.no_patch ? " (custom flag: no patch_ zone)" : "", zone.resident ? " (resident)" : "");
+			console::info("Loading base zone %s for usermap %s%s%s%s\n", zone.name.data(), zone_name, zone.no_patch ? " (custom flag: no patch_ zone)" : "", zone.resident && !wins ? " (resident)" : "", wins ? " [after the map: map wins]" : "");
 			load(names.back().data(), mode);
 		}
 	}

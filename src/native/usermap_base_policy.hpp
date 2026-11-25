@@ -86,6 +86,38 @@ namespace usermap_base
 		return *a == *b;
 	}
 
+	// F9 (docs/USERMAP-BASE.md, "map assets win"): the zone linked first wins a name, so with `paris_usermap_map_wins` the base zones of a usermap are queued AFTER the map's own
+	// zones (the engine's zone load queues techsets_<map>, patch_<map> and the map itself). A resident (permanent) base would then keep pointers into the map's headers after
+	// the map is freed, so under map-wins a base is loaded as an ordinary level zone: it is freed with the map and the stock map finds its own assets again.
+	enum class base_phase
+	{
+		before,
+		after
+	};
+
+	// Does the base load in this phase? Old order (`wins` false): before the map. Map-wins order: after it.
+	inline bool loads_in_phase(bool wins, base_phase phase)
+	{
+		return wins == (phase == base_phase::after);
+	}
+
+	inline load_mode map_wins_mode(load_mode mode)
+	{
+		mode.permanent = false;
+		return mode;
+	}
+
+	// Is the zone one of the usermap's own (its level zone or its patch zone)?
+	inline bool is_map_own_zone(const char* zone, const std::string& usermap)
+	{
+		if (zone == nullptr || usermap.empty())
+		{
+			return false;
+		}
+
+		return same_zone_name(zone, usermap.data()) || same_zone_name(zone, ("patch_" + usermap).data());
+	}
+
 	// F8 (docs/USERMAP-BASE.md, "the hint table of a reference build"): the engine registers EVERY loaded netconststrings asset, and the base zone brings its own
 	// language copies of the hint list (`ncs_hnt_<lang>_<base>` and `ncs_hnt_<lang>_patch_<base>`: 244 of the 254 hint slots for cp_zmb). Is this asset one of them?
 	// Only the hint kind (`hnt`): it is the one list that is capacity bound (255 slots, 252 used by the base; every other kind is far below its table, measured).
