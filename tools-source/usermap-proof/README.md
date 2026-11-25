@@ -1,0 +1,1 @@
+Proof kit for F8 (docs/USERMAP-BASE.md): plans with probes (`r1probe.gsc`), batches (paths point at C:\studio-data\r1\um\*), `hintdump.sh <cell> <out>` (hint slots of a live cell), `ncswalk.py <cell> <out>` (NCS assets registered per kind). A cell is retired within seconds when the machine is busy: use `plans/idle40.json` and dump while it runs.
