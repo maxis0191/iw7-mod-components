@@ -70,6 +70,20 @@ namespace paris_usermap_ncs
             return !setting || setting->type != game::DVAR_TYPE_INT || setting->current.integer != 0;
         }
 
+        // only what the map's `.base` lists with `!<type> <name>` (the build's own record of what it edited under a stock name)
+        bool listed(int type, const char* name)
+        {
+            for (const auto& item : paris_usermap_base::current_wins())
+            {
+                if (item.type == type && item.name == name)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         const char* entry_zone(const void* entry)
         {
             const auto slot = *reinterpret_cast<const std::uint16_t*>(reinterpret_cast<const std::uint8_t*>(entry) + 0x12);
@@ -79,13 +93,13 @@ namespace paris_usermap_ncs
         void drop_stub(void* thrown, void* existing, unsigned type)
         {
             if (thrown != nullptr && existing != nullptr && thrown != existing && usermap_base::is_data_table_type(static_cast<int>(type)) && swap_enabled()
-                && !paris_usermap_base::current_usermap().empty())
+                && !paris_usermap_base::current_usermap().empty() && !paris_usermap_base::current_wins().empty())
             {
                 const auto* loading = game::DB_Zones_GetZoneNameFromIndex(*reinterpret_cast<const int*>(loading_zone_index));
                 game::XAssetHeader header{};
                 header.data = existing;
                 const auto* name = game::DB_GetXAssetHeaderName(static_cast<game::XAssetType>(type), header);
-                if (usermap_base::is_map_own_zone(loading, paris_usermap_base::current_usermap()) && name != nullptr)
+                if (usermap_base::is_map_own_zone(loading, paris_usermap_base::current_usermap()) && name != nullptr && listed(static_cast<int>(type), name))
                 {
                     const auto* entry = game::DB_AssetEntryTable_FindAsset(reinterpret_cast<void*>(asset_table), name, static_cast<game::XAssetType>(type));
                     const auto* holder = entry != nullptr ? entry_zone(entry) : nullptr;

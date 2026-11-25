@@ -148,6 +148,59 @@ namespace usermap_base
 		return { "techsets_" + zone, "cache_" + zone };
 	}
 
+	// F9: a `.base` line `!<type> <name>` lists an asset that the build edited under a stock name and that must keep the map's content (type: rawfile, stringtable, netconststrings).
+	// Only the listed assets are swapped (the first run swapped all 33 same-named tables and the level did not start).
+	struct win
+	{
+		int type = 0;
+		std::string name;
+	};
+
+	inline int win_type(const std::string& word)
+	{
+		return word == "rawfile" ? 48 : word == "stringtable" ? 50 : word == "netconststrings" ? 58 : 0;
+	}
+
+	inline std::vector<win> parse_wins(const std::string& text)
+	{
+		std::vector<win> wins;
+		std::size_t begin = 0;
+		while (begin <= text.size())
+		{
+			auto end = text.find('\n', begin);
+			if (end == std::string::npos)
+			{
+				end = text.size();
+			}
+
+			auto line = text.substr(begin, end - begin);
+			begin = end + 1;
+			while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
+			{
+				line.pop_back();
+			}
+
+			if (line.size() < 4 || line[0] != '!')
+			{
+				continue;
+			}
+
+			const auto gap = line.find(' ');
+			if (gap == std::string::npos || gap + 1 >= line.size())
+			{
+				continue;
+			}
+
+			const auto type = win_type(line.substr(1, gap - 1));
+			if (type != 0)
+			{
+				wins.push_back({ type, line.substr(gap + 1) });
+			}
+		}
+
+		return wins;
+	}
+
 	// Lines in file order; blank lines, comments, a trailing CR or blanks, a UTF-8 byte order mark and repeated names are dropped (a repeat with an
 	// option still turns the option on for the first one). A line that is not `<name>` with the options above (each at most once) is reported through `rejected` (when given) and left out.
 	inline std::vector<entry> parse_base_entries(const std::string& text, std::vector<std::string>* rejected = nullptr)
@@ -183,7 +236,7 @@ namespace usermap_base
 			}
 			line.erase(0, start);
 
-			if (line.empty() || line.compare(0, 2, "//") == 0)
+			if (line.empty() || line.compare(0, 2, "//") == 0 || line[0] == '!')
 			{
 				continue;
 			}

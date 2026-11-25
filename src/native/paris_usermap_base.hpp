@@ -29,6 +29,12 @@ namespace paris_usermap_base
 		return name;
 	}
 
+	inline std::vector<usermap_base::win>& current_wins()
+	{
+		static std::vector<usermap_base::win> list;
+		return list;
+	}
+
 	inline std::vector<std::string>& current_bases()
 	{
 		static std::vector<std::string> names;
@@ -71,6 +77,7 @@ namespace paris_usermap_base
 			{
 				current_usermap().clear();
 				current_bases().clear();
+				current_wins().clear();
 			}
 
 			return;
@@ -85,6 +92,7 @@ namespace paris_usermap_base
 
 		current_usermap() = zone_name;
 		current_bases().clear();
+		current_wins() = usermap_base::parse_wins(text);
 		for (const auto& zone : zones)
 		{
 			current_bases().push_back(zone.name);

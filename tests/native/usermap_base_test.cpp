@@ -114,6 +114,10 @@ int main() {
 
     // F9: content wins for data tables only
     {
+        const auto w = usermap_base::parse_wins("// c\ncp_zmb resident\n!stringtable cp/zombies/zombie_perks_bit_mask_table.csv\r\n!netconststrings ncs_efx_level\n!image foo\n!rawfile\n!rawfile vision/cp_zmb_alien.vision");
+        CHECK(w.size() == 3 && w[0].type == 50 && w[0].name == "cp/zombies/zombie_perks_bit_mask_table.csv" && w[1].type == 58 && w[1].name == "ncs_efx_level" && w[2].type == 48);
+        const auto z = usermap_base::parse_base_entries("cp_zmb resident\n!stringtable a.csv\ncp_town\n");
+        CHECK(z.size() == 2 && z[0].name == "cp_zmb" && z[0].resident && z[1].name == "cp_town");
         CHECK(usermap_base::is_data_table_type(48));
         CHECK(usermap_base::is_data_table_type(50));
         CHECK(usermap_base::is_data_table_type(58));
