@@ -128,6 +128,14 @@ class Policy(unittest.TestCase):
     def test_build_runs_the_native_test(self):
         self.assertIn('usermap_base_test.cpp', read('ops', 'Build-Voice.ps1'))
 
+    def test_hint_filter_is_wired(self):
+        ncs = read('src', 'native', 'paris_usermap_ncs.cpp')
+        for needle in ('0x1406D52B0ull', 'is_base_hint_list', 'paris_usermap_hint_filter', 'REGISTER_COMPONENT(paris_usermap_ncs::component)'):
+            self.assertIn(needle, ncs)
+        self.assertIn("'paris_usermap_ncs.cpp'", read('ops', 'Build-Voice.ps1'))
+        self.assertIn('src/native/paris_usermap_ncs.cpp', read('product.json'))
+        self.assertIn('current_bases().push_back(zone.name);', HPP)
+
 
 if __name__ == '__main__':
     unittest.main()

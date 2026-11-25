@@ -150,3 +150,27 @@ stock name the game silently runs the stock one (measured in Studio: lightmaps, 
 2. A filter in the ingestion, `FUN_1406d52b0` (0x1406D52B0): for a usermap, skip the `hnt` and `loc` kind of assets named `ncs_*_eng_<base zone>`/`_patch_<base zone>` (server and client both run it, so the indices stay equal). The 254-slot limit itself is the config string range and not movable without the network protocol.
 3. Raise nothing: the limit `0xff` at `FUN_1405e9d90` and the config string layout are the protocol; not a candidate.
 Not measured: which zone file holds `ncs_hnt_eng_cp_zmb` (the stub logs no zone list; by its name the language zone of `cp_zmb`), and whether the stock Spaceland scripts depend on the pre-registered slots (a hint set by script that is not in the table takes a slot at first use, so they should not).
+
+## F8 fix: the base's hint lists are not registered (candidate 2, lead's decision 25 Nov 2026; built in source, not run)
+
+**Why not candidate 1** (keep the base's language zone out of the load): its localize entries are still referenced by the base's stock scripts and assets (perk machines, wall buys, HUD); a reference build's map zone does not carry them, so raw keys would show.
+
+**What it does.** `src/native/paris_usermap_ncs.cpp` hooks `FUN_1406D52B0` (the per-asset registration of the NCS pass `FUN_1406D43C0`; the only other callers are `FUN_140B7A5A0`, which registers other assets, never named `ncs_hnt_*`). While the usermap whose `.base` was read last is in the zone table and the dvar is on, an asset named `ncs_hnt_<lang>_<base>` or `ncs_hnt_<lang>_patch_<base>` (`usermap_base::is_base_hint_list`, pure text rule, tested in `tests/native/usermap_base_test.cpp`) returns 1 without registering. `paris_usermap_base::load_before` records the usermap name and the base list for it (`current_usermap`, `current_bases`; cleared when the same usermap is read without a `.base`). Nothing else changes: `ncs_hnt_level` (the map's own), `ncs_hnt_eng_code_post_gfx` (the code zone) and every other kind stay. A hint that a stock script sets still takes a slot at its first use (`FUN_1405E9D90`), so a perk machine or wall buy shows its stock text (the key is the same string, the localize entry is still loaded).
+- **Expected table:** about 8 pre-registered slots (6 code, 2 level) instead of 252, plus whatever the map and the stock scripts set. Station Zero's 70 hints fit with room.
+- **Server and client alike.** The pass runs on both (the sum of all lists is hashed into `DAT_145206474` and the two sides must agree). The component is registered on every pipeline (no `is_dedi` gate; `load_before` sits on the zone load itself, also on the dedicated server). Both sides need the same switch value: a client with `paris_usermap_hint_filter 0` against a server with `1` sums different lists. Default 1 on both.
+- **Dvar `paris_usermap_hint_filter`** (int 0..1, default 1; 0 = the stock behaviour, for the A/B in one build). No effect on a map without a `.base`, and none on stock `cp_zmb` loaded after a usermap in the same process: the filter needs `current_usermap` in the zone table, and the level zone of the usermap is gone by then (the proof plan reads 252 slots again).
+- **Reload in place** (`studio live sync`): `load_before` reads the `.base` again and sets the same names; the NCS pass runs again with the filter on, so the table is rebuilt the same way.
+
+**Why only the hint kind.** Capacity per kind measured in the reference session (table limit at `0x1414B7764 + kind*8`, entries with the base): hnt 255 / 252 (bound); loc 2048 / 371; mdl 2048 / 1385; efx 512 / 373; wep 450 / 298; mat 350 / 47; lui, rmb, rmg, ges, acl have no table limit (-1 base); every other kind is under half of its table. Only the hint table is full, so only that kind is filtered; the others keep their lists (the language lists `ncs_loc_eng_<base>` are needed to show the base's text and cost nothing that matters).
+
+**The "map assets win" link rule** (the previous design section) stays design only. It is the open fix for the other class: lightmaps, visions and every other asset that a map changed under a stock name and that the base zone, loaded first, silently replaces. It does not fix F8.
+
+**Proof, the lead's commands** (plans in `C:\studio-data\r1\plans`, library `C:\studio-data\r1\lib\r1probe.gsc`, tools `ncswalk.py`, `hintdump.sh`; reference usermaps are to be built into `C:\studio-data\r1\um\sz_ref\cp_iwz` and `...\small_ref\cp_iwz`, or edit the batch):
+```
+pwsh ops\enginelab\Get-LabClient.ps1 -ComponentsRoot C:\Users\ezvalo\Documents\IW7-Products\worktrees\components-r1
+python -B C:\forge\forge.py batch C:\studio-data\r1\plans\r1_hint_batch.json      # 70 of 70 on Station Zero and the small map (was 0 of 70); stock hint keys set by script
+bash C:\studio-data\r1\hintdump.sh <cell> out.json                               # slots used: about 8 + the map's own, not 252
+python -B C:\forge\forge.py batch C:\studio-data\r1\plans\r1_five_ref.json        # 70/70, 76/76, 128/128, 20/20, 10/10
+# stock after usermap in the same cell: run r1_idle_stock.json on the cell that ran a usermap, hintdump.sh: 252 again
+# A/B: --dvar paris_usermap_hint_filter=0 on the same plan gives the old 0 of 70
+```

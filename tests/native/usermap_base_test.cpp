@@ -93,6 +93,25 @@ int main() {
     CHECK(usermap_base::patch_zone_path("").empty());
 
     if (failures) { std::printf("%d failure(s)\n", failures); return 1; }
+    // F8: the base's own hint lists, and nothing else
+    {
+        const std::vector<std::string> bases = { "cp_zmb" };
+        using usermap_base::is_base_hint_list;
+        CHECK(is_base_hint_list("ncs_hnt_eng_cp_zmb", bases));
+        CHECK(is_base_hint_list("ncs_hnt_eng_patch_cp_zmb", bases));
+        CHECK(is_base_hint_list("ncs_hnt_fre_cp_zmb", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_level", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_eng_code_post_gfx", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_common_mp", bases));
+        CHECK(!is_base_hint_list("ncs_loc_eng_cp_zmb", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_eng_cp_zmb2", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_eng_", bases));
+        CHECK(!is_base_hint_list("ncs_hnt__cp_zmb", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_eng_cp_zmb", {}));
+        CHECK(!is_base_hint_list(nullptr, bases));
+        CHECK(is_base_hint_list("ncs_hnt_eng_patch_cp_town", { "cp_zmb", "cp_town" }));
+    }
+
     std::printf("usermap_base_test: ok\n");
     return 0;
 }

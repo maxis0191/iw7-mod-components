@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -83,6 +84,44 @@ namespace usermap_base
 		}
 
 		return *a == *b;
+	}
+
+	// F8 (docs/USERMAP-BASE.md, "the hint table of a reference build"): the engine registers EVERY loaded netconststrings asset, and the base zone brings its own
+	// language copies of the hint list (`ncs_hnt_<lang>_<base>` and `ncs_hnt_<lang>_patch_<base>`: 244 of the 254 hint slots for cp_zmb). Is this asset one of them?
+	// Only the hint kind (`hnt`): it is the one list that is capacity bound (255 slots, 252 used by the base; every other kind is far below its table, measured).
+	inline bool is_base_hint_list(const char* asset_name, const std::vector<std::string>& base_zones)
+	{
+		if (asset_name == nullptr || std::strncmp(asset_name, "ncs_hnt_", 8) != 0)
+		{
+			return false;
+		}
+
+		const std::string rest = asset_name + 8;
+		const auto cut = rest.find('_');
+		if (cut == std::string::npos || cut == 0 || cut + 1 >= rest.size())
+		{
+			return false;
+		}
+
+		const auto language = rest.substr(0, cut);
+		for (const auto c : language)
+		{
+			if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')))
+			{
+				return false;
+			}
+		}
+
+		const auto zone = rest.substr(cut + 1);
+		for (const auto& base : base_zones)
+		{
+			if (zone == base || zone == "patch_" + base)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	// Names of the zones the loader adds by hand for a `nopatch` zone, in the engine's own order (techsets_ first, cache_ next); the zone itself follows.
