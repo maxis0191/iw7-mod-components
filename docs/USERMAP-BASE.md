@@ -126,3 +126,27 @@ also holds is thrown away at step 2. The relation is derived from the zone's NAM
 are queued BEFORE `techsets_<map>`, `patch_<map>` and `<map>`. With the base loaded with the level's flags (0x80, equal flags) or as `resident` (0x1, `f1 & 0x1F`), every asset of the map zone AND of
 `patch_<map>` whose name a base zone, its patch zone or a permanent zone already holds is thrown away at step 2. It does not matter for a byte-identical copy; for an asset the map changed under a
 stock name the game silently runs the stock one (measured in Studio: lightmaps, visions).
+
+## F8, the hint table of a reference build: measured 25 Nov 2026 (the same-name hypothesis is refuted)
+
+**Error line** (server log of `forge run C:\studio-data\c2\plans\hintprobe.json`, run `20261124-045610-0186-c2_hintprobe`): `Can't precache more assets of type 'hint string' (max is 255): 'C2 PROBE HINT NUMBER 2'`. It comes from `FUN_1405e9d90` (the hint registrar called by `PlayerCmd_sethintstring`, 0x140B3BED0): it walks the config strings 2..255 (`FUN_140c11780(i)` = the string id of slot i, `DAT_145d5af00` = the empty id), returns the slot of a string that is already there, and at slot 255 it calls `Com_Error(1, "Can't precache more assets of type 'hint string' (max is 255)")`. A hint set by script that no NCS list pre-registered takes the first empty slot; with none left the level ends.
+
+**What fills the 254 slots: every netconststrings asset that is loaded, not one by name.** `FUN_1406d43c0` (called at level load) requires `ncs_<kind>_level` (`DB_FindXAssetHeader(0x3a, ...)`, error "Missing NetConstStrings asset"), then lists EVERY loaded asset of type 0x3a (`FUN_140a77a00`), sorts them and hands each to `FUN_1406d52b0`, which appends its strings to the per-kind list (`DAT_145205ae0 + kind*16`, entries in `DAT_145205c70`; a kind's capacity is the word at `0x1414B7764 + kind*8`; over it the function returns 0 and the load ends with EXE_TRANSMITERROR). Kind 15 is `hnt`.
+
+**Measured in running sessions** (`forge peek`; walkers `C:\studio-data\r1\ncswalk.py <cell> <out>` and `hintdump.sh <cell> <out>`, results `C:\studio-data\r1\logs\ncs_*.json`, `hints_*.json`):
+
+| session | hint (`hnt`) NCS assets loaded (strings) | slots used of 254 |
+|---|---|---|
+| stock `cp_zmb` | `ncs_hnt_eng_cp_zmb` (235), `ncs_hnt_eng_code_post_gfx` (6), `ncs_hnt_eng_patch_cp_zmb` (9), `ncs_hnt_level` (2) | 252 |
+| Studio reference build (Courtyard, `.base` = `cp_zmb resident`) | the same four, same order, byte-identical table | 252 |
+| full build (testmap1.l1old, 471 MB, no base zone) | `ncs_hnt_eng_code_post_gfx` (6), `ncs_hnt_level` (2), then the 2 hints its scripts set | 10 |
+
+`loc` shows the same split: 371 strings (`ncs_loc_eng_cp_zmb` 315, `ncs_loc_eng_patch_cp_zmb` 15, code 41) with the base, 41 without. 57 NCS assets are registered with the base, 46 without.
+
+**So the cause is not an asset that the base zone wins.** The map's `ncs_hnt_level` (2 strings) and the stock one are equal in content, and a throw-away of either changes nothing. The 244 extra slots are taken by assets with their OWN names (`ncs_hnt_eng_cp_zmb`, `ncs_hnt_eng_patch_cp_zmb`: the language-zone copies of the base and its patch zone, not in the zonetool dump of `cp_zmb`), which nothing throws away because no map zone holds a same-named asset. Loading the base zone loads those, and the engine sums them. Capacity, not precedence: the "map assets win" rule of the previous section would leave the table at 252 and does not fix F8. (It is still a valid fix for the other class: lightmaps, visions, a changed stock asset.)
+
+**Where the fix has to be (candidates, none built):**
+1. The base's language-zone NCS are what costs the slots: a `.base` option that keeps the base's language companions (`<lang>` forms of the zone and of `patch_<zone>`) out of the load (the loader already builds the extras by hand for `nopatch`). The cost: the base's localized strings (hint texts, `ncs_loc_eng_cp_zmb`) then are not there, so the map's own zone must carry the localize entries it uses (a full build does; Studio's `refbuild.py` already decides held or carried per asset, `localize` is in its WORLD list).
+2. A filter in the ingestion, `FUN_1406d52b0` (0x1406D52B0): for a usermap, skip the `hnt` and `loc` kind of assets named `ncs_*_eng_<base zone>`/`_patch_<base zone>` (server and client both run it, so the indices stay equal). The 254-slot limit itself is the config string range and not movable without the network protocol.
+3. Raise nothing: the limit `0xff` at `FUN_1405e9d90` and the config string layout are the protocol; not a candidate.
+Not measured: which zone file holds `ncs_hnt_eng_cp_zmb` (the stub logs no zone list; by its name the language zone of `cp_zmb`), and whether the stock Spaceland scripts depend on the pre-registered slots (a hint set by script that is not in the table takes a slot at first use, so they should not).
