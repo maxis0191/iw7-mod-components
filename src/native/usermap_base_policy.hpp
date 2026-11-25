@@ -86,25 +86,11 @@ namespace usermap_base
 		return *a == *b;
 	}
 
-	// F9 (docs/USERMAP-BASE.md, "map assets win"): the zone linked first wins a name, so with `paris_usermap_map_wins` the base zones of a usermap are queued AFTER the map's own
-	// zones (the engine's zone load queues techsets_<map>, patch_<map> and the map itself). A resident (permanent) base would then keep pointers into the map's headers after
-	// the map is freed, so under map-wins a base is loaded as an ordinary level zone: it is freed with the map and the stock map finds its own assets again.
-	enum class base_phase
+	// F9 (docs/USERMAP-BASE.md): the types whose content the engine or the stock scripts read BY NAME and that the map's copy must win: a raw file (48), a string table
+	// (50) and a netconststrings list (58). Header-only copies of these three are safe (plain structures); images, models and scripts are not copied.
+	inline bool is_data_table_type(int type)
 	{
-		before,
-		after
-	};
-
-	// Does the base load in this phase? Old order (`wins` false): before the map. Map-wins order: after it.
-	inline bool loads_in_phase(bool wins, base_phase phase)
-	{
-		return wins == (phase == base_phase::after);
-	}
-
-	inline load_mode map_wins_mode(load_mode mode)
-	{
-		mode.permanent = false;
-		return mode;
+		return type == 48 || type == 50 || type == 58;
 	}
 
 	// Is the zone one of the usermap's own (its level zone or its patch zone)?

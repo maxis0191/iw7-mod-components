@@ -107,7 +107,7 @@
     },
     {
      "old": "\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
-     "new": "\t\t\t// Studio gate G1: stock zones listed in usermaps/<map>/<map>.base load right before the map zone (paris_usermap_base.hpp).\n\t\t\tconst auto load_base = [&](const char* base_zone, const usermap_base::load_mode& mode)\n\t\t\t{\n\t\t\t\tdb_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map && paris_usermap_base::map_wins_value() != 2, failure_mode);\n\t\t\t};\n\t\t\tparis_usermap_base::load_before(parent_name, load_base);\n\n\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
+     "new": "\t\t\t// Studio gate G1: stock zones listed in usermaps/<map>/<map>.base load right before the map zone (paris_usermap_base.hpp).\n\t\t\tparis_usermap_base::load_before(parent_name, [&](const char* base_zone, const usermap_base::load_mode& mode)\n\t\t\t{\n\t\t\t\tdb_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map, failure_mode);\n\t\t\t});\n\n\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
      "count": 1
     },
     {
@@ -118,11 +118,6 @@
     {
      "old": "\t\treturn utils::io::file_exists(utils::string::va(\"usermaps\\\\%s\\\\%s.ff\", name.data(), name.data()));\n",
      "new": "\t\t// Studio: the engine asks for `patch_<map>` after the map's techsets zone; it exists when the usermap carries that file.\n\t\tconst auto patch_zone = usermap_base::patch_zone_path(name);\n\t\tif (!patch_zone.empty() && utils::io::file_exists(patch_zone))\n\t\t{\n\t\t\treturn true;\n\t\t}\n\n\t\treturn utils::io::file_exists(utils::string::va(\"usermaps\\\\%s\\\\%s.ff\", name.data(), name.data()));\n",
-     "count": 1
-    },
-    {
-     "old": "\t\t\treturn db_load_x_zone_hook.invoke<void>(parent_name, zone_flags, is_base_map, failure_mode);\n",
-     "new": "\t\t\tdb_load_x_zone_hook.invoke<void>(parent_name, zone_flags, is_base_map, failure_mode);\n\n\t\t\t// F9 (docs/USERMAP-BASE.md): with paris_usermap_map_wins the base zones queue after the map's own zones: the zone linked first wins a name, so the map's assets win.\n\t\t\tparis_usermap_base::load_before(parent_name, load_base, usermap_base::base_phase::after);\n",
      "count": 1
     }
    ]

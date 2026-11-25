@@ -112,18 +112,14 @@ int main() {
         CHECK(is_base_hint_list("ncs_hnt_eng_patch_cp_town", { "cp_zmb", "cp_town" }));
     }
 
-    // F9: map wins = the base loads after the map, as an ordinary level zone
+    // F9: content wins for data tables only
     {
-        using usermap_base::base_phase;
-        CHECK(usermap_base::loads_in_phase(true, base_phase::after));
-        CHECK(!usermap_base::loads_in_phase(true, base_phase::before));
-        CHECK(usermap_base::loads_in_phase(false, base_phase::before));
-        CHECK(!usermap_base::loads_in_phase(false, base_phase::after));
-        usermap_base::load_mode resident;
-        resident.permanent = true;
-        resident.custom = true;
-        const auto won = usermap_base::map_wins_mode(resident);
-        CHECK(!won.permanent && won.custom);
+        CHECK(usermap_base::is_data_table_type(48));
+        CHECK(usermap_base::is_data_table_type(50));
+        CHECK(usermap_base::is_data_table_type(58));
+        CHECK(!usermap_base::is_data_table_type(49));
+        CHECK(!usermap_base::is_data_table_type(18));
+        CHECK(!usermap_base::is_data_table_type(8));
         CHECK(usermap_base::is_map_own_zone("cp_iwz", "cp_iwz"));
         CHECK(usermap_base::is_map_own_zone("patch_cp_iwz", "cp_iwz"));
         CHECK(usermap_base::is_map_own_zone("PATCH_CP_IWZ", "cp_iwz"));
