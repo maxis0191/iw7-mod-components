@@ -755,6 +755,22 @@
       ]
     },
     {
+      "id": "client_commit_budget_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/client_commit_budget_test.py"
+      ],
+      "inputs": [
+        "src/native/agent_capacity.cpp",
+        "src/native/agent_capacity.hpp",
+        "tests/ops/client_commit_budget_test.py"
+      ],
+      "lists": [
+        "tests/ops/*"
+      ]
+    },
+    {
       "id": "agent_capacity_sites_test",
       "command": [
         "python",
