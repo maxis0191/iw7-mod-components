@@ -75,11 +75,11 @@ def walk(pid):
     return h, pmc, regions
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("pid", type=int); ap.add_argument("--top", type=int, default=30); ap.add_argument("--json"); ap.add_argument("--peek", type=int, default=0, metavar="MB", help="print the first bytes of up to 6 private allocations of this size class (MB, committed)"); ap.add_argument("--resident", action="store_true", help="also count the pages of each top allocation that are in the working set (slower)")
+    ap = argparse.ArgumentParser(); ap.add_argument("pid", type=int); ap.add_argument("--top", type=int, default=30); ap.add_argument("--json"); ap.add_argument("--peek", type=int, default=0, metavar="MB", help="print the first bytes of up to 6 private allocations of this size class (MB, committed)"); ap.add_argument("--resident-all", action="store_true", help="resident vs committed of every private allocation, by size class (slow: 2M pages)"); ap.add_argument("--resident", action="store_true", help="also count the pages of each top allocation that are in the working set (slower)")
     a = ap.parse_args()
     h, pmc, regs = walk(a.pid)
-    print("pid %d: private(commit) %.2f GB, pagefile-usage %.2f GB, working set %.2f GB, peak ws %.2f GB" %
-          (a.pid, pmc.PrivateUsage / GB, pmc.PagefileUsage / GB, pmc.WorkingSetSize / GB, pmc.PeakWorkingSetSize / GB))
+    print("pid %d: private(commit) %.2f GB, PEAK commit %.2f GB, working set %.2f GB, peak ws %.2f GB" %
+          (a.pid, pmc.PrivateUsage / GB, pmc.PeakPagefileUsage / GB, pmc.WorkingSetSize / GB, pmc.PeakWorkingSetSize / GB))
     com = [r for r in regs if r["state"] == MEM_COMMIT]
     res = [r for r in regs if r["state"] == MEM_RESERVE]
     print("committed %.2f GB, reserved-only %.2f GB" % (sum(r["size"] for r in com) / GB, sum(r["size"] for r in res) / GB))
@@ -98,6 +98,19 @@ def main():
             g["res"] = sum(resident_pages(h, r["base"], r["size"]) * 4096 for r in com if r["alloc"] == g["alloc"])
     for g in top[:a.top]:
         print("  %016X %9.1f MB  %-7s %-8s span %9.1f MB  %s%s" % (g["alloc"], g["size"] / MB, g["type"], "/".join(sorted(g["prots"])), (g["last"] - g["first"]) / MB, g["name"], ("  resident %.1f MB" % (g["res"] / MB)) if "res" in g else ""))
+    if a.resident_all:
+        cls = {}
+        by_alloc = {}
+        for r in com:
+            if r["type"] == 0x20000: by_alloc.setdefault(r["alloc"], []).append(r)
+        print("private committed vs resident by allocation size class (MB):")
+        for alloc, rs in by_alloc.items():
+            size = sum(r["size"] for r in rs); res = sum(resident_pages(h, r["base"], r["size"]) * 4096 for r in rs)
+            name = "arena>=1GB-span" if (groups[alloc]["last"] - groups[alloc]["first"]) > (1 << 30) else ("%d MB" % round(size / MB) if size >= 8 * MB else "<8MB")
+            c = cls.setdefault(name, [0, 0, 0]); c[0] += 1; c[1] += size; c[2] += res
+        for name, (n, size, res) in sorted(cls.items(), key=lambda kv: -kv[1][1])[:14]:
+            print("  %-16s x%-4d committed %8.0f MB  resident %8.0f MB  untouched %8.0f MB" % (name, n, size / MB, res / MB, (size - res) / MB))
+        print("  TOTAL private committed %.0f MB resident %.0f MB untouched %.0f MB" % (sum(c[1] for c in cls.values()) / MB, sum(c[2] for c in cls.values()) / MB, sum(c[1] - c[2] for c in cls.values()) / MB))
     if a.peek:
         sel = [g for g in top if g["type"] == "Private" and round(g["size"] / MB) == a.peek][:6]
         for g in sel:
