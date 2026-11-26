@@ -16,6 +16,7 @@ products take some of them by exact path through their own dependency lists.
 - [docs/INDEX.md](docs/INDEX.md): which tool answers which question, how to run and build, which paths other
   products take, and which documents are history.
 - [AGENTS.md](AGENTS.md): the rules for agents working here.
+- Before every commit: `python -B ops/quality/fast_gate.py` (about 0.2 s; `--fix` classifies and sorts new files in `product.json`; `--install-hook` makes it an opt-in pre-commit hook of this clone). The full judge is `bootstrap.ps1` then `checks.ps1`.
 - The server repository's `docs/DEVKIT.md` and `docs/TOOLS-INDEX.md`: every tool of every product.
 
 ## Run the local judge
