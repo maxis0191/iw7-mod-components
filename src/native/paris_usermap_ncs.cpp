@@ -87,6 +87,20 @@ namespace paris_usermap_ncs
             return false;
         }
 
+        // A string table swapped on a CLIENT process ends the first level at once (client logs of 26 Nov 2026; bisected with `forge live start` on the reference build of Station Zero
+        // with the client fb706a8: the perk table alone: `ShutdownGame` one frame after `Game Initialization`, no first match; the five visions alone: the session starts). The
+        // headless servers take the swap without harm. Until the cause is read, string tables are swapped on a dedicated server only; the dvar paris_usermap_client_tables 1 allows them on a client.
+        bool table_swap_allowed(int type)
+        {
+            if (type != 50 || game::environment::is_dedi())
+            {
+                return true;
+            }
+
+            const auto* setting = game::Dvar_FindVar("paris_usermap_client_tables");
+            return setting != nullptr && setting->type == game::DVAR_TYPE_INT && setting->current.integer != 0;
+        }
+
         const char* entry_zone(const void* entry)
         {
             const auto slot = *reinterpret_cast<const std::uint16_t*>(reinterpret_cast<const std::uint8_t*>(entry) + 0x12);
@@ -95,7 +109,7 @@ namespace paris_usermap_ncs
 
         void drop_stub(void* thrown, void* existing, unsigned type)
         {
-            if (thrown != nullptr && existing != nullptr && thrown != existing && usermap_base::is_data_table_type(static_cast<int>(type)) && swap_enabled()
+            if (thrown != nullptr && existing != nullptr && thrown != existing && usermap_base::is_data_table_type(static_cast<int>(type)) && swap_enabled() && table_swap_allowed(static_cast<int>(type))
                 && !paris_usermap_base::current_usermap().empty() && !paris_usermap_base::current_wins().empty())
             {
                 const auto* loading = game::DB_Zones_GetZoneNameFromIndex(*reinterpret_cast<const int*>(loading_zone_index));
@@ -389,6 +403,7 @@ namespace paris_usermap_ncs
             game::Dvar_RegisterInt("paris_usermap_hint_filter", 1, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: keep the base's own hint string lists out of the 254 hint slots");
             game::Dvar_RegisterInt("paris_usermap_map_wins", 1, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: the base zones load as plain zones (not the base map: the level's world is the map's) and the map's listed data tables win (0 = the old behaviour)");
             register_hook.create(register_function, register_stub); // queued: main applies every queued hook after post_unpack
+            game::Dvar_RegisterInt("paris_usermap_client_tables", 0, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: also swap the map's string tables on a client (a perk table swap ends the first level there)");
             drop_hook.create(drop_function, drop_stub);
             ncs_pass_hook.create(ncs_pass_function, ncs_pass_stub);
             navlist_hook.create(navlist_function, navlist_stub);
