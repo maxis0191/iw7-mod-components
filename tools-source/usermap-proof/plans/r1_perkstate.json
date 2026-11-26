@@ -1,0 +1,22 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_perkstate",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "perk interaction state before any use: ref against full",
+ "libraries": [
+  "r1probe"
+ ],
+ "steps": [
+  {
+   "do": "wait",
+   "s": 3
+  },
+  {
+   "do": "call",
+   "fn": "r1_perkstate",
+   "args": [],
+   "s": 5
+  }
+ ]
+}

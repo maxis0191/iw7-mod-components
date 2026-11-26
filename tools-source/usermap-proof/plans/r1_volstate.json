@@ -1,0 +1,22 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_volstate",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "spawn volumes and the power area of a stock perk struct",
+ "libraries": [
+  "r1probe"
+ ],
+ "steps": [
+  {
+   "do": "wait",
+   "s": 3
+  },
+  {
+   "do": "call",
+   "fn": "r1_volstate",
+   "args": [],
+   "s": 12
+  }
+ ]
+}
