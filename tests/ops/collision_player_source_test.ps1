@@ -512,7 +512,7 @@ foreach($change in @('reused-server','reused-host','foreign-owner','wrong-lease'
     try{Assert-IW7CollisionPlayerOwnership $s $i $k $l $h 43}catch{$rejected++;continue};throw 'Ambiguous/reused ownership accepted.'
 }
 if($GscToolPath){
-    if((Get-FileHash -LiteralPath $GscToolPath).Hash -cne '1ADFD67414A9B886CBAD57EE0378F622EED485BCEF7711322AEE478E298FADCB'){throw 'Official pinned GSC parser differs.'}
+    if((Get-FileHash -LiteralPath $GscToolPath).Hash -cne '7F47E9D69BEF83924FEF3FFF4FB35D5BD1426FD1ECBA0798595621726D0F2842'){throw 'Official pinned GSC parser differs.'}
     $output=@(& $GscToolPath -m parse -g iw7 -s pc -y (Join-Path $root 'tests/fixtures/collision_player_contact.gsc') 2>&1)
     if($LASTEXITCODE -ne 0 -or ($output -join "`n") -match '\[ERROR\]|failed|exception' -or
         @($output|Where-Object{"$_" -match '^parsed iw7/collision_player_contact.gsc$'}).Count -ne 1){throw 'GSC source grammar failed.'}
