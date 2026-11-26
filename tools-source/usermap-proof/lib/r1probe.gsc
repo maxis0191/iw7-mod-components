@@ -109,3 +109,20 @@ r1_volext()
     foreach ( v in vols )
         print( "[IWZ local] GL PROBE name=ve_" + r1_f( v.basename ) + " x=" + r1_ext( v, 0 ) + " y=" + r1_ext( v, 1 ) + " z=" + r1_ext( v, 2 ) );
 }
+
+r1_nav()
+{
+    wait 6;
+    dest = getclosestpointonnavmesh( ( -528, 3880, 0 ) );
+    pts = [ ( 336, 3300, 8 ), ( -1136, 3480, 8 ), ( -400, 4300, 320 ), ( 262.875, 3300, 0.1 ), ( -1062.87, 3480, 0.1 ), ( -402.4, 4254, 0.1 ) ];
+    i = 0;
+    foreach ( p in pts )
+    {
+        s = getclosestpointonnavmesh( p );
+        d = -2;
+        if ( isdefined( s ) && isdefined( dest ) )
+            d = getpathdist( s, dest, 20000 );
+        print( "[IWZ local] GL PROBE name=nv" + i + " p=" + r1_f( p ) + " snap=" + r1_f( s ) + " dest=" + r1_f( dest ) + " pathdist=" + r1_f( d ) + " d3=" + r1_f( distance( p, dest ) ) );
+        i++;
+    }
+}

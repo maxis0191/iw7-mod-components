@@ -187,6 +187,12 @@ namespace paris_usermap_ncs
         void ents_apply()
         {
             ents_restore();
+            if (!paris_usermap_base::ents_pending())
+            {
+                return;
+            }
+
+            paris_usermap_base::ents_pending() = false;
             if (!swap_enabled() || paris_usermap_base::current_usermap().empty())
             {
                 return;

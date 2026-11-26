@@ -1,0 +1,25 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_to_stock",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "the usermap, then stock cp_zmb in the same cell",
+ "steps": [
+  {
+   "do": "wait",
+   "s": 60
+  },
+  {
+   "do": "cmd",
+   "text": "map cp_zmb"
+  },
+  {
+   "do": "wait",
+   "s": 120
+  },
+  {
+   "do": "wait",
+   "s": 120
+  }
+ ]
+}

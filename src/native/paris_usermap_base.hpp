@@ -35,6 +35,14 @@ namespace paris_usermap_base
 		return list;
 	}
 
+	// Set when the usermap's zone is loaded (its `.base` was read), cleared by the first NCS pass that used it: the shape bytes are written once per load of the usermap, never
+	// for the stock level that follows (the map's entries are still in the asset table then).
+	inline bool& ents_pending()
+	{
+		static bool pending = false;
+		return pending;
+	}
+
 	inline std::vector<std::string>& current_bases()
 	{
 		static std::vector<std::string> names;
@@ -78,6 +86,7 @@ namespace paris_usermap_base
 				current_usermap().clear();
 				current_bases().clear();
 				current_wins().clear();
+				ents_pending() = false;
 			}
 
 			return;
@@ -93,6 +102,7 @@ namespace paris_usermap_base
 		current_usermap() = zone_name;
 		current_bases().clear();
 		current_wins() = usermap_base::parse_wins(text);
+		ents_pending() = true;
 		for (const auto& zone : zones)
 		{
 			current_bases().push_back(zone.name);
