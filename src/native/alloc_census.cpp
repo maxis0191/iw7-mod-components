@@ -25,7 +25,9 @@ entry table[slots];
 std::atomic_flag guard = ATOMIC_FLAG_INIT;
 std::atomic<std::uint64_t> version{}, dropped{};
 std::uintptr_t system_lo[3], system_hi[3];
-utils::hook::detour nt_hook;
+utils::hook::detour nt_hook, nt_ex_hook;
+std::atomic<std::uint64_t> ex_count{};
+double before_mb{}; unsigned before_blocks{};
 std::atomic_bool running{true};
 
 bool system_frame(std::uintptr_t a) {
@@ -33,30 +35,50 @@ bool system_frame(std::uintptr_t a) {
     return false;
 }
 
-using nt_alloc = LONG(NTAPI*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+void record(SIZE_T size) {
+    void* frames[14]{};
+    const auto got = RtlCaptureStackBackTrace(1, 14, frames, nullptr);
+    std::uintptr_t key[3]{};
+    unsigned have = 0;
+    for (USHORT i = 0; i < got && have < 3; ++i) {
+        const auto a = reinterpret_cast<std::uintptr_t>(frames[i]);
+        if (have == 0 && system_frame(a)) continue;
+        key[have++] = a;
+    }
+    while (guard.test_and_set(std::memory_order_acquire)) {}
+    bool stored = false;
+    for (std::size_t i = 0; i < slots && !stored; ++i) {
+        auto& e = table[i];
+        if (!e.count) { e = {{key[0], key[1], key[2]}, size, 1}; stored = true; }
+        else if (e.size == size && e.frame[0] == key[0] && e.frame[1] == key[1] && e.frame[2] == key[2]) { ++e.count; stored = true; }
+    }
+    guard.clear(std::memory_order_release);
+    if (stored) ++version; else ++dropped;
+}
+
 LONG NTAPI nt_stub(HANDLE process, PVOID* base, ULONG_PTR zero_bits, PSIZE_T size, ULONG type, ULONG protect) {
     const auto status = nt_hook.invoke<LONG>(process, base, zero_bits, size, type, protect);
-    if (status >= 0 && (type & MEM_COMMIT) && process == GetCurrentProcess() && size && *size >= min_size) {
-        void* frames[14]{};
-        const auto got = RtlCaptureStackBackTrace(1, 14, frames, nullptr);
-        std::uintptr_t key[3]{};
-        unsigned have = 0;
-        for (USHORT i = 0; i < got && have < 3; ++i) {
-            const auto a = reinterpret_cast<std::uintptr_t>(frames[i]);
-            if (have == 0 && system_frame(a)) continue;
-            key[have++] = a;
-        }
-        while (guard.test_and_set(std::memory_order_acquire)) {}
-        bool stored = false;
-        for (std::size_t i = 0; i < slots && !stored; ++i) {
-            auto& e = table[i];
-            if (!e.count) { e = {{key[0], key[1], key[2]}, *size, 1}; stored = true; }
-            else if (e.size == *size && e.frame[0] == key[0] && e.frame[1] == key[1] && e.frame[2] == key[2]) { ++e.count; stored = true; }
-        }
-        guard.clear(std::memory_order_release);
-        if (stored) ++version; else ++dropped;
-    }
+    if (status >= 0 && (type & MEM_COMMIT) && process == GetCurrentProcess() && size && *size >= min_size) record(*size);
     return status;
+}
+// Windows 11: VirtualAlloc2, MapViewOfFile3 and some drivers use the Ex form.
+LONG NTAPI nt_ex_stub(HANDLE process, PVOID* base, PSIZE_T size, ULONG type, ULONG protect, PVOID extended, ULONG count) {
+    const auto status = nt_ex_hook.invoke<LONG>(process, base, size, type, protect, extended, count);
+    if (status >= 0 && (type & MEM_COMMIT) && process == GetCurrentProcess() && size && *size >= min_size) { ex_count.fetch_add(1); record(*size); }
+    return status;
+}
+
+// What was already committed when the hook went in (the blocks of 1 MB and more, private memory).
+void before_hook() {
+    std::uintptr_t address = 0;
+    MEMORY_BASIC_INFORMATION m{};
+    double total = 0; unsigned blocks = 0;
+    while (VirtualQuery(reinterpret_cast<void*>(address), &m, sizeof(m)) == sizeof(m)) {
+        if (m.State == MEM_COMMIT && m.Type == MEM_PRIVATE && m.RegionSize >= min_size) { total += static_cast<double>(m.RegionSize); ++blocks; }
+        address = reinterpret_cast<std::uintptr_t>(m.BaseAddress) + m.RegionSize;
+        if (address >= 0x7FFFFFFF0000ull) break;
+    }
+    before_mb = total / 1048576.0; before_blocks = blocks;
 }
 
 std::string where(std::uintptr_t a) {
@@ -83,6 +105,7 @@ void report() {
     std::sort(copy.begin(), copy.end(), [](const entry& a, const entry& b) { return a.size * a.count > b.size * b.count; });
     double total = 0;
     for (const auto& e : copy) total += static_cast<double>(e.size) * static_cast<double>(e.count);
+    console::info("[Alloc census] before the hook: %.0f MB in %u private blocks of 1 MB and more; Ex form calls seen: %llu\n", before_mb, before_blocks, ex_count.load());
     console::info("[Alloc census] %zu sites, %.0f MB committed in blocks of 1 MB and more (dropped %llu)\n", copy.size(), total / 1048576.0, dropped.load());
     for (std::size_t i = 0; i < copy.size() && i < 30; ++i) {
         const auto& e = copy[i];
@@ -119,7 +142,9 @@ public:
         }
         const auto function = reinterpret_cast<void*>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtAllocateVirtualMemory"));
         if (!function) { console::error("[Alloc census] NtAllocateVirtualMemory not found\n"); return; }
+        before_hook();
         nt_hook.create(function, reinterpret_cast<void*>(&nt_stub));
+        if (const auto ex = GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtAllocateVirtualMemoryEx")) nt_ex_hook.create(reinterpret_cast<void*>(ex), reinterpret_cast<void*>(&nt_ex_stub));
         CreateThread(nullptr, 0, reporter, nullptr, 0, nullptr);
     }
 };

@@ -141,3 +141,36 @@ Rebuild and rerun for the lead: build the branch, `forge live start --map cp_zmb
 wait for ready, read the `[Alloc census]` lines of the client log (`<cell>/client.stdout.log`). The top lines say which function commits the
 5.375 MB, 16 MB, 32 MB, 64 MB blocks. Then the lazy commit is moved to that caller (same invariant: reserve, commit what the owner has touched). The caveat
 stays: a caller that hands the whole block to the kernel (file reads into it) needs the commit before that call, not on first touch.
+
+## Census result and zero-page measurement (LZ, 27 Nov 2026, stock client, cp_zmb at ready, no -lazy-commit)
+
+Census (lead's run and mine agree): the big commits it sees are the engine's **PMem** commit function `FUN_140cf0cb0` (VirtualAlloc at `0x140CF0CF3`),
+called through `FUN_140cf0eb0` by `FUN_140a75290` (script/zone load buffers, `+A75592`), `FUN_140c75310` (sound buffers, `+C7542C`),
+`FUN_1404b6800` (`+4B698D`, 1/2/4 MB pages), `+CF0C75` (`FUN_140cf0bb0`, the PMem stack allocator) and `+51177D`. PMem is a stack allocator over a reserved
+42 GB arena (`DAT_147685xxx`, `g_mem`): its commit is exactly what was allocated, and it is **well used: of 2,452 MB committed in the arena, only
+88 MB are zero pages** (the sampler of `ops/memlab` said 833 MB "untouched" only because it counts pages not in the working set, which Windows trims on an
+idle client). PMem is therefore not a target, and several of its blocks are read into by the kernel (sound streaming buffers, `+C7542C`): they must stay
+committed.
+
+Measured by content, all committed private memory of the stock client read through `ReadProcessMemory`, pages that are entirely zero (a page the
+engine never wrote; `scratchpad/zero.py`-style scan, to be moved into `ops/memlab` when proven useful):
+
+| Class of allocation | committed | zero pages |
+|---|---|---|
+| single block 16 to 64 MB | 2,243 MB | 2,037 MB |
+| several regions, over 16 MB (committed pieces inside a 16 to 32 MB reservation) | 1,792 MB | 1,507 MB |
+| single block 4 to 16 MB | 1,128 MB | 1,103 MB |
+| single block over 64 MB | 128 MB | 128 MB |
+| PMem arena | 2,452 MB | 88 MB |
+| several regions 4 to 16 MB | 807 MB | 12 MB |
+| total | 8,592 MB | 4,909 MB |
+
+So the 4.9 GB claim of worker CM holds by content (4.9 GB of zero pages), and the memory is in the **sparse pools of 4 to 64 MB**, whose profile per
+MB (a block is used in patches, with long zero runs; some hold block-compressed texture data) says they are sub-allocated by the engine, not dlmalloc
+mspaces (the first bytes of most are zeros, not an mstate). The census did not list them: they are committed **before `post_start`** or through the
+`Ex` form of the call. The census now says which: its first lines print "before the hook: N MB in M private blocks" (a walk at hook time) and the number of
+`NtAllocateVirtualMemoryEx` calls seen (that function is hooked too).
+
+Next run for the lead: rebuild the branch, `forge live start --map cp_zmb --exe <exe> --launch-arg -alloc-census --session lz_diag`, read the first
+`[Alloc census]` lines (before the hook, Ex calls) and the top sites; if the sparse pools were committed before `post_start`, the hook point has to move
+earlier (the mod's start, or patching them in the image at load); if via `Ex`, the table now lists their callers.
