@@ -1990,7 +1990,7 @@ public:
     void post_unpack() override {
         const auto agents = parse_count(L"-agent-capacity", 100);
         if (!agents) {
-            if (env_switch("snapshot-entities", L"IW7_SNAPSHOT_ENTITIES")) snapshot_only();
+            snapshot_only(); // PROOF BUILD ONLY
             return;
         }
         const auto parts = std::max<std::uint32_t>(parse_count(L"-scriptable-parts", 0), scriptable_parts(agents));
