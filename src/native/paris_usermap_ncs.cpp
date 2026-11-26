@@ -284,6 +284,29 @@ namespace paris_usermap_ncs
             ents_apply();
         }
 
+        // F9, the navigation world. The engine hands every navmesh asset that is linked (FUN_1405EAAD0, up to four, `maps/default.d3dbsp` excluded) to the navigation
+        // world of the level; the world keeps them in link order and the queries use the first one. A usermap's base zone is linked first, so the world of a reference build
+        // is Spaceland's (measured: runtime nav world 0 at 0x144E3C0A8 holds the base's data pointer at +0x238 and the map's at +0x240, count 2; the full build holds one mesh,
+        // count 1; `getclosestpointonnavmesh` at the spawn points snaps to z 1.17 and 4.5 against 0.0; the map's navmesh is 2.2 MB, the base's 0.65 MB). While the usermap is
+        // being loaded the base zones' navmeshes are not handed over.
+        constexpr std::uintptr_t navlist_function = 0x1405EAAD0ull;
+        utils::hook::detour navlist_hook;
+
+        void navlist_stub(const char** header)
+        {
+            if (header != nullptr && *header != nullptr && paris_usermap_base::nav_pending() && swap_enabled() && !paris_usermap_base::current_usermap().empty())
+            {
+                const std::string own = "maps/cp/" + paris_usermap_base::current_usermap() + ".d3dbsp";
+                if (usermap_base::same_zone_name(*header, own.data()) == false && std::strcmp(*header, "maps/default.d3dbsp") != 0)
+                {
+                    console::info("[usermap map wins] navmesh %s of a base zone is not handed to the navigation world (usermap %s)\n", *header, paris_usermap_base::current_usermap().data());
+                    return;
+                }
+            }
+
+            navlist_hook.invoke<void>(header);
+        }
+
         // The zone free: `list` = {pointer to the u16 zone slots, count}. When a slot of the usermap's own zones is on it, every swapped header goes back (only when the entry
         // still exists and still holds the header that was changed).
         void free_stub(void* table, void* mask, void* list)
@@ -300,6 +323,7 @@ namespace paris_usermap_ncs
 
                 if (map_goes)
                 {
+                    paris_usermap_base::nav_pending() = false;
                     ents_restore();
                     unsigned back = 0;
                     for (const auto& item : swapped)
@@ -351,6 +375,7 @@ namespace paris_usermap_ncs
             register_hook.create(register_function, register_stub); // queued: main applies every queued hook after post_unpack
             drop_hook.create(drop_function, drop_stub);
             ncs_pass_hook.create(ncs_pass_function, ncs_pass_stub);
+            navlist_hook.create(navlist_function, navlist_stub);
             free_hook.create(free_function, free_stub);
         }
     };

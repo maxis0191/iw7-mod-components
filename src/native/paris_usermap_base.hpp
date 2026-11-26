@@ -43,6 +43,14 @@ namespace paris_usermap_base
 		return pending;
 	}
 
+	// Set while a usermap with a base is being loaded (from its `.base` read until another top-level zone load or the free of its zones): the navmesh of a base zone is not
+	// handed to the navigation world then (paris_usermap_ncs.cpp, FUN_1405EAAD0).
+	inline bool& nav_pending()
+	{
+		static bool pending = false;
+		return pending;
+	}
+
 	inline std::vector<std::string>& current_bases()
 	{
 		static std::vector<std::string> names;
@@ -86,9 +94,11 @@ namespace paris_usermap_base
 				current_usermap().clear();
 				current_bases().clear();
 				current_wins().clear();
-				ents_pending() = false;
 			}
 
+			// another top-level zone load (a stock level, a zone command) is not the usermap's load
+			ents_pending() = false;
+			nav_pending() = false;
 			return;
 		}
 
@@ -103,6 +113,7 @@ namespace paris_usermap_base
 		current_bases().clear();
 		current_wins() = usermap_base::parse_wins(text);
 		ents_pending() = true;
+		nav_pending() = true;
 		for (const auto& zone : zones)
 		{
 			current_bases().push_back(zone.name);

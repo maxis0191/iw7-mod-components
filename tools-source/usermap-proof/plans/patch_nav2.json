@@ -1,0 +1,11 @@
+{
+ "schema": "iw7.forge-patch/1",
+ "about": "F9 experiment: nav world 0 first mesh := the map's navmesh data",
+ "edits": [
+  {
+   "at": "0x144e3c2e0",
+   "expect": "986700e409000000",
+   "bytes": "70d3fff309000000"
+  }
+ ]
+}
