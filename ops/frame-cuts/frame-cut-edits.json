@@ -107,7 +107,7 @@
     },
     {
      "old": "\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
-     "new": "\t\t\t// Studio gate G1: stock zones listed in usermaps/<map>/<map>.base load right before the map zone (paris_usermap_base.hpp).\n\t\t\tparis_usermap_base::load_before(parent_name, [&](const char* base_zone, const usermap_base::load_mode& mode)\n\t\t\t{\n\t\t\t\tdb_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map && !paris_usermap_base::map_wins_enabled(), failure_mode);\n\t\t\t});\n\n\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
+     "new": "\t\t\t// Studio gate G1: stock zones listed in usermaps/<map>/<map>.base load right before the map zone (paris_usermap_base.hpp).\n\t\t\tparis_usermap_base::load_before(parent_name, [&](const char* base_zone, const usermap_base::load_mode& mode)\n\t\t\t{\n\t\t\t\tdb_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map, failure_mode);\n\t\t\t});\n\n\t\t\tconsole::info(\"Loading zone %s\\n\", parent_name);\n",
      "count": 1
     },
     {

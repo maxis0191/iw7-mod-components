@@ -150,7 +150,7 @@ class UsermapBase(unittest.TestCase):
         self.assertLess(new.index('paris_usermap_base::load_before(parent_name'), new.index('Loading zone %s'))
         # a `nopatch` base zone loads with the custom flag (no patch_<zone>; the loader queues techsets_/cache_ by name), the others as the engine does
         self.assertIn('[&](const char* base_zone, const usermap_base::load_mode& mode)', new)
-        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map && !paris_usermap_base::map_wins_enabled(), failure_mode);', new)
+        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map, failure_mode);', new)
         self.assertIn('#include "paris_usermap_base.hpp"', new)
 
     def test_usermap_patch_zone_lookup(self):

@@ -47,7 +47,7 @@ class FastfilesEdit(unittest.TestCase):
     def test_the_callback_takes_a_mode_and_the_flags_come_from_the_policy(self):
         new = self.new_text()
         self.assertIn('[&](const char* base_zone, const usermap_base::load_mode& mode)', new)
-        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map && !paris_usermap_base::map_wins_enabled(), failure_mode);', new)
+        self.assertIn('db_load_x_zone_hook.invoke<void>(base_zone, usermap_base::load_flags(zone_flags, mode, game::DB_ZONE_CUSTOM), is_base_map, failure_mode);', new)
         self.assertNotIn('bool custom', new)
         self.assertLess(new.index('paris_usermap_base::load_before(parent_name'), new.index('Loading zone %s'))
 
@@ -132,7 +132,7 @@ class Policy(unittest.TestCase):
         ncs = read('src', 'native', 'paris_usermap_ncs.cpp')
         for needle in ('0x1406D52B0ull', 'is_base_hint_list', 'paris_usermap_hint_filter', 'REGISTER_COMPONENT(paris_usermap_ncs::component)'):
             self.assertIn(needle, ncs)
-        for needle in ('0x140A77D20ull', '0x140A76280ull', 'paris_usermap_map_wins', '[usermap map wins]', 'is_map_own_zone', 'is_data_table_type'):
+        for needle in ('0x140A77D20ull', '0x140A76280ull', 'paris_usermap_map_wins', '[usermap map wins]', 'is_map_own_zone', 'is_data_table_type', '0x1406D43C0ull', '0x158'):
             self.assertIn(needle, ncs)
         self.assertNotIn('base_phase', read('ops', 'frame-cuts', 'frame-cut-edits.json'))
         self.assertIn("'paris_usermap_ncs.cpp'", read('ops', 'Build-Voice.ps1'))

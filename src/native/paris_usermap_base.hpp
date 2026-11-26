@@ -61,15 +61,6 @@ namespace paris_usermap_base
 	// the flag again and queues only the zone itself). A `nopatch` line does that and queues the two extras the zone needs by hand, in the engine's order.
 	// `mode.permanent` = load the zone with the engine's DB_ZONE_PERMANENT flag alone (no level bit): the level's unload does not free it, so a reload of the map in the
 	// same process does not need it again (a `resident` line; the loader then skips the zone while the engine's zone table holds it, `zone_loaded`).
-	// F9 (docs/USERMAP-BASE.md): `paris_usermap_map_wins` 1 (default, registered by paris_usermap_ncs.cpp) loads the base zones as plain zones, not as the level's base map. The engine
-	// names the world assets of a base-map zone after the level (`maps/cp/<level>.d3dbsp`) and keeps one global header for each (clipmap 0x145D5F980, gfxworld 0x14820FD90): the zone
-	// loaded as base map first fills it with its Spaceland world, and the volumes and collision of a reference build were Spaceland's.
-	inline bool map_wins_enabled()
-	{
-		const auto* setting = game::Dvar_FindVar("paris_usermap_map_wins");
-		return !setting || setting->type != game::DVAR_TYPE_INT || setting->current.integer != 0;
-	}
-
 	inline void load_before(const char* zone_name, const std::function<void(const char*, const usermap_base::load_mode&)>& load)
 	{
 		// The list file itself is the switch: a dedicated server started with +map never sets the current usermap
