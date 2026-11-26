@@ -60,6 +60,8 @@ namespace paris_usermap_ncs
             int type{};
             std::string name;
             void* header{};
+            const std::uint8_t* entry{};
+            std::string holder;
             std::vector<std::uint8_t> base_bytes;
         };
 
@@ -119,6 +121,8 @@ namespace paris_usermap_ncs
                             item.type = static_cast<int>(type);
                             item.name = name;
                             item.header = existing;
+                            item.entry = reinterpret_cast<const std::uint8_t*>(entry);
+                            item.holder = holder;
                             item.base_bytes.assign(static_cast<const std::uint8_t*>(existing), static_cast<const std::uint8_t*>(existing) + size);
                             swapped.push_back(std::move(item));
                         }
@@ -315,10 +319,22 @@ namespace paris_usermap_ncs
             {
                 const auto* slots = *reinterpret_cast<const std::uint16_t* const*>(list);
                 const auto count = *reinterpret_cast<const std::uint32_t*>(reinterpret_cast<const std::uint8_t*>(list) + 8);
+                // The first free call that touches the usermap's zones OR a zone that holds a swapped asset restores everything: a client leaving the level (the
+                // mode switch to the front end) frees the permanent base zones before or with the map's zone, and a restore after that finds nothing.
                 auto map_goes = false;
                 for (std::uint32_t i = 0; slots != nullptr && i < count && i < 512; ++i)
                 {
-                    map_goes = map_goes || usermap_base::is_map_own_zone(game::DB_Zones_GetZoneNameFromIndex(slots[i]), paris_usermap_base::current_usermap());
+                    const auto* going = game::DB_Zones_GetZoneNameFromIndex(slots[i]);
+                    map_goes = map_goes || usermap_base::is_map_own_zone(going, paris_usermap_base::current_usermap());
+                    for (const auto& item : swapped)
+                    {
+                        map_goes = map_goes || (going != nullptr && usermap_base::same_zone_name(going, item.holder.data()));
+                    }
+
+                    for (const auto& item : ents_patched)
+                    {
+                        map_goes = map_goes || (going != nullptr && usermap_base::same_zone_name(going, item.zone.data()));
+                    }
                 }
 
                 if (map_goes)
@@ -328,8 +344,8 @@ namespace paris_usermap_ncs
                     unsigned back = 0;
                     for (const auto& item : swapped)
                     {
-                        const auto* entry = game::DB_AssetEntryTable_FindAsset(reinterpret_cast<void*>(asset_table), item.name.data(), static_cast<game::XAssetType>(item.type));
-                        if (entry != nullptr && *reinterpret_cast<void* const*>(entry) == item.header)
+                        // the entry itself (stored at the swap), not a lookup by name: the header now carries the map's name pointer
+                        if (item.entry != nullptr && *reinterpret_cast<void* const*>(item.entry) == item.header && item.entry[0x11] == static_cast<std::uint8_t>(item.type))
                         {
                             std::memcpy(item.header, item.base_bytes.data(), item.base_bytes.size());
                             ++back;
