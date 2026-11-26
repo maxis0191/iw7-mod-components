@@ -216,5 +216,13 @@ class SnapshotRows(unittest.TestCase):
         self.assertEqual(clash, [])
 
 
+    def test_snapshot_entities_default_on_with_opt_out(self):
+        # FE21: a usermap client ended its level at the 769th snapshot record; the cap is raised unless -no-snapshot-entities / IW7_SNAPSHOT_ENTITIES=0
+        text = self.cpp if isinstance(self.cpp, str) else open(os.path.join(ROOT, 'src', 'native', 'agent_capacity.cpp'), encoding='utf-8').read()
+        self.assertIn('has_flag("no-snapshot-entities")', text)
+        self.assertIn('env_off(L"IW7_SNAPSHOT_ENTITIES")', text)
+        self.assertNotIn('if (env_switch("snapshot-entities", L"IW7_SNAPSHOT_ENTITIES")) snapshot_only();', text)
+
+
 if __name__ == '__main__':
     unittest.main()
