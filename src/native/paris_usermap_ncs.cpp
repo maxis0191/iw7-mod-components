@@ -63,6 +63,7 @@ namespace paris_usermap_ncs
             const std::uint8_t* entry{};
             std::string holder;
             std::vector<std::uint8_t> base_bytes;
+            std::vector<std::uint8_t> owned;
         };
 
         std::vector<swapped_asset> swapped;
@@ -98,13 +99,111 @@ namespace paris_usermap_ncs
             }
 
             const auto* setting = game::Dvar_FindVar("paris_usermap_client_tables");
-            return setting != nullptr && setting->type == game::DVAR_TYPE_INT && setting->current.integer != 0;
+            return setting == nullptr || setting->type != game::DVAR_TYPE_INT || setting->current.integer != 0;
         }
 
         const char* entry_zone(const void* entry)
         {
             const auto slot = *reinterpret_cast<const std::uint16_t*>(reinterpret_cast<const std::uint8_t*>(entry) + 0x12);
             return slot == 0 ? nullptr : game::DB_Zones_GetZoneNameFromIndex(slot);
+        }
+
+        // The thrown asset is reclaimed by the engine right after the drop (its name, rows, strings and buffers are stream memory that the next assets reuse: RB2, the swapped
+        // table's name read ",ncs_acl_level" a moment later). The swapped header therefore keeps the BASE's own name pointer and points at a copy of the map's data that this
+        // component owns. Layouts: StringTable {name, columns, rows, cells* (string*, hash)}, RawFile {name, compressedLen, len, buffer},
+        // NetConstStrings {name, type, source, flags, count, strings**}.
+        std::size_t bounded_length(const char* text)
+        {
+            return text == nullptr ? 0 : strnlen(text, 8192) + 1;
+        }
+
+        bool own_the_data(int type, std::uint8_t* header, std::vector<std::uint8_t>& owned)
+        {
+            if (type == 50)
+            {
+                const auto columns = *reinterpret_cast<const std::int32_t*>(header + 8);
+                const auto rows = *reinterpret_cast<const std::int32_t*>(header + 12);
+                auto* cells = *reinterpret_cast<std::uint8_t**>(header + 16);
+                if (columns <= 0 || rows <= 0 || cells == nullptr || static_cast<std::int64_t>(columns) * rows > 1000000)
+                {
+                    return false;
+                }
+
+                const auto count = static_cast<std::size_t>(columns) * static_cast<std::size_t>(rows);
+                std::size_t total = count * 16;
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    total += bounded_length(*reinterpret_cast<const char* const*>(cells + i * 16));
+                }
+
+                owned.assign(total, 0);
+                auto* text = owned.data() + count * 16;
+                std::memcpy(owned.data(), cells, count * 16);
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    const auto* source = *reinterpret_cast<const char* const*>(cells + i * 16);
+                    const auto length = bounded_length(source);
+                    *reinterpret_cast<const char**>(owned.data() + i * 16) = source == nullptr ? nullptr : reinterpret_cast<const char*>(text);
+                    if (length != 0)
+                    {
+                        std::memcpy(text, source, length - 1);
+                        text += length;
+                    }
+                }
+
+                *reinterpret_cast<std::uint8_t**>(header + 16) = owned.data();
+                return true;
+            }
+
+            if (type == 48)
+            {
+                const auto compressed = *reinterpret_cast<const std::int32_t*>(header + 8);
+                const auto length = *reinterpret_cast<const std::int32_t*>(header + 12);
+                const auto* buffer = *reinterpret_cast<const std::uint8_t* const*>(header + 16);
+                const auto size = compressed > 0 ? static_cast<std::size_t>(compressed) : static_cast<std::size_t>(length) + 1;
+                if (buffer == nullptr || length < 0 || size > 64u * 1024u * 1024u)
+                {
+                    return false;
+                }
+
+                owned.assign(buffer, buffer + size);
+                *reinterpret_cast<const std::uint8_t**>(header + 16) = owned.data();
+                return true;
+            }
+
+            if (type == 58)
+            {
+                const auto count = *reinterpret_cast<const std::uint32_t*>(header + 20);
+                const auto* const* list = *reinterpret_cast<const char* const* const*>(header + 24);
+                if (count == 0 || count > 1000000 || list == nullptr)
+                {
+                    return false;
+                }
+
+                std::size_t total = static_cast<std::size_t>(count) * 8;
+                for (std::uint32_t i = 0; i < count; ++i)
+                {
+                    total += bounded_length(list[i]);
+                }
+
+                owned.assign(total, 0);
+                auto* text = owned.data() + static_cast<std::size_t>(count) * 8;
+                for (std::uint32_t i = 0; i < count; ++i)
+                {
+                    const auto length = bounded_length(list[i]);
+                    reinterpret_cast<const char**>(owned.data())[i] = list[i] == nullptr ? nullptr : reinterpret_cast<const char*>(text);
+                    if (length != 0)
+                    {
+                        std::memcpy(text, list[i], length - 1);
+                        text += length;
+                    }
+                }
+
+                *reinterpret_cast<const char***>(header + 24) = reinterpret_cast<const char**>(owned.data());
+                return true;
+            }
+
+            return false;
         }
 
         void drop_stub(void* thrown, void* existing, unsigned type)
@@ -142,6 +241,27 @@ namespace paris_usermap_ncs
                         }
 
                         std::memcpy(existing, thrown, static_cast<std::size_t>(size));
+                        {
+                            // the name stays the base's, the data is a copy that this component owns
+                            for (auto& item : swapped)
+                            {
+                                if (item.type == static_cast<int>(type) && item.name == name && item.base_bytes.size() >= 8)
+                                {
+                                    std::vector<std::uint8_t> owned;
+                                    const auto ok = own_the_data(static_cast<int>(type), static_cast<std::uint8_t*>(existing), owned);
+                                    *reinterpret_cast<const char**>(existing) = *reinterpret_cast<const char* const*>(item.base_bytes.data());
+                                    if (ok)
+                                    {
+                                        item.owned = std::move(owned);
+                                    }
+                                    else
+                                    {
+                                        console::warn("[usermap map wins] %s %s: the data could not be copied, the base's own content stays\n", game::g_assetNames[type], name);
+                                        std::memcpy(existing, item.base_bytes.data(), item.base_bytes.size());
+                                    }
+                                }
+                            }
+                        }
                         console::info("[usermap map wins] %s %s: the content of zone %s replaces the one of zone %s (put back when %s unloads)\n", game::g_assetNames[type], name,
                             loading, holder, loading);
                     }
@@ -325,6 +445,50 @@ namespace paris_usermap_ncs
             navlist_hook.invoke<void>(header);
         }
 
+        // Trace (dvar paris_usermap_trace 1): every lookup by name of the perk bit-mask table (RB2: the client's LUI lookup ends the level with "Unable to find the lookup table
+        // ... in the fastfile" when the table is swapped): the result, the hash bucket and the entries of its chain (index, type, zone slot, flags, header name, chain link).
+        constexpr std::uintptr_t find_function = 0x1403B57F0ull;
+        utils::hook::detour find_hook;
+        unsigned traced{};
+
+        void* find_stub(void* table, const char* name, unsigned type)
+        {
+            auto* result = find_hook.invoke<void*>(table, name, type);
+            if (name != nullptr && type == 50 && traced < 24 && std::strstr(name, "zombie_perks_bit_mask") != nullptr)
+            {
+                const auto* setting = game::Dvar_FindVar("paris_usermap_trace");
+                if (setting != nullptr && setting->type == game::DVAR_TYPE_INT && setting->current.integer != 0)
+                {
+                    ++traced;
+                    std::uint32_t hash = type;
+                    for (const auto* c = name; *c != '\0'; ++c)
+                    {
+                        hash = hash * 31u + static_cast<std::uint32_t>(static_cast<std::int8_t>(*c));
+                    }
+
+                    const auto bucket = hash % 0x19C00u;
+                    const auto* base = static_cast<const std::uint8_t*>(table);
+                    auto index = *reinterpret_cast<const std::uint32_t*>(base + 0x206388 + static_cast<std::uint64_t>(bucket) * 4);
+                    console::info("[usermap trace] find stringtable %s -> %p (slot %u) bucket %u first entry %u thread %lu\n", name, result,
+                        result != nullptr ? static_cast<unsigned>(*reinterpret_cast<const std::uint16_t*>(static_cast<const std::uint8_t*>(result) + 0x12)) : 0u, bucket, index,
+                        static_cast<unsigned long>(GetCurrentThreadId()));
+                    for (auto step = 0; index != 0 && step < 12; ++step)
+                    {
+                        const auto* e = base + static_cast<std::uint64_t>(index) * 0x14;
+                        game::XAssetHeader header{};
+                        header.data = *reinterpret_cast<void* const*>(e);
+                        const auto* hname = e[0x11] == 50 ? game::DB_GetXAssetHeaderName(static_cast<game::XAssetType>(50), header) : nullptr;
+                        console::info("[usermap trace]   entry %u type %u slot %u flags %02x header %p name '%s' next %u\n", index, static_cast<unsigned>(e[0x11]),
+                            static_cast<unsigned>(*reinterpret_cast<const std::uint16_t*>(e + 0x12)), static_cast<unsigned>(e[0x10]), header.data, hname != nullptr ? hname : "-",
+                            *reinterpret_cast<const std::uint32_t*>(e + 8));
+                        index = *reinterpret_cast<const std::uint32_t*>(e + 8);
+                    }
+                }
+            }
+
+            return result;
+        }
+
         // The zone free: `list` = {pointer to the u16 zone slots, count}. When a slot of the usermap's own zones is on it, every swapped header goes back (only when the entry
         // still exists and still holds the header that was changed).
         void free_stub(void* table, void* mask, void* list)
@@ -403,7 +567,9 @@ namespace paris_usermap_ncs
             game::Dvar_RegisterInt("paris_usermap_hint_filter", 1, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: keep the base's own hint string lists out of the 254 hint slots");
             game::Dvar_RegisterInt("paris_usermap_map_wins", 1, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: the base zones load as plain zones (not the base map: the level's world is the map's) and the map's listed data tables win (0 = the old behaviour)");
             register_hook.create(register_function, register_stub); // queued: main applies every queued hook after post_unpack
-            game::Dvar_RegisterInt("paris_usermap_client_tables", 0, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: also swap the map's string tables on a client (a perk table swap ends the first level there)");
+            game::Dvar_RegisterInt("paris_usermap_client_tables", 1, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: also swap the map's string tables on a client (a perk table swap ends the first level there)");
+            game::Dvar_RegisterInt("paris_usermap_trace", 0, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: log every lookup of the perk bit-mask table (the asset chain of its hash bucket)");
+            find_hook.create(find_function, find_stub);
             drop_hook.create(drop_function, drop_stub);
             ncs_pass_hook.create(ncs_pass_function, ncs_pass_stub);
             navlist_hook.create(navlist_function, navlist_stub);
