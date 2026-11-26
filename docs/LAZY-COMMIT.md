@@ -116,3 +116,28 @@ appears, `-paris-crash-memory` gives the dump and the first-chance access violat
 
 No flag, no effect: the component does nothing without `-lazy-commit`. With the flag, a failed check at start (the two call sites are not `call [VirtualAlloc]`,
 no slot memory in reach) logs `[Lazy commit] not active: <reason>` and changes nothing.
+
+## A/B result of 27 Nov 2026 and the finding (LZ)
+
+The lead's A/B (cp_zmb at ready): stable (Arcade r13 batch 4/4, conditions-zmb pass) but **no saving**: commit 10.45 GB stock vs 10.13 GB lazy.
+Diagnosis on a live session (`forge live start ... --launch-arg -lazy-commit`, cell with the lead's exe, vmmap of the client):
+
+- The hooks are installed (peek: both call sites patched, `FUN_140ead190` detoured; the log has the ready line as its first line) and the code works:
+  30 lazy blocks exist (1 x 16 MB, 29 x 32 MB, each with its 64 KB reserved pad), 80 MB not committed. So the mechanism is sound and the two
+  call sites are **not where most of the committed-untouched memory comes from**.
+- The client at that moment had 15.4 GB of private commit, 10.7 GB of it untouched (resident 4.7 GB). By block shape (allocations of one region,
+  fully committed, exact sizes): 204 x 5.375 MB (1.1 GB), 41 x 16 MB, 10 x 64 MB (all zero, 1 MB resident), 12 x 32 MB, 54 x 4 MB, 1 x 128 MB;
+  and about 400 blocks of 16 to 32 MB with interleaved committed/reserved pieces (the NT heap's segments and the engine's own page pool,
+  `FUN_140cf0cb0`, already commit on demand). The 42 GB arena (PMem) is 2.45 GB committed, 0.8 GB untouched.
+- Static search of the whole decompiled image finds no other `VirtualAlloc` than the five known sites, so the other big blocks come through the CRT
+  heap (`HeapAlloc` large blocks), another API, or the three sites running before the component's hooks.
+
+So the next step is a measurement, not a guess: `src/native/alloc_census.cpp` (`-alloc-census`, compiled in, inert without the flag) hooks
+`ntdll!NtAllocateVirtualMemory` from `post_start` (before the engine's code is unpacked), and records every successful commit of 1 MB or more with the
+first three call frames outside ntdll/kernelbase/kernel32 in a fixed table. It prints the top 30 sites by bytes (size x count, module+offset of the
+caller and its two callers) to the console log every 15 s when the table changed, and on the command `paris_alloc_census`.
+
+Rebuild and rerun for the lead: build the branch, `forge live start --map cp_zmb --exe <exe> --launch-arg -alloc-census --launch-arg -lazy-commit --session lz_diag`,
+wait for ready, read the `[Alloc census]` lines of the client log (`<cell>/client.stdout.log`). The top lines say which function commits the
+5.375 MB, 16 MB, 32 MB, 64 MB blocks. Then the lazy commit is moved to that caller (same invariant: reserve, commit what the owner has touched). The caveat
+stays: a caller that hands the whole block to the kernel (file reads into it) needs the commit before that call, not on first touch.

@@ -299,6 +299,7 @@
     "src/native/agent_capacity_sound.inc",
     "src/native/agent_capacity_state.inc",
     "src/native/agent_scenario.hpp",
+    "src/native/alloc_census.cpp",
     "src/native/avoidance_clip.hpp",
     "src/native/collision_provider.cpp",
     "src/native/collision_provider.hpp",
