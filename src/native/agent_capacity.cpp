@@ -1983,6 +1983,7 @@ void commit_plan() {
 // can no longer end a match that a map with many lights, models and scriptables fills past 768 (Station Zero + Underpass Arcade: 132 power lights, FE5).
 // The wire does not change (the entity number is 11 bits and the list ends with 0x7FF). The other agent capacity fields stay stock, so `active` stays false
 // and the wire contract is the stock one; both sides of a match must run it, a client without it keeps copying at most 768 records.
+// This file is compiled into a client only by Build-Voice -AgentCapacity: a build without that switch has no -snapshot-entities (measured 26 Nov 2026: cap still 768).
 void snapshot_only() {
     L = make(stock_agents, scriptable_parts(stock_agents));
     plan_snapshot();
@@ -1991,9 +1992,12 @@ void snapshot_only() {
     for (auto a : {0x1408646D1ull, 0x1408646EAull, 0x140864726ull, 0x1408648BDull}) add(a, 2 * 0x3DC78, 2 * l.snap_size());
     for (auto a : {0x14086470Dull, 0x14086471Full, 0x1408648E9ull, 0x1408648FBull, 0x14086C728ull}) add(a, 0x3DC78, l.snap_size());
     commit_plan();
-    console::info("[agent capacity] snapshot entities only: cap %u (stock 768), lists %u, server ring %u records a frame + %u a client, client ring %u a frame, %zu fields, "
-        "cgame entity array at +0x%X, object %u bytes\n", snapshot_entities, snapshot_entities, ring_frame_term, snapshot_entities, client_ring_per_frame, snapshot_rows,
-        L.snap_entity_offset(), L.snap_size());
+    // the console is not up in post_unpack: the line is queued like the ones of the full path
+    scheduler::once([] {
+        console::info("[agent capacity] snapshot entities only: cap %u (stock 768), lists %u, server ring %u records a frame + %u a client, client ring %u a frame, %zu fields, "
+            "cgame entity array at +0x%X, object %u bytes\n", snapshot_entities, snapshot_entities, ring_frame_term, snapshot_entities, client_ring_per_frame, snapshot_rows,
+            L.snap_entity_offset(), L.snap_size());
+    }, scheduler::main);
 }
 
 class component final : public component_interface {
