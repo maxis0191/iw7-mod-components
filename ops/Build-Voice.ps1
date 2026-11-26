@@ -312,7 +312,7 @@ if (Test-Path -LiteralPath $labComponent) {
 }
 $nativeSources = @('paris_country.cpp','paris_identity.cpp','paris_chat.hpp','paris_test_fixture.cpp','paris_test_safety.hpp','dvar_metadata.hpp','agent_scenario.hpp',
     'paris_model_diagnostics.cpp','paris_model_diagnostics.hpp','paris_incident.cpp','paris_incident.hpp','paris_afk.cpp','paris_afk.hpp','afk_inactivity.hpp',
-    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp','paris_console_writer.hpp','paris_script_chain.hpp','paris_usermap_base.hpp','paris_usermap_ncs.cpp','usermap_base_policy.hpp','paris_weapon_log.cpp','script_canonical.cpp','script_canonical.hpp')
+    'paris_watch.cpp','paris_watch.hpp','paris_hang.cpp','paris_stack.hpp','paris_world.cpp','paris_ui.cpp','script_var_layout.hpp','paris_vm_filter.hpp','paris_log_stream.hpp','paris_log_stream.cpp','paris_console_writer.hpp','paris_script_chain.hpp','paris_usermap_base.hpp','paris_usermap_ncs.cpp','usermap_base_policy.hpp','paris_weapon_log.cpp','script_canonical.cpp','script_canonical.hpp','lazy_commit.cpp','lazy_commit_policy.hpp')
 # The console writer (docs/CONSOLE-WRITER.md) calls console.cpp edits that exist only at the ServerModules pin (ops/frame-cuts).
 if ($ServerModules) { $nativeSources += @('paris_doom.cpp','paris_doom.hpp','paris_console_writer.cpp') }
 else {

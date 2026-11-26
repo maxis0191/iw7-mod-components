@@ -771,6 +771,25 @@
       ]
     },
     {
+      "id": "lazy_commit_test",
+      "command": [
+        "python",
+        "-B",
+        "tests/ops/lazy_commit_test.py"
+      ],
+      "inputs": [
+        "docs/LAZY-COMMIT.md",
+        "src/native/lazy_commit.cpp",
+        "src/native/lazy_commit_policy.hpp",
+        "tests/native/lazy_commit_test.cpp",
+        "tests/ops/lazy_commit_test.py"
+      ],
+      "lists": [
+        "tests/ops/*",
+        "tests/native/*"
+      ]
+    },
+    {
       "id": "agent_capacity_sites_test",
       "command": [
         "python",
