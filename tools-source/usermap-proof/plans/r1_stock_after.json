@@ -1,0 +1,21 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_stock_after",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "F9 proof: after the usermap, the same server switches to stock cp_zmb; read the cell while it waits (ncswalk.py: ncs_efx_level must be the stock 349, hnt 252; hintdump.sh 252 slots). The plan itself ends GAME_ENDED/harness by design.",
+ "steps": [
+  {
+   "do": "wait",
+   "s": 3
+  },
+  {
+   "do": "cmd",
+   "text": "map cp_zmb"
+  },
+  {
+   "do": "wait",
+   "s": 45
+  }
+ ]
+}

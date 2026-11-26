@@ -1,0 +1,31 @@
+{
+ "schema": "iw7.gamelab-batch/1",
+ "name": "r1_five_full",
+ "runs": [
+  {
+   "name": "accept_doors",
+   "plan": "C:/Users/ezvalo/Documents/IW7-Runtime/iwz-stage2/finish/plans/accept/accept_doors.json",
+   "usermap": "C:/studio-data/r1/um/sz_full/cp_iwz"
+  },
+  {
+   "name": "accept_economy",
+   "plan": "C:/Users/ezvalo/Documents/IW7-Runtime/iwz-stage2/finish/plans/accept/accept_economy.json",
+   "usermap": "C:/studio-data/r1/um/sz_full/cp_iwz"
+  },
+  {
+   "name": "post_routes",
+   "plan": "C:/Users/ezvalo/Documents/IW7-Runtime/iwz-stage2/finish/plans/post_routes.json",
+   "usermap": "C:/studio-data/r1/um/sz_full/cp_iwz"
+  },
+  {
+   "name": "szf_rounds_start_closed",
+   "plan": "C:/Users/ezvalo/Documents/IW7-Runtime/iwz-stage2/finish/plans/szf_rounds_start_closed.json",
+   "usermap": "C:/studio-data/r1/um/sz_full/cp_iwz"
+  },
+  {
+   "name": "szf_rounds_05_06",
+   "plan": "C:/Users/ezvalo/Documents/IW7-Runtime/iwz-stage2/finish/plans/szf_rounds_05_06.json",
+   "usermap": "C:/studio-data/r1/um/sz_full/cp_iwz"
+  }
+ ]
+}

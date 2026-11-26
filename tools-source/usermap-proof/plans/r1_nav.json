@@ -1,0 +1,22 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_nav",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "nav path distance from the stuck spawn points to the ticket hall player, doors closed",
+ "libraries": [
+  "r1probe"
+ ],
+ "steps": [
+  {
+   "do": "wait",
+   "s": 3
+  },
+  {
+   "do": "call",
+   "fn": "r1_nav",
+   "args": [],
+   "s": 10
+  }
+ ]
+}

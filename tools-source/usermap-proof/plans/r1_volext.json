@@ -1,0 +1,22 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_volext",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "extent of the spawn volumes by point tests",
+ "libraries": [
+  "r1probe"
+ ],
+ "steps": [
+  {
+   "do": "wait",
+   "s": 3
+  },
+  {
+   "do": "call",
+   "fn": "r1_volext",
+   "args": [],
+   "s": 14
+  }
+ ]
+}

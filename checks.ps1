@@ -9,7 +9,7 @@ import os, re, sys
 root, mode = sys.argv[1], sys.argv[2]
 path = os.path.join(root, 'product.json')
 raw = open(path, 'rb').read()
-text = raw.decode('utf-8-sig')
+text = raw.decode('utf-8-sig').replace('\r\n', '\n')  # a checkout with core.autocrlf=true has CRLF: check the content, not the line ends
 m = re.search(r'("exports"\s*:\s*\[\n)(.*?)(\n[ \t]*\])', text, re.S)
 if not m:
     sys.exit('product.json: no "exports" list')

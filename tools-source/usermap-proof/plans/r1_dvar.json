@@ -1,0 +1,22 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_dvar",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "the value of paris_usermap_hint_filter in script",
+ "libraries": [
+  "r1probe"
+ ],
+ "steps": [
+  {
+   "do": "wait",
+   "s": 2
+  },
+  {
+   "do": "call",
+   "fn": "r1_dvar",
+   "args": [],
+   "s": 3
+  }
+ ]
+}

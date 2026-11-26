@@ -2,6 +2,8 @@
 
 #include <deque>
 #include <functional>
+#include <string>
+#include <vector>
 
 #include <std_include.hpp>
 
@@ -20,6 +22,41 @@
 // Called from the zone load stub of fastfiles.cpp (an edit in ops/frame-cuts/frame-cut-edits.json).
 namespace paris_usermap_base
 {
+	// The usermap whose `.base` list was read last and the zones on it (F8: paris_usermap_ncs.cpp filters the base's hint lists only while that map is loaded).
+	inline std::string& current_usermap()
+	{
+		static std::string name;
+		return name;
+	}
+
+	inline std::vector<usermap_base::win>& current_wins()
+	{
+		static std::vector<usermap_base::win> list;
+		return list;
+	}
+
+	// Set when the usermap's zone is loaded (its `.base` was read), cleared by the first NCS pass that used it: the shape bytes are written once per load of the usermap, never
+	// for the stock level that follows (the map's entries are still in the asset table then).
+	inline bool& ents_pending()
+	{
+		static bool pending = false;
+		return pending;
+	}
+
+	// Set while a usermap with a base is being loaded (from its `.base` read until another top-level zone load or the free of its zones): the navmesh of a base zone is not
+	// handed to the navigation world then (paris_usermap_ncs.cpp, FUN_1405EAAD0).
+	inline bool& nav_pending()
+	{
+		static bool pending = false;
+		return pending;
+	}
+
+	inline std::vector<std::string>& current_bases()
+	{
+		static std::vector<std::string> names;
+		return names;
+	}
+
 	// Is a zone of this name in the engine's zone table right now? The table is the engine's own truth (373 slots at 0x143A124F8, 0x478 bytes each, the name first): a
 	// resident zone that the engine freed (a mode switch unloads permanent zones too) is loaded again, one it still holds is not.
 	inline bool zone_loaded(const char* name)
@@ -52,6 +89,16 @@ namespace paris_usermap_base
 		std::string text;
 		if (!utils::io::read_file(utils::string::va("usermaps/%s/%s.base", zone_name, zone_name), &text))
 		{
+			if (current_usermap() == zone_name)
+			{
+				current_usermap().clear();
+				current_bases().clear();
+				current_wins().clear();
+			}
+
+			// another top-level zone load (a stock level, a zone command) is not the usermap's load
+			ents_pending() = false;
+			nav_pending() = false;
 			return;
 		}
 
@@ -60,6 +107,16 @@ namespace paris_usermap_base
 		for (const auto& name : rejected)
 		{
 			console::error("Base zone line '%s' for usermap %s is not a zone name (with the option nopatch), skipped\n", name.data(), zone_name);
+		}
+
+		current_usermap() = zone_name;
+		current_bases().clear();
+		current_wins() = usermap_base::parse_wins(text);
+		ents_pending() = true;
+		nav_pending() = true;
+		for (const auto& zone : zones)
+		{
+			current_bases().push_back(zone.name);
 		}
 
 		// the engine may keep the name pointer after the call
@@ -87,6 +144,7 @@ namespace paris_usermap_base
 			{
 				usermap_base::load_mode companion_mode;
 				companion_mode.permanent = zone.resident;
+
 				for (const auto& companion : usermap_base::companion_zones(zone.name))
 				{
 					if (fastfiles::exists(companion, true))

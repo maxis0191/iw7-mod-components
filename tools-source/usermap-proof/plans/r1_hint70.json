@@ -1,0 +1,46 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_hint70",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "70 new hint strings after the level loaded (reference build before the filter: 0 of 70). Slots used before the first hint: hintdump.sh <cell> after the run",
+ "libraries": [
+  "r1probe"
+ ],
+ "steps": [
+  {
+   "do": "wait",
+   "s": 3
+  },
+  {
+   "do": "call",
+   "fn": "r1_hintprobe",
+   "args": [
+    70
+   ],
+   "s": 6
+  },
+  {
+   "do": "call",
+   "fn": "r1_alive",
+   "args": [],
+   "s": 3
+  },
+  {
+   "do": "wait",
+   "s": 2
+  },
+  {
+   "do": "expect",
+   "that": "probe:hint70.done",
+   "eq": 70,
+   "why": "all 70 new hint strings registered"
+  },
+  {
+   "do": "expect",
+   "that": "probe:after.alive",
+   "eq": 1,
+   "why": "the level still runs after the 70 hints"
+  }
+ ]
+}

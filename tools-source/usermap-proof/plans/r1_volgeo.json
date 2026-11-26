@@ -1,0 +1,22 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_volgeo",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "geometry of the spawn volumes",
+ "libraries": [
+  "r1probe"
+ ],
+ "steps": [
+  {
+   "do": "wait",
+   "s": 3
+  },
+  {
+   "do": "call",
+   "fn": "r1_volgeo",
+   "args": [],
+   "s": 12
+  }
+ ]
+}

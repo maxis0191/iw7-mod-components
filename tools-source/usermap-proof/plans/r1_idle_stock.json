@@ -1,0 +1,13 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_idle_stock",
+ "map": "cp_zmb",
+ "conditions": "quiet",
+ "about": "stock cp_zmb loaded after a usermap in the same cell: hintdump.sh must show 252 slots again",
+ "steps": [
+  {
+   "do": "wait",
+   "s": 2
+  }
+ ]
+}

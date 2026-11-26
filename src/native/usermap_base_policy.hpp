@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -85,10 +86,119 @@ namespace usermap_base
 		return *a == *b;
 	}
 
+	// F9 (docs/USERMAP-BASE.md): the types whose content the engine or the stock scripts read BY NAME and that the map's copy must win: a raw file (48), a string table
+	// (50) and a netconststrings list (58). Header-only copies of these three are safe (plain structures); images, models and scripts are not copied.
+	inline bool is_data_table_type(int type)
+	{
+		return type == 48 || type == 50 || type == 58;
+	}
+
+	// Is the zone one of the usermap's own (its level zone or its patch zone)?
+	inline bool is_map_own_zone(const char* zone, const std::string& usermap)
+	{
+		if (zone == nullptr || usermap.empty())
+		{
+			return false;
+		}
+
+		return same_zone_name(zone, usermap.data()) || same_zone_name(zone, ("patch_" + usermap).data());
+	}
+
+	// F8 (docs/USERMAP-BASE.md, "the hint table of a reference build"): the engine registers EVERY loaded netconststrings asset, and the base zone brings its own
+	// language copies of the hint list (`ncs_hnt_<lang>_<base>` and `ncs_hnt_<lang>_patch_<base>`: 244 of the 254 hint slots for cp_zmb). Is this asset one of them?
+	// Only the hint kind (`hnt`): it is the one list that is capacity bound (255 slots, 252 used by the base; every other kind is far below its table, measured).
+	inline bool is_base_hint_list(const char* asset_name, const std::vector<std::string>& base_zones)
+	{
+		if (asset_name == nullptr || std::strncmp(asset_name, "ncs_hnt_", 8) != 0)
+		{
+			return false;
+		}
+
+		const std::string rest = asset_name + 8;
+		const auto cut = rest.find('_');
+		if (cut == std::string::npos || cut == 0 || cut + 1 >= rest.size())
+		{
+			return false;
+		}
+
+		const auto language = rest.substr(0, cut);
+		for (const auto c : language)
+		{
+			if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')))
+			{
+				return false;
+			}
+		}
+
+		const auto zone = rest.substr(cut + 1);
+		for (const auto& base : base_zones)
+		{
+			if (zone == base || zone == "patch_" + base)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	// Names of the zones the loader adds by hand for a `nopatch` zone, in the engine's own order (techsets_ first, cache_ next); the zone itself follows.
 	inline std::vector<std::string> companion_zones(const std::string& zone)
 	{
 		return { "techsets_" + zone, "cache_" + zone };
+	}
+
+	// F9: a `.base` line `!<type> <name>` lists an asset that the build edited under a stock name and that must keep the map's content (type: rawfile, stringtable, netconststrings).
+	// Only the listed assets are swapped (the first run swapped all 33 same-named tables and the level did not start).
+	struct win
+	{
+		int type = 0;
+		std::string name;
+	};
+
+	inline int win_type(const std::string& word)
+	{
+		return word == "rawfile" ? 48 : word == "stringtable" ? 50 : word == "netconststrings" ? 58 : 0;
+	}
+
+	inline std::vector<win> parse_wins(const std::string& text)
+	{
+		std::vector<win> wins;
+		std::size_t begin = 0;
+		while (begin <= text.size())
+		{
+			auto end = text.find('\n', begin);
+			if (end == std::string::npos)
+			{
+				end = text.size();
+			}
+
+			auto line = text.substr(begin, end - begin);
+			begin = end + 1;
+			while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
+			{
+				line.pop_back();
+			}
+
+			if (line.size() < 4 || line[0] != '!')
+			{
+				continue;
+			}
+
+			const auto gap = line.find(' ');
+			if (gap == std::string::npos || gap + 1 >= line.size())
+			{
+				continue;
+			}
+
+			const auto type = win_type(line.substr(1, gap - 1));
+			if (type != 0)
+			{
+				wins.push_back({ type, line.substr(gap + 1) });
+			}
+		}
+
+		return wins;
 	}
 
 	// Lines in file order; blank lines, comments, a trailing CR or blanks, a UTF-8 byte order mark and repeated names are dropped (a repeat with an
@@ -126,7 +236,7 @@ namespace usermap_base
 			}
 			line.erase(0, start);
 
-			if (line.empty() || line.compare(0, 2, "//") == 0)
+			if (line.empty() || line.compare(0, 2, "//") == 0 || line[0] == '!')
 			{
 				continue;
 			}

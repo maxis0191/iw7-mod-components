@@ -1,0 +1,44 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_stock_hints",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "two stock hint keys set by script; read the slots with hintdump.sh",
+ "libraries": [
+  "r1probe"
+ ],
+ "steps": [
+  {
+   "do": "wait",
+   "s": 3
+  },
+  {
+   "do": "call",
+   "fn": "r1_stock_hints",
+   "args": [],
+   "s": 6
+  },
+  {
+   "do": "call",
+   "fn": "r1_alive",
+   "args": [],
+   "s": 3
+  },
+  {
+   "do": "wait",
+   "s": 2
+  },
+  {
+   "do": "expect",
+   "that": "probe:stock.done",
+   "eq": 2,
+   "why": "a perk machine key and a wall buy key set by script"
+  },
+  {
+   "do": "expect",
+   "that": "probe:after.alive",
+   "eq": 1,
+   "why": "the level still runs"
+  }
+ ]
+}

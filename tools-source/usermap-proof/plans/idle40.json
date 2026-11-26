@@ -1,0 +1,8 @@
+{
+ "schema": "iw7.gamelab-plan/1",
+ "name": "r1_idle40",
+ "map": "cp_iwz",
+ "conditions": "quiet",
+ "about": "a loaded level to read the hint config strings from outside",
+ "steps": [ {"do": "wait", "s": 40} ]
+}

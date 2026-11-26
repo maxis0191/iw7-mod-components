@@ -93,6 +93,47 @@ int main() {
     CHECK(usermap_base::patch_zone_path("").empty());
 
     if (failures) { std::printf("%d failure(s)\n", failures); return 1; }
+    // F8: the base's own hint lists, and nothing else
+    {
+        const std::vector<std::string> bases = { "cp_zmb" };
+        using usermap_base::is_base_hint_list;
+        CHECK(is_base_hint_list("ncs_hnt_eng_cp_zmb", bases));
+        CHECK(is_base_hint_list("ncs_hnt_eng_patch_cp_zmb", bases));
+        CHECK(is_base_hint_list("ncs_hnt_fre_cp_zmb", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_level", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_eng_code_post_gfx", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_common_mp", bases));
+        CHECK(!is_base_hint_list("ncs_loc_eng_cp_zmb", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_eng_cp_zmb2", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_eng_", bases));
+        CHECK(!is_base_hint_list("ncs_hnt__cp_zmb", bases));
+        CHECK(!is_base_hint_list("ncs_hnt_eng_cp_zmb", {}));
+        CHECK(!is_base_hint_list(nullptr, bases));
+        CHECK(is_base_hint_list("ncs_hnt_eng_patch_cp_town", { "cp_zmb", "cp_town" }));
+    }
+
+    // F9: content wins for data tables only
+    {
+        const auto w = usermap_base::parse_wins("// c\ncp_zmb resident\n!stringtable cp/zombies/zombie_perks_bit_mask_table.csv\r\n!netconststrings ncs_efx_level\n!image foo\n!rawfile\n!rawfile vision/cp_zmb_alien.vision");
+        CHECK(w.size() == 3 && w[0].type == 50 && w[0].name == "cp/zombies/zombie_perks_bit_mask_table.csv" && w[1].type == 58 && w[1].name == "ncs_efx_level" && w[2].type == 48);
+        const auto z = usermap_base::parse_base_entries("cp_zmb resident\n!stringtable a.csv\ncp_town\n");
+        CHECK(z.size() == 2 && z[0].name == "cp_zmb" && z[0].resident && z[1].name == "cp_town");
+        CHECK(usermap_base::is_data_table_type(48));
+        CHECK(usermap_base::is_data_table_type(50));
+        CHECK(usermap_base::is_data_table_type(58));
+        CHECK(!usermap_base::is_data_table_type(49));
+        CHECK(!usermap_base::is_data_table_type(18));
+        CHECK(!usermap_base::is_data_table_type(8));
+        CHECK(usermap_base::is_map_own_zone("cp_iwz", "cp_iwz"));
+        CHECK(usermap_base::is_map_own_zone("patch_cp_iwz", "cp_iwz"));
+        CHECK(usermap_base::is_map_own_zone("PATCH_CP_IWZ", "cp_iwz"));
+        CHECK(!usermap_base::is_map_own_zone("cp_zmb", "cp_iwz"));
+        CHECK(!usermap_base::is_map_own_zone("patch_cp_zmb", "cp_iwz"));
+        CHECK(!usermap_base::is_map_own_zone("techsets_cp_iwz", "cp_iwz"));
+        CHECK(!usermap_base::is_map_own_zone(nullptr, "cp_iwz"));
+        CHECK(!usermap_base::is_map_own_zone("cp_iwz", ""));
+    }
+
     std::printf("usermap_base_test: ok\n");
     return 0;
 }
