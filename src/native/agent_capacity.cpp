@@ -1017,6 +1017,10 @@ bool env_switch(const char* flag, const wchar_t* env) {
     wchar_t v[8]{};
     return GetEnvironmentVariableW(env, v, 8) && v[0] == L'1';
 }
+bool env_off(const wchar_t* env) {
+    wchar_t v[8]{};
+    return GetEnvironmentVariableW(env, v, 8) && v[0] == L'0';
+}
 std::uint32_t parse_count(const wchar_t* flag, std::uint32_t fallback);
 // -scriptable-records N, else IW7_SCRIPTABLE_RECORDS=N (the gamelab runners pass no flags of their own): 0 = the default of the agent count.
 std::uint32_t requested_records() {
@@ -1990,7 +1994,9 @@ public:
     void post_unpack() override {
         const auto agents = parse_count(L"-agent-capacity", 100);
         if (!agents) {
-            if (env_switch("snapshot-entities", L"IW7_SNAPSHOT_ENTITIES")) snapshot_only();
+            // On by default (FE21, 26 Nov 2026): a usermap that fills a client snapshot past 768 records (Station Zero + Arcade, 132 power lights, then one more
+            // entity of a perk) ends the level with "Lost connection to host" (sv_errorOnMaxSnapshotEntities). Off only by -no-snapshot-entities or IW7_SNAPSHOT_ENTITIES=0.
+            if (!utils::flags::has_flag("no-snapshot-entities") && !env_off(L"IW7_SNAPSHOT_ENTITIES")) snapshot_only();
             return;
         }
         const auto parts = std::max<std::uint32_t>(parse_count(L"-scriptable-parts", 0), scriptable_parts(agents));
@@ -2080,7 +2086,7 @@ public:
     }
 };
 
-// `-snapshot-entities` (or IW7_SNAPSHOT_ENTITIES=1) without `-agent-capacity`: only the snapshot entity rows (plan_snapshot) and the sizes of the client
+// Default on since FE21 (off: `-no-snapshot-entities` or IW7_SNAPSHOT_ENTITIES=0); `-snapshot-entities` (or IW7_SNAPSHOT_ENTITIES=1) is still accepted. Without `-agent-capacity`: only the snapshot entity rows (plan_snapshot) and the sizes of the client
 // snapshot object they need, at the stock agent count. One client snapshot then holds up to 2,048 entity records instead of 768; sv_errorOnMaxSnapshotEntities
 // can no longer end a match that a map with many lights, models and scriptables fills past 768 (Station Zero + Underpass Arcade: 132 power lights, FE5).
 // The wire does not change (the entity number is 11 bits and the list ends with 0x7FF). The other agent capacity fields stay stock, so `active` stays false
