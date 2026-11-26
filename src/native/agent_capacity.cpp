@@ -323,6 +323,7 @@ void plan_archive() {
 }
 
 // ---- 3. client: character arrays of the cg object, snapshots carry every agent state -------------------------------
+void snapshot_object_sizes();
 void plan_client() {
     const auto& l = L;
     for (auto a : {0x1402409DAull, 0x140240A17ull, 0x140240A83ull, 0x140241AD9ull, 0x140241AF3ull, 0x140241BCCull,
@@ -335,8 +336,7 @@ void plan_client() {
     // image). The table moves to the tail of cg, after the flags, so it is zeroed with cg and freed with it.
     add(0x140946FD3, 0x70950, l.client_char_table());
     // CL_GetSnapshot copied min(numAgents, 24) agent states: zombies 25+ had entities but no model (invisible).
-    for (auto a : {0x1408646D1ull, 0x1408646EAull, 0x140864726ull, 0x1408648BDull}) add(a, 2 * 0x3DC78, 2 * l.snap_size());
-    for (auto a : {0x14086470Dull, 0x14086471Full, 0x1408648E9ull, 0x1408648FBull, 0x14086C728ull}) add(a, 0x3DC78, l.snap_size());
+    snapshot_object_sizes();
     for (auto a : {0x1408706ABull, 0x140873602ull, 0x1408738B3ull, 0x1409934BFull}) add(a, 0x38D48, 0x3DC78);
     add(0x1409934A4, stock_agents, l.agents);
     // SV snapshot buffers (sub_140C68A00): the two agent-state rings hold 24 states a snapshot frame
@@ -689,6 +689,12 @@ void plan_snapshot() {
         case snapshot_op::entity_offset: add(s.field, s.stock, l.snap_entity_offset(), s.width); break;
         }
     }
+}
+
+// The size of the client snapshot object at its nine users (CL_GetSnapshot / CG_SetNextSnap: two objects at four sites, one at five): the entity array sits behind it.
+void snapshot_object_sizes() {
+    for (auto a : {0x1408646D1ull, 0x1408646EAull, 0x140864726ull, 0x1408648BDull}) add(a, 2 * 0x3DC78, 2 * L.snap_size());
+    for (auto a : {0x14086470Dull, 0x14086471Full, 0x1408648E9ull, 0x1408648FBull, 0x14086C728ull}) add(a, 0x3DC78, L.snap_size());
 }
 
 // ---- 3c. the renderer's per-model parameter list: a full list skips the draw (a52) -------------------------------------------------
@@ -1978,28 +1984,7 @@ void commit_plan() {
         }
 }
 
-// `-snapshot-entities` (or IW7_SNAPSHOT_ENTITIES=1) without `-agent-capacity`: only the snapshot entity rows (plan_snapshot) and the sizes of the client
-// snapshot object they need, at the stock agent count. One client snapshot then holds up to 2,048 entity records instead of 768; sv_errorOnMaxSnapshotEntities
-// can no longer end a match that a map with many lights, models and scriptables fills past 768 (Station Zero + Underpass Arcade: 132 power lights, FE5).
-// The wire does not change (the entity number is 11 bits and the list ends with 0x7FF). The other agent capacity fields stay stock, so `active` stays false
-// and the wire contract is the stock one; both sides of a match must run it, a client without it keeps copying at most 768 records.
-// This file is compiled into a client only by Build-Voice -AgentCapacity: a build without that switch has no -snapshot-entities (measured 26 Nov 2026: cap still 768).
-void snapshot_only() {
-    L = make(stock_agents, scriptable_parts(stock_agents));
-    plan_snapshot();
-    // the client snapshot object (2 per CL_GetSnapshot / CG_SetNextSnap site) holds the entity array behind its stock members
-    const auto& l = L;
-    for (auto a : {0x1408646D1ull, 0x1408646EAull, 0x140864726ull, 0x1408648BDull}) add(a, 2 * 0x3DC78, 2 * l.snap_size());
-    for (auto a : {0x14086470Dull, 0x14086471Full, 0x1408648E9ull, 0x1408648FBull, 0x14086C728ull}) add(a, 0x3DC78, l.snap_size());
-    commit_plan();
-    // the console is not up in post_unpack: the line is queued like the ones of the full path
-    scheduler::once([] {
-        console::info("[agent capacity] snapshot entities only: cap %u (stock 768), lists %u, server ring %u records a frame + %u a client, client ring %u a frame, %zu fields, "
-            "cgame entity array at +0x%X, object %u bytes\n", snapshot_entities, snapshot_entities, ring_frame_term, snapshot_entities, client_ring_per_frame, snapshot_rows,
-            L.snap_entity_offset(), L.snap_size());
-    }, scheduler::main);
-}
-
+void snapshot_only();
 class component final : public component_interface {
 public:
     void post_unpack() override {
@@ -2094,6 +2079,26 @@ public:
         scheduler::loop(proxy_list_meter, scheduler::main, 500ms);
     }
 };
+
+// `-snapshot-entities` (or IW7_SNAPSHOT_ENTITIES=1) without `-agent-capacity`: only the snapshot entity rows (plan_snapshot) and the sizes of the client
+// snapshot object they need, at the stock agent count. One client snapshot then holds up to 2,048 entity records instead of 768; sv_errorOnMaxSnapshotEntities
+// can no longer end a match that a map with many lights, models and scriptables fills past 768 (Station Zero + Underpass Arcade: 132 power lights, FE5).
+// The wire does not change (the entity number is 11 bits and the list ends with 0x7FF). The other agent capacity fields stay stock, so `active` stays false
+// and the wire contract is the stock one; both sides of a match must run it, a client without it keeps copying at most 768 records.
+// This file is compiled into a client only by Build-Voice -AgentCapacity: a build without that switch has no -snapshot-entities (measured 26 Nov 2026: cap still 768).
+void snapshot_only() {
+    L = make(stock_agents, scriptable_parts(stock_agents));
+    plan_snapshot();
+    snapshot_object_sizes();   // the client snapshot object holds the entity array behind its stock members
+    commit_plan();
+    // the console is not up in post_unpack: the line is queued like the ones of the full path
+    scheduler::once([] {
+        console::info("[agent capacity] snapshot entities only: cap %u (stock 768), lists %u, server ring %u records a frame + %u a client, client ring %u a frame, %zu fields, "
+            "cgame entity array at +0x%X, object %u bytes\n", snapshot_entities, snapshot_entities, ring_frame_term, snapshot_entities, client_ring_per_frame, snapshot_rows,
+            L.snap_entity_offset(), L.snap_size());
+    }, scheduler::main);
+}
+
 }
 
 bool installed() noexcept { return active; }
