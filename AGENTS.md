@@ -10,6 +10,7 @@ never a prediction.
 
 Start here, in the server repository (iw7-paris-server): `docs/DEVKIT.md` says which tool answers which question; `docs/TOOLS-INDEX.md` (when it lands) lists every tool on every branch, merged or not; `docs/DEVKIT-PLAN.md` lists what exists, the holes and the open work; `docs/QUALITY-OBSERVATORY.md` says how problems are found without the owner.
 
+0. **Before every commit (seconds, not minutes):** `python -B ops/quality/fast_gate.py` (about 0.2 s, no bootstrap, no network) runs the ownership rules of the 5-minute judge: every tracked file listed in `product.json` exports (sorted, LF), no binary or forbidden-suffix source. `--fix` adds missing files to exports and sorts them; `--install-hook` makes it your pre-commit hook (opt-in, this clone only). The full `bootstrap.ps1` + `checks.ps1` is for the finished head, not for finding a missing export.
 1. Check the files first. Before any build or launch run the file checks for your kind of content (weapon audits
    and mod preflight for weapons; `iwz_emitcheck.py check|diff|route|at` for a map source; the build-log gate and
    the loader readback after a build). A build or a launch made to learn what a file check can say is waste.

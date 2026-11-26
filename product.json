@@ -252,6 +252,7 @@
     "ops/native/ResourceMemory.cs",
     "ops/native/StockLinks.cs",
     "ops/netlab/LabPorts.Core.ps1",
+    "ops/quality/fast_gate.py",
     "ops/raygun/prepare_iw7_clone.py",
     "ops/raygun/prepare_weapon.py",
     "ops/re-tools/qualify_tools.py",
