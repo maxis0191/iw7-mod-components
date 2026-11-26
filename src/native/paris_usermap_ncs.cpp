@@ -325,6 +325,50 @@ namespace paris_usermap_ncs
             navlist_hook.invoke<void>(header);
         }
 
+        // Trace (dvar paris_usermap_trace 1): every lookup by name of the perk bit-mask table (RB2: the client's LUI lookup ends the level with "Unable to find the lookup table
+        // ... in the fastfile" when the table is swapped): the result, the hash bucket and the entries of its chain (index, type, zone slot, flags, header name, chain link).
+        constexpr std::uintptr_t find_function = 0x1403B57F0ull;
+        utils::hook::detour find_hook;
+        unsigned traced{};
+
+        void* find_stub(void* table, const char* name, unsigned type)
+        {
+            auto* result = find_hook.invoke<void*>(table, name, type);
+            if (name != nullptr && type == 50 && traced < 24 && std::strstr(name, "zombie_perks_bit_mask") != nullptr)
+            {
+                const auto* setting = game::Dvar_FindVar("paris_usermap_trace");
+                if (setting != nullptr && setting->type == game::DVAR_TYPE_INT && setting->current.integer != 0)
+                {
+                    ++traced;
+                    std::uint32_t hash = type;
+                    for (const auto* c = name; *c != '\0'; ++c)
+                    {
+                        hash = hash * 31u + static_cast<std::uint32_t>(static_cast<std::int8_t>(*c));
+                    }
+
+                    const auto bucket = hash % 0x19C00u;
+                    const auto* base = static_cast<const std::uint8_t*>(table);
+                    auto index = *reinterpret_cast<const std::uint32_t*>(base + 0x206388 + static_cast<std::uint64_t>(bucket) * 4);
+                    console::info("[usermap trace] find stringtable %s -> %p (slot %u) bucket %u first entry %u thread %lu\n", name, result,
+                        result != nullptr ? static_cast<unsigned>(*reinterpret_cast<const std::uint16_t*>(static_cast<const std::uint8_t*>(result) + 0x12)) : 0u, bucket, index,
+                        static_cast<unsigned long>(GetCurrentThreadId()));
+                    for (auto step = 0; index != 0 && step < 12; ++step)
+                    {
+                        const auto* e = base + static_cast<std::uint64_t>(index) * 0x14;
+                        game::XAssetHeader header{};
+                        header.data = *reinterpret_cast<void* const*>(e);
+                        const auto* hname = e[0x11] == 50 ? game::DB_GetXAssetHeaderName(static_cast<game::XAssetType>(50), header) : nullptr;
+                        console::info("[usermap trace]   entry %u type %u slot %u flags %02x header %p name '%s' next %u\n", index, static_cast<unsigned>(e[0x11]),
+                            static_cast<unsigned>(*reinterpret_cast<const std::uint16_t*>(e + 0x12)), static_cast<unsigned>(e[0x10]), header.data, hname != nullptr ? hname : "-",
+                            *reinterpret_cast<const std::uint32_t*>(e + 8));
+                        index = *reinterpret_cast<const std::uint32_t*>(e + 8);
+                    }
+                }
+            }
+
+            return result;
+        }
+
         // The zone free: `list` = {pointer to the u16 zone slots, count}. When a slot of the usermap's own zones is on it, every swapped header goes back (only when the entry
         // still exists and still holds the header that was changed).
         void free_stub(void* table, void* mask, void* list)
@@ -404,6 +448,8 @@ namespace paris_usermap_ncs
             game::Dvar_RegisterInt("paris_usermap_map_wins", 1, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: the base zones load as plain zones (not the base map: the level's world is the map's) and the map's listed data tables win (0 = the old behaviour)");
             register_hook.create(register_function, register_stub); // queued: main applies every queued hook after post_unpack
             game::Dvar_RegisterInt("paris_usermap_client_tables", 0, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: also swap the map's string tables on a client (a perk table swap ends the first level there)");
+            game::Dvar_RegisterInt("paris_usermap_trace", 0, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: log every lookup of the perk bit-mask table (the asset chain of its hash bucket)");
+            find_hook.create(find_function, find_stub);
             drop_hook.create(drop_function, drop_stub);
             ncs_pass_hook.create(ncs_pass_function, ncs_pass_stub);
             navlist_hook.create(navlist_function, navlist_stub);
