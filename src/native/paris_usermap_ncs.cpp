@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <set>
+#include <utility>
 #include <vector>
 #include <string>
 
@@ -132,11 +133,79 @@ namespace paris_usermap_ncs
             drop_hook.invoke<void>(thrown, existing, type);
         }
 
+        // F9, world assets: the engine names the world assets of every level zone `maps/cp/<level>.d3dbsp` (clipmap, comworld, glassworld, pathdata, fxworld, gfxworld).
+        // A usermap's base zone loads first, so its Spaceland copies answer the name and the map's own copies are parked behind them (measured: two entries each, zone
+        // cp_zmb and zone cp_iwz, the spawn volumes of the reference build have other extents than the full build's). After the link step has returned, the two entries
+        // swap their header pointers: the name answers with the map's header, every zone keeps the pointer it was given. Put back before the zone free.
+        constexpr std::uintptr_t link_function = 0x140A782B0ull;
+        utils::hook::detour link_hook;
+
+        struct promoted_asset
+        {
+            int type{};
+            std::string name;
+            std::string holder;
+            std::uint8_t* first{};
+            std::uint8_t* parked{};
+            void* first_header{};
+            void* parked_header{};
+        };
+
+        std::vector<promoted_asset> promoted;
+
+        std::uint8_t* chain_next(std::uint8_t* entry)
+        {
+            const auto next = *reinterpret_cast<const std::uint32_t*>(entry + 0xC);
+            return next == 0 ? nullptr : reinterpret_cast<std::uint8_t*>(asset_table) + static_cast<std::uint64_t>(next) * 0x14;
+        }
+
+        void* link_stub(std::uint32_t type, void** header_ptr)
+        {
+            auto* result = link_hook.invoke<void*>(type, header_ptr);
+            if (result != nullptr && header_ptr != nullptr && *header_ptr != nullptr && usermap_base::is_world_type(static_cast<int>(type)) && swap_enabled()
+                && !paris_usermap_base::current_usermap().empty())
+            {
+                const auto* loading = game::DB_Zones_GetZoneNameFromIndex(*reinterpret_cast<const int*>(loading_zone_index));
+                if (usermap_base::is_map_own_zone(loading, paris_usermap_base::current_usermap()))
+                {
+                    auto* first = static_cast<std::uint8_t*>(result);
+                    const auto* holder = entry_zone(first);
+                    if (holder != nullptr && !usermap_base::is_map_own_zone(holder, paris_usermap_base::current_usermap()))
+                    {
+                        for (auto* e = chain_next(first); e != nullptr; e = chain_next(e))
+                        {
+                            if (*reinterpret_cast<void**>(e) == *header_ptr)
+                            {
+                                promoted_asset item;
+                                item.type = static_cast<int>(type);
+                                game::XAssetHeader header{};
+                                header.data = *header_ptr;
+                                const auto* name = game::DB_GetXAssetHeaderName(static_cast<game::XAssetType>(type), header);
+                                item.name = name != nullptr ? name : "?";
+                                item.holder = holder;
+                                item.first = first;
+                                item.parked = e;
+                                item.first_header = *reinterpret_cast<void**>(first);
+                                item.parked_header = *reinterpret_cast<void**>(e);
+                                std::swap(*reinterpret_cast<void**>(first), *reinterpret_cast<void**>(e));
+                                console::info("[usermap map wins] %s %s: zone %s answers the name, the copy of zone %s is behind it (put back before the zone is freed)\n",
+                                    game::g_assetNames[type], item.name.data(), loading, holder);
+                                promoted.push_back(std::move(item));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
         // The zone free: `list` = {pointer to the u16 zone slots, count}. When a slot of the usermap's own zones is on it, every swapped header goes back (only when the entry
         // still exists and still holds the header that was changed).
         void free_stub(void* table, void* mask, void* list)
         {
-            if (!swapped.empty() && list != nullptr)
+            if ((!swapped.empty() || !promoted.empty()) && list != nullptr)
             {
                 const auto* slots = *reinterpret_cast<const std::uint16_t* const*>(list);
                 const auto count = *reinterpret_cast<const std::uint32_t*>(reinterpret_cast<const std::uint8_t*>(list) + 8);
@@ -144,6 +213,11 @@ namespace paris_usermap_ncs
                 for (std::uint32_t i = 0; slots != nullptr && i < count && i < 512; ++i)
                 {
                     map_goes = map_goes || usermap_base::is_map_own_zone(game::DB_Zones_GetZoneNameFromIndex(slots[i]), paris_usermap_base::current_usermap());
+                    const auto* going = game::DB_Zones_GetZoneNameFromIndex(slots[i]);
+                    for (const auto& item : promoted)
+                    {
+                        map_goes = map_goes || (going != nullptr && usermap_base::same_zone_name(going, item.holder.data()));
+                    }
                 }
 
                 if (map_goes)
@@ -161,6 +235,19 @@ namespace paris_usermap_ncs
 
                     console::info("[usermap map wins] %u of %u swapped assets put back before the zone is freed\n", back, static_cast<unsigned>(swapped.size()));
                     swapped.clear();
+
+                    unsigned undone = 0;
+                    for (auto it = promoted.rbegin(); it != promoted.rend(); ++it)
+                    {
+                        if (*reinterpret_cast<void**>(it->first) == it->parked_header && *reinterpret_cast<void**>(it->parked) == it->first_header)
+                        {
+                            std::swap(*reinterpret_cast<void**>(it->first), *reinterpret_cast<void**>(it->parked));
+                            ++undone;
+                        }
+                    }
+
+                    console::info("[usermap map wins] %u of %u promoted world assets put back before the zone is freed\n", undone, static_cast<unsigned>(promoted.size()));
+                    promoted.clear();
                 }
             }
 
@@ -198,6 +285,7 @@ namespace paris_usermap_ncs
             register_hook.create(register_function, register_stub); // queued: main applies every queued hook after post_unpack
             drop_hook.create(drop_function, drop_stub);
             free_hook.create(free_function, free_stub);
+            link_hook.create(link_function, link_stub);
         }
     };
 }

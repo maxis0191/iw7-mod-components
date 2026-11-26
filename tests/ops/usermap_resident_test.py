@@ -132,7 +132,7 @@ class Policy(unittest.TestCase):
         ncs = read('src', 'native', 'paris_usermap_ncs.cpp')
         for needle in ('0x1406D52B0ull', 'is_base_hint_list', 'paris_usermap_hint_filter', 'REGISTER_COMPONENT(paris_usermap_ncs::component)'):
             self.assertIn(needle, ncs)
-        for needle in ('0x140A77D20ull', '0x140A76280ull', 'paris_usermap_map_wins', '[usermap map wins]', 'is_map_own_zone', 'is_data_table_type'):
+        for needle in ('0x140A77D20ull', '0x140A76280ull', 'paris_usermap_map_wins', '[usermap map wins]', 'is_map_own_zone', 'is_data_table_type', '0x140A782B0ull', 'is_world_type'):
             self.assertIn(needle, ncs)
         self.assertNotIn('base_phase', read('ops', 'frame-cuts', 'frame-cut-edits.json'))
         self.assertIn("'paris_usermap_ncs.cpp'", read('ops', 'Build-Voice.ps1'))
