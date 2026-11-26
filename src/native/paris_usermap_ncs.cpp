@@ -133,11 +133,156 @@ namespace paris_usermap_ncs
             drop_hook.invoke<void>(thrown, existing, type);
         }
 
+        // F9, the entity shape list. The game builds the physics world of the brush entities (spawn volumes, clip brushes) from the Havok packfile of the BASE zone's map_ents
+        // (stock/README.md "Where the game takes entity shapes from"), also when the usermap's own map_ents carries a different list: with the volumes' donor boxes rewritten by
+        // the compiler (iwzmap_volumes.cpp) the reference build's volumes 146 to 154 test as tiny stock boxes. Writing the map's list into the base's HEADER (size and pointer)
+        // changed nothing (measured); writing the map's BYTES over the base's buffer does (Forge --patch of the 1,558 differing bytes of Station Zero: `r1_volext` equal to the
+        // full build, `s0_area` platform_a). Same size, same layout: after the level's NCS pass (it runs after the zones are linked and before the game initialises) the bytes
+        // of the buffer that differ are copied, the originals are kept and put back before the map's zone is freed.
+        constexpr std::uintptr_t ncs_pass_function = 0x1406D43C0ull;
+        utils::hook::detour ncs_pass_hook;
+
+        struct ents_patch
+        {
+            std::uint8_t* buffer{};
+            std::uint32_t size{};
+            std::string zone;
+            std::vector<std::uint32_t> offsets;
+            std::vector<std::uint8_t> original;
+            std::vector<std::uint8_t> written;
+        };
+
+        std::vector<ents_patch> ents_patched;
+
+        void ents_restore()
+        {
+            unsigned back = 0;
+            for (const auto& item : ents_patched)
+            {
+                auto same = true;
+                for (std::size_t i = 0; i < item.offsets.size(); ++i)
+                {
+                    same = same && item.buffer[item.offsets[i]] == item.written[i];
+                }
+
+                if (same)
+                {
+                    for (std::size_t i = 0; i < item.offsets.size(); ++i)
+                    {
+                        item.buffer[item.offsets[i]] = item.original[i];
+                    }
+
+                    ++back;
+                }
+            }
+
+            if (!ents_patched.empty())
+            {
+                console::info("[usermap map wins] %u of %u map_ents shape lists put back\n", back, static_cast<unsigned>(ents_patched.size()));
+            }
+
+            ents_patched.clear();
+        }
+
+        void ents_apply()
+        {
+            ents_restore();
+            if (!swap_enabled() || paris_usermap_base::current_usermap().empty())
+            {
+                return;
+            }
+
+            std::uint8_t* own = nullptr;
+            std::vector<std::pair<std::uint8_t*, std::string>> others;
+            const auto* table = reinterpret_cast<const std::uint8_t*>(asset_table);
+            for (std::uint32_t i = 0; i < 0x19C00; ++i)
+            {
+                const auto* e = table + static_cast<std::uint64_t>(i) * 0x14;
+                if (e[0x11] != 27 || *reinterpret_cast<void* const*>(e) == nullptr)
+                {
+                    continue;
+                }
+
+                const auto* zone = entry_zone(e);
+                if (zone == nullptr)
+                {
+                    continue;
+                }
+
+                auto* header = *reinterpret_cast<std::uint8_t* const*>(e);
+                if (usermap_base::is_map_own_zone(zone, paris_usermap_base::current_usermap()))
+                {
+                    own = header;
+                }
+                else
+                {
+                    others.emplace_back(header, zone);
+                }
+            }
+
+            if (own == nullptr || others.empty())
+            {
+                return;
+            }
+
+            const auto size = *reinterpret_cast<const std::uint32_t*>(own + 0x150);
+            auto* data = *reinterpret_cast<std::uint8_t* const*>(own + 0x158);
+            if (size == 0 || data == nullptr)
+            {
+                return;
+            }
+
+            for (const auto& other : others)
+            {
+                const auto other_size = *reinterpret_cast<const std::uint32_t*>(other.first + 0x150);
+                auto* other_data = *reinterpret_cast<std::uint8_t* const*>(other.first + 0x158);
+                if (other_data == nullptr || other_data == data)
+                {
+                    continue;
+                }
+
+                if (other_size != size)
+                {
+                    console::warn("[usermap map wins] map_ents of zone %s: shape list of %u bytes against %u of the map's: not copied\n", other.second.data(), other_size, size);
+                    continue;
+                }
+
+                ents_patch item;
+                item.buffer = other_data;
+                item.size = size;
+                item.zone = other.second;
+                for (std::uint32_t i = 0; i < size; ++i)
+                {
+                    if (other_data[i] != data[i])
+                    {
+                        item.offsets.push_back(i);
+                        item.original.push_back(other_data[i]);
+                        item.written.push_back(data[i]);
+                    }
+                }
+
+                for (std::size_t i = 0; i < item.offsets.size(); ++i)
+                {
+                    other_data[item.offsets[i]] = item.written[i];
+                }
+
+                console::info("[usermap map wins] map_ents of zone %s: %u bytes of its shape list (%u) now those of zone %s\n", other.second.data(),
+                    static_cast<unsigned>(item.offsets.size()), size, paris_usermap_base::current_usermap().data());
+                ents_patched.push_back(std::move(item));
+            }
+        }
+
+        void ncs_pass_stub()
+        {
+            ncs_pass_hook.invoke<void>();
+            ents_apply();
+        }
+
         // The zone free: `list` = {pointer to the u16 zone slots, count}. When a slot of the usermap's own zones is on it, every swapped header goes back (only when the entry
         // still exists and still holds the header that was changed).
         void free_stub(void* table, void* mask, void* list)
         {
-            if (!swapped.empty() && list != nullptr)
+            if ((!swapped.empty() || !ents_patched.empty()) && list != nullptr)
             {
                 const auto* slots = *reinterpret_cast<const std::uint16_t* const*>(list);
                 const auto count = *reinterpret_cast<const std::uint32_t*>(reinterpret_cast<const std::uint8_t*>(list) + 8);
@@ -149,6 +294,7 @@ namespace paris_usermap_ncs
 
                 if (map_goes)
                 {
+                    ents_restore();
                     unsigned back = 0;
                     for (const auto& item : swapped)
                     {
@@ -198,6 +344,7 @@ namespace paris_usermap_ncs
             game::Dvar_RegisterInt("paris_usermap_map_wins", 1, 0, 1, game::DVAR_FLAG_NONE, "Usermap with a base zone: the base zones load as plain zones (not the base map: the level's world is the map's) and the map's listed data tables win (0 = the old behaviour)");
             register_hook.create(register_function, register_stub); // queued: main applies every queued hook after post_unpack
             drop_hook.create(drop_function, drop_stub);
+            ncs_pass_hook.create(ncs_pass_function, ncs_pass_stub);
             free_hook.create(free_function, free_stub);
         }
     };
