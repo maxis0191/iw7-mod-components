@@ -93,12 +93,6 @@ namespace usermap_base
 		return type == 48 || type == 50 || type == 58;
 	}
 
-	// F9: the world assets that the engine names `maps/cp/<level>.d3dbsp` for every level zone: clipmap (22), comworld (23), glassworld (24), pathdata (25), fxworld (28), gfxworld (29).
-	inline bool is_world_type(int type)
-	{
-		return type == 22 || type == 23 || type == 24 || type == 25 || type == 28 || type == 29;
-	}
-
 	// Is the zone one of the usermap's own (its level zone or its patch zone)?
 	inline bool is_map_own_zone(const char* zone, const std::string& usermap)
 	{
