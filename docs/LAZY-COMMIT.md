@@ -174,3 +174,19 @@ mspaces (the first bytes of most are zeros, not an mstate). The census did not l
 Next run for the lead: rebuild the branch, `forge live start --map cp_zmb --exe <exe> --launch-arg -alloc-census --session lz_diag`, read the first
 `[Alloc census]` lines (before the hook, Ex calls) and the top sites; if the sparse pools were committed before `post_start`, the hook point has to move
 earlier (the mod's start, or patching them in the image at load); if via `Ex`, the table now lists their callers.
+
+## Census 3: every reservation and commit, by caller, with zero pages per caller (LZ)
+
+Census 2 (lead): before the hook only 3 MB, Ex calls 0, but no sparse pool of 4 to 64 MB among the commits of 1 MB and more. The pools are therefore
+reserved in one call and committed in **pieces under 1 MB**, or a sub-allocator commits into them (a block of one committed region can be many adjacent commits).
+`alloc_census.cpp` now records all of it (no size threshold) in three kinds: `reserve` (MEM_RESERVE only), `new` (reserve and commit at once) and `into`
+(commit into memory reserved earlier), each by the first three callers outside ntdll/kernelbase/kernel32, with calls, bytes and the largest call. Every
+reservation of 1 MB or more is kept with its callers; **`paris_alloc_zero`** (and once, about 100 s after the start) walks them: per caller of the
+reservation, the blocks still alive, reserved, committed and zero-page bytes. The line with the biggest zero total names the creator of the sparse pools;
+its `into` callers say who commits them, in which steps.
+
+Run for the lead: rebuild, `forge live start --map cp_zmb --exe <exe> --launch-arg -alloc-census --session lz_diag`, wait for ready and about 2 minutes
+(the `[Alloc zero]` lines appear in the cell's `client.stdout.log` after the sixth 15 s tick; `paris_alloc_zero` again at will), then send the `[Alloc census]`
+and `[Alloc zero]` lines. The lazy commit then moves to the creator with the most zero pages whose commits are made by the engine's own code
+(a commit into a pool becomes: commit when the sub-allocator hands the piece out, which is what it does already; the saving is then in what the pools commit
+ahead of use, and that is read from the `into` sizes against the zero pages).
