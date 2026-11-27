@@ -122,6 +122,22 @@
    "evidence": "disasm: hunk allocs sized from the globals set by 0x140C68A00"
   },
   {
+   "address": "140DD0B90",
+   "name": "R_VoxelTrees_CreateBuffers",
+   "kind": "function",
+   "by": "agent",
+   "date": "2026-11-27",
+   "evidence": "decomp/disasm: loops g_world+0x9a8 trees (stride 0x70), creates voxelTreeHeader/voxelTopDownViewNode/voxelInternalNode/voxelLeafNode/voxelLightList/dyn list buffers; docs/VOXEL-LIGHT-CAP.md"
+  },
+  {
+   "address": "140DD2810",
+   "name": "R_CreateImmutableTypedBuffer",
+   "kind": "function",
+   "by": "agent",
+   "date": "2026-11-27",
+   "evidence": "decomp: ID3D11Device vtable +0x18 CreateBuffer (usage 1, bind 8), +0x38 CreateShaderResourceView(format,buffer,count)"
+  },
+  {
    "address": "143C986A0",
    "name": "level_sentientPool",
    "kind": "function",
@@ -703,6 +719,15 @@
    "tag": "limit",
    "value": "0x40000",
    "evidence": "disasm 0x140D83DF0: mov dword [0x147994EE0],0x3ffc0; mov [0x147994EE4],0x10; mem server snapshot 0x147994ED8 = 262144 0 262080 16"
+  },
+  {
+   "address": "140DD0D89",
+   "text": "voxel leaf buffer is R16_UINT (format 0x39, byte width 2*leafCount): the u16 light list address limit (65535 words) is this view format",
+   "by": "agent",
+   "date": "2026-11-27",
+   "tag": "limit",
+   "value": "65535",
+   "evidence": "disasm 140DD0D53 lea r8d,[r9+0x38]; 140DD0D81 lea ecx,[rdx+rdx]; FUN_140DD2810 = CreateBuffer immutable + CreateShaderResourceView(format param_3)"
   },
   {
    "address": "143C986C0",
