@@ -738,7 +738,7 @@ named resources (builds in different scopes never exclude each other), so its wa
   declared 8 GB and stood at 5.1 GB for 28 samples kept 3 GB from everyone else; a build waited with 8.5 GB available.
   Now the scheduler records each lease's highest working set (`peaks.json`, under the admission lock) and, after the
   load phase (180 s), counts `min(declared, peak * 1.15 + 256 MB)`, never less than what it holds. The declared number
-  stays the ceiling. `IW7_SCHEDULER_MEASURED=0` is the old rule. Every release line of `admission-log.jsonl` now carries
+  stays the ceiling. A Runtime lease that has stopped growing is counted at its measured need before the 180 s are over (27 Nov 2026, FE69: a game client lives 175 s at the median, so it nearly always ended inside the load phase and promised about 2.3 GB it never took to every build beside it): 30 s old, half of its declaration taken, no growth of more than 2 % + 32 MB for 20 s (marks `<token>.g` / `<token>.r` in `peaks.json`; a first look is a mark). `IW7_SCHEDULER_MEASURED=0` is the old rule. Saving `peaks.json` works in Windows PowerShell 5.1 too (it threw on every save and left 11,888 temp files in the registry folder). Every release line of `admission-log.jsonl` now carries
   `Declared` and `PeakWorkingSet`, so the real cost of every job class is in the scheduler's own record.
 - An older ticket that waited 600 s and did not fit even now held back every younger request, although it was waiting
   for running leases to end, not for the younger one (a 35-minute wait behind a session that could not start). Now it

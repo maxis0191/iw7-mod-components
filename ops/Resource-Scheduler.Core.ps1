@@ -130,18 +130,41 @@ function Read-IW7LeasePeaks {
     $h
 }
 function Save-IW7LeasePeaks($Peaks) {
+    # Callers run in Windows PowerShell 5.1 as well as pwsh 7: File.Move with an overwrite flag does not exist in 5.1, so every save of a 5.1 caller threw (swallowed)
+    # and left its temp file behind (11,888 of them in the registry folder on 27 Nov 2026) and the peaks were never written by them. Replace works in both and a
+    # failed save removes its temp file.
+    $path=Get-IW7PeakPath; $tmp=$path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
     try {
-        $path=Get-IW7PeakPath; $tmp=$path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
         [IO.File]::WriteAllText($tmp,($Peaks | ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
-        [IO.File]::Move($tmp,$path,$true)
-    } catch { }
+        if ([IO.File]::Exists($path)) { [IO.File]::Replace($tmp,$path,[NullString]::Value) } else { [IO.File]::Move($tmp,$path) }
+    } catch { try { [IO.File]::Delete($tmp) } catch { } }
 }
-function Get-IW7MeasuredNeedBytes($Lease, [long]$Taken, [long]$Peak) {
+# A lease whose working set has stopped growing is settled before SettleSeconds (27 Nov 2026, FE69). A game client declares 6 GB and takes 3.7 to 4.5; it lived 175 s
+# at the median, so it nearly always ended inside the 180 s load phase and held about 2.3 GB of "still to be taken" memory from every build next to it. Two more
+# keys per lease in peaks.json: '<token>.g' = the time (ms) the working set last grew by more than 2 % (+ 32 MB) over '<token>.r', the level of that mark. A Runtime
+# lease that is 30 s old, has taken at least half of what it declared, and has not grown for 20 s counts at its measured need already. A first look at a lease is a mark,
+# so a scheduler that was not watching it never calls it quiet before it has watched it for 20 s. The 2 GB floor of the plan still bounds a client that grows after a pause.
+function Get-IW7QuietSeconds { 20 }
+function Get-IW7QuietMinAgeSeconds { 30 }
+function Get-IW7PeakToken([string]$Key) { if ($Key.EndsWith('.g') -or $Key.EndsWith('.r')) { $Key.Substring(0,$Key.Length-2) } else { $Key } }
+function Update-IW7LeaseGrowth($Peaks, [string]$Token, [long]$Taken, [long]$NowMs) {
+    # Returns $true when the marks changed. A mark is set when the working set is above its last marked level by more than 2 % + 32 MB, or at the first look.
+    $ref=if ($Peaks.ContainsKey("$Token.r")) { [long]$Peaks["$Token.r"] } else { -1L }
+    if ($ref -lt 0 -or $Taken -gt [long]($ref*1.02)+32MB) { $Peaks["$Token.r"]=$Taken; $Peaks["$Token.g"]=$NowMs; return $true }
+    $false
+}
+function Test-IW7LeaseQuiet($Lease, $Peaks, [long]$Taken, [long]$NowMs) {
+    if (!(Get-IW7MeasuredBudgetOn) -or $Lease.Kind -ne 'Runtime' -or !$Peaks.ContainsKey("$($Lease.Token).g")) { return $false }
+    if ($Taken -lt [long]$Lease.PhysicalBytes/2) { return $false }
+    try { $age=((Get-IW7SchedulerUtcNow)-([datetimeoffset]$Lease.CreatedUtc).UtcDateTime).TotalSeconds } catch { return $false }
+    $age -ge (Get-IW7QuietMinAgeSeconds) -and ($NowMs-[long]$Peaks["$($Lease.Token).g"]) -ge (1000L*(Get-IW7QuietSeconds))
+}
+function Get-IW7MeasuredNeedBytes($Lease, [long]$Taken, [long]$Peak, [bool]$Quiet=$false) {
     # What the lease is counted at: declared until it has settled, then its measured peak plus a margin.
     $declared=[long]$Lease.PhysicalBytes
     if (!(Get-IW7MeasuredBudgetOn) -or $Peak -le 0) { return $declared }
     try { $age=((Get-IW7SchedulerUtcNow)-([datetimeoffset]$Lease.CreatedUtc).UtcDateTime).TotalSeconds } catch { return $declared }
-    if ($age -lt (Get-IW7SettleSeconds)) { return $declared }
+    if ($age -lt (Get-IW7SettleSeconds) -and !$Quiet) { return $declared }
     [math]::Min($declared,[math]::Max($Taken,[long]($Peak*1.15)+256MB))
 }
 function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes, [switch]$RecordPeaks) {
@@ -151,7 +174,7 @@ function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes, [switch]$Rec
     # free memory that is already promised. A session's processes are the ones it registered; a build's or an
     # analysis's are also its owner and every process below it (compilers, ZoneTool, Java are its children).
     $declared=0L; $unloaded=0L; $index=$null
-    $peaks=Read-IW7LeasePeaks; $peaksChanged=$false
+    $peaks=Read-IW7LeasePeaks; $peaksChanged=$false; $nowMs=Get-IW7NowMs
     foreach ($l in @($Leases | Where-Object { $_ })) {
         $declaredOne=[long]$l.PhysicalBytes
         $taken=0L
@@ -167,7 +190,8 @@ function Get-IW7ShareableMemoryPlan($Snapshot, $Leases, $Processes, [switch]$Rec
         catch { if ($_.Exception.Message -like 'Reserved process identity unavailable*') { $taken=0L } else { throw } }
         $peak=if ($peaks.ContainsKey([string]$l.Token)) { [long]$peaks[[string]$l.Token] } else { 0L }
         if ($taken -gt $peak) { $peak=$taken; $peaks[[string]$l.Token]=$peak; $peaksChanged=$true }
-        $need=Get-IW7MeasuredNeedBytes $l $taken $peak
+        if ($l.Kind -eq 'Runtime' -and (Get-IW7MeasuredBudgetOn) -and (Update-IW7LeaseGrowth $peaks ([string]$l.Token) $taken $nowMs)) { $peaksChanged=$true }
+        $need=Get-IW7MeasuredNeedBytes $l $taken $peak (Test-IW7LeaseQuiet $l $peaks $taken $nowMs)
         $declared += $need
         $unloaded += [math]::Max(0L,$need-$taken)
     }
@@ -1080,7 +1104,7 @@ function Exit-IW7ResourceLease {
         $releasePeaks=Read-IW7LeasePeaks
         $state.Leases=@($state.Leases | Where-Object Token -NE $Token)
         Save-IW7ResourceState $state
-        if ($releasePeaks.ContainsKey([string]$Token)) { $kept=@{}; foreach ($k in @($releasePeaks.Keys)) { if ($k -ne [string]$Token -and @($state.Leases | Where-Object Token -EQ $k).Count) { $kept[$k]=$releasePeaks[$k] } }; Save-IW7LeasePeaks $kept }
+        if (@($releasePeaks.Keys | Where-Object { (Get-IW7PeakToken $_) -eq [string]$Token }).Count) { $kept=@{}; foreach ($k in @($releasePeaks.Keys)) { $tk=Get-IW7PeakToken $k; if ($tk -ne [string]$Token -and @($state.Leases | Where-Object Token -EQ $tk).Count) { $kept[$k]=$releasePeaks[$k] } }; Save-IW7LeasePeaks $kept }
         try {
             $held=((Get-IW7SchedulerUtcNow)-([datetimeoffset]$lease[0].CreatedUtc).UtcDateTime).TotalSeconds
             $short=$lease[0].PSObject.Properties['ShortSeconds']

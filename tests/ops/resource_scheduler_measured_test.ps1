@@ -70,6 +70,67 @@ $last=@(Get-Content (Get-IW7AdmissionLogPath) | ForEach-Object { $_ | ConvertFro
 Assert ($last.PeakWorkingSet -eq [long]7.5GB -and $last.Declared -eq 8GB) "release line: peak $($last.PeakWorkingSet) declared $($last.Declared)"
 Assert (!(Read-IW7LeasePeaks).ContainsKey([string]$a.Token)) 'the peak of a released lease is forgotten'
 
+# 6. A lease whose working set stopped growing is settled before the load phase is over (27 Nov 2026, FE69): 30 s old, half of its declaration taken, 20 s quiet.
+$script:skew=0
+function Get-IW7SchedulerUtcNow { [datetime]::UtcNow.AddSeconds($script:skew) }
+Reset
+$c=Enter-IW7ResourceLease -Scope (Bench c) -Kind Runtime -PhysicalBytes 6GB -CommitBytes 6GB -Owner 'client session' -Shareable
+$q=New-Proc (Join-Path (Bench c) 'iw7-mod.exe') ([long]3.7GB)
+Add-IW7ResourceProcess -Token $c.Token -ProcessId $q.PID
+$script:avail=14GB
+Age-Lease $c.Token 40
+$plan=Plan
+Assert ($plan.Unloaded -eq (6GB-[long]3.7GB)) "first look is a mark, not quiet: unloaded $($plan.Unloaded)"
+$script:skew=25
+$plan=Plan
+$need=[long]([long]3.7GB*1.15)+256MB
+Assert ($plan.Declared -eq $need -and $plan.Unloaded -eq ($need-[long]3.7GB)) "quiet for 25 s: counted at its measured need $need, not 6 GB: declared $($plan.Declared) unloaded $($plan.Unloaded)"
+$q.WorkingSet=[long]4.6GB
+$plan=Plan
+Assert ($plan.Declared -eq 6GB) "growth is a mark again: back to the declared 6 GB, got $($plan.Declared)"
+$script:skew=50
+$plan=Plan
+Assert ($plan.Declared -eq [long]([long]4.6GB*1.15)+256MB) "quiet again at the new level: declared $($plan.Declared)"
+# a rise of less than 2 % + 32 MB over the last marked level is noise; beyond it is a mark
+$q.WorkingSet=[long]4.6GB+200MB
+$plan=Plan
+Assert ($plan.Declared -eq 6GB) 'a rise past 2 % + 32 MB of the marked level is growth'
+# a lease that took less than half of its declaration is never early: it may still be loading
+Reset
+$d=Enter-IW7ResourceLease -Scope (Bench d) -Kind Runtime -PhysicalBytes 6GB -CommitBytes 6GB -Owner 'client session' -Shareable
+$r=New-Proc (Join-Path (Bench d) 'iw7-mod.exe') ([long]2GB)
+Add-IW7ResourceProcess -Token $d.Token -ProcessId $r.PID
+Age-Lease $d.Token 40
+$script:skew=0; $plan=Plan; $script:skew=60; $plan=Plan
+Assert ($plan.Declared -eq 6GB) "under half taken: still the declared 6 GB, got $($plan.Declared)"
+# the marks of a live lease survive the release of another; the released one's marks go
+Reset
+$e=Enter-IW7ResourceLease -Scope (Bench e) -Kind Runtime -PhysicalBytes 6GB -CommitBytes 6GB -Owner 'client session' -Shareable
+$f=Enter-IW7ResourceLease -Scope (Bench f) -Kind Runtime -PhysicalBytes 1GB -CommitBytes 1GB -Owner 'client session' -Shareable
+$s=Read-IW7ResourceState; $script:skew=0
+$null=Get-IW7ShareableMemoryPlan (Get-IW7ResourceSnapshot) @($s.Leases) $script:fakeProcesses -RecordPeaks
+$k=Read-IW7LeasePeaks
+Assert ($k.ContainsKey("$($e.Token).g") -and $k.ContainsKey("$($f.Token).g")) 'both leases are marked'
+Exit-IW7ResourceLease -Token $f.Token
+$k=Read-IW7LeasePeaks
+Assert ($k.ContainsKey("$($e.Token).g") -and $k.ContainsKey("$($e.Token).r") -and !$k.ContainsKey("$($f.Token).g")) "marks after a release: $($k.Keys -join ',')"
+Exit-IW7ResourceLease -Token $e.Token
+# the save leaves no temp file, also when it is run by Windows PowerShell 5.1 (it has no File.Move overwrite: it used to leak one temp file per call)
+Save-IW7LeasePeaks @{ 'x'=[long]5 }
+Save-IW7LeasePeaks @{ 'x'=[long]6 }
+Assert ((Read-IW7LeasePeaks)['x'] -eq 6) 'the save replaces the file'
+$legacy=(Get-Command powershell.exe -ErrorAction SilentlyContinue)
+if ($legacy) {
+    $probe=Join-Path $TestRoot 'save51.ps1'
+    $core=(Resolve-Path "$PSScriptRoot/../../ops/Resource-Scheduler.Core.ps1").Path
+    [IO.File]::WriteAllText($probe,". '$core'`nfunction Get-IW7ResourceRoot { '$((Get-IW7ResourceRoot) -replace "'","''")' }`nSave-IW7LeasePeaks @{ 'y'=[long]7 }`nSave-IW7LeasePeaks @{ 'y'=[long]8 }`n(Read-IW7LeasePeaks)['y']")
+    $out=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe
+    Assert ("$out".Trim() -eq '8') "Windows PowerShell 5.1 saved the peaks: '$out'"
+}
+Assert (@(Get-ChildItem (Get-IW7ResourceRoot) -Filter 'peaks.json.*.tmp' -ErrorAction SilentlyContinue).Count -eq 0) 'no temp file is left behind'
+$script:skew=0
+
+$null=Enter-IW7ResourceLease -Scope (Bench b) -Kind Runtime -PhysicalBytes 4GB -CommitBytes 4GB -Owner 'headless' -Shareable
 # 5. IW7_SCHEDULER_MEASURED=0 is the old rule.
 $env:IW7_SCHEDULER_MEASURED='0'
 $s=Read-IW7ResourceState
