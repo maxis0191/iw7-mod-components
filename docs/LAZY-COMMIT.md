@@ -1,8 +1,18 @@
 # Lazy commit of the engine allocator's segments (`-lazy-commit`)
 
-Worker LZ, 27 Nov 2026. Opt-in, off by default. Source: `src/native/lazy_commit.cpp` (the hooks), `src/native/lazy_commit_policy.hpp` (the
+Worker LZ, 27 Nov 2026; **on by default since 27 Nov 2026 (worker LD)**. Source: `src/native/lazy_commit.cpp` (the hooks), `src/native/lazy_commit_policy.hpp` (the
 portable part: block table, head/tail/pad plan, fault policy), tests `tests/native/lazy_commit_test.cpp` and `tests/ops/lazy_commit_test.py`.
-Status: built on paper and statically checked; **not yet compiled into a client and not measured in a running game** (the lead builds and runs the A/B below).
+Status: proven by the lead on 27 Nov 2026 (`forge memab`, cp_zmb, 3 alternating pairs, own pid, data `C:\studio-data\lz\memab\lazy_ab.json`): commit at ready
+**8.295 -> 7.648 GB (-0.647 +/- 0.010 GB)**, after 20 s settled **-0.773 GB**, working set unchanged; stability: Arcade r13 plans 4/4 and conditions-zmb with the flag.
+The sections below are the design and the history of the search (they still say "opt-in" where they describe the first build).
+
+## Default, and how to turn it off
+
+Every client that carries the component has the lazy commit **on**. Off by `-no-lazy-commit` or the environment variable `IW7_LAZY_COMMIT=0` (for a
+runner that passes no flags). `-lazy-commit` is still accepted (a no-op in a client; it is how a dedicated server opts in). A **dedicated server stays off
+by default** (`game::environment::is_dedi()`): its allocator was not measured; `-lazy-commit` turns it on there. Official clients do not carry the component,
+so nothing changes for them. `-alloc-census` stays opt-in. A failed start check (the two call sites are not `call [VirtualAlloc]`) logs
+`[Lazy commit] not active: <reason>` and changes nothing.
 
 ## The problem (worker CM, `ops/memlab/`)
 
@@ -114,7 +124,7 @@ appears, `-paris-crash-memory` gives the dump and the first-chance access violat
 
 ## Rollback
 
-No flag, no effect: the component does nothing without `-lazy-commit`. With the flag, a failed check at start (the two call sites are not `call [VirtualAlloc]`,
+`-no-lazy-commit` (or `IW7_LAZY_COMMIT=0`): the component does nothing. Otherwise a failed check at start (the two call sites are not `call [VirtualAlloc]`,
 no slot memory in reach) logs `[Lazy commit] not active: <reason>` and changes nothing.
 
 ## A/B result of 27 Nov 2026 and the finding (LZ)
@@ -217,3 +227,10 @@ New in the census for that: the first lines of each report say how many `NtAlloc
 bypass the `GetCurrentProcess()` test) and their bytes, and every report lists, with the second it was first seen, the private allocations of 8 MB and
 more that no recorded reservation explains. If they are already there at t=5 s, they are made by something that does not go through ntdll's export
 (a direct system call of the game's protector is the leading suspect: the shipped code is protected). If they appear later, the time says which phase.
+
+## Default on, proof after merge (LD, 27 Nov 2026)
+
+```
+python -B C:orgeorge.py memab --map cp_zmb --a "-no-lazy-commit" --b "" --repeat 3 --settle 20 --out <file>.json   # B - A about -0.65 GB at ready
+python -B C:orgeorge.py batch C:\studio-data\szrcade13\plansatch13e.json                               # same verdicts as before
+```

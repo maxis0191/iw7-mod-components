@@ -1,6 +1,6 @@
 """Lazy commit of the engine allocator segments (LZ, 27 Nov 2026): the sites and the policy, checked offline.
 
-  - the engine addresses of src/native/lazy_commit.cpp are the ones docs/LAZY-COMMIT.md names, and the component is opt-in (-lazy-commit),
+  - the engine addresses of src/native/lazy_commit.cpp are the ones docs/LAZY-COMMIT.md names, and the component is on by default (off by -no-lazy-commit or IW7_LAZY_COMMIT=0; a dedicated server stays off unless -lazy-commit),
   - it patches exactly two VirtualAlloc call sites (both verified before either is patched), wraps the segment growth and the release, and
     installs one vectored handler,
   - the policy header (tests/native/lazy_commit_test.cpp) compiles and its checks pass, when a Visual Studio C++ compiler is installed.
@@ -24,14 +24,24 @@ class LazyCommitSource(unittest.TestCase):
             self.assertTrue(value, name)
             self.assertIn(value.group(1).upper(), DOC.upper(), name)
 
-    def test_opt_in_and_hooks(self):
+    def test_default_on_and_switches(self):
+        self.assertIn('has_flag("no-lazy-commit")', CPP)
+        self.assertIn('IW7_LAZY_COMMIT', CPP)
         self.assertIn('has_flag("lazy-commit")', CPP)
+        self.assertIn('is_dedi()', CPP)
+        self.assertEqual(CPP.count('if (!enabled()) return;'), 2)   # post_start and post_unpack
+        self.assertNotIn('alloc-census', CPP)
+        self.assertIn('has_flag("alloc-census")', open(os.path.join(ROOT, 'src', 'native', 'alloc_census.cpp'), encoding='utf-8').read())
+        for word in ('no-lazy-commit', 'IW7_LAZY_COMMIT'):
+            self.assertIn(word, DOC)
+
+    def test_hooks(self):
         self.assertEqual(CPP.count('AddVectoredExceptionHandler'), 1)
         self.assertEqual(len(re.findall(r'patch_call\(\w+_site', CPP)), 2)
         self.assertEqual(len(re.findall(r'check_call\(\w+_site', CPP)), 2)
         self.assertIn('grow_hook.create', CPP)
         self.assertIn('release_hook.create', CPP)
-        self.assertLess(CPP.index('has_flag("lazy-commit")'), CPP.index('patch_call(create_site'))
+        self.assertLess(CPP.index('if (!enabled()) return;'), CPP.index('patch_call(create_site'))
         self.assertLess(CPP.index('check_call(grow_site)'), CPP.index('patch_call(create_site'))
 
     def test_policy_constants(self):

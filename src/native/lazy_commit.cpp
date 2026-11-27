@@ -3,6 +3,7 @@
 #include "loader/component_loader.hpp"
 #include "console/console.hpp"
 #include "command.hpp"
+#include "game/game.hpp"
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
 #include <intrin.h>
@@ -41,6 +42,16 @@ utils::hook::detour grow_hook, release_hook, valloc_hook;
 thread_local bool inside{};
 std::uintptr_t mod_lo{}, mod_hi{};
 std::atomic<std::uint64_t> mod_blocks{};
+
+// On by default in a client (LD, 27 Nov 2026; measured by LZ and the lead: commit at ready 8.295 -> 7.648 GB, working set unchanged). Off by -no-lazy-commit or
+// IW7_LAZY_COMMIT=0. -lazy-commit stays accepted and also turns it on in a dedicated server, where it is off by default (the allocator of the server was not measured).
+bool enabled() {
+    if (utils::flags::has_flag("no-lazy-commit")) return false;
+    wchar_t v[8]{};
+    if (GetEnvironmentVariableW(L"IW7_LAZY_COMMIT", v, 8) && v[0] == L'0') return false;
+    if (utils::flags::has_flag("lazy-commit")) return true;
+    return !game::environment::is_dedi();
+}
 
 bool commit_pages(std::uintptr_t address, std::size_t bytes) {
     return VirtualAlloc(reinterpret_cast<void*>(address), bytes, MEM_COMMIT, PAGE_READWRITE) != nullptr;
@@ -204,7 +215,7 @@ void print_stats() {
 class component final : public component_interface {
 public:
     void post_start() override {   // before the mod's own components allocate: the renderer's umbra arena is made on its first use
-        if (!utils::flags::has_flag("lazy-commit")) return;
+        if (!enabled()) return;
         try {
             MODULEINFO info{};
             if (!GetModuleInformation(GetCurrentProcess(), GetModuleHandleW(nullptr), &info, sizeof(info))) throw std::runtime_error("lazy commit: module information");
@@ -219,7 +230,7 @@ public:
         }
     }
     void post_unpack() override {
-        if (!utils::flags::has_flag("lazy-commit")) return;
+        if (!enabled()) return;
         try {
             auto* slots = make_slots();
             slots[0] = reinterpret_cast<void*>(&alloc_stub);        // the mspace creation
