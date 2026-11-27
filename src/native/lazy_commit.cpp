@@ -5,10 +5,13 @@
 #include "command.hpp"
 #include <utils/flags.hpp>
 #include <utils/hook.hpp>
+#include <intrin.h>
+#include <psapi.h>
 #include <atomic>
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#pragma comment(lib, "psapi.lib")
 
 // Lazy commit of the engine allocator's segments (-lazy-commit). docs/LAZY-COMMIT.md has the design and the addresses.
 //
@@ -34,14 +37,17 @@ iw7::lazy_commit::table blocks;
 std::atomic<std::uint64_t> faults{}, failed_faults{}, retired{}, released{}, lazy_blocks{}, whole_blocks{}, table_full{};
 std::atomic_bool active{};
 thread_local std::uintptr_t growing_mstate{};
-utils::hook::detour grow_hook, release_hook;
+utils::hook::detour grow_hook, release_hook, valloc_hook;
+thread_local bool inside{};
+std::uintptr_t mod_lo{}, mod_hi{};
+std::atomic<std::uint64_t> mod_blocks{};
 
 bool commit_pages(std::uintptr_t address, std::size_t bytes) {
     return VirtualAlloc(reinterpret_cast<void*>(address), bytes, MEM_COMMIT, PAGE_READWRITE) != nullptr;
 }
 
 // The replacement of the two VirtualAlloc calls (same signature; reached through a rip-relative slot).
-LPVOID WINAPI alloc_stub(LPVOID address, SIZE_T size, DWORD type, DWORD protect) {
+LPVOID alloc_impl(LPVOID address, SIZE_T size, DWORD type, DWORD protect) {
     if (address || type != (MEM_COMMIT | MEM_RESERVE) || protect != PAGE_READWRITE) return VirtualAlloc(address, size, type, protect);
     const auto shape = iw7::lazy_commit::plan(size);
     AcquireSRWLockExclusive(&lock);
@@ -68,6 +74,29 @@ LPVOID WINAPI alloc_stub(LPVOID address, SIZE_T size, DWORD type, DWORD protect)
     }
     ++lazy_blocks;
     return memory;
+}
+
+LPVOID WINAPI alloc_stub(LPVOID address, SIZE_T size, DWORD type, DWORD protect) {
+    const auto previous = inside;
+    inside = true;
+    const auto result = alloc_impl(address, size, type, protect);
+    inside = previous;
+    return result;
+}
+
+// kernelbase!VirtualAlloc, for the callers inside the mod's own executable: the big blocks the renderer commits whole (the umbra query arena, 64 MB per
+// thread, 10 threads, 639 of 640 MB zero pages in the census of 27 Nov 2026; two pools of 8.4 MB) take the same lazy path. Memory the mod's code owns and
+// writes in user mode only; nothing is read into it by the kernel.
+LPVOID WINAPI valloc_stub(LPVOID address, SIZE_T size, DWORD type, DWORD protect) {
+    if (!inside && !address && type == (MEM_COMMIT | MEM_RESERVE) && protect == PAGE_READWRITE && size >= 2 * 1024 * 1024) {
+        const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+        if (caller >= mod_lo && caller < mod_hi) {
+            const auto result = alloc_stub(address, size, type, protect);
+            if (result) ++mod_blocks;
+            return result;
+        }
+    }
+    return valloc_hook.invoke<LPVOID>(address, size, type, protect);
 }
 
 // FUN_140ead190 (grow an mspace by a segment): the stock function with the mspace known to the VirtualAlloc replacement, so that the old top is
@@ -165,8 +194,8 @@ void print_stats() {
     const auto committed = blocks.committed_bytes();
     const auto reserved = blocks.block_bytes();
     ReleaseSRWLockExclusive(&lock);
-    console::info("[Lazy commit] lazy blocks created %llu (live %zu), whole blocks %llu, table full %llu, faults %llu (failed %llu), tops committed on retire %llu, released %llu\n",
-        lazy_blocks.load(), count, whole_blocks.load(), table_full.load(), faults.load(), failed_faults.load(), retired.load(), released.load());
+    console::info("[Lazy commit] lazy blocks created %llu (of them the mod's own %llu; live %zu), whole blocks %llu, table full %llu, faults %llu (failed %llu), tops committed on retire %llu, released %llu\n",
+        lazy_blocks.load(), mod_blocks.load(), count, whole_blocks.load(), table_full.load(), faults.load(), failed_faults.load(), retired.load(), released.load());
     console::info("[Lazy commit] live lazy blocks: %.1f MB reserved by the allocator, %.1f MB committed (%.1f MB not committed)\n",
         reserved / 1048576.0, committed / 1048576.0, (reserved - committed) / 1048576.0);
 }
@@ -174,13 +203,27 @@ void print_stats() {
 
 class component final : public component_interface {
 public:
+    void post_start() override {   // before the mod's own components allocate: the renderer's umbra arena is made on its first use
+        if (!utils::flags::has_flag("lazy-commit")) return;
+        try {
+            MODULEINFO info{};
+            if (!GetModuleInformation(GetCurrentProcess(), GetModuleHandleW(nullptr), &info, sizeof(info))) throw std::runtime_error("lazy commit: module information");
+            mod_lo = reinterpret_cast<std::uintptr_t>(info.lpBaseOfDll);
+            mod_hi = mod_lo + info.SizeOfImage;
+            const auto function = GetProcAddress(GetModuleHandleA("kernelbase.dll"), "VirtualAlloc");
+            if (!function) throw std::runtime_error("lazy commit: kernelbase VirtualAlloc not found");
+            AddVectoredExceptionHandler(1, handler);
+            valloc_hook.create(reinterpret_cast<void*>(function), reinterpret_cast<void*>(&valloc_stub));
+        } catch (const std::exception& error) {
+            console::error("[Lazy commit] mod blocks not lazy: %s\n", error.what());
+        }
+    }
     void post_unpack() override {
         if (!utils::flags::has_flag("lazy-commit")) return;
         try {
             auto* slots = make_slots();
             slots[0] = reinterpret_cast<void*>(&alloc_stub);        // the mspace creation
             slots[1] = reinterpret_cast<void*>(&grow_alloc_stub);   // the segment growth
-            AddVectoredExceptionHandler(1, handler);
             // The wrappers first (no allocation is lazy before the calls are redirected), then the two calls.
             check_call(create_site);
             check_call(grow_site);
