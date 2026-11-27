@@ -10,6 +10,54 @@
    "evidence": "disasm: entities 18..41, agent rec+0x4B10 != 0 appended to caller array without bound"
   },
   {
+   "address": "1400C1BE0",
+   "name": "R_FrustumLights_RasterMasks",
+   "kind": "function",
+   "by": "agent",
+   "date": "2026-11-27",
+   "evidence": "decomp: 'r_frustum_lights.cpp(972)'; one draw of each light's frustum mesh into slice = list position (8px tiles)"
+  },
+  {
+   "address": "1400C2410",
+   "name": "R_FrustumLights_Upload",
+   "kind": "function",
+   "by": "agent",
+   "date": "2026-11-27",
+   "evidence": "decomp: 'r_frustum_lights.cpp(889)'; copies count*0x58 record bytes and the 0x8000-byte zbin table to the GPU buffers"
+  },
+  {
+   "address": "1400C25C0",
+   "name": "R_FrustumLights_ResolveMasks",
+   "kind": "function",
+   "by": "agent",
+   "date": "2026-11-27",
+   "evidence": "decomp: dispatch writing words-per-tile (count+31)>>5 and count into writeBitmaskCB, two compute passes over tiles"
+  },
+  {
+   "address": "1400C2730",
+   "name": "R_FrustumLights_AddSorted",
+   "kind": "function",
+   "by": "agent",
+   "date": "2026-11-27",
+   "evidence": "decomp: inserts a light slot into the per-frame list sorted by squared camera distance, drops when position > 0xff, count capped 0x100 (hook 0x12 on overflow)"
+  },
+  {
+   "address": "1400C2950",
+   "name": "R_FrustumLights_Collect",
+   "kind": "function",
+   "by": "agent",
+   "date": "2026-11-27",
+   "evidence": "decomp: walks the visible light bitset, calls AddSorted, copies 0x58-byte records to DAT_141e0c160 (frame slot stride 0x2c898), fills zbins DAT_141e65290, stores count at DAT_141d4a158[frame]"
+  },
+  {
+   "address": "1400C4950",
+   "name": "R_FrustumLights_Init",
+   "kind": "function",
+   "by": "agent",
+   "date": "2026-11-27",
+   "evidence": "decomp: strings 'frustum lights buffer' (0x100 elements x 0x58), 'frustum lights zbin buffer' (0x8000 bytes), mask texture with 0x100 layers, mask buffers"
+  },
+  {
    "address": "14048FD60",
    "name": "G_ReadSaveGameState",
    "kind": "function",
@@ -245,6 +293,23 @@
    "tag": "limit",
    "value": "42",
    "evidence": "disasm 0x1400A97C0: mov r10d,0x12; mov r9d,0x4770; ... mov [rdi+rax*4],r8d; inc dword [rbx]; add r9,0x3f8; cmp r9,0xa6b0; disasm 0x140B69F90 --here: lea rdx,[rbp-0x30]; call 0x1400A97C0; mov [rbp+rdx*4-0x30],eax"
+  },
+  {
+   "address": "1400C2730",
+   "text": "visible frustum lights per frame: 256 max, nearest by distance kept; list DAT_141d4a160 u32[256]/frame slot, depth DAT_141d4ab60 (stride 0x800/slot), flags DAT_141d4a960/DAT_141d4bb60; GPU records 0x100 x 0x58, masks 8 words per tile",
+   "by": "agent",
+   "date": "2026-11-27",
+   "tag": "limit",
+   "value": "256",
+   "evidence": "FUN_1400c2730 0xff/0x100 compares; FUN_1400c4950 buffer sizes; live peek r15 doc: count DAT_141d4a158 = 200"
+  },
+  {
+   "address": "1400C4930",
+   "text": "words per tile = (visible count + 31) >> 5 (also FUN_1400c52a0 cb2[9].x at +0x1150, FUN_1400c25c0): 6 for 161..192 lights, so no step at 177/178",
+   "by": "agent",
+   "date": "2026-11-27",
+   "tag": "limit",
+   "evidence": "decomp of the three functions"
   },
   {
    "address": "1402409D9",
