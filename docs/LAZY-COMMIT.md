@@ -190,3 +190,30 @@ Run for the lead: rebuild, `forge live start --map cp_zmb --exe <exe> --launch-a
 and `[Alloc zero]` lines. The lazy commit then moves to the creator with the most zero pages whose commits are made by the engine's own code
 (a commit into a pool becomes: commit when the sub-allocator hands the piece out, which is what it does already; the saving is then in what the pools commit
 ahead of use, and that is read from the `into` sizes against the zero pages).
+
+## Census 3 reconciled, and what is real (LZ, 27 Nov 2026)
+
+Same process, same moment (my `lz_diag3`, stock, `-alloc-census`, cp_zmb): the in-process census accounts for **4,188 MB** of committed memory in reservations
+of 1 MB and more made since `post_start` (zero pages: 819 MB), while an external read of every committed private page finds **8,704 MB committed, 5,192 MB
+of it zero pages**. So about **4.5 GB of private commit, nearly all zero pages, is created by a door the census does not see**: the 41 to 44 blocks of
+exactly 16 MB, 27 of 32 MB, 71 of 4 MB, the 5 to 12 MB ones and the multi-region 16 to 32 MB reservations (addresses mostly below 4 GB, one allocation each).
+The census sees no call for them (not as `new`, not as `reserve` + `into`), and `before the hook` is only 3 MB, so they were not there when the hook went in.
+What is accounted for, and what it is:
+
+| Where | Committed | Zero | Creator | Verdict |
+|---|---|---|---|---|
+| PMem arena, 70 GB reserved | 2,462 MB | 88 MB | `iw7_ship.exe+CF144B` reserve, `+CF0CF3` commits | well used; kernel reads into parts of it; leave |
+| 10 x 64 MB | 640 MB | 639 MB | `renderer::umbra_query_init_stub` (`iw7-paris-voice.exe+27FF22`, upstream iw7-mod `renderer.cpp`: a thread_local 64 MB `VirtualAlloc` arena per thread for Umbra queries, never used beyond a few KB) | **made lazy** (this branch) |
+| 2 x 8.4 MB | 16.8 MB | 16.7 MB | `renderer::component::post_unpack` (`+27F01C`) | made lazy with the above |
+| NT heap segments | about 1,070 MB | 75 MB | ntdll | normal heap, leave |
+| unseen door | about 4,500 MB | about 4,400 MB | unknown | not attributable yet |
+
+The symbols come from the build's own PDB (`runtime/voice-symbols/<hash>/iw7-mod.pdb`, DbgHelp: `renderer::umbra_query_init_stub` at RVA `0x27FF22`).
+
+**Real saving of this branch as it stands: about 0.65 GB per client** (the renderer's umbra arenas and two pools; the umbra arena is reserved with a head and
+tail committed, the rest on first touch, written only by user-mode Umbra code). The 4.5 GB of the unseen door is not reachable until its creator is known.
+
+New in the census for that: the first lines of each report say how many `NtAllocateVirtualMemory` calls named another process handle (a self handle would
+bypass the `GetCurrentProcess()` test) and their bytes, and every report lists, with the second it was first seen, the private allocations of 8 MB and
+more that no recorded reservation explains. If they are already there at t=5 s, they are made by something that does not go through ntdll's export
+(a direct system call of the game's protector is the leading suspect: the shipped code is protected). If they appear later, the time says which phase.

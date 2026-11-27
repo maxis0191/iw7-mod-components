@@ -32,7 +32,7 @@ entry table[slots];
 reservation reservations[max_reservations];
 std::size_t reservation_count{};
 std::atomic_flag guard = ATOMIC_FLAG_INIT;
-std::atomic<std::uint64_t> version{}, dropped{}, ex_count{};
+std::atomic<std::uint64_t> version{}, dropped{}, ex_count{}, other_calls{}, other_bytes{};
 std::uintptr_t system_lo[3], system_hi[3];
 utils::hook::detour nt_hook, nt_ex_hook;
 std::atomic_bool running{true};
@@ -75,6 +75,7 @@ void record(ULONG type, bool existing, std::uintptr_t base, SIZE_T size) {
 LONG NTAPI nt_stub(HANDLE process, PVOID* base, ULONG_PTR zero_bits, PSIZE_T size, ULONG type, ULONG protect) {
     const bool existing = base && *base;
     const auto status = nt_hook.invoke<LONG>(process, base, zero_bits, size, type, protect);
+    if (status >= 0 && process != GetCurrentProcess() && size) { ++other_calls; other_bytes += *size; }
     if (status >= 0 && process == GetCurrentProcess() && size && base) record(type, existing, reinterpret_cast<std::uintptr_t>(*base), *size);
     return status;
 }
@@ -118,13 +119,52 @@ std::string where(std::uintptr_t a) {
 }
 std::string callers(const std::uintptr_t* f) { return where(f[0]) + " <- " + where(f[1]) + " <- " + where(f[2]); }
 
+// Private allocations of 8 MB and more that no recorded reservation explains (created before the hook, or through a door it does not see): printed
+// the first time they are seen, with the second at which that was.
+void unattributed(unsigned seconds) {
+    static std::vector<std::uintptr_t> printed;
+    std::vector<std::uintptr_t> known;
+    while (guard.test_and_set(std::memory_order_acquire)) {}
+    for (std::size_t i = 0; i < reservation_count; ++i) known.push_back(reservations[i].base);
+    guard.clear(std::memory_order_release);
+    std::sort(known.begin(), known.end());
+    std::map<SIZE_T, std::pair<unsigned, double>> by_size;
+    std::uintptr_t a = 0;
+    MEMORY_BASIC_INFORMATION m{};
+    std::uintptr_t current = 0;
+    SIZE_T committed = 0, total = 0;
+    auto flush = [&]() {
+        if (current && total >= (8u << 20) && !std::binary_search(known.begin(), known.end(), current) &&
+            !std::binary_search(printed.begin(), printed.end(), current)) {
+            printed.insert(std::upper_bound(printed.begin(), printed.end(), current), current);
+            auto& e = by_size[total];
+            ++e.first;
+            e.second += static_cast<double>(committed);
+        }
+    };
+    while (VirtualQuery(reinterpret_cast<void*>(a), &m, sizeof(m)) == sizeof(m)) {
+        const auto alloc = reinterpret_cast<std::uintptr_t>(m.AllocationBase);
+        if (m.State != MEM_FREE && m.Type == MEM_PRIVATE) {
+            if (alloc != current) { flush(); current = alloc; committed = 0; total = 0; }
+            total += m.RegionSize;
+            if (m.State == MEM_COMMIT) committed += m.RegionSize;
+        } else { flush(); current = 0; committed = 0; total = 0; }
+        a = reinterpret_cast<std::uintptr_t>(m.BaseAddress) + m.RegionSize;
+        if (a >= 0x7FFFFFFF0000ull) break;
+    }
+    flush();
+    for (const auto& e : by_size)
+        console::info("[Alloc census] t=%us: %u new private allocations of %.1f MB that no recorded reservation explains (%.0f MB committed)\n", seconds, e.second.first,
+            static_cast<double>(e.first) / 1048576.0, e.second.second / 1048576.0);
+}
+
 void report() {
     std::vector<entry> copy;
     while (guard.test_and_set(std::memory_order_acquire)) {}
     for (const auto& e : table) if (e.count) copy.push_back(e);
     guard.clear(std::memory_order_release);
     console::info("[Alloc census] before the hook: %.0f MB in %u private blocks of 1 MB and more; Ex form calls seen: %llu; table dropped %llu\n", before_mb, before_blocks,
-        static_cast<unsigned long long>(ex_count.load()), static_cast<unsigned long long>(dropped.load()));
+        static_cast<unsigned long long>(ex_count.load()), static_cast<unsigned long long>(dropped.load()), static_cast<unsigned long long>(other_calls.load()), other_bytes.load() / 1048576.0);
     for (unsigned kind = 0; kind < 3; ++kind) {
         std::vector<entry> rows;
         double total = 0;
@@ -178,6 +218,7 @@ DWORD WINAPI zero_scan(LPVOID) {
 DWORD WINAPI reporter(LPVOID) {
     std::uint64_t seen = 0;
     Sleep(5000);
+    unattributed(5);
     console::info("[Alloc census] ready: every reservation and commit since post_start is counted by caller (paris_alloc_census, paris_alloc_zero)\n");
     command::add("paris_alloc_census", [] { report(); });
     command::add("paris_alloc_zero", [] { CreateThread(nullptr, 0, zero_scan, nullptr, 0, nullptr); });
@@ -186,6 +227,7 @@ DWORD WINAPI reporter(LPVOID) {
         Sleep(15000);
         ++ticks;
         const auto now = version.load();
+        unattributed(5 + ticks * 15);
         if (now != seen) { seen = now; report(); }
         if (ticks == 6) zero_scan(nullptr);   // once, about 100 s after the start; later ones by the command
     }
